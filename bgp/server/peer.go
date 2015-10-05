@@ -7,16 +7,6 @@ import (
     "time"
 )
 
-const (
-    _ = iota
-    BGP_FSM_IDLE
-    BGP_FSM_CONNECT
-    BGP_FSM_ACTIVE
-    BGP_FSM_OPENSENT
-    BGP_FSM_OPENCONFIRM
-    BGP_FSM_ESTABLISHED
-)
-
 type Peer struct {
     Global *GlobalConfig
     Peer *PeerConfig
