@@ -14,7 +14,7 @@ type BgpServer struct {
     GlobalConfigCh chan GlobalConfig
     AddPeerCh chan PeerConfig
     RemPeerCh chan PeerConfig
-    
+
     PeerMap map[string]*Peer
 }
 
@@ -33,12 +33,12 @@ func listenForPeers(acceptCh chan *net.TCPConn) {
     if err != nil {
         fmt.Println("ResolveTCPAddr failed with", err)
     }
-    
+
     listener, err := net.ListenTCP("tcp", tcpAddr)
     if err != nil {
         fmt.Println("ListenTCP failed with", err)
     }
-    
+
     for {
         tcpConn, err := listener.AcceptTCP()
         fmt.Println("Waiting for peer connections...")
@@ -52,28 +52,32 @@ func listenForPeers(acceptCh chan *net.TCPConn) {
 func (server *BgpServer) StartServer() {
     gConf := <-server.GlobalConfigCh
     server.BgpConfig.GlobalConfig = gConf
-    
+
     fmt.Println("Setting up Peer connections")
     acceptCh := make(chan *net.TCPConn)
     go listenForPeers(acceptCh)
-    
+
     for {
         select {
             case addPeer := <-server.AddPeerCh:
-                fmt.Println("Add Peer ip[%s]", addPeer.IP.String())
-                peer := NewPeer(server.BgpConfig.GlobalConfig, addPeer)
                 _, ok := server.PeerMap[addPeer.IP.String()]
                 if ok {
                     fmt.Println("Failed to add peer, Peer at that address already exists, %v", addPeer.IP.String())
                 }
-                
+                fmt.Println("Add Peer ip[%s]", addPeer.IP.String())
+                peer := NewPeer(server.BgpConfig.GlobalConfig, addPeer)
                 server.PeerMap[addPeer.IP.String()] = peer
+                peer.Init()
+
             case remPeer := <-server.RemPeerCh:
                 fmt.Println("Remove Peer")
-                _, ok := server.PeerMap[remPeer.IP.String()]
+                peer, ok := server.PeerMap[remPeer.IP.String()]
                 if !ok {
                     fmt.Println("Failed to remove peer, Peer at that address does not exist, %v", remPeer.IP.String())
                 }
+                peer.Cleanup()
+                delete(server.PeerMap, remPeer.IP.String())
+
             case tcpConn := <-acceptCh:
                 fmt.Println("Connected to", tcpConn.RemoteAddr().String())
                 host, _, _ := net.SplitHostPort(tcpConn.RemoteAddr().String())

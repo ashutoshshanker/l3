@@ -2,14 +2,14 @@
 package server
 
 import (
-	"fmt"
+    "fmt"
     "net"
 )
 
 type BGP_FSM_STATE int
 
 const (
-    _ BGP_FSM_STATE = iota
+    BGP_FSM_NONE BGP_FSM_STATE = iota
     BGP_FSM_IDLE
     BGP_FSM_CONNECT
     BGP_FSM_ACTIVE
@@ -456,7 +456,7 @@ func NewFSM(gConf *GlobalConfig, pConf *PeerConfig) *FSM {
     return &fsm
 }
 
-func (fsm *FSM) StartFSM() {
+func (fsm *FSM) StartFSM(state BGP_FSM_STATE) {
     fsm.State = NewIdleState(fsm)
     fsm.OldState = nil
     fsm.State.enter()
