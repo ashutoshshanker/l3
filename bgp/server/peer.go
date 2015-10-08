@@ -10,8 +10,7 @@ import (
 type Peer struct {
     Global *GlobalConfig
     Peer *PeerConfig
-    FSM *FSM
-    Conn net.TCPConn
+    fsmManager *FsmManager
 }
 
 func NewPeer(globalConf GlobalConfig, peerConf PeerConfig) *Peer {
@@ -19,18 +18,21 @@ func NewPeer(globalConf GlobalConfig, peerConf PeerConfig) *Peer {
         Global: &globalConf,
         Peer: &peerConf,
     }
-    peerConf.SessionState = uint32(BGP_FSM_IDLE)
-    peer.FSM = NewFSM(&globalConf, &peerConf)
+    peer.fsmManager = NewFsmManager(&globalConf, &peerConf)
     return &peer
+}
+
+func (peer *Peer) Init() {
+    go peer.fsmManager.Init()
 }
 
 func (peer *Peer) SendKeepAlives(conn *net.TCPConn) {
     peer.Conn = *conn
-    
+
     bgpKeepAliveMsg := NewBGPKeepAliveMessage()
     var num int
     var err error
-    
+
     for {
         select {
             case <-time.After(time.Second * 1):

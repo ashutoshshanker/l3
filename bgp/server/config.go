@@ -16,10 +16,18 @@ type PeerConfig struct {
 }
 
 type Peers struct {
-    PeerLisr []PeerConfig
+    PeerList []PeerConfig
 }
 
 type Bgp struct {
 	GlobalConfig GlobalConfig
 	Peers Peers
 }
+
+type CONN_DIR int
+
+const (
+    CONN_DIR_OUT CONN_DIR = iota,
+    CONN_DIR_IN,
+    CONN_DIR_MAX,
+)
