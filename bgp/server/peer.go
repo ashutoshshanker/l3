@@ -26,9 +26,17 @@ func (peer *Peer) Init() {
     go peer.fsmManager.Init()
 }
 
-func (peer *Peer) SendKeepAlives(conn *net.TCPConn) {
-    peer.Conn = *conn
+func (peer *Peer) Cleanup() {}
 
+func (peer *Peer) AcceptConn(conn *net.TCPConn) {
+    peer.fsmManager.acceptCh <- conn
+}
+
+func (peer *Peer) Command(command int) {
+    peer.fsmManager.commandCh <- command
+}
+
+func (peer *Peer) SendKeepAlives(conn *net.TCPConn) {
     bgpKeepAliveMsg := NewBGPKeepAliveMessage()
     var num int
     var err error
@@ -38,7 +46,7 @@ func (peer *Peer) SendKeepAlives(conn *net.TCPConn) {
             case <-time.After(time.Second * 1):
                 fmt.Println("send the packet ...")
                 packet, _ := bgpKeepAliveMsg.Serialize()
-                num, err = peer.Conn.Write(packet)
+                num, err = conn.Write(packet)
                 if err != nil {
                     fmt.Println("Conn.Write failed with error:", err)
                 }
