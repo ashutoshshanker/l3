@@ -45,7 +45,7 @@ func (peer *Peer) SendKeepAlives(conn *net.TCPConn) {
         select {
             case <-time.After(time.Second * 1):
                 fmt.Println("send the packet ...")
-                packet, _ := bgpKeepAliveMsg.Serialize()
+                packet, _ := bgpKeepAliveMsg.Encode()
                 num, err = conn.Write(packet)
                 if err != nil {
                     fmt.Println("Conn.Write failed with error:", err)
