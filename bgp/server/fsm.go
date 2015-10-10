@@ -57,6 +57,7 @@ type BASE_STATE_IFACE interface {
     enter()
     leave()
     state() BGP_FSM_STATE
+    String() string
 }
 
 type BASE_STATE struct {
@@ -115,8 +116,12 @@ func (self *IDLE_STATE) leave() {
     fmt.Println("IDLE_STATE: leave")
 }
 
-func (self *IDLE_STATE) state() BGP_FSM_STATE{
+func (self *IDLE_STATE) state() BGP_FSM_STATE {
     return BGP_FSM_IDLE
+}
+
+func (self *IDLE_STATE) String() string {
+    return fmt.Sprintf("IDLE")
 }
 
 type CONNECT_STATE struct {
@@ -178,6 +183,10 @@ func (self *CONNECT_STATE) leave() {
 
 func (self *CONNECT_STATE) state() BGP_FSM_STATE{
     return BGP_FSM_CONNECT
+}
+
+func (self *CONNECT_STATE) String() string {
+    return fmt.Sprintf("CONNECT")
 }
 
 type ACTIVE_STATE struct {
@@ -243,6 +252,10 @@ func (self *ACTIVE_STATE) state() BGP_FSM_STATE{
     return BGP_FSM_ACTIVE
 }
 
+func (self *ACTIVE_STATE) String() string {
+    return fmt.Sprintf("ACTIVE")
+}
+
 type OPENSENT_STATE struct {
     BASE_STATE
 }
@@ -277,6 +290,7 @@ func (self *OPENSENT_STATE) processEvent(event BGP_FSM_EVENT) {
             self.fsm.ChangeState(NewActiveState(self.fsm))
 
         case BGP_EVENT_BGP_OPEN:
+            self.fsm.sendKeepAliveMessage()
             self.fsm.ChangeState(NewOpenConfirmState(self.fsm))
 
         case BGP_EVENT_HEADER_ERR, BGP_EVENT_OPEN_MSG_ERR:
@@ -297,6 +311,7 @@ func (self *OPENSENT_STATE) processEvent(event BGP_FSM_EVENT) {
 
 func (self *OPENSENT_STATE) enter() {
     fmt.Println("OPENSENT_STATE: enter")
+    self.BASE_STATE.fsm.startRxPkts()
 }
 
 func (self *OPENSENT_STATE) leave() {
@@ -305,6 +320,10 @@ func (self *OPENSENT_STATE) leave() {
 
 func (self *OPENSENT_STATE) state() BGP_FSM_STATE{
     return BGP_FSM_OPENSENT
+}
+
+func (self *OPENSENT_STATE) String() string {
+    return fmt.Sprintf("OPENSENT")
 }
 
 type OPENCONFIRM_STATE struct {
@@ -374,6 +393,10 @@ func (self *OPENCONFIRM_STATE) state() BGP_FSM_STATE{
     return BGP_FSM_OPENCONFIRM
 }
 
+func (self *OPENCONFIRM_STATE) String() string {
+    return fmt.Sprintf("OPENCONFIRM")
+}
+
 type ESTABLISHED_STATE struct {
     BASE_STATE
 }
@@ -437,6 +460,10 @@ func (self *ESTABLISHED_STATE) state() BGP_FSM_STATE{
     return BGP_FSM_ESTABLISHED
 }
 
+func (self *ESTABLISHED_STATE) String() string {
+    return fmt.Sprintf("ESTABLISHED")
+}
+
 type FSM_IFACE interface {
     StartFSM(state BASE_STATE_IFACE)
     ProcessEvent(event BGP_FSM_EVENT)
@@ -448,19 +475,24 @@ type FSM struct {
     pConf *PeerConfig
     Manager *FsmManager
     State BASE_STATE_IFACE
+    id CONN_DIR
 
     conn net.Conn
     event BGP_FSM_EVENT
     connectRetryCounter int
     holdTime uint16
+
+    rxPktsFlag bool
 }
 
-func NewFSM(fsmManager *FsmManager, gConf *GlobalConfig, pConf *PeerConfig) *FSM {
+func NewFSM(fsmManager *FsmManager, id CONN_DIR, gConf *GlobalConfig, pConf *PeerConfig) *FSM {
     fsm := FSM{
         gConf: gConf,
         pConf: pConf,
         Manager: fsmManager,
+        id: id,
         holdTime: 240, // seconds
+        rxPktsFlag: false,
     }
     return &fsm
 }
@@ -481,8 +513,32 @@ func (fsm *FSM) ProcessEvent(event BGP_FSM_EVENT) {
     fsm.State.processEvent(event)
 }
 
+func (fsm *FSM) ProcessPacket(pkt *BGPMessage, err error) {
+    var event BGP_FSM_EVENT = BGP_EVENT_AUTO_START
+
+    if err != nil {
+        event = BGP_EVENT_HEADER_ERR
+    }
+
+    switch pkt.Header.Type {
+        case BGP_OPEN:
+            event = BGP_EVENT_BGP_OPEN
+
+        case BGP_UPDATE:
+            event = BGP_EVENT_UPDATE_MSG
+
+        case BGP_NOTIFICATION:
+            event = BGP_EVENT_NOTIF_MSG
+
+        case BGP_KEEPALIVE:
+            event = BGP_EVENT_KEEP_ALIVE_MSG
+    }
+    fmt.Println("FSM:ProcessPacket - event =", event)
+    fsm.ProcessEvent(event)
+}
+
 func (fsm *FSM) ChangeState(newState BASE_STATE_IFACE) {
-    fmt.Println("FSM: ChangeState: Leaving", fsm.State.state(), "Entering", newState.state())
+    fmt.Println("FSM: ChangeState: Leaving", fsm.State, "state Entering", newState, "state")
     fsm.State.leave()
     fsm.State = newState
     fsm.State.enter()
@@ -494,10 +550,34 @@ func (fsm *FSM) SetConnectRetryCounter(value int) {
 
 func (fsm *FSM) sendOpenMessage() {
     bgpOpenMsg := NewBGPOpenMessage(fsm.pConf.AS, fsm.holdTime, IP)
-    packet, _ := bgpOpenMsg.Serialize()
+    packet, _ := bgpOpenMsg.Encode()
     num, err := fsm.conn.Write(packet)
     if err != nil {
-        fmt.Println("Conn.Write failed with error:", err)
+        fmt.Println("Conn.Write failed to send Open packet with error:", err)
     }
-    fmt.Println("Conn.Write succeeded. sent %d", num, "bytes of OPEN message")
+    fmt.Println("Conn.Write succeeded. sent Open packet with", num, "bytes")
+}
+
+func (fsm *FSM) sendKeepAliveMessage() {
+    bgpKeepAliveMsg := NewBGPKeepAliveMessage()
+    packet, _ := bgpKeepAliveMsg.Encode()
+    num, err := fsm.conn.Write(packet)
+    if err != nil {
+        fmt.Println("Conn.Write failed to send KeepAlive packet with error:", err)
+    }
+    fmt.Println("Conn.Write succeeded. sent KeepAlive packet with", num, "bytes")
+}
+
+func (fsm *FSM) startRxPkts() {
+    if !fsm.rxPktsFlag {
+        fsm.rxPktsFlag = true
+        fsm.Manager.StartPktRx(fsm.id, &fsm.conn)
+    }
+}
+
+func (fsm *FSM) stopRxPkts() {
+    if fsm.rxPktsFlag {
+        fsm.rxPktsFlag = false
+        fsm.Manager.StopPktRx(fsm.id, &fsm.conn)
+    }
 }

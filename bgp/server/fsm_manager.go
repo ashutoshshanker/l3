@@ -13,6 +13,12 @@ const (
     START CONFIG = iota
     STOP
 )
+
+type BgpPkt struct {
+    id CONN_DIR
+    pkt *BGPMessage
+}
+
 type FsmManager struct {
     gConf *GlobalConfig
     pConf *PeerConfig
@@ -26,6 +32,7 @@ type FsmManager struct {
     acceptConn bool
     commandCh chan int
     activeFsm CONN_DIR
+    pktRxCh chan *BgpPkt
 }
 
 func NewFsmManager(globalConf *GlobalConfig, peerConf *PeerConfig) *FsmManager {
@@ -42,11 +49,12 @@ func NewFsmManager(globalConf *GlobalConfig, peerConf *PeerConfig) *FsmManager {
     fsmManager.commandCh = make(chan int)
     fsmManager.fsms = make(map[CONN_DIR]*FSM)
     fsmManager.activeFsm = CONN_DIR_OUT
+    fsmManager.pktRxCh = make(chan *BgpPkt)
     return &fsmManager
 }
 
 func (fsmManager *FsmManager) Init() {
-    fsmManager.fsms[CONN_DIR_OUT] = NewFSM(fsmManager, fsmManager.gConf, fsmManager.pConf)
+    fsmManager.fsms[CONN_DIR_OUT] = NewFSM(fsmManager, CONN_DIR_OUT, fsmManager.gConf, fsmManager.pConf)
     fsmManager.fsms[CONN_DIR_OUT].StartFSM(NewIdleState(fsmManager.fsms[CONN_DIR_OUT]))
 
     for {
@@ -59,7 +67,7 @@ func (fsmManager *FsmManager) Init() {
                     fmt.Println("A FSM is already created for a incoming connection")
                 } else {
                     fsmManager.conns[CONN_DIR_IN] = inConn
-                    fsmManager.fsms[CONN_DIR_IN] = NewFSM(fsmManager, fsmManager.gConf, fsmManager.pConf)
+                    fsmManager.fsms[CONN_DIR_IN] = NewFSM(fsmManager, CONN_DIR_IN, fsmManager.gConf, fsmManager.pConf)
                     fsmManager.fsms[CONN_DIR_IN].SetConn(inConn)
                     fsmManager.fsms[CONN_DIR_IN].StartFSM(NewActiveState(fsmManager.fsms[CONN_DIR_IN]))
                     fsmManager.fsms[CONN_DIR_IN].ProcessEvent(BGP_EVENT_TCP_CONN_CONFIRMED)
@@ -86,6 +94,10 @@ func (fsmManager *FsmManager) Init() {
                     (event == BGP_EVENT_MANUAL_START_PASS_TCP_EST) {
                     fsmManager.fsms[fsmManager.activeFsm].ProcessEvent(event)
                 }
+
+            case pktRx := <- fsmManager.pktRxCh:
+                fmt.Println("FsmManager:Init - Rx a BGP packets")
+                fsmManager.fsms[pktRx.id].ProcessPacket(pktRx.pkt, nil)
         }
     }
 }
@@ -106,5 +118,44 @@ func (fsmManager *FsmManager) Connect(seconds int) {
         fsmManager.connectErrCh <- err
     } else {
         fsmManager.connectCh <- conn
+    }
+}
+
+func (fsmManager *FsmManager) StartPktRx(id CONN_DIR, conn *net.Conn) {
+    go fsmManager.StartReading(id, conn)
+}
+
+func (fsmManager *FsmManager) StopPktRx(id CONN_DIR, conn *net.Conn) {
+}
+
+func readPartialPkt(conn *net.Conn, length uint16) ([]byte, error) {
+    buf := make([]byte, length)
+    _, err := (*conn).Read(buf)
+    return buf, err
+}
+
+func (fsmManager *FsmManager) StartReading(id CONN_DIR, conn *net.Conn) {
+    bgp := BgpPkt{
+        id: id,
+    }
+    for {
+        fmt.Println("Start reading again")
+        buf, _ := readPartialPkt(conn, BGP_MSG_HEADER_LEN)
+        header := BGPHeader{}
+        err := header.Decode(buf)
+        if err != nil {
+            fmt.Println("BGP packet header decode failed")
+        }
+
+        buf, _ = readPartialPkt(conn, header.Length)
+        msg := &BGPMessage{}
+        err = msg.Decode(&header, buf)
+        if err != nil {
+            fmt.Println("BGP packet body decode failed")
+        }
+
+        fmt.Println("Received a BGP packet")
+        bgp.pkt = msg
+        fsmManager.pktRxCh <- &bgp
     }
 }
