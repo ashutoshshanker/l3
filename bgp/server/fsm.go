@@ -11,6 +11,18 @@ type BGPFSMState int
 
 const BGPConnectRetryTime uint16 = 120 // seconds
 const BGPHoldTimeDefault uint16 = 9    // 240 seconds
+const BGPIdleHoldTimeDefault uint16 = 5    // 240 seconds
+
+var IdleHoldTimeInterval = map[uint16]uint16 {
+	0: 0,
+	5: 10,
+	10: 30,
+	60: 120,
+	120: 180,
+	180: 300,
+	300: 500,
+	500: 0,
+}
 
 const (
 	BGPFSMNone BGPFSMState = iota
@@ -31,7 +43,7 @@ const (
 	BGPEventAutoStart
 	BGPEventManualStartPassTcpEst
 	BGPEventAutoStartPassTcpEst
-	BGPEventAutoDampPeerOscl
+	BGPEventAutoStartDampPeerOscl
 	BGPEventAutoStartDampPeerOsclPassTcpEst
 	BGPEventAutoStop
 	BGPEventConnRetryTimerExp
@@ -105,22 +117,37 @@ func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
 	case BGPEventManualStart, BGPEventAutoStart:
 		st.fsm.SetConnectRetryCounter(0)
 		st.fsm.StartConnectRetryTimer()
-        st.fsm.InitiateConnToPeer()
-        st.fsm.AcceptPeerConn()
+		st.fsm.InitiateConnToPeer()
+		st.fsm.AcceptPeerConn()
 		st.fsm.ChangeState(NewConnectState(st.fsm))
 
 	case BGPEventManualStartPassTcpEst, BGPEventAutoStartPassTcpEst:
 		st.fsm.ChangeState(NewActiveState(st.fsm))
+
+	case BGPEventAutoStartDampPeerOscl, BGPEventAutoStartDampPeerOsclPassTcpEst:
+		st.fsm.SetIdleHoldTime(IdleHoldTimeInterval[st.fsm.GetIdleHoldTime()])
+		st.fsm.StartIdleHoldTimer()
+
+	case BGPEventIdleHoldTimerExp:
+		st.fsm.SetConnectRetryCounter(0)
+		st.fsm.StartConnectRetryTimer()
+		st.fsm.InitiateConnToPeer()
+		st.fsm.AcceptPeerConn()
+		st.fsm.ChangeState(NewConnectState(st.fsm))
 	}
 }
 
 func (st *IdleState) enter() {
 	fmt.Println("IdleState: enter")
+	st.fsm.StopKeepAliveTimer()
+	st.fsm.StopHoldTimer()
 	st.fsm.RejectPeerConn()
+	st.fsm.ApplyAutomaticStart()
 }
 
 func (st *IdleState) leave() {
 	fmt.Println("IdleState: leave")
+	st.fsm.StopIdleHoldTimer()
 }
 
 func (st *IdleState) state() BGPFSMState {
@@ -625,6 +652,7 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 
 func (st *EstablishedState) enter() {
 	fmt.Println("EstablishedState: enter")
+	st.fsm.SetIdleHoldTime(BGPIdleHoldTimeDefault)
 }
 
 func (st *EstablishedState) leave() {
@@ -683,6 +711,13 @@ type FSM struct {
 	keepAliveTime  uint16
 	keepAliveTimer *time.Timer
 
+	autoStart bool
+	autoStop bool
+	passiveTcpEst bool
+	dampPeerOscl bool
+	idleHoldTime uint16
+	idleHoldTimer *time.Timer
+
 	delayOpen      bool
 	delayOpenTime  uint16
 	delayOpenTimer *time.Timer
@@ -707,16 +742,23 @@ func NewFSM(fsmManager *FSMManager, connDir ConnDir, gConf *GlobalConfig, pConf 
 		stopConnCh:       make(chan bool),
 		inConnCh:         make(chan net.Conn),
 		connInProgress:   false,
+		autoStart:        true,
+		autoStop:         true,
+		passiveTcpEst:    false,
+		dampPeerOscl:     true,
+		idleHoldTime:     BGPIdleHoldTimeDefault,
 	}
 	fsm.pktRxCh = make(chan *BGPPktInfo)
 	fsm.eventRxCh = make(chan BGPFSMEvent)
 	fsm.connectRetryTimer = time.NewTimer(time.Duration(fsm.connectRetryTime) * time.Second)
 	fsm.holdTimer = time.NewTimer(time.Duration(fsm.holdTime) * time.Second)
 	fsm.keepAliveTimer = time.NewTimer(time.Duration(fsm.keepAliveTime) * time.Second)
+	fsm.idleHoldTimer = time.NewTimer(time.Duration(fsm.idleHoldTime) * time.Second)
 
 	fsm.connectRetryTimer.Stop()
 	fsm.holdTimer.Stop()
 	fsm.keepAliveTimer.Stop()
+	fsm.idleHoldTimer.Stop()
 	return &fsm
 }
 
@@ -758,6 +800,9 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 
 		case <-fsm.keepAliveTimer.C:
 			fsm.ProcessEvent(BGPEventKeepAliveTimerExp, nil)
+
+		case <-fsm.idleHoldTimer.C:
+			fsm.ProcessEvent(BGPEventIdleHoldTimerExp, nil)
 		}
 	}
 }
@@ -811,6 +856,23 @@ func (fsm *FSM) ChangeState(newState BaseStateIface) {
 	fsm.State.enter()
 }
 
+func (fsm *FSM) ApplyAutomaticStart() {
+	if fsm.autoStart {
+		event := BGPEventAutoStart
+
+		if fsm.passiveTcpEst {
+			if fsm.dampPeerOscl {
+				event = BGPEventAutoStartDampPeerOsclPassTcpEst
+			} else {
+				event = BGPEventAutoStartPassTcpEst
+			}
+		} else if fsm.dampPeerOscl {
+			event = BGPEventAutoStartDampPeerOscl
+		}
+
+		fsm.ProcessEvent(event, nil)
+	}
+}
 func (fsm *FSM) StartConnectRetryTimer() {
 	fsm.connectRetryTimer.Reset(time.Duration(fsm.connectRetryTime) * time.Second)
 }
@@ -855,6 +917,24 @@ func (fsm *FSM) SetConnectRetryCounter(value int) {
 
 func (fsm *FSM) IncrConnectRetryCounter() {
 	fsm.connectRetryCounter++
+}
+
+func (fsm *FSM) GetIdleHoldTime() uint16 {
+	return fsm.idleHoldTime
+}
+
+func (fsm *FSM) SetIdleHoldTime(seconds uint16) {
+	fsm.idleHoldTime = seconds
+}
+
+func (fsm *FSM) StartIdleHoldTimer() {
+	if fsm.idleHoldTime > 0 && fsm.idleHoldTime <= 300 {
+		fsm.idleHoldTimer.Reset(time.Duration(fsm.idleHoldTime) * time.Second)
+	}
+}
+
+func (fsm *FSM) StopIdleHoldTimer() {
+	fsm.idleHoldTimer.Stop()
 }
 
 func (fsm *FSM) ProcessOpenMessage(pkt *BGPMessage) {
