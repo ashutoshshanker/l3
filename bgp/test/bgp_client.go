@@ -25,6 +25,18 @@ func main() {
 		fmt.Println("ConfigInterface.SetBGPConfig FAILED with err:", err)
 	}
 
+	//	peerConfigArgs := &server.PeerConfigAttrs{net.ParseIP("12.1.12.204"), 5000}
+	//	err = client.Call("ConfigInterface.AddPeer", peerConfigArgs, &reply)
+	//	if err != nil {
+	//		fmt.Println("ConfigInterface.AddPeer FAILED with err:", err)
+	//	}
+	//
+	//	peerCommandArgs := &server.PeerConfigCommands{net.ParseIP("12.1.12.204"), 1}
+	//	err = client.Call("ConfigInterface.PeerCommand", peerCommandArgs, &reply)
+	//	if err != nil {
+	//		fmt.Println("ConfigInterface.AddPeer FAILED with err:", err)
+	//	}
+
 	peerConfigArgs := &server.PeerConfigAttrs{net.ParseIP("11.1.11.203"), 5000}
 	err = client.Call("ConfigInterface.AddPeer", peerConfigArgs, &reply)
 	if err != nil {
