@@ -7,19 +7,29 @@ import (
     "net"
 )
 
-const BGP_HEADER_MARKER int = 16
+const BGPHeaderMarkerLen int = 16
 
 const (
     _ uint8 = iota
-    BGP_OPEN
-    BGP_UPDATE
-    BGP_NOTIFICATION
-    BGP_KEEPALIVE
+    BGPMsgTypeOpen
+    BGPMsgTypeUpdate
+    BGPMsgTypeNotification
+    BGPMsgTypeKeepAlive
 )
 
 const (
-    BGP_MSG_HEADER_LEN = 19
-    BGP_MSG_MAX_LEN = 4096
+    BGPMsgHeaderLen = 19
+    BGPMsgMaxLen = 4096
+)
+
+const (
+	_ uint8 = iota
+	BGPMsgHeaderError
+	BGPOpenMsgError
+	BGPUpdateMsgError
+	BGPHoldTimerExpired
+	BGPFSMError
+	BGPCease
 )
 
 type BGPMessageError struct {
@@ -34,14 +44,14 @@ func (e BGPMessageError) Error() string {
 }
 
 type BGPHeader struct {
-	Marker [BGP_HEADER_MARKER]byte
+	Marker [BGPHeaderMarkerLen]byte
 	Length uint16
 	Type uint8
 }
 
 func (header *BGPHeader) Encode() ([]byte, error) {
 	pkt := make([]byte, 19)
-	for i := 0; i < BGP_HEADER_MARKER; i++ {
+	for i := 0; i < BGPHeaderMarkerLen; i++ {
 		pkt[i] = 0xff
 	}
 	binary.BigEndian.PutUint16(pkt[16:18], header.Length)
@@ -94,7 +104,7 @@ func (msg *BGPOpen) Decode(pkt []byte) error {
 
 func NewBGPOpenMessage(myAS uint16, holdTime uint16, bgpId string) *BGPMessage {
 	return &BGPMessage{
-		Header: BGPHeader{Type: BGP_OPEN},
+		Header: BGPHeader{Type: BGPMsgTypeOpen},
 		Body: &BGPOpen{4, myAS, holdTime, net.ParseIP(bgpId), 0},
 	}
 }
@@ -112,7 +122,7 @@ func (msg *BGPKeepAlive) Decode([]byte) error {
 
 func NewBGPKeepAliveMessage() *BGPMessage {
 	return &BGPMessage{
-		Header: BGPHeader{Length: 19, Type: BGP_KEEPALIVE},
+		Header: BGPHeader{Length: 19, Type: BGPMsgTypeKeepAlive},
 		Body:   &BGPKeepAlive{},
 	}
 }
@@ -120,7 +130,31 @@ func NewBGPKeepAliveMessage() *BGPMessage {
 type BGPNotificationMessage struct {
     ErrorCode uint8
     ErrorSubcode uint8
-    Data uint16
+    Data []byte
+}
+
+func (msg *BGPNotificationMessage) Encode() ([]byte, error) {
+	pkt := make([]byte, 2)
+	pkt[0] = msg.ErrorCode
+	pkt[1] = msg.ErrorSubcode
+	pkt = append(pkt, msg.Data...)
+	return pkt, nil
+}
+
+func (msg *BGPNotificationMessage) Decode(pkt []byte) error {
+	msg.ErrorCode = pkt[0]
+	msg.ErrorSubcode = pkt[1]
+	if len(pkt) > 2 {
+		msg.Data = pkt[2:]
+	}
+    return nil
+}
+
+func NewBGPNotificationMessage(errorCode uint8, errorSubCode uint8, data []byte) *BGPMessage {
+	return &BGPMessage{
+		Header: BGPHeader{Length: 21 + uint16(len(data)), Type: BGPMsgTypeNotification},
+		Body:   &BGPNotificationMessage{errorCode, errorSubCode, data},
+	}
 }
 
 type BGPMessage struct {
@@ -134,10 +168,10 @@ func (msg *BGPMessage) Encode() ([]byte, error) {
 		return nil, err
 	}
 	if msg.Header.Length == 0 {
-		if BGP_MSG_HEADER_LEN + len(body) > BGP_MSG_MAX_LEN {
-			return nil, BGPMessageError{0, 0, nil, fmt.Sprintf("BGP message is %d bytes long", BGP_MSG_HEADER_LEN + len(body))}
+		if BGPMsgHeaderLen + len(body) > BGPMsgMaxLen {
+			return nil, BGPMessageError{0, 0, nil, fmt.Sprintf("BGP message is %d bytes long", BGPMsgHeaderLen + len(body))}
 		}
-		msg.Header.Length = BGP_MSG_HEADER_LEN + uint16(len(body))
+		msg.Header.Length = BGPMsgHeaderLen + uint16(len(body))
 	}
 	header, err := msg.Header.Encode()
 	if err != nil {
@@ -149,10 +183,10 @@ func (msg *BGPMessage) Encode() ([]byte, error) {
 func (msg *BGPMessage) Decode(header *BGPHeader, pkt []byte) error {
     msg.Header = *header
     switch header.Type {
-        case BGP_OPEN:
+        case BGPMsgTypeOpen:
             msg.Body = &BGPOpen{}
 
-        case BGP_KEEPALIVE:
+        case BGPMsgTypeKeepAlive:
             msg.Body = &BGPKeepAlive{}
 
         default:

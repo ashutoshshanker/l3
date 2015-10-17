@@ -2,582 +2,1022 @@
 package server
 
 import (
-    "fmt"
-    "net"
+	"fmt"
+	"net"
+	"time"
 )
 
-type BGP_FSM_STATE int
+type BGPFSMState int
+
+const BGPConnectRetryTime uint16 = 120 // seconds
+const BGPHoldTimeDefault uint16 = 9    // 240 seconds
 
 const (
-    BGP_FSM_NONE BGP_FSM_STATE = iota
-    BGP_FSM_IDLE
-    BGP_FSM_CONNECT
-    BGP_FSM_ACTIVE
-    BGP_FSM_OPENSENT
-    BGP_FSM_OPENCONFIRM
-    BGP_FSM_ESTABLISHED
+	BGPFSMNone BGPFSMState = iota
+	BGPFSMIdle
+	BGPFSMConnect
+	BGPFSMActive
+	BGPFSMOpensent
+	BGPFSMOpenconfirm
+	BGPFSMEstablished
 )
 
-type BGP_FSM_EVENT int
+type BGPFSMEvent int
 
 const (
-    _ BGP_FSM_EVENT = iota
-    BGP_EVENT_MANUAL_START
-    BGP_EVENT_MANUAL_STOP
-    BGP_EVENT_AUTO_START
-    BGP_EVENT_MANUAL_START_PASS_TCP_EST
-    BGP_EVENT_AUTO_START_PASS_TCP_EST
-    BGP_EVENT_AUTO_DAMP_PEER_OSCL
-    BGP_EVENT_AUTO_START_DAMP_PEER_OSCL_PASS_TCP_EST
-    BGP_EVENT_AUTO_STOP
-    BGP_EVENT_CONN_RETRY_TIMER_EXP
-    BGP_EVENT_HOLD_TIMER_EXP
-    BGP_EVENT_KEEP_ALIVE_TIMER_EXP
-    BGP_EVENT_DELAY_OPEN_TIMER_EXP
-    BGP_EVENT_IDLE_HOLD_TIMER_EXP
-    BGP_EVENT_TCP_CONN_VALID
-    BGP_EVENT_TCP_CR_INVALID
-    BGP_EVENT_TCP_CR_ACKED
-    BGP_EVENT_TCP_CONN_CONFIRMED
-    BGP_EVENT_TCP_CONN_FAILS
-    BGP_EVENT_BGP_OPEN
-    BGP_EVENT_BGP_OPEN_DELAY_OPEN_TIMER
-    BGP_EVENT_HEADER_ERR
-    BGP_EVENT_OPEN_MSG_ERR
-    BGP_EVENT_OPEN_COLLISION_DUMP
-    BGP_EVENT_NOTIF_MSG_VER_ERR
-    BGP_EVENT_NOTIF_MSG
-    BGP_EVENT_KEEP_ALIVE_MSG
-    BGP_EVENT_UPDATE_MSG
-    BGP_EVENT_UPDATE_MSG_ERR
+	_ BGPFSMEvent = iota
+	BGPEventManualStart
+	BGPEventManualStop
+	BGPEventAutoStart
+	BGPEventManualStartPassTcpEst
+	BGPEventAutoStartPassTcpEst
+	BGPEventAutoDampPeerOscl
+	BGPEventAutoStartDampPeerOsclPassTcpEst
+	BGPEventAutoStop
+	BGPEventConnRetryTimerExp
+	BGPEventHoldTimerExp
+	BGPEventKeepAliveTimerExp
+	BGPEventDelayOpenTimerExp
+	BGPEventIdleHoldTimerExp
+	BGPEventTcpConnValid
+	BGPEventTcpCrInvalid
+	BGPEventTcpCrAcked
+	BGPEventTcpConnConfirmed
+	BGPEventTcpConnFails
+	BGPEventBGPOpen
+	BGPEventBGPOpenDelayOpenTimer
+	BGPEventHeaderErr
+	BGPEventOpenMsgErr
+	BGPEventOpenCollisionDump
+	BGPEventNotifMsgVerErr
+	BGPEventNotifMsg
+	BGPEventKeepAliveMsg
+	BGPEventUpdateMsg
+	BGPEventUpdateMsgErr
 )
 
-type BASE_STATE_IFACE interface {
-    processEvent(BGP_FSM_EVENT)
-    enter()
-    leave()
-    state() BGP_FSM_STATE
-    String() string
+type BaseStateIface interface {
+	processEvent(BGPFSMEvent, interface{})
+	enter()
+	leave()
+	state() BGPFSMState
+	String() string
 }
 
-type BASE_STATE struct {
-    fsm *FSM
-    connectRetryCounter int
-    connectRetryTimer int
+type BaseState struct {
+	fsm                 *FSM
+	connectRetryCounter int
+	connectRetryTimer   int
 }
 
-func (self *BASE_STATE) processEvent(event BGP_FSM_EVENT) {
-    fmt.Println("BASE_STATE: processEvent", event)
+func (baseState *BaseState) processEvent(event BGPFSMEvent, data interface{}) {
+	fmt.Println("BaseState: processEvent", event)
 }
 
-func (self *BASE_STATE) enter() {
-    fmt.Println("BASE_STATE: enter")
+func (baseState *BaseState) enter() {
+	fmt.Println("BaseState: enter")
 }
 
-func (self *BASE_STATE) leave() {
-    fmt.Println("BASE_STATE: leave")
+func (baseState *BaseState) leave() {
+	fmt.Println("BaseState: leave")
 }
 
-func (self *BASE_STATE) state() BGP_FSM_STATE {
-    return BGP_FSM_NONE
+func (baseState *BaseState) state() BGPFSMState {
+	return BGPFSMNone
 }
 
-type IDLE_STATE struct {
-    BASE_STATE
+type IdleState struct {
+	BaseState
 }
 
-func NewIdleState(fsm *FSM) *IDLE_STATE {
-    state := IDLE_STATE{
-        BASE_STATE{
-            fsm: fsm,
-        },
-    }
-    return &state
+func NewIdleState(fsm *FSM) *IdleState {
+	state := IdleState{
+		BaseState{
+			fsm: fsm,
+		},
+	}
+	return &state
 }
 
-func (self *IDLE_STATE) processEvent(event BGP_FSM_EVENT) {
-    fmt.Println("IDLE_STATE: processEvent", event)
-    switch(event) {
-        case BGP_EVENT_MANUAL_START, BGP_EVENT_AUTO_START:
-            self.BASE_STATE.fsm.SetConnectRetryCounter(0)
-            self.BASE_STATE.fsm.Manager.ConnectToPeer(3)
-            self.BASE_STATE.fsm.ChangeState(NewConnectState(self.fsm))
+func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
+	fmt.Println("IdleState: processEvent", event)
+	switch event {
+	case BGPEventManualStart, BGPEventAutoStart:
+		st.fsm.SetConnectRetryCounter(0)
+		st.fsm.StartConnectRetryTimer()
+        st.fsm.InitiateConnToPeer()
+        st.fsm.AcceptPeerConn()
+		st.fsm.ChangeState(NewConnectState(st.fsm))
 
-        case BGP_EVENT_MANUAL_START_PASS_TCP_EST, BGP_EVENT_AUTO_START_PASS_TCP_EST:
-            self.BASE_STATE.fsm.ChangeState(NewActiveState(self.fsm))
-    }
+	case BGPEventManualStartPassTcpEst, BGPEventAutoStartPassTcpEst:
+		st.fsm.ChangeState(NewActiveState(st.fsm))
+	}
 }
 
-func (self *IDLE_STATE) enter() {
-    fmt.Println("IDLE_STATE: enter")
+func (st *IdleState) enter() {
+	fmt.Println("IdleState: enter")
+	st.fsm.RejectPeerConn()
 }
 
-func (self *IDLE_STATE) leave() {
-    fmt.Println("IDLE_STATE: leave")
+func (st *IdleState) leave() {
+	fmt.Println("IdleState: leave")
 }
 
-func (self *IDLE_STATE) state() BGP_FSM_STATE {
-    return BGP_FSM_IDLE
+func (st *IdleState) state() BGPFSMState {
+	return BGPFSMIdle
 }
 
-func (self *IDLE_STATE) String() string {
-    return fmt.Sprintf("IDLE")
+func (st *IdleState) String() string {
+	return fmt.Sprintf("Idle")
 }
 
-type CONNECT_STATE struct {
-    BASE_STATE
+type ConnectState struct {
+	BaseState
 }
 
-func NewConnectState(fsm *FSM) *CONNECT_STATE {
-    state := CONNECT_STATE{
-        BASE_STATE {
-            fsm: fsm,
-        },
-    }
-    return &state
+func NewConnectState(fsm *FSM) *ConnectState {
+	state := ConnectState{
+		BaseState{
+			fsm: fsm,
+		},
+	}
+	return &state
 }
 
-func (self *CONNECT_STATE) processEvent(event BGP_FSM_EVENT) {
-    fmt.Println("CONNECT_STATE: processEvent", event)
-    switch(event) {
-        case BGP_EVENT_MANUAL_STOP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+func (st *ConnectState) processEvent(event BGPFSMEvent, data interface{}) {
+	fmt.Println("ConnectState: processEvent", event)
+	switch event {
+	case BGPEventManualStop:
+		st.fsm.StopConnToPeer()
+		st.fsm.SetConnectRetryCounter(0)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_CONN_RETRY_TIMER_EXP:
+	case BGPEventConnRetryTimerExp:
+		st.fsm.StopConnToPeer()
+		st.fsm.StartConnectRetryTimer()
+		st.fsm.InitiateConnToPeer()
 
-        case BGP_EVENT_DELAY_OPEN_TIMER_EXP:
-            self.fsm.ChangeState(NewOpenSentState(self.fsm))
+	case BGPEventDelayOpenTimerExp: // Supported later
 
-        case BGP_EVENT_TCP_CONN_VALID: // Supported later
+	case BGPEventTcpConnValid: // Supported later
 
-        case BGP_EVENT_TCP_CR_INVALID: // Supported later
+	case BGPEventTcpCrInvalid: // Supported later
 
-        case BGP_EVENT_TCP_CR_ACKED, BGP_EVENT_TCP_CONN_CONFIRMED:
-            self.BASE_STATE.fsm.sendOpenMessage()
-            self.BASE_STATE.fsm.ChangeState(NewOpenSentState(self.BASE_STATE.fsm))
+	case BGPEventTcpCrAcked, BGPEventTcpConnConfirmed:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.SetPeerConn(data)
+		st.fsm.sendOpenMessage()
+		st.fsm.SetHoldTime(BGPHoldTimeDefault)
+		st.fsm.StartHoldTimer()
+		st.BaseState.fsm.ChangeState(NewOpenSentState(st.BaseState.fsm))
 
-        case BGP_EVENT_TCP_CONN_FAILS:
-            self.fsm.ChangeState(NewActiveState(self.fsm))
+	case BGPEventTcpConnFails:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.StopConnToPeer()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_BGP_OPEN_DELAY_OPEN_TIMER:
+	case BGPEventBGPOpenDelayOpenTimer: // Supported later
 
-        case BGP_EVENT_HEADER_ERR, BGP_EVENT_OPEN_MSG_ERR:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventHeaderErr, BGPEventOpenMsgErr:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_NOTIF_MSG_VER_ERR:
+	case BGPEventNotifMsgVerErr:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_AUTO_STOP, BGP_EVENT_HOLD_TIMER_EXP, BGP_EVENT_KEEP_ALIVE_TIMER_EXP, BGP_EVENT_IDLE_HOLD_TIMER_EXP,
-             BGP_EVENT_BGP_OPEN, BGP_EVENT_OPEN_COLLISION_DUMP, BGP_EVENT_NOTIF_MSG, BGP_EVENT_KEEP_ALIVE_MSG,
-             BGP_EVENT_UPDATE_MSG, BGP_EVENT_UPDATE_MSG_ERR: // 8, 10, 11, 13, 19, 23, 25-28
-            self.fsm.ChangeState(NewIdleState(self.fsm))
-    }
+	case BGPEventAutoStop, BGPEventHoldTimerExp, BGPEventKeepAliveTimerExp, BGPEventIdleHoldTimerExp,
+		BGPEventBGPOpen, BGPEventOpenCollisionDump, BGPEventNotifMsg, BGPEventKeepAliveMsg,
+		BGPEventUpdateMsg, BGPEventUpdateMsgErr: // 8, 10, 11, 13, 19, 23, 25-28
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
+	}
 }
 
-func (self *CONNECT_STATE) enter() {
-    fmt.Println("CONNECT_STATE: enter")
+func (st *ConnectState) enter() {
+	fmt.Println("ConnectState: enter")
 }
 
-func (self *CONNECT_STATE) leave() {
-    fmt.Println("CONNECT_STATE: leave")
+func (st *ConnectState) leave() {
+	fmt.Println("ConnectState: leave")
 }
 
-func (self *CONNECT_STATE) state() BGP_FSM_STATE{
-    return BGP_FSM_CONNECT
+func (st *ConnectState) state() BGPFSMState {
+	return BGPFSMConnect
 }
 
-func (self *CONNECT_STATE) String() string {
-    return fmt.Sprintf("CONNECT")
+func (st *ConnectState) String() string {
+	return fmt.Sprintf("Connect")
 }
 
-type ACTIVE_STATE struct {
-    BASE_STATE
+type ActiveState struct {
+	BaseState
 }
 
-func NewActiveState(fsm *FSM) *ACTIVE_STATE {
-    state := ACTIVE_STATE{
-        BASE_STATE{
-            fsm: fsm,
-        },
-    }
-    return &state
+func NewActiveState(fsm *FSM) *ActiveState {
+	state := ActiveState{
+		BaseState{
+			fsm: fsm,
+		},
+	}
+	return &state
 }
 
-func (self *ACTIVE_STATE) processEvent(event BGP_FSM_EVENT) {
-    fmt.Println("ACTIVE_STATE: processEvent", event)
+func (st *ActiveState) processEvent(event BGPFSMEvent, data interface{}) {
+	fmt.Println("ActiveState: processEvent", event)
 
-    switch(event) {
-        case BGP_EVENT_MANUAL_STOP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	switch event {
+	case BGPEventManualStop:
+		st.fsm.StopConnToPeer()
+		st.fsm.SetConnectRetryCounter(0)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_CONN_RETRY_TIMER_EXP:
-            self.fsm.ChangeState(NewConnectState(self.fsm))
+	case BGPEventConnRetryTimerExp:
+		st.fsm.StartConnectRetryTimer()
+		st.fsm.InitiateConnToPeer()
+		st.fsm.ChangeState(NewConnectState(st.fsm))
 
-        case BGP_EVENT_DELAY_OPEN_TIMER_EXP:
-            self.fsm.ChangeState(NewOpenSentState(self.fsm))
+	case BGPEventDelayOpenTimerExp: // Supported later
 
-        case BGP_EVENT_TCP_CONN_VALID: // Supported later
+	case BGPEventTcpConnValid: // Supported later
 
-        case BGP_EVENT_TCP_CR_INVALID: // Supported later
+	case BGPEventTcpCrInvalid: // Supported later
 
-        case BGP_EVENT_TCP_CR_ACKED, BGP_EVENT_TCP_CONN_CONFIRMED:
+	case BGPEventTcpCrAcked, BGPEventTcpConnConfirmed:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.SetPeerConn(data)
+		st.fsm.sendOpenMessage()
+		st.fsm.SetHoldTime(BGPHoldTimeDefault)
+		st.fsm.StartHoldTimer()
+		st.fsm.ChangeState(NewOpenSentState(st.fsm))
 
-        case BGP_EVENT_TCP_CONN_FAILS:
-            self.fsm.ChangeState(NewActiveState(self.fsm))
+	case BGPEventTcpConnFails:
+		st.fsm.StartConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_BGP_OPEN_DELAY_OPEN_TIMER:
-            self.fsm.ChangeState(NewOpenConfirmState(self.fsm))
+	case BGPEventBGPOpenDelayOpenTimer: // Supported later
 
-        case BGP_EVENT_HEADER_ERR, BGP_EVENT_OPEN_MSG_ERR:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventHeaderErr, BGPEventOpenMsgErr:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_NOTIF_MSG_VER_ERR:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventNotifMsgVerErr:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_AUTO_STOP, BGP_EVENT_HOLD_TIMER_EXP, BGP_EVENT_KEEP_ALIVE_TIMER_EXP, BGP_EVENT_IDLE_HOLD_TIMER_EXP,
-             BGP_EVENT_BGP_OPEN, BGP_EVENT_OPEN_COLLISION_DUMP, BGP_EVENT_NOTIF_MSG, BGP_EVENT_KEEP_ALIVE_MSG,
-             BGP_EVENT_UPDATE_MSG, BGP_EVENT_UPDATE_MSG_ERR: // 8, 10, 11, 13, 19, 23, 25-28
-            self.fsm.ChangeState(NewIdleState(self.fsm))
-    }
+	case BGPEventAutoStop, BGPEventHoldTimerExp, BGPEventKeepAliveTimerExp, BGPEventIdleHoldTimerExp,
+		BGPEventBGPOpen, BGPEventOpenCollisionDump, BGPEventNotifMsg, BGPEventKeepAliveMsg,
+		BGPEventUpdateMsg, BGPEventUpdateMsgErr: // 8, 10, 11, 13, 19, 23, 25-28
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
+	}
 }
 
-func (self *ACTIVE_STATE) enter() {
-    fmt.Println("ACTIVE_STATE: enter")
+func (st *ActiveState) enter() {
+	fmt.Println("ActiveState: enter")
 }
 
-func (self *ACTIVE_STATE) leave() {
-    fmt.Println("ACTIVE_STATE: leave")
+func (st *ActiveState) leave() {
+	fmt.Println("ActiveState: leave")
 }
 
-func (self *ACTIVE_STATE) state() BGP_FSM_STATE{
-    return BGP_FSM_ACTIVE
+func (st *ActiveState) state() BGPFSMState {
+	return BGPFSMActive
 }
 
-func (self *ACTIVE_STATE) String() string {
-    return fmt.Sprintf("ACTIVE")
+func (st *ActiveState) String() string {
+	return fmt.Sprintf("Active")
 }
 
-type OPENSENT_STATE struct {
-    BASE_STATE
+type OpenSentState struct {
+	BaseState
 }
 
-func NewOpenSentState(fsm *FSM) *OPENSENT_STATE {
-    state := OPENSENT_STATE{
-        BASE_STATE{
-            fsm: fsm,
-        },
-    }
-    return &state
+func NewOpenSentState(fsm *FSM) *OpenSentState {
+	state := OpenSentState{
+		BaseState{
+			fsm: fsm,
+		},
+	}
+	return &state
 }
 
-func (self *OPENSENT_STATE) processEvent(event BGP_FSM_EVENT) {
-    fmt.Println("OPENSENT_STATE: processEvent", event)
+func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
+	fmt.Println("OpenSentState: processEvent", event)
 
-    switch(event) {
-        case BGP_EVENT_MANUAL_STOP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	switch event {
+	case BGPEventManualStop:
+		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.SetConnectRetryCounter(0)
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_AUTO_STOP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventAutoStop:
+		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_HOLD_TIMER_EXP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventHoldTimerExp:
+		st.fsm.SendNotificationMessage(BGPHoldTimerExpired, 0, nil	)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_TCP_CONN_VALID: // Supported later
+	case BGPEventTcpConnValid: // Supported later
 
-        case BGP_EVENT_TCP_CR_ACKED, BGP_EVENT_TCP_CONN_CONFIRMED:
+	case BGPEventTcpCrAcked, BGPEventTcpConnConfirmed: // Collistion detection... needs work
 
-        case BGP_EVENT_TCP_CONN_FAILS:
-            self.fsm.ChangeState(NewActiveState(self.fsm))
+	case BGPEventTcpConnFails:
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.StartConnectRetryTimer()
+		st.fsm.ChangeState(NewActiveState(st.fsm))
 
-        case BGP_EVENT_BGP_OPEN:
-            self.fsm.sendKeepAliveMessage()
-            self.fsm.ChangeState(NewOpenConfirmState(self.fsm))
+	case BGPEventBGPOpen:
+		st.fsm.StopConnectRetryTimer()
+		bgpMsg := data.(*BGPMessage)
+		st.fsm.ProcessOpenMessage(bgpMsg)
+		st.fsm.sendKeepAliveMessage()
+		st.fsm.StartHoldTimer()
+		st.fsm.ChangeState(NewOpenConfirmState(st.fsm))
 
-        case BGP_EVENT_HEADER_ERR, BGP_EVENT_OPEN_MSG_ERR:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventHeaderErr, BGPEventOpenMsgErr:
+		bgpMsgErr := data.(*BGPMessageError)
+		st.fsm.SendNotificationMessage(bgpMsgErr.TypeCode, bgpMsgErr.SubTypeCode, bgpMsgErr.Data)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_OPEN_COLLISION_DUMP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventOpenCollisionDump:
+		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_NOTIF_MSG_VER_ERR:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventNotifMsgVerErr:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_CONN_RETRY_TIMER_EXP, BGP_EVENT_KEEP_ALIVE_TIMER_EXP, BGP_EVENT_DELAY_OPEN_TIMER_EXP,
-             BGP_EVENT_IDLE_HOLD_TIMER_EXP, BGP_EVENT_BGP_OPEN_DELAY_OPEN_TIMER, BGP_EVENT_NOTIF_MSG,
-             BGP_EVENT_KEEP_ALIVE_MSG, BGP_EVENT_UPDATE_MSG, BGP_EVENT_UPDATE_MSG_ERR: // 9, 11, 12, 13, 20, 25-28
-            self.fsm.ChangeState(NewIdleState(self.fsm))
-    }
+	case BGPEventConnRetryTimerExp, BGPEventKeepAliveTimerExp, BGPEventDelayOpenTimerExp,
+		BGPEventIdleHoldTimerExp, BGPEventBGPOpenDelayOpenTimer, BGPEventNotifMsg,
+		BGPEventKeepAliveMsg, BGPEventUpdateMsg, BGPEventUpdateMsgErr: // 9, 11, 12, 13, 20, 25-28
+		st.fsm.SendNotificationMessage(BGPFSMError, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
+	}
 }
 
-func (self *OPENSENT_STATE) enter() {
-    fmt.Println("OPENSENT_STATE: enter")
-    self.BASE_STATE.fsm.startRxPkts()
+func (st *OpenSentState) enter() {
+	fmt.Println("OpenSentState: enter")
+	//st.BaseState.fsm.startRxPkts()
 }
 
-func (self *OPENSENT_STATE) leave() {
-    fmt.Println("OPENSENT_STATE: leave")
+func (st *OpenSentState) leave() {
+	fmt.Println("OpenSentState: leave")
 }
 
-func (self *OPENSENT_STATE) state() BGP_FSM_STATE{
-    return BGP_FSM_OPENSENT
+func (st *OpenSentState) state() BGPFSMState {
+	return BGPFSMOpensent
 }
 
-func (self *OPENSENT_STATE) String() string {
-    return fmt.Sprintf("OPENSENT")
+func (st *OpenSentState) String() string {
+	return fmt.Sprintf("Opensent")
 }
 
-type OPENCONFIRM_STATE struct {
-    BASE_STATE
+type OpenConfirmState struct {
+	BaseState
 }
 
-func NewOpenConfirmState(fsm *FSM) *OPENCONFIRM_STATE {
-    state := OPENCONFIRM_STATE{
-        BASE_STATE{
-            fsm: fsm,
-        },
-    }
-    return &state
+func NewOpenConfirmState(fsm *FSM) *OpenConfirmState {
+	state := OpenConfirmState{
+		BaseState{
+			fsm: fsm,
+		},
+	}
+	return &state
 }
 
-func (self *OPENCONFIRM_STATE) processEvent(event BGP_FSM_EVENT) {
-    fmt.Println("OPENCONFIRM_STATE: processEvent", event)
+func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
+	fmt.Println("OpenConfirmState: processEvent", event)
 
-    switch(event) {
-        case BGP_EVENT_MANUAL_STOP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	switch event {
+	case BGPEventManualStop:
+		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.SetConnectRetryCounter(0)
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_AUTO_STOP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventAutoStop:
+		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_HOLD_TIMER_EXP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventHoldTimerExp:
+		st.fsm.SendNotificationMessage(BGPHoldTimerExpired, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_KEEP_ALIVE_TIMER_EXP:
+	case BGPEventKeepAliveTimerExp:
+		st.fsm.sendKeepAliveMessage()
 
-        case BGP_EVENT_TCP_CONN_VALID: // Supported later
+	case BGPEventTcpConnValid: // Supported later
 
-        case BGP_EVENT_TCP_CR_ACKED, BGP_EVENT_TCP_CONN_CONFIRMED:
+	case BGPEventTcpCrAcked, BGPEventTcpConnConfirmed: // Collision Detection... needs work
 
-        case BGP_EVENT_TCP_CONN_FAILS, BGP_EVENT_NOTIF_MSG:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventTcpConnFails, BGPEventNotifMsg:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_BGP_OPEN:
+	case BGPEventBGPOpen: // Collision Detection... needs work
 
-        case BGP_EVENT_HEADER_ERR, BGP_EVENT_OPEN_MSG_ERR:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventHeaderErr, BGPEventOpenMsgErr:
+		bgpMsgErr := data.(BGPMessageError)
+		st.fsm.SendNotificationMessage(bgpMsgErr.TypeCode, bgpMsgErr.SubTypeCode, bgpMsgErr.Data)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_OPEN_COLLISION_DUMP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventOpenCollisionDump:
+		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_NOTIF_MSG_VER_ERR:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventNotifMsgVerErr:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_KEEP_ALIVE_MSG:
-            self.fsm.ChangeState(NewEstablishedState(self.fsm))
+	case BGPEventKeepAliveMsg:
+		st.fsm.StartHoldTimer()
+		st.fsm.ChangeState(NewEstablishedState(st.fsm))
 
-        case BGP_EVENT_CONN_RETRY_TIMER_EXP, BGP_EVENT_DELAY_OPEN_TIMER_EXP, BGP_EVENT_IDLE_HOLD_TIMER_EXP,
-             BGP_EVENT_BGP_OPEN_DELAY_OPEN_TIMER, BGP_EVENT_UPDATE_MSG, BGP_EVENT_UPDATE_MSG_ERR: // 9, 12, 13, 20, 27, 28
-            self.fsm.ChangeState(NewIdleState(self.fsm))
-    }
+	case BGPEventConnRetryTimerExp, BGPEventDelayOpenTimerExp, BGPEventIdleHoldTimerExp,
+		BGPEventBGPOpenDelayOpenTimer, BGPEventUpdateMsg, BGPEventUpdateMsgErr: // 9, 12, 13, 20, 27, 28
+		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
+	}
 }
 
-func (self *OPENCONFIRM_STATE) enter() {
-    fmt.Println("OPENCONFIRM_STATE: enter")
+func (st *OpenConfirmState) enter() {
+	fmt.Println("OpenConfirmState: enter")
 }
 
-func (self *OPENCONFIRM_STATE) leave() {
-    fmt.Println("OPENCONFIRM_STATE: leave")
+func (st *OpenConfirmState) leave() {
+	fmt.Println("OpenConfirmState: leave")
 }
 
-func (self *OPENCONFIRM_STATE) state() BGP_FSM_STATE{
-    return BGP_FSM_OPENCONFIRM
+func (st *OpenConfirmState) state() BGPFSMState {
+	return BGPFSMOpenconfirm
 }
 
-func (self *OPENCONFIRM_STATE) String() string {
-    return fmt.Sprintf("OPENCONFIRM")
+func (st *OpenConfirmState) String() string {
+	return fmt.Sprintf("Openconfirm")
 }
 
-type ESTABLISHED_STATE struct {
-    BASE_STATE
+type EstablishedState struct {
+	BaseState
 }
 
-func NewEstablishedState(fsm *FSM) *ESTABLISHED_STATE {
-    state := ESTABLISHED_STATE{
-        BASE_STATE{
-            fsm: fsm,
-        },
-    }
-    return &state
+func NewEstablishedState(fsm *FSM) *EstablishedState {
+	state := EstablishedState{
+		BaseState{
+			fsm: fsm,
+		},
+	}
+	return &state
 }
 
-func (self *ESTABLISHED_STATE) processEvent(event BGP_FSM_EVENT) {
-    fmt.Println("ESTABLISHED_STATE: processEvent", event)
+func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
+	fmt.Println("EstablishedState: processEvent", event)
 
-    switch(event) {
-        case BGP_EVENT_MANUAL_STOP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	switch event {
+	case BGPEventManualStop:
+		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.SetConnectRetryCounter(0)
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_AUTO_STOP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventAutoStop:
+		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_HOLD_TIMER_EXP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventHoldTimerExp:
+		st.fsm.SendNotificationMessage(BGPHoldTimerExpired, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_KEEP_ALIVE_TIMER_EXP:
+	case BGPEventKeepAliveTimerExp:
+		st.fsm.sendKeepAliveMessage()
 
-        case BGP_EVENT_TCP_CONN_VALID: // Supported later
+	case BGPEventTcpConnValid: // Supported later
 
-        case BGP_EVENT_TCP_CR_ACKED, BGP_EVENT_TCP_CONN_CONFIRMED:
+	case BGPEventTcpCrAcked, BGPEventTcpConnConfirmed: // Collistion detection... needs work
 
-        case BGP_EVENT_TCP_CONN_FAILS, BGP_EVENT_NOTIF_MSG_VER_ERR, BGP_EVENT_NOTIF_MSG:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventTcpConnFails, BGPEventNotifMsgVerErr, BGPEventNotifMsg:
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		fmt.Println("Established: Stop Connection")
+		st.fsm.StopConnToPeer()
+		fmt.Println("Established: Stopped Connection")
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_OPEN_COLLISION_DUMP:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventBGPOpen: // Collistion detection... needs work
 
-        case BGP_EVENT_KEEP_ALIVE_MSG:
+	case BGPEventOpenCollisionDump: // Collistion detection... needs work
+		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
 
-        case BGP_EVENT_UPDATE_MSG:
+	case BGPEventKeepAliveMsg:
+		st.fsm.StartHoldTimer()
 
-        case BGP_EVENT_UPDATE_MSG_ERR:
-            self.fsm.ChangeState(NewIdleState(self.fsm))
+	case BGPEventUpdateMsg:
+		st.fsm.StartHoldTimer()
 
-        case BGP_EVENT_CONN_RETRY_TIMER_EXP, BGP_EVENT_DELAY_OPEN_TIMER_EXP, BGP_EVENT_IDLE_HOLD_TIMER_EXP,
-             BGP_EVENT_BGP_OPEN, BGP_EVENT_BGP_OPEN_DELAY_OPEN_TIMER, BGP_EVENT_HEADER_ERR: // 9, 12, 13, 20, 21, 22
-            self.fsm.ChangeState(NewIdleState(self.fsm))
-    }
+	case BGPEventUpdateMsgErr:
+		bgpMsgErr := data.(BGPMessageError)
+		st.fsm.SendNotificationMessage(bgpMsgErr.TypeCode, bgpMsgErr.SubTypeCode, bgpMsgErr.Data)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
+
+	case BGPEventConnRetryTimerExp, BGPEventDelayOpenTimerExp, BGPEventIdleHoldTimerExp,
+		BGPEventOpenMsgErr, BGPEventBGPOpenDelayOpenTimer, BGPEventHeaderErr: // 9, 12, 13, 20, 21, 22
+		st.fsm.SendNotificationMessage(BGPFSMError, 0, nil)
+		st.fsm.StopConnectRetryTimer()
+		st.fsm.ClearPeerConn()
+		st.fsm.StopConnToPeer()
+		st.fsm.IncrConnectRetryCounter()
+		st.fsm.ChangeState(NewIdleState(st.fsm))
+	}
 }
 
-func (self *ESTABLISHED_STATE) enter() {
-    fmt.Println("ESTABLISHED_STATE: enter")
+func (st *EstablishedState) enter() {
+	fmt.Println("EstablishedState: enter")
 }
 
-func (self *ESTABLISHED_STATE) leave() {
-    fmt.Println("ESTABLISHED_STATE: leave")
+func (st *EstablishedState) leave() {
+	fmt.Println("EstablishedState: leave")
 }
 
-func (self *ESTABLISHED_STATE) state() BGP_FSM_STATE{
-    return BGP_FSM_ESTABLISHED
+func (st *EstablishedState) state() BGPFSMState {
+	return BGPFSMEstablished
 }
 
-func (self *ESTABLISHED_STATE) String() string {
-    return fmt.Sprintf("ESTABLISHED")
+func (st *EstablishedState) String() string {
+	return fmt.Sprintf("Established")
 }
 
-type FSM_IFACE interface {
-    StartFSM(state BASE_STATE_IFACE)
-    ProcessEvent(event BGP_FSM_EVENT)
-    ChangeState(state BASE_STATE_IFACE)
+type FSMIface interface {
+	StartFSM(state BaseStateIface)
+	ProcessEvent(event BGPFSMEvent)
+	ChangeState(state BaseStateIface)
+}
+
+type BGPPktInfo struct {
+	msg *BGPMessage
+	msgError *BGPMessageError
+}
+
+type PeerConnDir struct {
+	connDir ConnDir
+	conn *net.Conn
 }
 
 type FSM struct {
-    gConf *GlobalConfig
-    pConf *PeerConfig
-    Manager *FsmManager
-    State BASE_STATE_IFACE
-    id CONN_DIR
+	gConf    *GlobalConfig
+	pConf    *PeerConfig
+	Manager  *FSMManager
+	State    BaseStateIface
+	connDir  ConnDir
+	peerType PeerType
+    peerConn *PeerConn
 
-    conn net.Conn
-    event BGP_FSM_EVENT
-    connectRetryCounter int
-    holdTime uint16
+	outConnCh    chan net.Conn
+	outConnErrCh chan error
+	stopConnCh   chan bool
+	inConnCh     chan net.Conn
+	connInProgress bool
 
-    rxPktsFlag bool
+	conn  net.Conn
+	event BGPFSMEvent
+
+	connectRetryCounter int
+	connectRetryTime    uint16
+	connectRetryTimer   *time.Timer
+
+	holdTime  uint16
+	holdTimer *time.Timer
+
+	keepAliveTime  uint16
+	keepAliveTimer *time.Timer
+
+	delayOpen      bool
+	delayOpenTime  uint16
+	delayOpenTimer *time.Timer
+
+	pktRxCh    chan *BGPPktInfo
+	eventRxCh  chan BGPFSMEvent
+	rxPktsFlag bool
 }
 
-func NewFSM(fsmManager *FsmManager, id CONN_DIR, gConf *GlobalConfig, pConf *PeerConfig) *FSM {
-    fsm := FSM{
-        gConf: gConf,
-        pConf: pConf,
-        Manager: fsmManager,
-        id: id,
-        holdTime: 240, // seconds
-        rxPktsFlag: false,
-    }
-    return &fsm
+func NewFSM(fsmManager *FSMManager, connDir ConnDir, gConf *GlobalConfig, pConf *PeerConfig) *FSM {
+	fsm := FSM{
+		gConf:            gConf,
+		pConf:            pConf,
+		Manager:          fsmManager,
+		connDir:          connDir,
+		connectRetryTime: BGPConnectRetryTime,      // seconds
+		holdTime:         BGPHoldTimeDefault,       // seconds
+		keepAliveTime:    (BGPHoldTimeDefault / 3), // seconds
+		rxPktsFlag:       false,
+		outConnCh:        make(chan net.Conn),
+		outConnErrCh:     make(chan error),
+		stopConnCh:       make(chan bool),
+		inConnCh:         make(chan net.Conn),
+		connInProgress:   false,
+	}
+	fsm.pktRxCh = make(chan *BGPPktInfo)
+	fsm.eventRxCh = make(chan BGPFSMEvent)
+	fsm.connectRetryTimer = time.NewTimer(time.Duration(fsm.connectRetryTime) * time.Second)
+	fsm.holdTimer = time.NewTimer(time.Duration(fsm.holdTime) * time.Second)
+	fsm.keepAliveTimer = time.NewTimer(time.Duration(fsm.keepAliveTime) * time.Second)
+
+	fsm.connectRetryTimer.Stop()
+	fsm.holdTimer.Stop()
+	fsm.keepAliveTimer.Stop()
+	return &fsm
 }
 
 func (fsm *FSM) SetConn(conn net.Conn) {
-    fsm.conn = conn
+	fsm.conn = conn
 }
 
-func (fsm *FSM) StartFSM(state BASE_STATE_IFACE) {
-    fmt.Println("FSM: Starting the stach machine in", state.state(), "state")
-    fsm.State = state
-    fsm.State.enter()
+func (fsm *FSM) StartFSM(state BaseStateIface) {
+	fmt.Println("FSM: Starting the stach machine in", state.state(), "state")
+	fsm.State = state
+	fsm.State.enter()
+
+	for {
+		select {
+		case outConnCh := <-fsm.outConnCh:
+			fsm.connInProgress = false
+			out := PeerConnDir{ConnDirOut, &outConnCh}
+			fsm.ProcessEvent(BGPEventTcpCrAcked, out)
+
+		case outConnErrCh := <-fsm.outConnErrCh:
+			fsm.connInProgress = false
+			fsm.ProcessEvent(BGPEventTcpConnFails, outConnErrCh)
+
+		case inConnCh := <-fsm.inConnCh:
+			in := PeerConnDir{ConnDirOut, &inConnCh}
+			fsm.ProcessEvent(BGPEventTcpConnConfirmed, in)
+
+		case bgpPktInfo := <-fsm.pktRxCh:
+			fsm.ProcessPacket(bgpPktInfo.msg, bgpPktInfo.msgError)
+
+		case event := <-fsm.eventRxCh:
+			fsm.ProcessEvent(event, nil)
+
+		case <-fsm.connectRetryTimer.C:
+			fsm.ProcessEvent(BGPEventConnRetryTimerExp, nil)
+
+		case <-fsm.holdTimer.C:
+			fsm.ProcessEvent(BGPEventHoldTimerExp, nil)
+
+		case <-fsm.keepAliveTimer.C:
+			fsm.ProcessEvent(BGPEventKeepAliveTimerExp, nil)
+		}
+	}
 }
 
-func (fsm *FSM) ProcessEvent(event BGP_FSM_EVENT) {
-    fmt.Println("FSM: ProcessEvent", event)
-    fsm.event = event
-    fsm.State.processEvent(event)
+func (fsm *FSM) ProcessEvent(event BGPFSMEvent, data interface{}) {
+	fmt.Println("FSM: ProcessEvent", event)
+	fsm.event = event
+	fsm.State.processEvent(event, data)
 }
 
-func (fsm *FSM) ProcessPacket(pkt *BGPMessage, err error) {
-    var event BGP_FSM_EVENT = BGP_EVENT_AUTO_START
+func (fsm *FSM) ProcessPacket(msg *BGPMessage, msgErr *BGPMessageError) {
+	var event BGPFSMEvent
+	var data interface{}
 
-    if err != nil {
-        event = BGP_EVENT_HEADER_ERR
-    }
+	if msgErr != nil {
+		data = msgErr
+		switch msgErr.TypeCode {
+			case BGPMsgHeaderError:
+				event = BGPEventHeaderErr
 
-    switch pkt.Header.Type {
-        case BGP_OPEN:
-            event = BGP_EVENT_BGP_OPEN
+			case BGPOpenMsgError:
+				event = BGPEventOpenMsgErr
 
-        case BGP_UPDATE:
-            event = BGP_EVENT_UPDATE_MSG
+			case BGPUpdateMsgError:
+				event = BGPEventUpdateMsgErr
+		}
+	} else {
+		data = msg
+		switch msg.Header.Type {
+		case BGPMsgTypeOpen:
+			event = BGPEventBGPOpen
 
-        case BGP_NOTIFICATION:
-            event = BGP_EVENT_NOTIF_MSG
+		case BGPMsgTypeUpdate:
+			event = BGPEventUpdateMsg
 
-        case BGP_KEEPALIVE:
-            event = BGP_EVENT_KEEP_ALIVE_MSG
-    }
-    fmt.Println("FSM:ProcessPacket - event =", event)
-    fsm.ProcessEvent(event)
+		case BGPMsgTypeNotification:
+			event = BGPEventNotifMsg
+
+		case BGPMsgTypeKeepAlive:
+			event = BGPEventKeepAliveMsg
+		}
+	}
+	fmt.Println("FSM:ProcessPacket - event =", event)
+	fsm.ProcessEvent(event, data)
 }
 
-func (fsm *FSM) ChangeState(newState BASE_STATE_IFACE) {
-    fmt.Println("FSM: ChangeState: Leaving", fsm.State, "state Entering", newState, "state")
-    fsm.State.leave()
-    fsm.State = newState
-    fsm.State.enter()
+func (fsm *FSM) ChangeState(newState BaseStateIface) {
+	fmt.Println("FSM: ChangeState: Leaving", fsm.State, "state Entering", newState, "state")
+	fsm.State.leave()
+	fsm.State = newState
+	fsm.State.enter()
+}
+
+func (fsm *FSM) StartConnectRetryTimer() {
+	fsm.connectRetryTimer.Reset(time.Duration(fsm.connectRetryTime) * time.Second)
+}
+
+func (fsm *FSM) StopConnectRetryTimer() {
+	fsm.connectRetryTimer.Stop()
+}
+
+func (fsm *FSM) SetHoldTime(holdTime uint16) {
+	if holdTime < 0 || (holdTime > 0 && holdTime < 3) {
+		fmt.Println("Cannot set hold time. Invalid value", holdTime)
+		return
+	}
+
+	fsm.holdTime = holdTime
+	fsm.keepAliveTime = holdTime / 3
+}
+
+func (fsm *FSM) StartHoldTimer() {
+	if fsm.holdTime != 0 {
+		fsm.holdTimer.Reset(time.Duration(fsm.holdTime) * time.Second)
+	}
+}
+
+func (fsm *FSM) StopHoldTimer() {
+	fsm.holdTimer.Stop()
+}
+
+func (fsm *FSM) StartKeepAliveTimer() {
+	if fsm.keepAliveTime != 0 {
+		fsm.keepAliveTimer.Reset(time.Duration(fsm.keepAliveTime) * time.Second)
+	}
+}
+
+func (fsm *FSM) StopKeepAliveTimer() {
+	fsm.keepAliveTimer.Stop()
 }
 
 func (fsm *FSM) SetConnectRetryCounter(value int) {
-    fsm.connectRetryCounter = value
+	fsm.connectRetryCounter = value
+}
+
+func (fsm *FSM) IncrConnectRetryCounter() {
+	fsm.connectRetryCounter++
+}
+
+func (fsm *FSM) ProcessOpenMessage(pkt *BGPMessage) {
+	body := pkt.Body.(*BGPOpen)
+	if body.HoldTime < fsm.holdTime {
+		fsm.holdTime = body.HoldTime
+		fsm.keepAliveTime = fsm.holdTime / 3
+	}
+	if body.MyAS == fsm.Manager.gConf.AS {
+		fsm.peerType = PeerTypeInternal
+	} else {
+		fsm.peerType = PeerTypeExternal
+	}
 }
 
 func (fsm *FSM) sendOpenMessage() {
-    bgpOpenMsg := NewBGPOpenMessage(fsm.pConf.AS, fsm.holdTime, IP)
-    packet, _ := bgpOpenMsg.Encode()
-    num, err := fsm.conn.Write(packet)
-    if err != nil {
-        fmt.Println("Conn.Write failed to send Open packet with error:", err)
-    }
-    fmt.Println("Conn.Write succeeded. sent Open packet with", num, "bytes")
+	bgpOpenMsg := NewBGPOpenMessage(fsm.pConf.AS, fsm.holdTime, IP)
+	packet, _ := bgpOpenMsg.Encode()
+	num, err := (*fsm.peerConn.conn).Write(packet)
+	if err != nil {
+		fmt.Println("Conn.Write failed to send Open message with error:", err)
+	}
+	fmt.Println("Conn.Write succeeded. sent Open message of", num, "bytes")
 }
 
 func (fsm *FSM) sendKeepAliveMessage() {
-    bgpKeepAliveMsg := NewBGPKeepAliveMessage()
-    packet, _ := bgpKeepAliveMsg.Encode()
-    num, err := fsm.conn.Write(packet)
-    if err != nil {
-        fmt.Println("Conn.Write failed to send KeepAlive packet with error:", err)
-    }
-    fmt.Println("Conn.Write succeeded. sent KeepAlive packet with", num, "bytes")
+	bgpKeepAliveMsg := NewBGPKeepAliveMessage()
+	packet, _ := bgpKeepAliveMsg.Encode()
+	num, err := (*fsm.peerConn.conn).Write(packet)
+	if err != nil {
+		fmt.Println("Conn.Write failed to send KeepAlive message with error:", err)
+	}
+	fmt.Println("Conn.Write succeeded. sent KeepAlive message of", num, "bytes")
+	fsm.StartKeepAliveTimer()
+}
+
+func (fsm *FSM) SendNotificationMessage(code uint8, subCode uint8, data []byte) {
+	bgpNotifMsg := NewBGPNotificationMessage(code, subCode, data)
+	packet, _ := bgpNotifMsg.Encode()
+	num, err := (*fsm.peerConn.conn).Write(packet)
+	if err != nil {
+		fmt.Println("Conn.Write failed to send Notification message with error:", err)
+	}
+	fmt.Println("Conn.Write succeeded. sent Notification message with", num, "bytes")
+}
+
+func (fsm *FSM) SetPeerConn(data interface{}) {
+	fmt.Println("SetPeerConn called")
+	if fsm.peerConn != nil {
+		fmt.Println("FSM:SetupPeerConn - Peer conn is already set up")
+		return
+	}
+	pConnDir := data.(PeerConnDir)
+	fsm.peerConn = NewPeerConn(fsm, pConnDir.connDir, pConnDir.conn)
+	go fsm.peerConn.StartReading()
+}
+
+func (fsm *FSM) ClearPeerConn() {
+	fmt.Println("ClearPeerConn called")
+	if fsm.peerConn == nil {
+		fmt.Println("FSM:ClearPeerConn - Peer conn is not set up yet")
+		return
+	}
+	fsm.StopKeepAliveTimer()
+	fsm.StopHoldTimer()
+	fsm.peerConn.StopReading()
+	fsm.peerConn = nil
 }
 
 func (fsm *FSM) startRxPkts() {
-    if !fsm.rxPktsFlag {
-        fsm.rxPktsFlag = true
-        fsm.Manager.StartPktRx(fsm.id, &fsm.conn)
-    }
+	fmt.Println("fsm:startRxPkts called")
+	if fsm.peerConn != nil && !fsm.rxPktsFlag {
+		fsm.rxPktsFlag = true
+		fsm.peerConn.StartReading()
+	}
 }
 
 func (fsm *FSM) stopRxPkts() {
-    if fsm.rxPktsFlag {
-        fsm.rxPktsFlag = false
-        fsm.Manager.StopPktRx(fsm.id, &fsm.conn)
-    }
+	fmt.Println("fsm:stopRxPkts called")
+	if fsm.peerConn != nil && fsm.rxPktsFlag {
+		fsm.rxPktsFlag = false
+		fsm.peerConn.StopReading()
+	}
+}
+
+func (fsm *FSM) AcceptPeerConn() {
+	fmt.Println("AcceptPeerConn called")
+    fsm.Manager.AcceptPeerConn()
+}
+
+func (fsm *FSM) RejectPeerConn() {
+	fmt.Println("RejectPeerConn called")
+    fsm.Manager.RejectPeerConn()
+}
+
+func (fsm *FSM) InitiateConnToPeer() {
+	fmt.Println("InitiateConnToPeer called")
+	addr := net.JoinHostPort(fsm.pConf.IP.String(), BGPPort)
+	if !fsm.connInProgress {
+		fsm.connInProgress = true
+		go ConnectToPeer(fsm.connectRetryTime, addr, fsm.outConnCh, fsm.outConnErrCh, fsm.stopConnCh)
+	}
+}
+
+func (fsm *FSM) StopConnToPeer() {
+	fmt.Println("StopConnToPeer called")
+	if fsm.connInProgress {
+		fsm.stopConnCh <- true
+	}
+}
+
+func Connect(seconds uint16, addr string, connCh chan net.Conn, errCh chan error) {
+	fmt.Println("Connect called... calling DialTimeout with", seconds, "second timeout")
+	conn, err := net.DialTimeout("tcp", addr, time.Duration(seconds) * time.Second)
+	if err != nil {
+		errCh <- err
+	} else {
+		connCh <- conn
+	}
+}
+
+func ConnectToPeer(seconds uint16, addr string, fsmConnCh chan net.Conn, fsmConnErrCh chan error, fsmStopConnCh chan bool) {
+	var stopConn bool = false
+	connCh := make(chan net.Conn)
+	errCh := make(chan error)
+
+	fmt.Println("ConnectToPeer called")
+	connTime := seconds - 3
+	if connTime <= 0 {
+		connTime = seconds
+	}
+
+	go Connect(seconds, addr, connCh, errCh)
+
+	for {
+		select {
+		case conn := <-connCh:
+			fmt.Println("ConnectToPeer: Connected to peer", addr)
+			if stopConn {
+				conn.Close()
+				return
+			}
+
+			fsmConnCh <- conn
+			return
+
+		case err := <-errCh:
+			fmt.Println("ConnectToPeer: Failed to connect to peer", addr)
+			if stopConn {
+				return
+			}
+
+			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+				fmt.Println("Connect to peer timed out, retrying...")
+				go Connect(3, addr, connCh, errCh)
+			} else {
+				fmt.Println("Connect to peer failed with error:", err)
+				fsmConnErrCh <- err
+			}
+
+		case <-fsmStopConnCh:
+			fmt.Println("ConnectToPeer: Recieved stop connecting to peer", addr)
+			stopConn = true
+		}
+	}
 }

@@ -29,10 +29,18 @@ type Bgp struct {
 	Peers Peers
 }
 
-type CONN_DIR int
+type ConnDir int
 
 const (
-    CONN_DIR_OUT CONN_DIR = iota
-    CONN_DIR_IN
-    CONN_DIR_MAX
+    ConnDirOut ConnDir = iota
+    ConnDirIn
+    ConnDirMax
+)
+
+type PeerType int
+
+const (
+    PeerTypeInternal PeerType = iota
+    PeerTypeExternal
+    PeerTypeMax
 )

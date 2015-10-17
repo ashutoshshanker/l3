@@ -7,7 +7,7 @@ import (
 )
 
 const IP string = "localhost" //"10.0.2.15"
-const BGP_PORT string = "179"
+const BGPPort string = "179"
 const CONF_PORT string = "2001"
 
 func main() {
