@@ -46,8 +46,8 @@ func (p *PeerConn) StartReading() {
 				return
 			}
 
-		case <- doneReadingCh:
-			if !stopReading {
+		case readOk := <- doneReadingCh:
+			if readOk && !stopReading {
 			    p.readCh <- true
 			}
 		}
@@ -58,7 +58,7 @@ func (p *PeerConn) StopReading() {
     p.stopCh <- true
 }
 
-func readPartialPkt(conn *net.Conn, length uint16) ([]byte, error) {
+func readPartialPkt(conn *net.Conn, length uint32) ([]byte, error) {
 	buf := make([]byte, length)
 	fmt.Println("read", length, "bytes from the TCP conn")
 	num, err := (*conn).Read(buf)
@@ -91,25 +91,37 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 			err = header.Decode(buf)
 			if err != nil {
 				fmt.Println("BGP packet header decode failed")
+				bgpPktInfo := &BGPPktInfo{nil, err.(*BGPMessageError)}
+				p.fsm.pktRxCh <- bgpPktInfo
+				doneCh <- false
+				continue
 			}
 
+			fmt.Println("Recieved BGP packet type=", header.Type)
+
 			(*p.conn).SetReadDeadline(t)
-			buf, err = readPartialPkt(p.conn, header.Length)
-			if err != nil {
-				p.fsm.outConnErrCh <- err
-				break
+			if header.Len() > BGPMsgHeaderLen {
+				buf, err = readPartialPkt(p.conn, header.Len() - BGPMsgHeaderLen)
+				if err != nil {
+					p.fsm.outConnErrCh <- err
+					break
+				}
+			} else {
+				buf = make([]byte, 0)
 			}
 
 			msg := &BGPMessage{}
 			err = msg.Decode(&header, buf)
+			bgpPktInfo := &BGPPktInfo{msg, nil}
+			msgOk := true
 			if err != nil {
 				fmt.Println("BGP packet body decode failed")
+				bgpPktInfo = &BGPPktInfo{msg, err.(*BGPMessageError)}
+				msgOk = false
 			}
 
-			bgpPKtInfo := &BGPPktInfo{msg, nil}
-			fmt.Println("Received a BGP packet")
-			p.fsm.pktRxCh <- bgpPKtInfo
-			doneCh <- true
+			p.fsm.pktRxCh <- bgpPktInfo
+			doneCh <- msgOk
 
         case <- stopCh:
             return
