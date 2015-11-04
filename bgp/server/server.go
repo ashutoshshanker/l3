@@ -3,6 +3,7 @@ package server
 
 import (
     "fmt"
+	"l3/bgp/packet"
     "net"
 )
 
@@ -15,18 +16,22 @@ type BgpServer struct {
     AddPeerCh chan PeerConfig
     RemPeerCh chan PeerConfig
     PeerCommandCh chan PeerCommand
+	BGPPktSrc chan *packet.BGPPktSrc
 
     PeerMap map[string]*Peer
+	adjRib *AdjRib
 }
 
 func NewBgpServer() *BgpServer {
-    bgpServer := BgpServer{}
+    bgpServer := &BgpServer{}
     bgpServer.GlobalConfigCh = make(chan GlobalConfig)
     bgpServer.AddPeerCh = make(chan PeerConfig)
     bgpServer.RemPeerCh = make(chan PeerConfig)
     bgpServer.PeerCommandCh = make(chan PeerCommand)
+	bgpServer.BGPPktSrc = make(chan *packet.BGPPktSrc)
     bgpServer.PeerMap = make(map[string]*Peer)
-    return &bgpServer
+	bgpServer.adjRib = NewAdjRib(bgpServer)
+    return bgpServer
 }
 
 func listenForPeers(acceptCh chan *net.TCPConn) {
@@ -52,6 +57,14 @@ func listenForPeers(acceptCh chan *net.TCPConn) {
     }
 }
 
+func (server *BgpServer) IsPeerLocal(peerIp string) bool {
+	return server.PeerMap[peerIp].Peer.AS == server.BgpConfig.GlobalConfig.AS
+}
+
+func (server *BgpServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
+	server.adjRib.ProcessUpdate(pktInfo)
+}
+
 func (server *BgpServer) StartServer() {
     gConf := <-server.GlobalConfigCh
     server.BgpConfig.GlobalConfig = gConf
@@ -68,7 +81,7 @@ func (server *BgpServer) StartServer() {
 			    fmt.Println("Failed to add peer. Peer at that address already exists,", addPeer.IP.String())
 			}
 			fmt.Println("Add Peer ip[%s]", addPeer.IP.String())
-			peer := NewPeer(server.BgpConfig.GlobalConfig, addPeer)
+			peer := NewPeer(server, server.BgpConfig.GlobalConfig, addPeer)
 			server.PeerMap[addPeer.IP.String()] = peer
 			peer.Init()
 
@@ -102,6 +115,10 @@ func (server *BgpServer) StartServer() {
 			    fmt.Printf("Failed to apply command %s. Peer at that address does not exist, %v\n", peerCommand.Command, peerCommand.IP.String())
 			}
 			peer.Command(peerCommand.Command)
+
+		case pktInfo := <- server.BGPPktSrc:
+			fmt.Println("Received BGP message", pktInfo.Msg)
+			server.ProcessUpdate(pktInfo)
         }
     }
 

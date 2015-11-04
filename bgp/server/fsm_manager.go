@@ -3,6 +3,7 @@ package server
 
 import (
 	"fmt"
+	"l3/bgp/packet"
 	"net"
 )
 
@@ -15,10 +16,11 @@ const (
 
 type BgpPkt struct {
 	connDir  ConnDir
-	pkt *BGPMessage
+	pkt *packet.BGPMessage
 }
 
 type FSMManager struct {
+	Peer         *Peer
 	gConf        *GlobalConfig
 	pConf        *PeerConfig
 	fsms         map[ConnDir]*FSM
@@ -34,8 +36,9 @@ type FSMManager struct {
 	pktRxCh      chan BgpPkt
 }
 
-func NewFSMManager(globalConf *GlobalConfig, peerConf *PeerConfig) *FSMManager {
+func NewFSMManager(peer *Peer, globalConf *GlobalConfig, peerConf *PeerConfig) *FSMManager {
 	fsmManager := FSMManager{
+		Peer: peer,
 		gConf: globalConf,
 		pConf: peerConf,
 	}

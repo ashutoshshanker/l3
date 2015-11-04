@@ -2,9 +2,10 @@
 package server
 
 import (
-    "fmt"
-    "net"
-    "time"
+	"fmt"
+	"l3/bgp/packet"
+	"net"
+	"time"
 )
 
 type PeerConn struct {
@@ -74,7 +75,7 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
         case <- p.readCh:
 			fmt.Println("Start reading again...")
 			(*p.conn).SetReadDeadline(time.Now().Add(time.Duration(3) * time.Second))
-			buf, err := readPartialPkt(p.conn, BGPMsgHeaderLen)
+			buf, err := readPartialPkt(p.conn, packet.BGPMsgHeaderLen)
 			if err != nil {
 				if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
 					fmt.Println("readPartialPkt timed out, returned err:", err, "neer:", nerr)
@@ -87,11 +88,11 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 				}
 			}
 
-			header := BGPHeader{}
+			header := packet.BGPHeader{}
 			err = header.Decode(buf)
 			if err != nil {
 				fmt.Println("BGP packet header decode failed")
-				bgpPktInfo := &BGPPktInfo{nil, err.(*BGPMessageError)}
+				bgpPktInfo := packet.NewBGPPktInfo(nil, err.(*packet.BGPMessageError))
 				p.fsm.pktRxCh <- bgpPktInfo
 				doneCh <- false
 				continue
@@ -100,8 +101,8 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 			fmt.Println("Recieved BGP packet type=", header.Type)
 
 			(*p.conn).SetReadDeadline(t)
-			if header.Len() > BGPMsgHeaderLen {
-				buf, err = readPartialPkt(p.conn, header.Len() - BGPMsgHeaderLen)
+			if header.Len() > packet.BGPMsgHeaderLen {
+				buf, err = readPartialPkt(p.conn, header.Len() - packet.BGPMsgHeaderLen)
 				if err != nil {
 					p.fsm.outConnErrCh <- err
 					break
@@ -110,13 +111,13 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 				buf = make([]byte, 0)
 			}
 
-			msg := &BGPMessage{}
+			msg := &packet.BGPMessage{}
 			err = msg.Decode(&header, buf)
-			bgpPktInfo := &BGPPktInfo{msg, nil}
+			bgpPktInfo := packet.NewBGPPktInfo(msg, nil)
 			msgOk := true
 			if err != nil {
 				fmt.Println("BGP packet body decode failed")
-				bgpPktInfo = &BGPPktInfo{msg, err.(*BGPMessageError)}
+				bgpPktInfo = packet.NewBGPPktInfo(msg, err.(*packet.BGPMessageError))
 				msgOk = false
 			}
 

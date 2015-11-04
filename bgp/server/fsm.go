@@ -3,6 +3,7 @@ package server
 
 import (
 	"fmt"
+	"l3/bgp/packet"
 	"net"
 	"time"
 )
@@ -353,7 +354,7 @@ func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
 
 	switch event {
 	case BGPEventManualStop:
-		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPCease, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -361,7 +362,7 @@ func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ChangeState(NewIdleState(st.fsm))
 
 	case BGPEventAutoStop:
-		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPCease, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -369,7 +370,7 @@ func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ChangeState(NewIdleState(st.fsm))
 
 	case BGPEventHoldTimerExp:
-		st.fsm.SendNotificationMessage(BGPHoldTimerExpired, 0, nil	)
+		st.fsm.SendNotificationMessage(packet.BGPHoldTimerExpired, 0, nil	)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -388,14 +389,14 @@ func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
 
 	case BGPEventBGPOpen:
 		st.fsm.StopConnectRetryTimer()
-		bgpMsg := data.(*BGPMessage)
+		bgpMsg := data.(*packet.BGPMessage)
 		st.fsm.ProcessOpenMessage(bgpMsg)
 		st.fsm.sendKeepAliveMessage()
 		st.fsm.StartHoldTimer()
 		st.fsm.ChangeState(NewOpenConfirmState(st.fsm))
 
 	case BGPEventHeaderErr, BGPEventOpenMsgErr:
-		bgpMsgErr := data.(*BGPMessageError)
+		bgpMsgErr := data.(*packet.BGPMessageError)
 		st.fsm.SendNotificationMessage(bgpMsgErr.TypeCode, bgpMsgErr.SubTypeCode, bgpMsgErr.Data)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
@@ -404,7 +405,7 @@ func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ChangeState(NewIdleState(st.fsm))
 
 	case BGPEventOpenCollisionDump:
-		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPCease, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -420,7 +421,7 @@ func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
 	case BGPEventConnRetryTimerExp, BGPEventKeepAliveTimerExp, BGPEventDelayOpenTimerExp,
 		BGPEventIdleHoldTimerExp, BGPEventBGPOpenDelayOpenTimer, BGPEventNotifMsg,
 		BGPEventKeepAliveMsg, BGPEventUpdateMsg, BGPEventUpdateMsgErr: // 9, 11, 12, 13, 20, 25-28
-		st.fsm.SendNotificationMessage(BGPFSMError, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPFSMError, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -464,7 +465,7 @@ func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
 
 	switch event {
 	case BGPEventManualStop:
-		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPCease, 0, nil)
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
 		st.fsm.StopConnectRetryTimer()
@@ -472,7 +473,7 @@ func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ChangeState(NewIdleState(st.fsm))
 
 	case BGPEventAutoStop:
-		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPCease, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -480,7 +481,7 @@ func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ChangeState(NewIdleState(st.fsm))
 
 	case BGPEventHoldTimerExp:
-		st.fsm.SendNotificationMessage(BGPHoldTimerExpired, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPHoldTimerExpired, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -504,7 +505,7 @@ func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
 	case BGPEventBGPOpen: // Collision Detection... needs work
 
 	case BGPEventHeaderErr, BGPEventOpenMsgErr:
-		bgpMsgErr := data.(BGPMessageError)
+		bgpMsgErr := data.(packet.BGPMessageError)
 		st.fsm.SendNotificationMessage(bgpMsgErr.TypeCode, bgpMsgErr.SubTypeCode, bgpMsgErr.Data)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
@@ -513,7 +514,7 @@ func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ChangeState(NewIdleState(st.fsm))
 
 	case BGPEventOpenCollisionDump:
-		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPCease, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -532,7 +533,7 @@ func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
 
 	case BGPEventConnRetryTimerExp, BGPEventDelayOpenTimerExp, BGPEventIdleHoldTimerExp,
 		BGPEventBGPOpenDelayOpenTimer, BGPEventUpdateMsg, BGPEventUpdateMsgErr: // 9, 12, 13, 20, 27, 28
-		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPCease, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -575,7 +576,7 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 
 	switch event {
 	case BGPEventManualStop:
-		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPCease, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -583,7 +584,7 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ChangeState(NewIdleState(st.fsm))
 
 	case BGPEventAutoStop:
-		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPCease, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -591,7 +592,7 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ChangeState(NewIdleState(st.fsm))
 
 	case BGPEventHoldTimerExp:
-		st.fsm.SendNotificationMessage(BGPHoldTimerExpired, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPHoldTimerExpired, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -617,7 +618,7 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 	case BGPEventBGPOpen: // Collistion detection... needs work
 
 	case BGPEventOpenCollisionDump: // Collistion detection... needs work
-		st.fsm.SendNotificationMessage(BGPCease, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPCease, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -629,9 +630,11 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 
 	case BGPEventUpdateMsg:
 		st.fsm.StartHoldTimer()
+		bgpMsg := data.(*packet.BGPMessage)
+		st.fsm.ProcessUpdateMessage(bgpMsg)
 
 	case BGPEventUpdateMsgErr:
-		bgpMsgErr := data.(BGPMessageError)
+		bgpMsgErr := data.(packet.BGPMessageError)
 		st.fsm.SendNotificationMessage(bgpMsgErr.TypeCode, bgpMsgErr.SubTypeCode, bgpMsgErr.Data)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
@@ -641,7 +644,7 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 
 	case BGPEventConnRetryTimerExp, BGPEventDelayOpenTimerExp, BGPEventIdleHoldTimerExp,
 		BGPEventOpenMsgErr, BGPEventBGPOpenDelayOpenTimer, BGPEventHeaderErr: // 9, 12, 13, 20, 21, 22
-		st.fsm.SendNotificationMessage(BGPFSMError, 0, nil)
+		st.fsm.SendNotificationMessage(packet.BGPFSMError, 0, nil)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
@@ -671,11 +674,6 @@ type FSMIface interface {
 	StartFSM(state BaseStateIface)
 	ProcessEvent(event BGPFSMEvent)
 	ChangeState(state BaseStateIface)
-}
-
-type BGPPktInfo struct {
-	msg *BGPMessage
-	msgError *BGPMessageError
 }
 
 type PeerConnDir struct {
@@ -722,7 +720,7 @@ type FSM struct {
 	delayOpenTime  uint16
 	delayOpenTimer *time.Timer
 
-	pktRxCh    chan *BGPPktInfo
+	pktRxCh    chan *packet.BGPPktInfo
 	eventRxCh  chan BGPFSMEvent
 	rxPktsFlag bool
 }
@@ -748,7 +746,7 @@ func NewFSM(fsmManager *FSMManager, connDir ConnDir, gConf *GlobalConfig, pConf 
 		dampPeerOscl:     true,
 		idleHoldTime:     BGPIdleHoldTimeDefault,
 	}
-	fsm.pktRxCh = make(chan *BGPPktInfo)
+	fsm.pktRxCh = make(chan *packet.BGPPktInfo)
 	fsm.eventRxCh = make(chan BGPFSMEvent)
 	fsm.connectRetryTimer = time.NewTimer(time.Duration(fsm.connectRetryTime) * time.Second)
 	fsm.holdTimer = time.NewTimer(time.Duration(fsm.holdTime) * time.Second)
@@ -787,7 +785,7 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 			fsm.ProcessEvent(BGPEventTcpConnConfirmed, in)
 
 		case bgpPktInfo := <-fsm.pktRxCh:
-			fsm.ProcessPacket(bgpPktInfo.msg, bgpPktInfo.msgError)
+			fsm.ProcessPacket(bgpPktInfo.Msg, bgpPktInfo.MsgError)
 
 		case event := <-fsm.eventRxCh:
 			fsm.ProcessEvent(event, nil)
@@ -813,35 +811,35 @@ func (fsm *FSM) ProcessEvent(event BGPFSMEvent, data interface{}) {
 	fsm.State.processEvent(event, data)
 }
 
-func (fsm *FSM) ProcessPacket(msg *BGPMessage, msgErr *BGPMessageError) {
+func (fsm *FSM) ProcessPacket(msg *packet.BGPMessage, msgErr *packet.BGPMessageError) {
 	var event BGPFSMEvent
 	var data interface{}
 
 	if msgErr != nil {
 		data = msgErr
 		switch msgErr.TypeCode {
-			case BGPMsgHeaderError:
+			case packet.BGPMsgHeaderError:
 				event = BGPEventHeaderErr
 
-			case BGPOpenMsgError:
+			case packet.BGPOpenMsgError:
 				event = BGPEventOpenMsgErr
 
-			case BGPUpdateMsgError:
+			case packet.BGPUpdateMsgError:
 				event = BGPEventUpdateMsgErr
 		}
 	} else {
 		data = msg
 		switch msg.Header.Type {
-		case BGPMsgTypeOpen:
+		case packet.BGPMsgTypeOpen:
 			event = BGPEventBGPOpen
 
-		case BGPMsgTypeUpdate:
+		case packet.BGPMsgTypeUpdate:
 			event = BGPEventUpdateMsg
 
-		case BGPMsgTypeNotification:
+		case packet.BGPMsgTypeNotification:
 			event = BGPEventNotifMsg
 
-		case BGPMsgTypeKeepAlive:
+		case packet.BGPMsgTypeKeepAlive:
 			event = BGPEventKeepAliveMsg
 		}
 	}
@@ -937,8 +935,8 @@ func (fsm *FSM) StopIdleHoldTimer() {
 	fsm.idleHoldTimer.Stop()
 }
 
-func (fsm *FSM) ProcessOpenMessage(pkt *BGPMessage) {
-	body := pkt.Body.(*BGPOpen)
+func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
+	body := pkt.Body.(*packet.BGPOpen)
 	if body.HoldTime < fsm.holdTime {
 		fsm.holdTime = body.HoldTime
 		fsm.keepAliveTime = fsm.holdTime / 3
@@ -950,8 +948,12 @@ func (fsm *FSM) ProcessOpenMessage(pkt *BGPMessage) {
 	}
 }
 
+func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {
+	fsm.Manager.Peer.Server.BGPPktSrc <- packet.NewBGPPktSrc(fsm.Manager.Peer.Peer.IP.String(), pkt)
+}
+
 func (fsm *FSM) sendOpenMessage() {
-	bgpOpenMsg := NewBGPOpenMessage(fsm.pConf.AS, fsm.holdTime, IP)
+	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.AS, fsm.holdTime, IP)
 	packet, _ := bgpOpenMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
@@ -961,7 +963,7 @@ func (fsm *FSM) sendOpenMessage() {
 }
 
 func (fsm *FSM) sendKeepAliveMessage() {
-	bgpKeepAliveMsg := NewBGPKeepAliveMessage()
+	bgpKeepAliveMsg := packet.NewBGPKeepAliveMessage()
 	packet, _ := bgpKeepAliveMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
@@ -972,7 +974,7 @@ func (fsm *FSM) sendKeepAliveMessage() {
 }
 
 func (fsm *FSM) SendNotificationMessage(code uint8, subCode uint8, data []byte) {
-	bgpNotifMsg := NewBGPNotificationMessage(code, subCode, data)
+	bgpNotifMsg := packet.NewBGPNotificationMessage(code, subCode, data)
 	packet, _ := bgpNotifMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
