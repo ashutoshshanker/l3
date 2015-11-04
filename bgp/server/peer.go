@@ -3,22 +3,25 @@ package server
 
 import (
 	"fmt"
+	"l3/bgp/packet"
 	"net"
 	"time"
 )
 
 type Peer struct {
+	Server     *BgpServer
 	Global     *GlobalConfig
 	Peer       *PeerConfig
 	fsmManager *FSMManager
 }
 
-func NewPeer(globalConf GlobalConfig, peerConf PeerConfig) *Peer {
+func NewPeer(server *BgpServer, globalConf GlobalConfig, peerConf PeerConfig) *Peer {
 	peer := Peer{
+		Server: server,
 		Global: &globalConf,
 		Peer:   &peerConf,
 	}
-	peer.fsmManager = NewFSMManager(&globalConf, &peerConf)
+	peer.fsmManager = NewFSMManager(&peer, &globalConf, &peerConf)
 	return &peer
 }
 
@@ -37,7 +40,7 @@ func (peer *Peer) Command(command int) {
 }
 
 func (peer *Peer) SendKeepAlives(conn *net.TCPConn) {
-	bgpKeepAliveMsg := NewBGPKeepAliveMessage()
+	bgpKeepAliveMsg := packet.NewBGPKeepAliveMessage()
 	var num int
 	var err error
 

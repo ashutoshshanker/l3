@@ -1,11 +1,29 @@
-// packet.go
-package server
+// bgp.go
+package packet
 
 import (
     "encoding/binary"
 	"fmt"
     "net"
 )
+
+type BGPPktInfo struct {
+	Msg *BGPMessage
+	MsgError *BGPMessageError
+}
+
+func NewBGPPktInfo(msg *BGPMessage, msgError *BGPMessageError) *BGPPktInfo {
+	return &BGPPktInfo{msg, msgError}
+}
+
+type BGPPktSrc struct {
+	Src string
+	Msg *BGPMessage
+}
+
+func NewBGPPktSrc(src string, msg *BGPMessage) *BGPPktSrc {
+	return &BGPPktSrc{src, msg}
+}
 
 const BGPHeaderMarkerLen int = 16
 
@@ -74,6 +92,9 @@ const (
 	BGPPathAttrFlagOptional
 )
 
+var BGPPathAttrFlagAll BGPPathAttrFlag = 0xF0
+var BGPPathAttrFlagAllMinusExtendedLen BGPPathAttrFlag = 0xE0
+
 type BGPPathAttrType uint8
 
 const (
@@ -94,6 +115,7 @@ const (
 	BGPPathAttrOriginIGP BGPPathAttrOriginType = iota
 	BGPPathAttrOriginEGP
 	BGPPathAttrOriginIncomplete
+	BGPPathAttrOriginMax
 )
 
 type BGPASPathSegmentType uint8
@@ -102,6 +124,38 @@ const (
 	BGPASPathSet BGPASPathSegmentType = iota
 	BGPASPathSequence
 )
+
+var BGPPathAttrWellKnownMandatory = []BGPPathAttrType {
+	BGPPathAttrTypeOrigin, BGPPathAttrTypeASPath, BGPPathAttrTypeNextHop}
+
+var BGPPathAttrTypeToStructMap = map[BGPPathAttrType]BGPPathAttr {
+	BGPPathAttrTypeOrigin: &BGPPathAttrOrigin{},
+	BGPPathAttrTypeASPath: &BGPPathAttrASPath{},
+	BGPPathAttrTypeNextHop: &BGPPathAttrNextHop{},
+	BGPPathAttrTypeMultiExitDisc: &BGPPathAttrMultiExitDisc{},
+	BGPPathAttrTypeLocalPref: &BGPPathAttrLocalPref{},
+	BGPPathAttrTypeAtomicAggregate: &BGPPathAttrAtomicAggregate{},
+	BGPPathAttrTypeAggregator: &BGPPathAttrAggregator{},
+}
+
+var BGPPathAttrTypeFlagsMap = map[BGPPathAttrType][]BGPPathAttrFlag {
+	BGPPathAttrTypeOrigin: []BGPPathAttrFlag{BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeASPath: []BGPPathAttrFlag{BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeNextHop: []BGPPathAttrFlag{BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeMultiExitDisc: []BGPPathAttrFlag{BGPPathAttrFlagOptional, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeLocalPref:[]BGPPathAttrFlag{BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeAtomicAggregate: []BGPPathAttrFlag{BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeAggregator: []BGPPathAttrFlag{BGPPathAttrFlagOptional & BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
+}
+
+var BGPPathAttrTypeLenMap = map	[BGPPathAttrType]uint16 {
+	BGPPathAttrTypeOrigin: 1,
+	BGPPathAttrTypeNextHop: 4,
+	BGPPathAttrTypeMultiExitDisc: 4,
+	BGPPathAttrTypeLocalPref:4,
+	BGPPathAttrTypeAtomicAggregate: 0,
+	BGPPathAttrTypeAggregator: 6,
+}
 
 type BGPMessageError struct {
     TypeCode uint8
@@ -255,6 +309,7 @@ func	 (ip *IPPrefix) Len() uint32	{
 type BGPPathAttr interface {
 	Decode(pkt []byte) error
 	TotalLen() uint32
+	GetCode() BGPPathAttrType
 }
 
 type BGPPathAttrBase struct {
@@ -264,9 +319,20 @@ type BGPPathAttrBase struct {
 	BGPPathAttrLen uint16
 }
 
+func (pa *BGPPathAttrBase) checkFlags(pkt []byte) error {
+	if pa.Flags & BGPPathAttrFlagOptional != 0 &&
+		pa.Flags & BGPPathAttrFlagTransitive == 0 &&
+		pa.Flags & BGPPathAttrFlagPartial == 0 {
+		return BGPMessageError{BGPUpdateMsgError, BGPAttrFlagsError, pkt[:pa.TotalLen()],
+								"Partial bit in a optional transitive attr is not set"}
+	}
+
+	return nil
+}
+
 func (pa *BGPPathAttrBase) Decode (pkt []byte) error {
 	if len(pkt) < 3 {
-		return BGPMessageError{BGPUpdateMsgError, BGPAttrLenError, pkt, "Bad Attribute Length"}
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enought data to decode"}
 	}
 
 	pa.Flags = BGPPathAttrFlag(pkt[0])
@@ -274,7 +340,7 @@ func (pa *BGPPathAttrBase) Decode (pkt []byte) error {
 
 	if pa.Flags & BGPPathAttrFlagExtendedLen != 0 {
 		if len(pkt) < 4 {
-			return BGPMessageError{BGPUpdateMsgError, BGPAttrLenError, pkt, "Bad Attribute Length"}
+			return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enought data to decode"}
 		}
 		pa.Length = binary.BigEndian.Uint16(pkt[2:4])
 		pa.BGPPathAttrLen = 4
@@ -283,8 +349,32 @@ func (pa *BGPPathAttrBase) Decode (pkt []byte) error {
 		pa.BGPPathAttrLen = 3
 	}
 	if len(pkt) < int(pa.Length + pa.BGPPathAttrLen) {
-		return BGPMessageError{BGPUpdateMsgError, BGPAttrLenError, pkt, "Bad Attribute Length"}
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, pkt, "Not enough data to decode"}
 	}
+
+	val, ok := BGPPathAttrTypeFlagsMap[pa.Code]
+	if ok {
+		if (val[0] ^ pa.Flags) & val[1] != 0 {
+			return BGPMessageError{BGPUpdateMsgError, BGPAttrFlagsError, pkt[:pa.TotalLen()], "Bad Attribute Flags"}
+		}
+	}
+
+	err := pa.checkFlags(pkt)
+	if err != nil {
+		return err
+	}
+
+	length, ok := BGPPathAttrTypeLenMap[pa.Code]
+	if ok {
+		if length != pa.Length {
+			return BGPMessageError{BGPUpdateMsgError, BGPAttrLenError, pkt[:pa.TotalLen()], "Bad Attribute Length"}
+		}
+	}
+
+	if (pa.Flags & BGPPathAttrFlagOptional) > 0 && pa.Code >= BGPPathAttrTypeUnknown {
+		return BGPMessageError{BGPUpdateMsgError, BGPUnrecognizedWellKnownAttr, pkt[:pa.TotalLen()], "Unrecognized Well known attr"}
+	}
+
 	return nil
 }
 
@@ -292,9 +382,13 @@ func (pa *BGPPathAttrBase) TotalLen() uint32 {
 	return uint32(pa.Length) + uint32(pa.BGPPathAttrLen)
 }
 
+func (pa *BGPPathAttrBase) GetCode() BGPPathAttrType {
+	return pa.Code
+}
+
 type BGPPathAttrOrigin struct {
 	BGPPathAttrBase
-	Value uint8
+	Value BGPPathAttrOriginType
 }
 
 func (o *BGPPathAttrOrigin) Decode(pkt []byte) error {
@@ -303,11 +397,11 @@ func (o *BGPPathAttrOrigin) Decode(pkt []byte) error {
 		return err
 	}
 
-	if o.Length != 1 {
-		return BGPMessageError{BGPUpdateMsgError, BGPAttrLenError, pkt, "Bad Attribute Length"}
-	}
+	o.Value = BGPPathAttrOriginType(pkt[o.BGPPathAttrLen])
 
-	o.Value = pkt[o.BGPPathAttrLen]
+	if o.Value >= BGPPathAttrOriginMax {
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, pkt[:o.TotalLen()], fmt.Sprintf("Undefined ORIGIN value %d", uint8(o.Value))}
+	}
 	return nil
 }
 
@@ -320,14 +414,14 @@ type BGPASPathSegment struct {
 
 func (ps *BGPASPathSegment) Decode(pkt []byte) error {
 	if len(pkt) <= 2 {
-		return BGPMessageError{BGPUpdateMsgError, BGPAttrLenError, pkt, "Bad Attribute Length"}
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enough data to decode AS path segment"}
 	}
 
 	ps.Type = BGPASPathSegmentType(pkt[0])
 	ps.Length = pkt[1]
 
 	if len(pkt) < int(ps.Length) - 2 {
-		return BGPMessageError{BGPUpdateMsgError, BGPAttrLenError, pkt, "Bad Attribute Length"}
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enough data to decode AS path segment"}
 	}
 
 	ps.AS = make([]uint16, ps.Length)
@@ -453,16 +547,6 @@ func (u *BGPPathAttrUnknown) Decode(pkt []byte) error {
 	return nil
 }
 
-var BGPPathAttrTypeToStructMap map[BGPPathAttrType]BGPPathAttr = map[BGPPathAttrType]BGPPathAttr {
-	BGPPathAttrTypeOrigin: &BGPPathAttrOrigin{},
-	BGPPathAttrTypeASPath: &BGPPathAttrASPath{},
-	BGPPathAttrTypeNextHop: &BGPPathAttrNextHop{},
-	BGPPathAttrTypeMultiExitDisc: &BGPPathAttrMultiExitDisc{},
-	BGPPathAttrTypeLocalPref: &BGPPathAttrLocalPref{},
-	BGPPathAttrTypeAtomicAggregate: &BGPPathAttrAtomicAggregate{},
-	BGPPathAttrTypeAggregator: &BGPPathAttrAggregator{},
-}
-
 func BGPGetPathAttr(pkt []byte) (BGPPathAttr) {
 	typeCode := (pkt[0] & 0x80) >> 7
 	var pathAttr BGPPathAttr
@@ -491,6 +575,10 @@ func (msg *BGPUpdate) Encode() ([]byte, error) {
 func (msg *BGPUpdate) decodeIPPrefix(pkt []byte, ipPrefix *[]IPPrefix, length uint32) (uint32, error) {
 	ptr := uint32(0)
 
+	if length > uint32(len(pkt)) {
+		return ptr, BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
+	}
+
 	for ptr < length {
 		ip := IPPrefix{}
 		err := ip.Decode(pkt[ptr:])
@@ -508,6 +596,26 @@ func (msg *BGPUpdate) decodeIPPrefix(pkt []byte, ipPrefix *[]IPPrefix, length ui
 	return ptr, nil
 }
 
+func checkPathAttributes(pathAttrs []BGPPathAttr) error {
+	found := make(map[BGPPathAttrType]bool)
+	for _, attr := range pathAttrs {
+		if found[attr.GetCode()] {
+			return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil,
+									fmt.Sprintf("Path Attr type %d appeared twice in the UPDATE message", attr)}
+		}
+		found[attr.GetCode()] = true
+	}
+
+	for _, attrType := range BGPPathAttrWellKnownMandatory {
+		if !found[attrType] {
+			return BGPMessageError{BGPUpdateMsgError, BGPMissingWellKnownAttr, []byte{byte(attrType)},
+									fmt.Sprintf("Path Attr type %v appeared twice in the UPDATE message", attrType)}
+		}
+	}
+
+	return nil
+}
+
 func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte) error {
 	msg.WithdrawnRoutesLen = binary.BigEndian.Uint16(pkt[0:2])
 	//msg.WithdrawnRoutes = make([]IPPrefix, 1)
@@ -515,6 +623,10 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte) error {
 	length := uint32(msg.WithdrawnRoutesLen)
 	ipLen := uint32(0)
 	var err error
+
+	if uint32(msg.WithdrawnRoutesLen) + 23 > header.Len() {
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
+	}
 
 	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.WithdrawnRoutes, length)
 	if err != nil {
@@ -527,10 +639,15 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte) error {
 
 	length = uint32(msg.TotalPathAttrLen)
 
+	if length + uint32(msg.WithdrawnRoutesLen) + 23 > header.Len() {
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
+	}
+
 	//msg.PathAttributes = make([]BGPPathAttr, 1)
 	for length > 0 {
 		pa := BGPGetPathAttr(pkt[ptr:])
-		pa.Decode(pkt)
+		pa.Decode(pkt[ptr:])
+		msg.PathAttributes = append(msg.PathAttributes, pa)
 		ptr += pa.TotalLen()
 		length += pa.TotalLen()
 	}
@@ -574,6 +691,9 @@ func (msg *BGPMessage) Decode(header *BGPHeader, pkt []byte) error {
 
         case BGPMsgTypeKeepAlive:
             msg.Body = &BGPKeepAlive{}
+
+		case BGPMsgTypeUpdate:
+			msg.Body = &BGPUpdate{}
 
         default:
             return nil
