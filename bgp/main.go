@@ -9,6 +9,7 @@ import (
 const IP string = "localhost" //"10.0.2.15"
 const BGPPort string = "179"
 const CONF_PORT string = "2001"
+const BGPConfPort string = "2001"
 
 func main() {
     //var globalConfig GlobalConfig{as: 65000}
@@ -16,9 +17,8 @@ func main() {
     //var configInterface ConfigInterface
 
     fmt.Println("Start config listener")
-    confIface := server.NewConfigInterface()
-    go server.StartConfigListener(confIface, IP, CONF_PORT)
-
+	confIface := server.NewBgpHandler()
+	go server.StartServer(confIface, BGPConfPort)
 
     fmt.Println("Start BGP Server")
     bgpServer := server.NewBgpServer()
