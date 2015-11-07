@@ -3,6 +3,7 @@ package main
 
 import (
     "fmt"
+	"l3/bgp/rpc"
     "l3/bgp/server"
 )
 
@@ -17,8 +18,8 @@ func main() {
     //var configInterface ConfigInterface
 
     fmt.Println("Start config listener")
-	confIface := server.NewBgpHandler()
-	go server.StartServer(confIface, BGPConfPort)
+	confIface := rpc.NewBgpHandler()
+	go rpc.StartServer(confIface, BGPConfPort)
 
     fmt.Println("Start BGP Server")
     bgpServer := server.NewBgpServer()
