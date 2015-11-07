@@ -205,7 +205,7 @@ type OptionParameterInterface struct {
 
 type BGPOpen struct {
 	Version uint8
-	MyAS uint16
+	MyAS uint32
 	HoldTime uint16
 	BGPId net.IP
 	OptParamLen uint8
@@ -215,7 +215,7 @@ type BGPOpen struct {
 func (msg *BGPOpen) Encode() ([]byte, error) {
 	pkt := make([]byte, 10)
 	pkt[0] = msg.Version
-	binary.BigEndian.PutUint16(pkt[1:3], msg.MyAS)
+	binary.BigEndian.PutUint16(pkt[1:3], uint16(msg.MyAS))
 	binary.BigEndian.PutUint16(pkt[3:5], msg.HoldTime)
 	copy(pkt[5:9], msg.BGPId.To4())
 	pkt[9] = 0
@@ -224,14 +224,14 @@ func (msg *BGPOpen) Encode() ([]byte, error) {
 
 func (msg *BGPOpen) Decode(header *BGPHeader, pkt []byte) error {
     msg.Version = pkt[0]
-    msg.MyAS = binary.BigEndian.Uint16(pkt[1:3])
+    msg.MyAS = uint32(binary.BigEndian.Uint16(pkt[1:3]))
     msg.HoldTime = binary.BigEndian.Uint16(pkt[3:5])
     msg.BGPId = net.IP(pkt[5:9]).To4()
     msg.OptParamLen = pkt[9]
     return nil
 }
 
-func NewBGPOpenMessage(myAS uint16, holdTime uint16, bgpId string) *BGPMessage {
+func NewBGPOpenMessage(myAS uint32, holdTime uint16, bgpId string) *BGPMessage {
 	return &BGPMessage{
 		Header: BGPHeader{Type: BGPMsgTypeOpen},
 		Body: &BGPOpen{4, myAS, holdTime, net.ParseIP(bgpId), 0},

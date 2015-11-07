@@ -3,6 +3,7 @@ package server
 
 import (
 	"fmt"
+	"l3/bgp/config"
 	"l3/bgp/packet"
 	"net"
 	"time"
@@ -10,12 +11,12 @@ import (
 
 type Peer struct {
 	Server     *BgpServer
-	Global     *GlobalConfig
-	Peer       *PeerConfig
+	Global     *config.GlobalConfig
+	Peer       *config.NeighborConfig
 	fsmManager *FSMManager
 }
 
-func NewPeer(server *BgpServer, globalConf GlobalConfig, peerConf PeerConfig) *Peer {
+func NewPeer(server *BgpServer, globalConf config.GlobalConfig, peerConf config.NeighborConfig) *Peer {
 	peer := Peer{
 		Server: server,
 		Global: &globalConf,

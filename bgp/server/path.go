@@ -1,4 +1,4 @@
-// rib.go
+// path.go
 package server
 
 import (

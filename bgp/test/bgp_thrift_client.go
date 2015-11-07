@@ -31,20 +31,25 @@ func main() {
 
 	globalConfigArgs := bgpd.NewBgpGlobal()
 	globalConfigArgs.AS = 5000
+	globalConfigArgs.RouterId = "localhost"
 	fmt.Println("calling CreateBgpGlobal with attr:", globalConfigArgs)
 	ret,_ := client.CreateBgp(globalConfigArgs)
 	if !ret {
 		fmt.Println("CreateBgpGlobal FAILED")
 	}
+	fmt.Println("Created BGP global conf")
 
 	peerConfigArgs := bgpd.NewBgpPeer()
-	peerConfigArgs.IP = "11.1.11.203"
-	peerConfigArgs.AS = 5000
+	peerConfigArgs.NeighborAddress = "11.1.11.203"
+	peerConfigArgs.LocalAS = 5000
+	peerConfigArgs.PeerAS = 5000
+	peerConfigArgs.Description = "IBGP Peer"
 	fmt.Println("calling CreateBgpPeer with attr:", peerConfigArgs)
 	ret, _ = client.CreatePeer(peerConfigArgs)
 	if !ret {
 		fmt.Println("CreateBgpPeer FAILED")
 	}
+	fmt.Println("Created BGP peer conf")
 
 //	peerCommandArgs := &server.PeerConfigCommands{net.ParseIP("11.1.11.203"), 1}
 //	err = client.Call("ConfigInterface.PeerCommand", peerCommandArgs, &reply)

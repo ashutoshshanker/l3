@@ -3,6 +3,7 @@ package server
 
 import (
 	"fmt"
+	"l3/bgp/config"
 	"l3/bgp/packet"
 	"net"
 )
@@ -15,73 +16,73 @@ const (
 )
 
 type BgpPkt struct {
-	connDir  ConnDir
+	connDir  config.ConnDir
 	pkt *packet.BGPMessage
 }
 
 type FSMManager struct {
 	Peer         *Peer
-	gConf        *GlobalConfig
-	pConf        *PeerConfig
-	fsms         map[ConnDir]*FSM
+	gConf        *config.GlobalConfig
+	pConf        *config.NeighborConfig
+	fsms         map[config.ConnDir]*FSM
 	configCh     chan CONFIG
-	conns        [ConnDirMax]net.Conn
+	conns        [config.ConnDirMax]net.Conn
 	connectCh    chan net.Conn
 	connectErrCh chan error
 	acceptCh     chan net.Conn
 	acceptErrCh  chan error
 	acceptConn   bool
 	commandCh    chan int
-	activeFSM    ConnDir
+	activeFSM    config.ConnDir
 	pktRxCh      chan BgpPkt
 }
 
-func NewFSMManager(peer *Peer, globalConf *GlobalConfig, peerConf *PeerConfig) *FSMManager {
+func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config.NeighborConfig) *FSMManager {
 	fsmManager := FSMManager{
 		Peer: peer,
 		gConf: globalConf,
 		pConf: peerConf,
 	}
-	fsmManager.conns = [ConnDirMax]net.Conn{nil, nil}
+	fsmManager.conns = [config.ConnDirMax]net.Conn{nil, nil}
 	fsmManager.connectCh = make(chan net.Conn)
 	fsmManager.connectErrCh = make(chan error)
 	fsmManager.acceptCh = make(chan net.Conn)
 	fsmManager.acceptErrCh = make(chan error)
 	fsmManager.acceptConn = false
 	fsmManager.commandCh = make(chan int)
-	fsmManager.fsms = make(map[ConnDir]*FSM)
-	fsmManager.activeFSM = ConnDirOut
+	fsmManager.fsms = make(map[config.ConnDir]*FSM)
+	fsmManager.activeFSM = config.ConnDirOut
 	fsmManager.pktRxCh = make(chan BgpPkt)
 	return &fsmManager
 }
 
 func (fsmManager *FSMManager) Init() {
-	fsmManager.fsms[ConnDirOut] = NewFSM(fsmManager, ConnDirOut, fsmManager.gConf, fsmManager.pConf)
-	go fsmManager.fsms[ConnDirOut].StartFSM(NewIdleState(fsmManager.fsms[ConnDirOut]))
+	fsmManager.fsms[config.ConnDirOut] = NewFSM(fsmManager, config.ConnDirOut, fsmManager.gConf, fsmManager.pConf)
+	go fsmManager.fsms[config.ConnDirOut].StartFSM(NewIdleState(fsmManager.fsms[config.ConnDirOut]))
 
 	for {
 		select {
 		case inConn := <-fsmManager.acceptCh:
 			if !fsmManager.acceptConn {
-				fmt.Println("Can't accept connection from ", fsmManager.pConf.IP, "yet.")
+				fmt.Println("Can't accept connection from ", fsmManager.pConf.NeighborAddress, "yet.")
 				inConn.Close()
-			} else if fsmManager.fsms[ConnDirIn] != nil {
+			} else if fsmManager.fsms[config.ConnDirIn] != nil {
 				fmt.Println("A FSM is already created for a incoming connection")
 			} else {
-				fsmManager.conns[ConnDirIn] = inConn
+				fsmManager.conns[config.ConnDirIn] = inConn
 				//fsmManager.fsms[ConnDirOut] = NewFSM(fsmManager, ConnDirIn, fsmManager.gConf, fsmManager.pConf)
 				//fsmManager.fsms[ConnDirOut].SetConn(inConn)
 				//go fsmManager.fsms[ConnDirIn].StartFSM(NewActiveState(fsmManager.fsms[ConnDirIn]))
 				//fsmManager.fsms[ConnDirIn].eventRxCh <- BGPEventTcpConnConfirmed
 				//fsmManager.fsms[ConnDirIn].ProcessEvent(BGP_EVENT_TCP_CONN_CONFIRMED)
-				fsmManager.fsms[ConnDirOut].inConnCh <- inConn
+				fsmManager.fsms[config.ConnDirOut].inConnCh <- inConn
 			}
 
 		case <-fsmManager.acceptErrCh:
-			fsmManager.fsms[ConnDirIn].eventRxCh <- BGPEventTcpConnFails
+			fsmManager.fsms[config.ConnDirIn].eventRxCh <- BGPEventTcpConnFails
 			//fsmManager.fsms[ConnDirIn].ProcessEvent(BGP_EVENT_TCP_CONN_FAILS)
-			fsmManager.conns[ConnDirIn].Close()
-			fsmManager.conns[ConnDirIn] = nil
+			fsmManager.conns[config.ConnDirIn].Close()
+			fsmManager.conns[config.ConnDirIn] = nil
 
 		/*case outConn := <-fsmManager.connectCh:
 			fsmManager.conns[ConnDirOut] = outConn

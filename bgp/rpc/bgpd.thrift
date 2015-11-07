@@ -2,12 +2,15 @@ namespace go bgpd
 typedef i32 int
 
 struct BgpGlobal {
-    1: i32 AS,
+    1: i64 AS,
+    2: string RouterId,
 }
 
 struct BgpPeer {
-    1: i32 AS,
-    2: string ip,
+    1: i64 PeerAS,
+    2: i64 LocalAS,
+    3: string Description,
+    4: string NeighborAddress,
 }
 
 service BgpServer

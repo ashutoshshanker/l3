@@ -1,5 +1,5 @@
 // server.go
-package server
+package rpc
 
 import (
     "fmt"
