@@ -3,6 +3,7 @@ package server
 
 import (
 	"fmt"
+	"l3/bgp/config"
 	"l3/bgp/packet"
 	"net"
 	"time"
@@ -677,17 +678,17 @@ type FSMIface interface {
 }
 
 type PeerConnDir struct {
-	connDir ConnDir
+	connDir config.ConnDir
 	conn *net.Conn
 }
 
 type FSM struct {
-	gConf    *GlobalConfig
-	pConf    *PeerConfig
+	gConf    *config.GlobalConfig
+	pConf    *config.NeighborConfig
 	Manager  *FSMManager
 	State    BaseStateIface
-	connDir  ConnDir
-	peerType PeerType
+	connDir  config.ConnDir
+	peerType config.PeerType
     peerConn *PeerConn
 
 	outConnCh    chan net.Conn
@@ -725,7 +726,7 @@ type FSM struct {
 	rxPktsFlag bool
 }
 
-func NewFSM(fsmManager *FSMManager, connDir ConnDir, gConf *GlobalConfig, pConf *PeerConfig) *FSM {
+func NewFSM(fsmManager *FSMManager, connDir config.ConnDir, gConf *config.GlobalConfig, pConf *config.NeighborConfig) *FSM {
 	fsm := FSM{
 		gConf:            gConf,
 		pConf:            pConf,
@@ -773,7 +774,7 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 		select {
 		case outConnCh := <-fsm.outConnCh:
 			fsm.connInProgress = false
-			out := PeerConnDir{ConnDirOut, &outConnCh}
+			out := PeerConnDir{config.ConnDirOut, &outConnCh}
 			fsm.ProcessEvent(BGPEventTcpCrAcked, out)
 
 		case outConnErrCh := <-fsm.outConnErrCh:
@@ -781,7 +782,7 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 			fsm.ProcessEvent(BGPEventTcpConnFails, outConnErrCh)
 
 		case inConnCh := <-fsm.inConnCh:
-			in := PeerConnDir{ConnDirOut, &inConnCh}
+			in := PeerConnDir{config.ConnDirOut, &inConnCh}
 			fsm.ProcessEvent(BGPEventTcpConnConfirmed, in)
 
 		case bgpPktInfo := <-fsm.pktRxCh:
@@ -942,18 +943,18 @@ func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 		fsm.keepAliveTime = fsm.holdTime / 3
 	}
 	if body.MyAS == fsm.Manager.gConf.AS {
-		fsm.peerType = PeerTypeInternal
+		fsm.peerType = config.PeerTypeInternal
 	} else {
-		fsm.peerType = PeerTypeExternal
+		fsm.peerType = config.PeerTypeExternal
 	}
 }
 
 func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {
-	fsm.Manager.Peer.Server.BGPPktSrc <- packet.NewBGPPktSrc(fsm.Manager.Peer.Peer.IP.String(), pkt)
+	fsm.Manager.Peer.Server.BGPPktSrc <- packet.NewBGPPktSrc(fsm.Manager.Peer.Peer.NeighborAddress.String(), pkt)
 }
 
 func (fsm *FSM) sendOpenMessage() {
-	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.AS, fsm.holdTime, IP)
+	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.LocalAS, fsm.holdTime, IP)
 	packet, _ := bgpOpenMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
@@ -1034,7 +1035,7 @@ func (fsm *FSM) RejectPeerConn() {
 
 func (fsm *FSM) InitiateConnToPeer() {
 	fmt.Println("InitiateConnToPeer called")
-	addr := net.JoinHostPort(fsm.pConf.IP.String(), BGPPort)
+	addr := net.JoinHostPort(fsm.pConf.NeighborAddress.String(), BGPPort)
 	if !fsm.connInProgress {
 		fsm.connInProgress = true
 		go ConnectToPeer(fsm.connectRetryTime, addr, fsm.outConnCh, fsm.outConnErrCh, fsm.stopConnCh)

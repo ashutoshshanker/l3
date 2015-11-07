@@ -3,18 +3,11 @@ package rpc
 
 import (
     "fmt"
+	"l3/bgp/config"
+	"l3/bgp/server"
 	"generated/src/bgpd"
     "net"
 )
-
-type GlobalConfigAttrs struct {
-    AS int32
-}
-
-type PeerConfigAttrs struct {
-    IP net.IP
-    AS int32
-}
 
 type PeerConfigCommands struct {
     IP net.IP
@@ -26,21 +19,23 @@ type BgpHandler struct {
     AddPeerConfigCh chan PeerConfigAttrs
     RemPeerConfigCh chan PeerConfigAttrs
     PeerCommandCh chan PeerConfigCommands
+	server *server.BgpServer
 }
 
-func NewBgpHandler() *BgpHandler {
+func NewBgpHandler(server *server.BgpServer) *BgpHandler {
     h := new(BgpHandler)
     h.GlobalConfigCh = make(chan GlobalConfigAttrs)
     h.AddPeerConfigCh = make(chan PeerConfigAttrs)
     h.RemPeerConfigCh = make(chan PeerConfigAttrs)
     h.PeerCommandCh = make(chan PeerConfigCommands)
+	h.server = server
     return h
 }
 
 func (h *BgpHandler) CreateBgp(bgpGlobal *bgpd.BgpGlobal) (bool, error) {
     fmt.Println("Create global config attrs:", bgpGlobal)
-	gConf := GlobalConfigAttrs{AS: bgpGlobal.AS}
-    h.GlobalConfigCh <- gConf
+	gConf := config.GlobalConfig{AS: uint32(bgpGlobal.AS)}
+    h.server.GlobalConfigCh <- gConf
     return true, nil
 }
 
@@ -56,12 +51,17 @@ func (h *BgpHandler) DeleteBgp(bgpGlobal *bgpd.BgpGlobal) (bool, error) {
 
 func (h *BgpHandler) CreatePeer(peerConfig *bgpd.BgpPeer) (bool, error) {
     fmt.Println("Create peer attrs:", peerConfig)
-	ip := net.ParseIP(peerConfig.IP)
+	ip := net.ParseIP(peerConfig.NeighborAddress)
 	if ip == nil {
-		fmt.Println("CreatePeer - IP is not valid:", peerConfig.IP)
+		fmt.Println("CreatePeer - IP is not valid:", peerConfig.NeighborAddress)
 	}
-	pConf := PeerConfigAttrs{AS: peerConfig.AS, IP: ip}
-    h.AddPeerConfigCh <- pConf
+	pConf := config.NeighborConfig{
+		PeerAS: uint32(peerConfig.PeerAS),
+		LocalAS: uint32(peerConfig.LocalAS),
+		Description: peerConfig.Description,
+		NeighborAddress: ip,
+	}
+    h.server.AddPeerCh <- pConf
     return true, nil
 }
 
@@ -72,6 +72,17 @@ func (h *BgpHandler) UpdatePeer(peerConfig *bgpd.BgpPeer) (bool, error) {
 
 func (h *BgpHandler) DeletePeer(peerConfig *bgpd.BgpPeer) (bool, error) {
     fmt.Println("Delete peer attrs:", peerConfig)
+	ip := net.ParseIP(peerConfig.NeighborAddress)
+	if ip == nil {
+		fmt.Println("CreatePeer - IP is not valid:", peerConfig.NeighborAddress)
+	}
+	pConf := config.NeighborConfig{
+		PeerAS: uint32(peerConfig.PeerAS),
+		LocalAS: uint32(peerConfig.LocalAS),
+		Description: peerConfig.Description,
+		NeighborAddress: ip,
+	}
+    h.server.RemPeerCh <- pConf
     return true, nil
 }
 

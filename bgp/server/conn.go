@@ -3,6 +3,7 @@ package server
 
 import (
 	"fmt"
+	"l3/bgp/config"
 	"l3/bgp/packet"
 	"net"
 	"time"
@@ -10,14 +11,14 @@ import (
 
 type PeerConn struct {
     fsm *FSM
-    dir ConnDir
+    dir config.ConnDir
     conn *net.Conn
 
     readCh chan bool
     stopCh chan bool
 }
 
-func NewPeerConn(fsm *FSM, dir ConnDir, conn *net.Conn) *PeerConn {
+func NewPeerConn(fsm *FSM, dir config.ConnDir, conn *net.Conn) *PeerConn {
     peerConn := PeerConn{
         fsm: fsm,
         dir: dir,
