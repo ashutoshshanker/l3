@@ -7,6 +7,7 @@ import (
 	"l3/bgp/packet"
 	"log/syslog"
     "net"
+	"ribd"
 )
 
 const IP string = "12.1.12.202" //"192.168.1.1"
@@ -14,6 +15,7 @@ const BGPPort string = "179"
 
 type BgpServer struct {
 	logger *syslog.Writer
+	ribdClient *ribd.RouteServiceClient
     BgpConfig config.Bgp
     GlobalConfigCh chan config.GlobalConfig
     AddPeerCh chan config.NeighborConfig
@@ -25,9 +27,10 @@ type BgpServer struct {
 	adjRib *AdjRib
 }
 
-func NewBgpServer(logger *syslog.Writer) *BgpServer {
+func NewBgpServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *BgpServer {
     bgpServer := &BgpServer{}
 	bgpServer.logger = logger
+	bgpServer.ribdClient = ribdClient
     bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
     bgpServer.AddPeerCh = make(chan config.NeighborConfig)
     bgpServer.RemPeerCh = make(chan config.NeighborConfig)

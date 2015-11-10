@@ -8,7 +8,7 @@ import (
 )
 
 const CONF_IP string = "localhost" //"10.0.2.15"
-const CONF_PORT string = "2001"
+const CONF_PORT string = "4050"
 
 func main() {
 	fmt.Println("Starting the BGP thrift client...")

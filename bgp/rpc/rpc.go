@@ -6,6 +6,7 @@ import (
 	"generated/src/bgpd"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"log/syslog"
+	"ribd"
 )
 
 func StartServer(logger *syslog.Writer, handler *BgpHandler, port string) {
@@ -25,4 +26,25 @@ func StartServer(logger *syslog.Writer, handler *BgpHandler, port string) {
 	}
 	logger.Info(fmt.Sprintln("Start the listener successfully"))
 	return
+}
+
+func StartClient(logger *syslog.Writer, port string) (*ribd.RouteServiceClient, error) {
+	var clientTransport thrift.TTransport
+
+	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
+	transportFactory := thrift.NewTBufferedTransportFactory(8192)
+	clientTransport, err := thrift.NewTSocket("localhost:" + port)
+	if err != nil {
+		logger.Info(fmt.Sprintln("NewTSocket failed with error:", err))
+		return nil, err
+	}
+
+	clientTransport = transportFactory.GetTransport(clientTransport)
+	if err = clientTransport.Open(); err != nil {
+		logger.Err(fmt.Sprintln("Failed to open the socket, error:", err))
+		return nil, err
+	}
+
+	client := ribd.NewRouteServiceClientFactory(clientTransport, protocolFactory)
+	return client, nil
 }
