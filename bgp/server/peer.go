@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
+	"log/syslog"
 	"net"
 	"time"
 )
 
 type Peer struct {
 	Server     *BgpServer
+	logger     *syslog.Writer
 	Global     *config.GlobalConfig
 	Peer       *config.NeighborConfig
 	fsmManager *FSMManager
@@ -19,6 +21,7 @@ type Peer struct {
 func NewPeer(server *BgpServer, globalConf config.GlobalConfig, peerConf config.NeighborConfig) *Peer {
 	peer := Peer{
 		Server: server,
+		logger: server.logger,
 		Global: &globalConf,
 		Peer:   &peerConf,
 	}
@@ -48,13 +51,13 @@ func (peer *Peer) SendKeepAlives(conn *net.TCPConn) {
 	for {
 		select {
 		case <-time.After(time.Second * 1):
-			fmt.Println("send the packet ...")
+			peer.logger.Info(fmt.Sprintln("send the packet ..."))
 			packet, _ := bgpKeepAliveMsg.Encode()
 			num, err = conn.Write(packet)
 			if err != nil {
-				fmt.Println("Conn.Write failed with error:", err)
+				peer.logger.Info(fmt.Sprintln("Conn.Write failed with error:", err))
 			}
-			fmt.Println("Conn.Write succeeded. sent %d", num, "bytes")
+			peer.logger.Info(fmt.Sprintln("Conn.Write succeeded. sent %d", num, "bytes"))
 		}
 	}
 }

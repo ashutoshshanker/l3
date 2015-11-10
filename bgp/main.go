@@ -5,6 +5,7 @@ import (
     "fmt"
 	"l3/bgp/rpc"
     "l3/bgp/server"
+	"log/syslog"
 )
 
 const IP string = "localhost" //"10.0.2.15"
@@ -13,12 +14,20 @@ const CONF_PORT string = "2001"
 const BGPConfPort string = "2001"
 
 func main() {
-    fmt.Println("Start BGP Server")
-    bgpServer := server.NewBgpServer()
+	fmt.Println("Start the logger")
+	logger, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "SR BGP")
+	if err != nil	 {
+		fmt.Println("Failed to start the logger. Exit!")
+		return
+	}
+	logger.Info("Started the logger successfully.")
+
+    logger.Info(fmt.Sprintln("Start BGP Server"))
+    bgpServer := server.NewBgpServer(logger)
     go bgpServer.StartServer()
 
-    fmt.Println("Start config listener")
-	confIface := rpc.NewBgpHandler(bgpServer)
-	rpc.StartServer(confIface, BGPConfPort)
+    logger.Info(fmt.Sprintln("Start config listener"))
+	confIface := rpc.NewBgpHandler(bgpServer, logger)
+	rpc.StartServer(logger, confIface, BGPConfPort)
 }
 

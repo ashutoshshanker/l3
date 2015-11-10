@@ -4,6 +4,7 @@ package server
 import (
 	"fmt"
 	"l3/bgp/packet"
+	"log/syslog"
 	_ "net"
 )
 
@@ -12,12 +13,14 @@ const BGP_EXTERNAL_PREF = 50
 
 type AdjRib struct {
 	server *BgpServer
+	logger *syslog.Writer
 	destPathMap map[string]map[string]*Path
 }
 
 func NewAdjRib(server *BgpServer) *AdjRib {
 	rib := &AdjRib{
 		server: server,
+		logger: server.logger,
 		destPathMap: make(map[string]map[string]*Path),
 	}
 
@@ -47,10 +50,10 @@ func (adjRib *AdjRib) RemovePath(nlri packet.IPPrefix, peerIp string) {
 		if path, ok := peerMap[peerIp]; ok {
 			path.SetWithdrawn(true)
 		} else {
-			fmt.Println("Can't remove path", nlri.Prefix.String(), "Peer not found in RIB")
+			adjRib.logger.Info(fmt.Sprintln("Can't remove path", nlri.Prefix.String(), "Peer not found in RIB"))
 		}
 	} else {
-		fmt.Println("Can't remove path", nlri.Prefix.String(), "Destination not found in RIB")
+		adjRib.logger.Info(fmt.Sprintln("Can't remove path", nlri.Prefix.String(), "Destination not found in RIB"))
 	}
 }
 
@@ -87,26 +90,27 @@ func (adjRib *AdjRib) SelectRouteForLocRib(nlri packet.IPPrefix) {
 
 		if selectedPeer != "" {
 			if withDrawn != "" {
-				fmt.Println("Remove route with prefix", nlri, "from Loc RIB")
+				adjRib.logger.Info(fmt.Sprintln("Remove route with prefix", nlri, "from Loc RIB"))
 			}
 		} else {
-			fmt.Println("Add route with prefix", nlri, "to Loc RIB")
+			adjRib.logger.Info(fmt.Sprintln("Add route with prefix", nlri, "to Loc RIB"))
 		}
 	}
 }
 
 func (adjRib *AdjRib) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
-	fmt.Println("AdjRib:ProcessUpdate - start")
+	adjRib.logger.Info(fmt.Sprintln("AdjRib:ProcessUpdate - start"))
 	body := pktInfo.Msg.Body.(*packet.BGPUpdate)
 
 	// process withdrawn routes
 	for _, nlri := range body.WithdrawnRoutes {
 		if !isIpInList(body.NLRI, nlri){
-			fmt.Println("Processing withdraw destination", nlri.Prefix.String())
+			adjRib.logger.Info(fmt.Sprintln("Processing withdraw destination", nlri.Prefix.String()))
 			adjRib.RemovePath(nlri, pktInfo.Src)
 			adjRib.SelectRouteForLocRib(nlri)
 		} else {
-			fmt.Println("Can't withdraw destination", nlri.Prefix.String(), "Destination is part of NLRI in the UDPATE")
+			adjRib.logger.Info(fmt.Sprintln("Can't withdraw destination", nlri.Prefix.String(),
+				"Destination is part of NLRI in the UDPATE"))
 		}
 	}
 

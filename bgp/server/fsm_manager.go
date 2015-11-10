@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
+	"log/syslog"
 	"net"
 )
 
@@ -22,6 +23,7 @@ type BgpPkt struct {
 
 type FSMManager struct {
 	Peer         *Peer
+	logger       *syslog.Writer
 	gConf        *config.GlobalConfig
 	pConf        *config.NeighborConfig
 	fsms         map[config.ConnDir]*FSM
@@ -40,6 +42,7 @@ type FSMManager struct {
 func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config.NeighborConfig) *FSMManager {
 	fsmManager := FSMManager{
 		Peer: peer,
+		logger: peer.logger,
 		gConf: globalConf,
 		pConf: peerConf,
 	}
@@ -64,10 +67,11 @@ func (fsmManager *FSMManager) Init() {
 		select {
 		case inConn := <-fsmManager.acceptCh:
 			if !fsmManager.acceptConn {
-				fmt.Println("Can't accept connection from ", fsmManager.pConf.NeighborAddress, "yet.")
+				fsmManager.logger.Info(fmt.Sprintln("Can't accept connection from ", fsmManager.pConf.NeighborAddress,
+					"yet."))
 				inConn.Close()
 			} else if fsmManager.fsms[config.ConnDirIn] != nil {
-				fmt.Println("A FSM is already created for a incoming connection")
+				fsmManager.logger.Info(fmt.Sprintln("A FSM is already created for a incoming connection"))
 			} else {
 				fsmManager.conns[config.ConnDirIn] = inConn
 				//fsmManager.fsms[ConnDirOut] = NewFSM(fsmManager, ConnDirIn, fsmManager.gConf, fsmManager.pConf)
@@ -105,7 +109,7 @@ func (fsmManager *FSMManager) Init() {
 			}
 
 		case <-fsmManager.pktRxCh:
-			fmt.Println("FSMManager:Init - Rx a BGP packets")
+			fsmManager.logger.Info(fmt.Sprintln("FSMManager:Init - Rx a BGP packets"))
 			//fsmManager.fsms[pktRx.id].pktRxCh <- pktRx.pkt
 			//fsmManager.fsms[pktRx.id].ProcessPacket(pktRx.pkt, nil)
 		}

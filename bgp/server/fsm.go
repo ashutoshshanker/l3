@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
+	"log/syslog"
 	"net"
 	"time"
 )
@@ -80,20 +81,28 @@ type BaseStateIface interface {
 
 type BaseState struct {
 	fsm                 *FSM
+	logger              *syslog.Writer
 	connectRetryCounter int
 	connectRetryTimer   int
 }
 
+func NewBaseState(fsm *FSM) BaseState {
+	state := BaseState{
+		fsm: fsm,
+		logger: fsm.logger,
+	}
+	return state
+}
 func (baseState *BaseState) processEvent(event BGPFSMEvent, data interface{}) {
-	fmt.Println("BaseState: processEvent", event)
+	baseState.logger.Info(fmt.Sprintln("BaseState: processEvent", event))
 }
 
 func (baseState *BaseState) enter() {
-	fmt.Println("BaseState: enter")
+	baseState.logger.Info(fmt.Sprintln("BaseState: enter"))
 }
 
 func (baseState *BaseState) leave() {
-	fmt.Println("BaseState: leave")
+	baseState.logger.Info(fmt.Sprintln("BaseState: leave"))
 }
 
 func (baseState *BaseState) state() BGPFSMState {
@@ -106,15 +115,13 @@ type IdleState struct {
 
 func NewIdleState(fsm *FSM) *IdleState {
 	state := IdleState{
-		BaseState{
-			fsm: fsm,
-		},
+		BaseState: NewBaseState(fsm),
 	}
 	return &state
 }
 
 func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
-	fmt.Println("IdleState: processEvent", event)
+	st.logger.Info(fmt.Sprintln("IdleState: processEvent", event))
 	switch event {
 	case BGPEventManualStart, BGPEventAutoStart:
 		st.fsm.SetConnectRetryCounter(0)
@@ -140,7 +147,7 @@ func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
 }
 
 func (st *IdleState) enter() {
-	fmt.Println("IdleState: enter")
+	st.logger.Info(fmt.Sprintln("IdleState: enter"))
 	st.fsm.StopKeepAliveTimer()
 	st.fsm.StopHoldTimer()
 	st.fsm.RejectPeerConn()
@@ -148,7 +155,7 @@ func (st *IdleState) enter() {
 }
 
 func (st *IdleState) leave() {
-	fmt.Println("IdleState: leave")
+	st.logger.Info(fmt.Sprintln("IdleState: leave"))
 	st.fsm.StopIdleHoldTimer()
 }
 
@@ -166,15 +173,13 @@ type ConnectState struct {
 
 func NewConnectState(fsm *FSM) *ConnectState {
 	state := ConnectState{
-		BaseState{
-			fsm: fsm,
-		},
+		BaseState: NewBaseState(fsm),
 	}
 	return &state
 }
 
 func (st *ConnectState) processEvent(event BGPFSMEvent, data interface{}) {
-	fmt.Println("ConnectState: processEvent", event)
+	st.logger.Info(fmt.Sprintln("ConnectState: processEvent", event))
 	switch event {
 	case BGPEventManualStop:
 		st.fsm.StopConnToPeer()
@@ -231,11 +236,11 @@ func (st *ConnectState) processEvent(event BGPFSMEvent, data interface{}) {
 }
 
 func (st *ConnectState) enter() {
-	fmt.Println("ConnectState: enter")
+	st.logger.Info(fmt.Sprintln("ConnectState: enter"))
 }
 
 func (st *ConnectState) leave() {
-	fmt.Println("ConnectState: leave")
+	st.logger.Info(fmt.Sprintln("ConnectState: leave"))
 }
 
 func (st *ConnectState) state() BGPFSMState {
@@ -252,15 +257,13 @@ type ActiveState struct {
 
 func NewActiveState(fsm *FSM) *ActiveState {
 	state := ActiveState{
-		BaseState{
-			fsm: fsm,
-		},
+		BaseState: NewBaseState(fsm),
 	}
 	return &state
 }
 
 func (st *ActiveState) processEvent(event BGPFSMEvent, data interface{}) {
-	fmt.Println("ActiveState: processEvent", event)
+	st.logger.Info(fmt.Sprintln("ActiveState: processEvent", event))
 
 	switch event {
 	case BGPEventManualStop:
@@ -322,11 +325,11 @@ func (st *ActiveState) processEvent(event BGPFSMEvent, data interface{}) {
 }
 
 func (st *ActiveState) enter() {
-	fmt.Println("ActiveState: enter")
+	st.logger.Info(fmt.Sprintln("ActiveState: enter"))
 }
 
 func (st *ActiveState) leave() {
-	fmt.Println("ActiveState: leave")
+	st.logger.Info(fmt.Sprintln("ActiveState: leave"))
 }
 
 func (st *ActiveState) state() BGPFSMState {
@@ -343,15 +346,13 @@ type OpenSentState struct {
 
 func NewOpenSentState(fsm *FSM) *OpenSentState {
 	state := OpenSentState{
-		BaseState{
-			fsm: fsm,
-		},
+		BaseState: NewBaseState(fsm),
 	}
 	return &state
 }
 
 func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
-	fmt.Println("OpenSentState: processEvent", event)
+	st.logger.Info(fmt.Sprintln("OpenSentState: processEvent", event))
 
 	switch event {
 	case BGPEventManualStop:
@@ -432,12 +433,12 @@ func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
 }
 
 func (st *OpenSentState) enter() {
-	fmt.Println("OpenSentState: enter")
+	st.logger.Info(fmt.Sprintln("OpenSentState: enter"))
 	//st.BaseState.fsm.startRxPkts()
 }
 
 func (st *OpenSentState) leave() {
-	fmt.Println("OpenSentState: leave")
+	st.logger.Info(fmt.Sprintln("OpenSentState: leave"))
 }
 
 func (st *OpenSentState) state() BGPFSMState {
@@ -454,15 +455,13 @@ type OpenConfirmState struct {
 
 func NewOpenConfirmState(fsm *FSM) *OpenConfirmState {
 	state := OpenConfirmState{
-		BaseState{
-			fsm: fsm,
-		},
+		BaseState: NewBaseState(fsm),
 	}
 	return &state
 }
 
 func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
-	fmt.Println("OpenConfirmState: processEvent", event)
+	st.logger.Info(fmt.Sprintln("OpenConfirmState: processEvent", event))
 
 	switch event {
 	case BGPEventManualStop:
@@ -544,11 +543,11 @@ func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
 }
 
 func (st *OpenConfirmState) enter() {
-	fmt.Println("OpenConfirmState: enter")
+	st.logger.Info(fmt.Sprintln("OpenConfirmState: enter"))
 }
 
 func (st *OpenConfirmState) leave() {
-	fmt.Println("OpenConfirmState: leave")
+	st.logger.Info(fmt.Sprintln("OpenConfirmState: leave"))
 }
 
 func (st *OpenConfirmState) state() BGPFSMState {
@@ -565,15 +564,13 @@ type EstablishedState struct {
 
 func NewEstablishedState(fsm *FSM) *EstablishedState {
 	state := EstablishedState{
-		BaseState{
-			fsm: fsm,
-		},
+		BaseState: NewBaseState(fsm),
 	}
 	return &state
 }
 
 func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
-	fmt.Println("EstablishedState: processEvent", event)
+	st.logger.Info(fmt.Sprintln("EstablishedState: processEvent", event))
 
 	switch event {
 	case BGPEventManualStop:
@@ -610,9 +607,9 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 	case BGPEventTcpConnFails, BGPEventNotifMsgVerErr, BGPEventNotifMsg:
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
-		fmt.Println("Established: Stop Connection")
+		st.logger.Info(fmt.Sprintln("Established: Stop Connection"))
 		st.fsm.StopConnToPeer()
-		fmt.Println("Established: Stopped Connection")
+		st.logger.Info(fmt.Sprintln("Established: Stopped Connection"))
 		st.fsm.IncrConnectRetryCounter()
 		st.fsm.ChangeState(NewIdleState(st.fsm))
 
@@ -655,12 +652,12 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 }
 
 func (st *EstablishedState) enter() {
-	fmt.Println("EstablishedState: enter")
+	st.logger.Info(fmt.Sprintln("EstablishedState: enter"))
 	st.fsm.SetIdleHoldTime(BGPIdleHoldTimeDefault)
 }
 
 func (st *EstablishedState) leave() {
-	fmt.Println("EstablishedState: leave")
+	st.logger.Info(fmt.Sprintln("EstablishedState: leave"))
 }
 
 func (st *EstablishedState) state() BGPFSMState {
@@ -683,6 +680,7 @@ type PeerConnDir struct {
 }
 
 type FSM struct {
+	logger   *syslog.Writer
 	gConf    *config.GlobalConfig
 	pConf    *config.NeighborConfig
 	Manager  *FSMManager
@@ -728,6 +726,7 @@ type FSM struct {
 
 func NewFSM(fsmManager *FSMManager, connDir config.ConnDir, gConf *config.GlobalConfig, pConf *config.NeighborConfig) *FSM {
 	fsm := FSM{
+		logger:           fsmManager.logger,
 		gConf:            gConf,
 		pConf:            pConf,
 		Manager:          fsmManager,
@@ -766,7 +765,7 @@ func (fsm *FSM) SetConn(conn net.Conn) {
 }
 
 func (fsm *FSM) StartFSM(state BaseStateIface) {
-	fmt.Println("FSM: Starting the stach machine in", state.state(), "state")
+	fsm.logger.Info(fmt.Sprintln("FSM: Starting the stach machine in", state.state(), "state"))
 	fsm.State = state
 	fsm.State.enter()
 
@@ -807,7 +806,7 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 }
 
 func (fsm *FSM) ProcessEvent(event BGPFSMEvent, data interface{}) {
-	fmt.Println("FSM: ProcessEvent", event)
+	fsm.logger.Info(fmt.Sprintln("FSM: ProcessEvent", event))
 	fsm.event = event
 	fsm.State.processEvent(event, data)
 }
@@ -844,12 +843,12 @@ func (fsm *FSM) ProcessPacket(msg *packet.BGPMessage, msgErr *packet.BGPMessageE
 			event = BGPEventKeepAliveMsg
 		}
 	}
-	fmt.Println("FSM:ProcessPacket - event =", event)
+	fsm.logger.Info(fmt.Sprintln("FSM:ProcessPacket - event =", event))
 	fsm.ProcessEvent(event, data)
 }
 
 func (fsm *FSM) ChangeState(newState BaseStateIface) {
-	fmt.Println("FSM: ChangeState: Leaving", fsm.State, "state Entering", newState, "state")
+	fsm.logger.Info(fmt.Sprintln("FSM: ChangeState: Leaving", fsm.State, "state Entering", newState, "state"))
 	fsm.State.leave()
 	fsm.State = newState
 	fsm.State.enter()
@@ -882,7 +881,7 @@ func (fsm *FSM) StopConnectRetryTimer() {
 
 func (fsm *FSM) SetHoldTime(holdTime uint16) {
 	if holdTime < 0 || (holdTime > 0 && holdTime < 3) {
-		fmt.Println("Cannot set hold time. Invalid value", holdTime)
+		fsm.logger.Info(fmt.Sprintln("Cannot set hold time. Invalid value", holdTime))
 		return
 	}
 
@@ -958,9 +957,9 @@ func (fsm *FSM) sendOpenMessage() {
 	packet, _ := bgpOpenMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
-		fmt.Println("Conn.Write failed to send Open message with error:", err)
+		fsm.logger.Info(fmt.Sprintln("Conn.Write failed to send Open message with error:", err))
 	}
-	fmt.Println("Conn.Write succeeded. sent Open message of", num, "bytes")
+	fsm.logger.Info(fmt.Sprintln("Conn.Write succeeded. sent Open message of", num, "bytes"))
 }
 
 func (fsm *FSM) sendKeepAliveMessage() {
@@ -968,9 +967,9 @@ func (fsm *FSM) sendKeepAliveMessage() {
 	packet, _ := bgpKeepAliveMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
-		fmt.Println("Conn.Write failed to send KeepAlive message with error:", err)
+		fsm.logger.Info(fmt.Sprintln("Conn.Write failed to send KeepAlive message with error:", err))
 	}
-	fmt.Println("Conn.Write succeeded. sent KeepAlive message of", num, "bytes")
+	fsm.logger.Info(fmt.Sprintln("Conn.Write succeeded. sent KeepAlive message of", num, "bytes"))
 	fsm.StartKeepAliveTimer()
 }
 
@@ -979,15 +978,15 @@ func (fsm *FSM) SendNotificationMessage(code uint8, subCode uint8, data []byte) 
 	packet, _ := bgpNotifMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
-		fmt.Println("Conn.Write failed to send Notification message with error:", err)
+		fsm.logger.Info(fmt.Sprintln("Conn.Write failed to send Notification message with error:", err))
 	}
-	fmt.Println("Conn.Write succeeded. sent Notification message with", num, "bytes")
+	fsm.logger.Info(fmt.Sprintln("Conn.Write succeeded. sent Notification message with", num, "bytes"))
 }
 
 func (fsm *FSM) SetPeerConn(data interface{}) {
-	fmt.Println("SetPeerConn called")
+	fsm.logger.Info(fmt.Sprintln("SetPeerConn called"))
 	if fsm.peerConn != nil {
-		fmt.Println("FSM:SetupPeerConn - Peer conn is already set up")
+		fsm.logger.Info(fmt.Sprintln("FSM:SetupPeerConn - Peer conn is already set up"))
 		return
 	}
 	pConnDir := data.(PeerConnDir)
@@ -996,9 +995,9 @@ func (fsm *FSM) SetPeerConn(data interface{}) {
 }
 
 func (fsm *FSM) ClearPeerConn() {
-	fmt.Println("ClearPeerConn called")
+	fsm.logger.Info(fmt.Sprintln("ClearPeerConn called"))
 	if fsm.peerConn == nil {
-		fmt.Println("FSM:ClearPeerConn - Peer conn is not set up yet")
+		fsm.logger.Info(fmt.Sprintln("FSM:ClearPeerConn - Peer conn is not set up yet"))
 		return
 	}
 	fsm.StopKeepAliveTimer()
@@ -1008,7 +1007,7 @@ func (fsm *FSM) ClearPeerConn() {
 }
 
 func (fsm *FSM) startRxPkts() {
-	fmt.Println("fsm:startRxPkts called")
+	fsm.logger.Info(fmt.Sprintln("fsm:startRxPkts called"))
 	if fsm.peerConn != nil && !fsm.rxPktsFlag {
 		fsm.rxPktsFlag = true
 		fsm.peerConn.StartReading()
@@ -1016,7 +1015,7 @@ func (fsm *FSM) startRxPkts() {
 }
 
 func (fsm *FSM) stopRxPkts() {
-	fmt.Println("fsm:stopRxPkts called")
+	fsm.logger.Info(fmt.Sprintln("fsm:stopRxPkts called"))
 	if fsm.peerConn != nil && fsm.rxPktsFlag {
 		fsm.rxPktsFlag = false
 		fsm.peerConn.StopReading()
@@ -1024,33 +1023,33 @@ func (fsm *FSM) stopRxPkts() {
 }
 
 func (fsm *FSM) AcceptPeerConn() {
-	fmt.Println("AcceptPeerConn called")
+	fsm.logger.Info(fmt.Sprintln("AcceptPeerConn called"))
     fsm.Manager.AcceptPeerConn()
 }
 
 func (fsm *FSM) RejectPeerConn() {
-	fmt.Println("RejectPeerConn called")
+	fsm.logger.Info(fmt.Sprintln("RejectPeerConn called"))
     fsm.Manager.RejectPeerConn()
 }
 
 func (fsm *FSM) InitiateConnToPeer() {
-	fmt.Println("InitiateConnToPeer called")
+	fsm.logger.Info(fmt.Sprintln("InitiateConnToPeer called"))
 	addr := net.JoinHostPort(fsm.pConf.NeighborAddress.String(), BGPPort)
 	if !fsm.connInProgress {
 		fsm.connInProgress = true
-		go ConnectToPeer(fsm.connectRetryTime, addr, fsm.outConnCh, fsm.outConnErrCh, fsm.stopConnCh)
+		go ConnectToPeer(fsm.logger, fsm.connectRetryTime, addr, fsm.outConnCh, fsm.outConnErrCh, fsm.stopConnCh)
 	}
 }
 
 func (fsm *FSM) StopConnToPeer() {
-	fmt.Println("StopConnToPeer called")
+	fsm.logger.Info(fmt.Sprintln("StopConnToPeer called"))
 	if fsm.connInProgress {
 		fsm.stopConnCh <- true
 	}
 }
 
-func Connect(seconds uint16, addr string, connCh chan net.Conn, errCh chan error) {
-	fmt.Println("Connect called... calling DialTimeout with", seconds, "second timeout")
+func Connect(logger *syslog.Writer, seconds uint16, addr string, connCh chan net.Conn, errCh chan error) {
+	logger.Info(fmt.Sprintln("Connect called... calling DialTimeout with", seconds, "second timeout"))
 	conn, err := net.DialTimeout("tcp", addr, time.Duration(seconds) * time.Second)
 	if err != nil {
 		errCh <- err
@@ -1059,23 +1058,24 @@ func Connect(seconds uint16, addr string, connCh chan net.Conn, errCh chan error
 	}
 }
 
-func ConnectToPeer(seconds uint16, addr string, fsmConnCh chan net.Conn, fsmConnErrCh chan error, fsmStopConnCh chan bool) {
+func ConnectToPeer(logger *syslog.Writer, seconds uint16, addr string, fsmConnCh chan net.Conn, fsmConnErrCh chan error,
+		fsmStopConnCh chan bool) {
 	var stopConn bool = false
 	connCh := make(chan net.Conn)
 	errCh := make(chan error)
 
-	fmt.Println("ConnectToPeer called")
+	logger.Info(fmt.Sprintln("ConnectToPeer called"))
 	connTime := seconds - 3
 	if connTime <= 0 {
 		connTime = seconds
 	}
 
-	go Connect(seconds, addr, connCh, errCh)
+	go Connect(logger, seconds, addr, connCh, errCh)
 
 	for {
 		select {
 		case conn := <-connCh:
-			fmt.Println("ConnectToPeer: Connected to peer", addr)
+			logger.Info(fmt.Sprintln("ConnectToPeer: Connected to peer", addr))
 			if stopConn {
 				conn.Close()
 				return
@@ -1085,21 +1085,21 @@ func ConnectToPeer(seconds uint16, addr string, fsmConnCh chan net.Conn, fsmConn
 			return
 
 		case err := <-errCh:
-			fmt.Println("ConnectToPeer: Failed to connect to peer", addr)
+			logger.Info(fmt.Sprintln("ConnectToPeer: Failed to connect to peer", addr))
 			if stopConn {
 				return
 			}
 
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-				fmt.Println("Connect to peer timed out, retrying...")
-				go Connect(3, addr, connCh, errCh)
+				logger.Info(fmt.Sprintln("Connect to peer timed out, retrying..."))
+				go Connect(logger, 3, addr, connCh, errCh)
 			} else {
-				fmt.Println("Connect to peer failed with error:", err)
+				logger.Info(fmt.Sprintln("Connect to peer failed with error:", err))
 				fsmConnErrCh <- err
 			}
 
 		case <-fsmStopConnCh:
-			fmt.Println("ConnectToPeer: Recieved stop connecting to peer", addr)
+			logger.Info(fmt.Sprintln("ConnectToPeer: Recieved stop connecting to peer", addr))
 			stopConn = true
 		}
 	}
