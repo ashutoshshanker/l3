@@ -12,12 +12,12 @@ const BGP_INTERNAL_PREF = 100
 const BGP_EXTERNAL_PREF = 50
 
 type AdjRib struct {
-	server *BgpServer
+	server *BGPServer
 	logger *syslog.Writer
 	destPathMap map[string]map[string]*Path
 }
 
-func NewAdjRib(server *BgpServer) *AdjRib {
+func NewAdjRib(server *BGPServer) *AdjRib {
 	rib := &AdjRib{
 		server: server,
 		logger: server.logger,

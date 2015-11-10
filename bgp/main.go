@@ -31,11 +31,11 @@ func main() {
 	}
 
     logger.Info(fmt.Sprintln("Start BGP Server"))
-    bgpServer := server.NewBgpServer(logger, ribdClient)
+    bgpServer := server.NewBGPServer(logger, ribdClient)
     go bgpServer.StartServer()
 
     logger.Info(fmt.Sprintln("Start config listener"))
-	confIface := rpc.NewBgpHandler(bgpServer, logger)
+	confIface := rpc.NewBGPHandler(bgpServer, logger)
 	rpc.StartServer(logger, confIface, BGPConfPort)
 }
 

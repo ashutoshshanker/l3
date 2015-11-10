@@ -1,25 +1,25 @@
 namespace go bgpd
 typedef i32 int
 
-struct BgpGlobal {
-    1: i64 AS,
+struct BGPGlobal {
+    1: i32 AS,
     2: string RouterId,
 }
 
-struct BgpNeighbor {
-    1: i64 PeerAS,
-    2: i64 LocalAS,
+struct BGPNeighbor {
+    1: i32 PeerAS,
+    2: i32 LocalAS,
     3: string Description,
     4: string NeighborAddress,
 }
 
-service BgpServer
+service BGPServer
 {
-    bool CreateBgpGlobal(1: BgpGlobal bgpConf);
-    bool UpdateBgpGlobal(1: BgpGlobal bgpConf);
-    bool DeleteBgpGlobal(1: BgpGlobal bgpConf);
+    bool CreateBGPGlobal(1: BGPGlobal bgpConf);
+    bool UpdateBGPGlobal(1: BGPGlobal bgpConf);
+    bool DeleteBGPGlobal(1: BGPGlobal bgpConf);
 
-    bool CreateBgpNeighbor(1: BgpNeighbor neighbor); 
-    bool UpdateBgpNeighbor(1: BgpNeighbor neighbor); 
-    bool DeleteBgpNeighbor(1: BgpNeighbor neighbor); 
+    bool CreateBGPNeighbor(1: BGPNeighbor neighbor); 
+    bool UpdateBGPNeighbor(1: BGPNeighbor neighbor); 
+    bool DeleteBGPNeighbor(1: BGPNeighbor neighbor); 
 }
