@@ -2,31 +2,31 @@
 package rpc
 
 import (
-    "fmt"
+	"bgpd"
+	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/server"
 	"log/syslog"
-	"generated/src/bgpd"
-    "net"
+	"net"
 )
 
 type PeerConfigCommands struct {
-    IP net.IP
-    Command int
+	IP      net.IP
+	Command int
 }
 
 type BgpHandler struct {
-    PeerCommandCh chan PeerConfigCommands
-	server *server.BgpServer
-	logger *syslog.Writer
+	PeerCommandCh chan PeerConfigCommands
+	server        *server.BgpServer
+	logger        *syslog.Writer
 }
 
 func NewBgpHandler(server *server.BgpServer, logger *syslog.Writer) *BgpHandler {
-    h := new(BgpHandler)
-    h.PeerCommandCh = make(chan PeerConfigCommands)
+	h := new(BgpHandler)
+	h.PeerCommandCh = make(chan PeerConfigCommands)
 	h.server = server
 	h.logger = logger
-    return h
+	return h
 }
 
 func (h *BgpHandler) CreateBgp(bgpGlobal *bgpd.BgpGlobal) (bool, error) {
@@ -37,55 +37,55 @@ func (h *BgpHandler) CreateBgp(bgpGlobal *bgpd.BgpGlobal) (bool, error) {
 }
 
 func (h *BgpHandler) UpdateBgp(bgpGlobal *bgpd.BgpGlobal) (bool, error) {
-    h.logger.Info(fmt.Sprintln("Update global config attrs:", bgpGlobal))
+	h.logger.Info(fmt.Sprintln("Update global config attrs:", bgpGlobal))
 	return true, nil
 }
 
 func (h *BgpHandler) DeleteBgp(bgpGlobal *bgpd.BgpGlobal) (bool, error) {
-    h.logger.Info(fmt.Sprintln("Delete global config attrs:", bgpGlobal))
+	h.logger.Info(fmt.Sprintln("Delete global config attrs:", bgpGlobal))
 	return true, nil
 }
 
 func (h *BgpHandler) CreatePeer(peerConfig *bgpd.BgpPeer) (bool, error) {
-    h.logger.Info(fmt.Sprintln("Create peer attrs:", peerConfig))
+	h.logger.Info(fmt.Sprintln("Create peer attrs:", peerConfig))
 	ip := net.ParseIP(peerConfig.NeighborAddress)
 	if ip == nil {
 		h.logger.Info(fmt.Sprintln("CreatePeer - IP is not valid:", peerConfig.NeighborAddress))
 	}
 	pConf := config.NeighborConfig{
-		PeerAS: uint32(peerConfig.PeerAS),
-		LocalAS: uint32(peerConfig.LocalAS),
-		Description: peerConfig.Description,
+		PeerAS:          uint32(peerConfig.PeerAS),
+		LocalAS:         uint32(peerConfig.LocalAS),
+		Description:     peerConfig.Description,
 		NeighborAddress: ip,
 	}
-    h.server.AddPeerCh <- pConf
-    return true, nil
+	h.server.AddPeerCh <- pConf
+	return true, nil
 }
 
 func (h *BgpHandler) UpdatePeer(peerConfig *bgpd.BgpPeer) (bool, error) {
-    h.logger.Info(fmt.Sprintln("Update peer attrs:", peerConfig))
-    return true, nil
+	h.logger.Info(fmt.Sprintln("Update peer attrs:", peerConfig))
+	return true, nil
 }
 
 func (h *BgpHandler) DeletePeer(peerConfig *bgpd.BgpPeer) (bool, error) {
-    h.logger.Info(fmt.Sprintln("Delete peer attrs:", peerConfig))
+	h.logger.Info(fmt.Sprintln("Delete peer attrs:", peerConfig))
 	ip := net.ParseIP(peerConfig.NeighborAddress)
 	if ip == nil {
 		h.logger.Info(fmt.Sprintln("CreatePeer - IP is not valid:", peerConfig.NeighborAddress))
 	}
 	pConf := config.NeighborConfig{
-		PeerAS: uint32(peerConfig.PeerAS),
-		LocalAS: uint32(peerConfig.LocalAS),
-		Description: peerConfig.Description,
+		PeerAS:          uint32(peerConfig.PeerAS),
+		LocalAS:         uint32(peerConfig.LocalAS),
+		Description:     peerConfig.Description,
 		NeighborAddress: ip,
 	}
-    h.server.RemPeerCh <- pConf
-    return true, nil
+	h.server.RemPeerCh <- pConf
+	return true, nil
 }
 
 func (h *BgpHandler) PeerCommand(in *PeerConfigCommands, out *bool) error {
-    h.PeerCommandCh <- *in
-    h.logger.Info(fmt.Sprintln("Good peer command:", in))
-    *out = true
-    return nil
+	h.PeerCommandCh <- *in
+	h.logger.Info(fmt.Sprintln("Good peer command:", in))
+	*out = true
+	return nil
 }

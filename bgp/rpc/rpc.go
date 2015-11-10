@@ -2,8 +2,8 @@
 package rpc
 
 import (
+	"bgpd"
     "fmt"
-	"generated/src/bgpd"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"log/syslog"
 	"ribd"
