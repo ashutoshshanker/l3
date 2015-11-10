@@ -618,7 +618,7 @@ func checkPathAttributes(pathAttrs []BGPPathAttr) error {
 
 func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte) error {
 	msg.WithdrawnRoutesLen = binary.BigEndian.Uint16(pkt[0:2])
-	//msg.WithdrawnRoutes = make([]IPPrefix, 1)
+
 	ptr := uint32(2)
 	length := uint32(msg.WithdrawnRoutesLen)
 	ipLen := uint32(0)
@@ -628,6 +628,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte) error {
 		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
 
+	msg.WithdrawnRoutes = make([]IPPrefix, 0)
 	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.WithdrawnRoutes, length)
 	if err != nil {
 		return nil
@@ -643,15 +644,16 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte) error {
 		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
 
-	//msg.PathAttributes = make([]BGPPathAttr, 1)
+	msg.PathAttributes = make([]BGPPathAttr, 0)
 	for length > 0 {
 		pa := BGPGetPathAttr(pkt[ptr:])
 		pa.Decode(pkt[ptr:])
 		msg.PathAttributes = append(msg.PathAttributes, pa)
 		ptr += pa.TotalLen()
-		length += pa.TotalLen()
+		length -= pa.TotalLen()
 	}
 
+	msg.NLRI = make([]IPPrefix, 0)
 	length = header.Len() - 23 - uint32(msg.WithdrawnRoutesLen) - uint32(msg.TotalPathAttrLen)
 	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.NLRI, length)
 	if err != nil {
