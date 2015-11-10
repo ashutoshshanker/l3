@@ -41,6 +41,7 @@ func (adjRib *AdjRib) AddOrUpdatePath(nlri packet.IPPrefix, peerIp string, pa []
 	if peerMap, ok  := adjRib.destPathMap[nlri.Prefix.String()]; ok {
 		peerMap[peerIp] = newPath
 	} else {
+		adjRib.destPathMap[nlri.Prefix.String()] = make(map[string]*Path)
 		adjRib.destPathMap[nlri.Prefix.String()][peerIp] = newPath
 	}
 }
@@ -72,29 +73,29 @@ func (adjRib *AdjRib) GetPreference(peerIp string, path *Path) uint32 {
 }
 
 func (adjRib *AdjRib) SelectRouteForLocRib(nlri packet.IPPrefix) {
-	if peerMap, ok := adjRib.destPathMap[nlri.Prefix.String()]; ok {
-		var selectedPeer string = ""
-		var withDrawn string = ""
-		maxPref := uint32(0)
-		for peerIp, path := range peerMap {
-			if path.GetWithdrawn() {
-				withDrawn = peerIp
-			} else {
-				currPref := adjRib.GetPreference(peerIp, path)
-				if currPref > maxPref {
-					maxPref = currPref
-					selectedPeer = peerIp
-				}
-			}
-		}
-
-		if selectedPeer != "" {
-			if withDrawn != "" {
-				adjRib.logger.Info(fmt.Sprintln("Remove route with prefix", nlri, "from Loc RIB"))
-			}
+	var selectedPeer string = ""
+	var withDrawn string = ""
+	maxPref := uint32(0)
+	for peerIp, path := range adjRib.destPathMap[nlri.Prefix.String()] {
+		if path.GetWithdrawn() {
+			withDrawn = peerIp
 		} else {
-			adjRib.logger.Info(fmt.Sprintln("Add route with prefix", nlri, "to Loc RIB"))
+			currPref := adjRib.GetPreference(peerIp, path)
+			if currPref > maxPref {
+				maxPref = currPref
+				selectedPeer = peerIp
+			}
 		}
+	}
+
+	if withDrawn != "" {
+		if selectedPeer != "" {
+			adjRib.logger.Info(fmt.Sprintln("Update route with prefix", nlri, "in Loc RIB"))
+		} else {
+			adjRib.logger.Info(fmt.Sprintln("Remove route with prefix", nlri, "from Loc RIB"))
+		}
+	} else if selectedPeer != "" {
+		adjRib.logger.Info(fmt.Sprintln("Add route with prefix", nlri, "to Loc RIB"))
 	}
 }
 
