@@ -13,7 +13,7 @@ import (
 const IP string = "12.1.12.202" //"192.168.1.1"
 const BGPPort string = "179"
 
-type BgpServer struct {
+type BGPServer struct {
 	logger *syslog.Writer
 	ribdClient *ribd.RouteServiceClient
     BgpConfig config.Bgp
@@ -27,8 +27,8 @@ type BgpServer struct {
 	adjRib *AdjRib
 }
 
-func NewBgpServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *BgpServer {
-    bgpServer := &BgpServer{}
+func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *BGPServer {
+    bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.ribdClient = ribdClient
     bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
@@ -41,7 +41,7 @@ func NewBgpServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
     return bgpServer
 }
 
-func (server *BgpServer) listenForPeers(acceptCh chan *net.TCPConn) {
+func (server *BGPServer) listenForPeers(acceptCh chan *net.TCPConn) {
     addr := ":" + BGPPort
     server.logger.Info(fmt.Sprintf("Listening for incomig connections on %s\n", addr))
     tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
@@ -64,15 +64,15 @@ func (server *BgpServer) listenForPeers(acceptCh chan *net.TCPConn) {
     }
 }
 
-func (server *BgpServer) IsPeerLocal(peerIp string) bool {
+func (server *BGPServer) IsPeerLocal(peerIp string) bool {
 	return server.PeerMap[peerIp].Peer.PeerAS == server.BgpConfig.Global.Config.AS
 }
 
-func (server *BgpServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
+func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 	server.adjRib.ProcessUpdate(pktInfo)
 }
 
-func (server *BgpServer) StartServer() {
+func (server *BGPServer) StartServer() {
     gConf := <-server.GlobalConfigCh
     server.BgpConfig.Global.Config = gConf
 

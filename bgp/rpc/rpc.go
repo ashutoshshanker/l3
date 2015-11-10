@@ -9,7 +9,7 @@ import (
 	"ribd"
 )
 
-func StartServer(logger *syslog.Writer, handler *BgpHandler, port string) {
+func StartServer(logger *syslog.Writer, handler *BGPHandler, port string) {
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	serverTransport, err := thrift.NewTServerSocket("localhost:" + port)
@@ -17,7 +17,7 @@ func StartServer(logger *syslog.Writer, handler *BgpHandler, port string) {
 		logger.Info(fmt.Sprintln("StartServer: NewTServerSocket failed with error:", err))
 		return
 	}
-	processor := bgpd.NewBgpServerProcessor(handler)
+	processor := bgpd.NewBGPServerProcessor(handler)
 	server := thrift.NewTSimpleServer4(processor, serverTransport, transportFactory, protocolFactory)
 	logger.Info(fmt.Sprintln("Starting the BGP config listener"))
 	err = server.Serve()

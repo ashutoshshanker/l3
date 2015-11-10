@@ -11,14 +11,14 @@ import (
 )
 
 type Peer struct {
-	Server     *BgpServer
+	Server     *BGPServer
 	logger     *syslog.Writer
 	Global     *config.GlobalConfig
 	Peer       *config.NeighborConfig
 	fsmManager *FSMManager
 }
 
-func NewPeer(server *BgpServer, globalConf config.GlobalConfig, peerConf config.NeighborConfig) *Peer {
+func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.NeighborConfig) *Peer {
 	peer := Peer{
 		Server: server,
 		logger: server.logger,

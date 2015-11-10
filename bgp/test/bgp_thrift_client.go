@@ -27,25 +27,25 @@ func main() {
 		fmt.Println("Failed to open the socket, error:", err)
 	}
 
-	client := bgpd.NewBgpServerClientFactory(clientTransport, protocolFactory)
+	client := bgpd.NewBGPServerClientFactory(clientTransport, protocolFactory)
 
-	globalConfigArgs := bgpd.NewBgpGlobal()
+	globalConfigArgs := bgpd.NewBGPGlobal()
 	globalConfigArgs.AS = 5000
 	globalConfigArgs.RouterId = "localhost"
 	fmt.Println("calling CreateBgpGlobal with attr:", globalConfigArgs)
-	ret, err := client.CreateBgpGlobal(globalConfigArgs)
+	ret, err := client.CreateBGPGlobal(globalConfigArgs)
 	if !ret {
 		fmt.Println("CreateBgpGlobal FAILED, ret:", ret, "err:", err)
 	}
 	fmt.Println("Created BGP global conf")
 
-	peerConfigArgs := bgpd.NewBgpNeighbor()
+	peerConfigArgs := bgpd.NewBGPNeighbor()
 	peerConfigArgs.NeighborAddress = "11.1.11.203"
 	peerConfigArgs.LocalAS = 5000
 	peerConfigArgs.PeerAS = 5000
 	peerConfigArgs.Description = "IBGP Peer"
 	fmt.Println("calling CreateBgpPeer with attr:", peerConfigArgs)
-	ret, err = client.CreateBgpNeighbor(peerConfigArgs)
+	ret, err = client.CreateBGPNeighbor(peerConfigArgs)
 	if !ret {
 		fmt.Println("CreateBgpPeer FAILED, ret:", ret, "err:", err)
 	}
