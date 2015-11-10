@@ -6,7 +6,7 @@ struct BgpGlobal {
     2: string RouterId,
 }
 
-struct BgpPeer {
+struct BgpNeighbor {
     1: i64 PeerAS,
     2: i64 LocalAS,
     3: string Description,
@@ -15,11 +15,11 @@ struct BgpPeer {
 
 service BgpServer
 {
-    bool CreateBgp(1: BgpGlobal bgpConf);
-    bool UpdateBgp(1: BgpGlobal bgpConf);
-    bool DeleteBgp(1: BgpGlobal bgpConf);
+    bool CreateBgpGlobal(1: BgpGlobal bgpConf);
+    bool UpdateBgpGlobal(1: BgpGlobal bgpConf);
+    bool DeleteBgpGlobal(1: BgpGlobal bgpConf);
 
-    bool CreatePeer(1: BgpPeer peer); 
-    bool UpdatePeer(1: BgpPeer peer); 
-    bool DeletePeer(1: BgpPeer peer); 
+    bool CreateBgpNeighbor(1: BgpNeighbor neighbor); 
+    bool UpdateBgpNeighbor(1: BgpNeighbor neighbor); 
+    bool DeleteBgpNeighbor(1: BgpNeighbor neighbor); 
 }
