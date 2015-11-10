@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
+	"log/syslog"
 	"net"
 	"time"
 )
 
 type PeerConn struct {
     fsm *FSM
+	logger *syslog.Writer
     dir config.ConnDir
     conn *net.Conn
 
@@ -21,6 +23,7 @@ type PeerConn struct {
 func NewPeerConn(fsm *FSM, dir config.ConnDir, conn *net.Conn) *PeerConn {
     peerConn := PeerConn{
         fsm: fsm,
+		logger: fsm.logger,
         dir: dir,
         conn: conn,
 		readCh: make(chan bool),
@@ -35,7 +38,7 @@ func (p *PeerConn) StartReading() {
     doneReadingCh := make(chan bool)
     stopReadingCh := make(chan bool)
 
-	fmt.Println("conn:StartReading called")
+	p.logger.Info(fmt.Sprintln("conn:StartReading called"))
     go p.ReadPkt(doneReadingCh, stopReadingCh)
 	p.readCh <- true
 
@@ -60,30 +63,30 @@ func (p *PeerConn) StopReading() {
     p.stopCh <- true
 }
 
-func readPartialPkt(conn *net.Conn, length uint32) ([]byte, error) {
+func (p *PeerConn) readPartialPkt(length uint32) ([]byte, error) {
 	buf := make([]byte, length)
-	fmt.Println("read", length, "bytes from the TCP conn")
-	num, err := (*conn).Read(buf)
-	fmt.Println("conn.Read read ", num, "bytes, returned", err)
+	p.logger.Info(fmt.Sprintln("read", length, "bytes from the TCP conn"))
+	num, err := (*p.conn).Read(buf)
+	p.logger.Info(fmt.Sprintln("conn.Read read ", num, "bytes, returned", err))
 	return buf, err
 }
 
 func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
-	fmt.Println("conn:ReadPkt called")
+	p.logger.Info(fmt.Sprintln("conn:ReadPkt called"))
 	var t time.Time
     for {
         select {
         case <- p.readCh:
-			fmt.Println("Start reading again...")
+			p.logger.Info(fmt.Sprintln("Start reading again..."))
 			(*p.conn).SetReadDeadline(time.Now().Add(time.Duration(3) * time.Second))
-			buf, err := readPartialPkt(p.conn, packet.BGPMsgHeaderLen)
+			buf, err := p.readPartialPkt(packet.BGPMsgHeaderLen)
 			if err != nil {
 				if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-					fmt.Println("readPartialPkt timed out, returned err:", err, "neer:", nerr)
+					p.logger.Info(fmt.Sprintln("readPartialPkt timed out, returned err:", err, "neer:", nerr))
 				    doneCh <- true
 				    continue
 				} else {
-					fmt.Println("readPartialPkt DID NOT time out, returned err:", err, "nerr:", nerr)
+					p.logger.Info(fmt.Sprintln("readPartialPkt DID NOT time out, returned err:", err, "nerr:", nerr))
 				    p.fsm.outConnErrCh <- err
 				    break
 				}
@@ -92,18 +95,18 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 			header := packet.BGPHeader{}
 			err = header.Decode(buf)
 			if err != nil {
-				fmt.Println("BGP packet header decode failed")
+				p.logger.Info(fmt.Sprintln("BGP packet header decode failed"))
 				bgpPktInfo := packet.NewBGPPktInfo(nil, err.(*packet.BGPMessageError))
 				p.fsm.pktRxCh <- bgpPktInfo
 				doneCh <- false
 				continue
 			}
 
-			fmt.Println("Recieved BGP packet type=", header.Type)
+			p.logger.Info(fmt.Sprintln("Recieved BGP packet type=", header.Type))
 
 			(*p.conn).SetReadDeadline(t)
 			if header.Len() > packet.BGPMsgHeaderLen {
-				buf, err = readPartialPkt(p.conn, header.Len() - packet.BGPMsgHeaderLen)
+				buf, err = p.readPartialPkt(header.Len() - packet.BGPMsgHeaderLen)
 				if err != nil {
 					p.fsm.outConnErrCh <- err
 					break
@@ -117,7 +120,7 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 			bgpPktInfo := packet.NewBGPPktInfo(msg, nil)
 			msgOk := true
 			if err != nil {
-				fmt.Println("BGP packet body decode failed")
+				p.logger.Info(fmt.Sprintln("BGP packet body decode failed"))
 				bgpPktInfo = packet.NewBGPPktInfo(msg, err.(*packet.BGPMessageError))
 				msgOk = false
 			}
