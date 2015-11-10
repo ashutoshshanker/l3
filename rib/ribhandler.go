@@ -1,8 +1,11 @@
 package main
 import ("ribd"
         "asicdServices"
+	    "encoding/json"
+	    "io/ioutil"
 		"git.apache.org/thrift.git/lib/go/thrift"
         "errors"
+		"strconv"
         _ "net")
 
 type RouteServiceHandler struct {
@@ -53,6 +56,12 @@ type RouteInfoMapIndex struct {
    destNetIdx                 ribd.Int
    prefixLenIdx               ribd.Int
 }
+
+type ClientJson struct {
+	Name string `json:Name`
+	Port int    `json:Port`
+}
+
 var RouteInfoMap = make(map[RouteInfoMapIndex] [] RouteInfoRecord)
 var DummyRouteInfoRecord RouteInfoRecord//{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
 var asicdclnt AsicdClient
@@ -245,13 +254,40 @@ func CreateIPCHandles(address string) (thrift.TTransport, *thrift.TBinaryProtoco
 	return transport, protocolFactory
 }
 
-func NewRouteServiceHandler () *RouteServiceHandler {
-	asicdclnt.Address = "localhost:4000"
-	asicdclnt.Transport, asicdclnt.PtrProtocolFactory = CreateIPCHandles(asicdclnt.Address)
-	if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
-		logger.Println("connecting to asicd")
-		asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
-       asicdclnt.IsConnected = true
+func ConnectToClients(paramsFile string){
+	var clientsList []ClientJson
+
+	bytes, err := ioutil.ReadFile(paramsFile)
+	if err != nil {
+		logger.Println("Error in reading configuration file")
+		return
 	}
+
+	err = json.Unmarshal(bytes, &clientsList)
+	if err != nil {
+		logger.Println("Error in Unmarshalling Json")
+		return
+	}
+
+	for _, client := range clientsList {
+		logger.Println("#### Client name is ", client.Name)
+        if(client.Name == "asicd") {
+			logger.Printf("found asicd at port %d", client.Port)
+	        asicdclnt.Address = "localhost:"+strconv.Itoa(client.Port)
+	        asicdclnt.Transport, asicdclnt.PtrProtocolFactory = CreateIPCHandles(asicdclnt.Address)
+	        if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
+		       logger.Println("connecting to asicd")
+		       asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
+               asicdclnt.IsConnected = true
+	        }
+			break;
+		}
+   }	
+}
+
+
+func NewRouteServiceHandler () *RouteServiceHandler {
+	configFile := "../../config/params/clients.json"
+	ConnectToClients(configFile)
     return &RouteServiceHandler{}
 }
