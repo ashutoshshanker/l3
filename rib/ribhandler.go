@@ -226,6 +226,7 @@ func (m RouteServiceHandler) UpdateV4Route( destNet         ribd.Int,
 }
 
 func (m RouteServiceHandler) PrintV4Routes() (err error) {
+   logger.Println("Received print route")
    for k,rmapInfoList := range RouteInfoMap {
 	for _,v := range rmapInfoList {
       logger.Printf("%d %d-> %d %d\n", k.destNetIdx, k.prefixLenIdx, v.protocol, v.selected)
