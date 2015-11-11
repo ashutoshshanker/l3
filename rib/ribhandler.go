@@ -146,10 +146,10 @@ func SelectV4Route( destNet     ribd.Int,
 
 func (m RouteServiceHandler) CreateV4Route( destNet         ribd.Int, 
                                             prefixLen       ribd.Int, 
-                                            routeType       ribd.Int,
+                                            metric          ribd.Int,
                                             nextHop         ribd.Int, 
                                             nextHopIfIndex  ribd.Int,
-                                            metric          ribd.Int) (rc ribd.Int, err error) {
+                                            routeType       ribd.Int) (rc ribd.Int, err error) {
     logger.Println("Received create route request")
     routeInfoMapIndex := RouteInfoMapIndex{destNetIdx: destNet, prefixLenIdx:prefixLen}
 	//routeInfoMapIndex := RouteInfoMapIndex{destNetIdx: destNet & prefixLen}
