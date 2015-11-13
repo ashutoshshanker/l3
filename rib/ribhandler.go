@@ -6,7 +6,7 @@ import ("ribd"
 		"git.apache.org/thrift.git/lib/go/thrift"
         "errors"
 		"strconv"
-        _ "net")
+         "net")
 
 type RouteServiceHandler struct {
 }
@@ -43,18 +43,20 @@ const (
 	del
 )
 type RouteInfoRecord struct {
-   destNet                 ribd.Int
-   prefixLen               ribd.Int
+   destNet                 int
+   prefixLen               int
+   destNetIp				  string
+   networkMask             string
    protocol                ribd.Int
-   nextHop                 ribd.Int
+   nextHopIp               string
    nextHopIfIndex          ribd.Int
    metric                  ribd.Int
    selected                bool
 }
 
 type RouteInfoMapIndex struct {
-   destNetIdx                 ribd.Int
-   prefixLenIdx               ribd.Int
+   destNetIdx                 int
+   prefixLenIdx               int
 }
 
 type ClientJson struct {
@@ -94,10 +96,10 @@ func getSelectedRoute(routeInfoRecordList [] RouteInfoRecord) (routeInfoRecord R
    return routeInfoRecord, err
 }
 
-func SelectV4Route( destNet     ribd.Int,         
-                    prefixLen   ribd.Int,
+func SelectV4Route( destNet     int,         
+                    prefixLen   int,
 					 routeInfoRecord RouteInfoRecord,
-					 op          ribd.Int) (err error) {
+					 op          ribd.Int) ( err error) {
 	var routeInfoRecordNew RouteInfoRecord
 	var routeInfoRecordOld RouteInfoRecord
 	var routeInfoRecordTemp RouteInfoRecord
@@ -140,17 +142,47 @@ func SelectV4Route( destNet     ribd.Int,
 	}
 	if(routeInfoRecordNew.protocol != PROTOCOL_NONE) {
 		//call asicd to add
+			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp, routeInfoRecord.networkMask, routeInfoRecord.nextHopIp)
 	}
      return nil
 }
 
-func (m RouteServiceHandler) CreateV4Route( destNet         ribd.Int, 
-                                            prefixLen       ribd.Int, 
+func getIPInt(ipAddr string) (ipInt int, err error) {
+	ip := net.ParseIP(ipAddr)
+    if ip == nil {
+        return -1, errors.New("Invalid destination network IP Address")
+    }
+    ip = ip.To4()
+    parsedPrefixIP := int(ip[3]) | int(ip[2]) << 8 | int(ip[1]) << 16 | int(ip[0]) << 24
+    ipInt = parsedPrefixIP
+	return ipInt, nil
+}
+
+func getPrefixLen(networkMask string) (prefixLen int, err error) {
+	ipInt, err := getIPInt(networkMask)
+	if(err != nil) {
+		return -1, err
+	}
+	for prefixLen = 0;ipInt !=0; ipInt >>=1 {
+		prefixLen += ipInt & 1;
+	}
+	return prefixLen, nil
+}
+func (m RouteServiceHandler) CreateV4Route( destNetIp         string, 
+                                            networkMask     string, 
                                             metric          ribd.Int,
-                                            nextHop         ribd.Int, 
+                                            nextHopIp         string, 
                                             nextHopIfIndex  ribd.Int,
                                             routeType       ribd.Int) (rc ribd.Int, err error) {
-    logger.Println("Received create route request")
+    logger.Printf("Received create route request for ip %s mask %s\n", destNetIp, networkMask)
+	prefixLen, err := getPrefixLen(networkMask)
+	if(err != nil) {
+		return -1, err
+	}
+	destNet, err := getIPInt(destNetIp)
+	if(err != nil) {
+		return -1, err
+	}
     routeInfoMapIndex := RouteInfoMapIndex{destNetIdx: destNet, prefixLenIdx:prefixLen}
 	//routeInfoMapIndex := RouteInfoMapIndex{destNetIdx: destNet & prefixLen}
 	logger.Printf("Creating/looking route request for network %d %d", routeInfoMapIndex.destNetIdx, routeInfoMapIndex.prefixLenIdx)
@@ -159,7 +191,7 @@ func (m RouteServiceHandler) CreateV4Route( destNet         ribd.Int,
 		return 0,err
 	}
 	logger.Printf("routePrototype %d for routeType %d", routePrototype, routeType)
-    routeInfoRecord := RouteInfoRecord{destNet:destNet, prefixLen:prefixLen, protocol:routePrototype, nextHop:nextHop, nextHopIfIndex:nextHopIfIndex, metric:metric, selected:false}
+    routeInfoRecord := RouteInfoRecord{destNet:destNet, prefixLen:prefixLen, destNetIp:destNetIp, networkMask:networkMask, protocol:routePrototype, nextHopIp:nextHopIp, nextHopIfIndex:nextHopIfIndex, metric:metric, selected:false}
     _,ok := RouteInfoMap[routeInfoMapIndex]
 	if !ok {
 		RouteInfoMap[routeInfoMapIndex] = make([] RouteInfoRecord, PROTOCOL_LAST)
@@ -167,7 +199,7 @@ func (m RouteServiceHandler) CreateV4Route( destNet         ribd.Int,
 		RouteInfoMap[routeInfoMapIndex][routePrototype] = routeInfoRecord
 		//call asicd 
 		if(asicdclnt.IsConnected) {
-	      asicdclnt.ClientHdl.CreateVlan(100,"1","2")
+			asicdclnt.ClientHdl.CreateIPv4Route(destNetIp, networkMask, nextHopIp)
 	   }
 	} else {
 	   RouteInfoMap[routeInfoMapIndex][routePrototype]=routeInfoRecord
@@ -177,10 +209,20 @@ func (m RouteServiceHandler) CreateV4Route( destNet         ribd.Int,
     return 0, err
 }
 
-func (m RouteServiceHandler) DeleteV4Route( destNet         ribd.Int, 
-                                            prefixLen       ribd.Int,
+func (m RouteServiceHandler) DeleteV4Route( destNetIp         string, 
+                                            networkMask       string,
 											  routeType       ribd.Int) (rc ribd.Int, err error) {
     logger.Println("Received Route Delete request")
+	prefixLen, err := getPrefixLen(networkMask)
+	if(err != nil) {
+		return -1, err
+	}
+	logger.Printf("prefixLen=%d\n", prefixLen)
+	destNet, err := getIPInt(destNetIp)
+	if(err != nil) {
+		return -1, err
+	}
+	logger.Printf("destNet = %d\n", destNet)
     routeInfoMapIndex := RouteInfoMapIndex{destNetIdx: destNet, prefixLenIdx:prefixLen}
     routeInfoRecordList,ok := RouteInfoMap[routeInfoMapIndex]
 	if !ok {
@@ -199,19 +241,27 @@ func (m RouteServiceHandler) DeleteV4Route( destNet         ribd.Int,
     return 0, err
 }
 
-func (m RouteServiceHandler) UpdateV4Route( destNet         ribd.Int, 
-                                            prefixLen       ribd.Int, 
+func (m RouteServiceHandler) UpdateV4Route( destNetIp         string, 
+                                            networkMask     string, 
                                             routeType       ribd.Int,
-                                            nextHop         ribd.Int, 
+                                            nextHopIp       string, 
                                             nextHopIfIndex  ribd.Int,
                                             metric          ribd.Int) (err error) {
     logger.Println("Received update route request")
+	prefixLen, err := getPrefixLen(networkMask)
+	if(err != nil) {
+		return  err
+	}
+	destNet, err := getIPInt(destNetIp)
+	if(err != nil) {
+		return  err
+	}
     routeInfoMapIndex := RouteInfoMapIndex{destNetIdx: destNet, prefixLenIdx:prefixLen}
 	routePrototype,err := setProtocol(routeType)
 	if(err != nil){
 		return err
 	}
-    routeInfoRecord := RouteInfoRecord{destNet:destNet, prefixLen:prefixLen, protocol:routePrototype, nextHop:nextHop, nextHopIfIndex:nextHopIfIndex, metric:metric, selected:false}
+    routeInfoRecord := RouteInfoRecord{destNet:destNet, prefixLen:prefixLen, protocol:routePrototype, nextHopIp:nextHopIp, nextHopIfIndex:nextHopIfIndex, metric:metric, selected:false}
     routeInfoRecordList,ok := RouteInfoMap[routeInfoMapIndex]
 	if !ok {
        err = errors.New("No route found")
