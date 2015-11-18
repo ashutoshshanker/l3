@@ -1,17 +1,17 @@
 RM=rm -f
 RMFORCE=rm -rf
+DESTDIR=$(SR_CODE_BASE)/snaproute/src/bin
 GENERATED_IPC=$(SR_CODE_BASE)/generated/src
 IPC_GEN_CMD=thrift 
 SRCS=ribhandler.go  ribmain.go
 IPC_SRCS=ribd.thrift
-OBJS=$(subst .cpp,.o,$(SRCS))
 COMP_NAME=ribd
-all:ipc $(COMP_NAME)
+all:ipc exe
 ipc:
 	 $(IPC_GEN_CMD) --gen go -out $(GENERATED_IPC) $(IPC_SRCS)
 
-ribd: $(OBJS)
-	 go build -o $@ $(SRCS)
+exe: $(SRCS)
+	 go build -o $(DESTDIR)/$(COMP_NAME) $(SRCS)
 
 guard:
 ifndef SR_CODE_BASE
