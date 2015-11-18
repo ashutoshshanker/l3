@@ -69,7 +69,12 @@ func (server *BGPServer) IsPeerLocal(peerIp string) bool {
 }
 
 func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
-	server.adjRib.ProcessUpdate(pktInfo)
+	peer, ok := server.PeerMap[pktInfo.Src]
+	if !ok {
+		server.logger.Err(fmt.Sprintln("BgpServer:ProcessUpdate - Peer not found, address:", pktInfo.Src))
+	}
+
+	server.adjRib.ProcessUpdate(peer, pktInfo)
 }
 
 func (server *BGPServer) StartServer() {

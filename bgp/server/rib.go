@@ -5,23 +5,19 @@ import (
 	"fmt"
 	"l3/bgp/packet"
 	"log/syslog"
-	_ "net"
 )
-
-const BGP_INTERNAL_PREF = 100
-const BGP_EXTERNAL_PREF = 50
 
 type AdjRib struct {
 	server *BGPServer
 	logger *syslog.Writer
-	destPathMap map[string]map[string]*Path
+	destPathMap map[string]*Destination
 }
 
 func NewAdjRib(server *BGPServer) *AdjRib {
 	rib := &AdjRib{
 		server: server,
 		logger: server.logger,
-		destPathMap: make(map[string]map[string]*Path),
+		destPathMap: make(map[string]*Destination),
 	}
 
 	return rib
@@ -36,70 +32,18 @@ func isIpInList(ipPrefix []packet.IPPrefix, ip packet.IPPrefix) bool {
 	return false
 }
 
-func (adjRib *AdjRib) AddOrUpdatePath(nlri packet.IPPrefix, peerIp string, pa []packet.BGPPathAttr) {
-	newPath := NewPath(nlri, pa, false)
-	if peerMap, ok  := adjRib.destPathMap[nlri.Prefix.String()]; ok {
-		peerMap[peerIp] = newPath
-	} else {
-		adjRib.destPathMap[nlri.Prefix.String()] = make(map[string]*Path)
-		adjRib.destPathMap[nlri.Prefix.String()][peerIp] = newPath
+func (adjRib *AdjRib) getDest(nlri packet.IPPrefix, createIfNotExist bool) (*Destination, bool) {
+	dest, ok := adjRib.destPathMap[nlri.Prefix.String()]
+	if !ok && createIfNotExist {
+		dest = NewDestination(adjRib.server, nlri)
+		adjRib.destPathMap[nlri.Prefix.String()] = dest
+		ok = true
 	}
+
+	return dest, ok
 }
 
-func (adjRib *AdjRib) RemovePath(nlri packet.IPPrefix, peerIp string) {
-	if peerMap, ok  := adjRib.destPathMap[nlri.Prefix.String()]; ok {
-		if path, ok := peerMap[peerIp]; ok {
-			path.SetWithdrawn(true)
-		} else {
-			adjRib.logger.Info(fmt.Sprintln("Can't remove path", nlri.Prefix.String(), "Peer not found in RIB"))
-		}
-	} else {
-		adjRib.logger.Info(fmt.Sprintln("Can't remove path", nlri.Prefix.String(), "Destination not found in RIB"))
-	}
-}
-
-func (adjRib *AdjRib) GetPreference(peerIp string, path *Path) uint32 {
-	if adjRib.server.IsPeerLocal(peerIp) {
-		for _, attr := range path.pathAttrs {
-			if attr.GetCode() == packet.BGPPathAttrTypeLocalPref {
-				return attr.(*packet.BGPPathAttrLocalPref).Value
-			} else {
-				return BGP_INTERNAL_PREF
-			}
-		}
-	}
-
-	return BGP_EXTERNAL_PREF
-}
-
-func (adjRib *AdjRib) SelectRouteForLocRib(nlri packet.IPPrefix) {
-	var selectedPeer string = ""
-	var withDrawn string = ""
-	maxPref := uint32(0)
-	for peerIp, path := range adjRib.destPathMap[nlri.Prefix.String()] {
-		if path.GetWithdrawn() {
-			withDrawn = peerIp
-		} else {
-			currPref := adjRib.GetPreference(peerIp, path)
-			if currPref > maxPref {
-				maxPref = currPref
-				selectedPeer = peerIp
-			}
-		}
-	}
-
-	if withDrawn != "" {
-		if selectedPeer != "" {
-			adjRib.logger.Info(fmt.Sprintln("Update route with prefix", nlri, "in Loc RIB"))
-		} else {
-			adjRib.logger.Info(fmt.Sprintln("Remove route with prefix", nlri, "from Loc RIB"))
-		}
-	} else if selectedPeer != "" {
-		adjRib.logger.Info(fmt.Sprintln("Add route with prefix", nlri, "to Loc RIB"))
-	}
-}
-
-func (adjRib *AdjRib) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
+func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) {
 	adjRib.logger.Info(fmt.Sprintln("AdjRib:ProcessUpdate - start"))
 	body := pktInfo.Msg.Body.(*packet.BGPUpdate)
 
@@ -107,8 +51,12 @@ func (adjRib *AdjRib) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 	for _, nlri := range body.WithdrawnRoutes {
 		if !isIpInList(body.NLRI, nlri){
 			adjRib.logger.Info(fmt.Sprintln("Processing withdraw destination", nlri.Prefix.String()))
-			adjRib.RemovePath(nlri, pktInfo.Src)
-			adjRib.SelectRouteForLocRib(nlri)
+			dest, ok := adjRib.getDest(nlri, false)
+			if !ok {
+				adjRib.logger.Warning(fmt.Sprintln("Can't process withdraw field. Destination does not exist, Dest:", nlri.Prefix.String()))
+			}
+			dest.RemovePath(pktInfo.Src)
+			dest.SelectRouteForLocRib()
 		} else {
 			adjRib.logger.Info(fmt.Sprintln("Can't withdraw destination", nlri.Prefix.String(),
 				"Destination is part of NLRI in the UDPATE"))
@@ -116,7 +64,8 @@ func (adjRib *AdjRib) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 	}
 
 	for _, nlri := range body.NLRI {
-		adjRib.AddOrUpdatePath(nlri, pktInfo.Src, body.PathAttributes)
-		adjRib.SelectRouteForLocRib(nlri)
+		dest, _ := adjRib.getDest(nlri, true)
+		dest.AddOrUpdatePath(peer, pktInfo.Src, body.PathAttributes)
+		dest.SelectRouteForLocRib()
 	}
 }

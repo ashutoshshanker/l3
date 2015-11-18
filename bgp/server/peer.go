@@ -16,6 +16,8 @@ type Peer struct {
 	Global     *config.GlobalConfig
 	Peer       *config.NeighborConfig
 	fsmManager *FSMManager
+	BGPId      uint32
+	adjRibIn   map[string]*Path
 }
 
 func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.NeighborConfig) *Peer {
@@ -24,26 +26,36 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 		logger: server.logger,
 		Global: &globalConf,
 		Peer:   &peerConf,
+		BGPId:  0,
+		adjRibIn: make(map[string]*Path),
 	}
 	peer.fsmManager = NewFSMManager(&peer, &globalConf, &peerConf)
 	return &peer
 }
 
-func (peer *Peer) Init() {
-	go peer.fsmManager.Init()
+func (p *Peer) Init() {
+	go p.fsmManager.Init()
 }
 
-func (peer *Peer) Cleanup() {}
+func (p *Peer) Cleanup() {}
 
-func (peer *Peer) AcceptConn(conn *net.TCPConn) {
-	peer.fsmManager.acceptCh <- conn
+func (p *Peer) AcceptConn(conn *net.TCPConn) {
+	p.fsmManager.acceptCh <- conn
 }
 
-func (peer *Peer) Command(command int) {
-	peer.fsmManager.commandCh <- command
+func (p *Peer) Command(command int) {
+	p.fsmManager.commandCh <- command
 }
 
-func (peer *Peer) SendKeepAlives(conn *net.TCPConn) {
+func (p *Peer) IsInternal() bool {
+	return p.Peer.PeerAS == p.Peer.LocalAS
+}
+
+func (p *Peer) IsExternal() bool {
+	return p.Peer.LocalAS != p.Peer.PeerAS
+}
+
+func (p *Peer) SendKeepAlives(conn *net.TCPConn) {
 	bgpKeepAliveMsg := packet.NewBGPKeepAliveMessage()
 	var num int
 	var err error
@@ -51,13 +63,17 @@ func (peer *Peer) SendKeepAlives(conn *net.TCPConn) {
 	for {
 		select {
 		case <-time.After(time.Second * 1):
-			peer.logger.Info(fmt.Sprintln("send the packet ..."))
+			p.logger.Info(fmt.Sprintln("send the packet ..."))
 			packet, _ := bgpKeepAliveMsg.Encode()
 			num, err = conn.Write(packet)
 			if err != nil {
-				peer.logger.Info(fmt.Sprintln("Conn.Write failed with error:", err))
+				p.logger.Info(fmt.Sprintln("Conn.Write failed with error:", err))
 			}
-			peer.logger.Info(fmt.Sprintln("Conn.Write succeeded. sent %d", num, "bytes"))
+			p.logger.Info(fmt.Sprintln("Conn.Write succeeded. sent %d", num, "bytes"))
 		}
 	}
+}
+
+func (p *Peer) SetBGPId(bgpId uint32) {
+	p.BGPId = bgpId
 }
