@@ -8,7 +8,6 @@ import (
 	"log/syslog"
 	"math"
 	"net"
-	"ribd"
 )
 
 const BGP_INTERNAL_PREF = 100
