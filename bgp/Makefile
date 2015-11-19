@@ -11,8 +11,8 @@ all:ipc $(COMP_NAME)
 ipc:
 	 $(IPC_GEN_CMD) -r --gen go -out $(GENERATED_IPC) $(IPC_SRCS)
 
-bgpd: $(OBJS)
-	 go build -o $@ $(SRCS)
+exe: $(OBJS)
+	 go build -o $(COMP_NAME) $(SRCS)
 
 guard:
 ifndef SR_CODE_BASE
