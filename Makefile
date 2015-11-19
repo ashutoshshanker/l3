@@ -1,5 +1,5 @@
-COMPS=rib\
-      bgp
+COMPS=bgp\
+		rib
 
 IPCS=bgp\
 	  rib
