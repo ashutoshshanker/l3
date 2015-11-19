@@ -2,9 +2,9 @@
 package server
 
 import (
-	_ "fmt"
 	"l3/bgp/packet"
-	_ "net"
+	"net"
+	"ribd"
 )
 
 type Path struct {
@@ -14,6 +14,10 @@ type Path struct {
 	withdrawn bool
 	updated bool
 	Pref int64
+
+	NextHop string
+	NextHopIfIdx ribd.Int
+	Metric ribd.Int
 }
 
 func NewPath(peer *Peer, nlri packet.IPPrefix, pa []packet.BGPPathAttr, withdrawn bool, updated bool) *Path {
@@ -98,4 +102,20 @@ func (p *Path) GetOrigin() uint8 {
 	}
 
 	return uint8(packet.BGPPathAttrOriginMax)
+}
+
+func (p *Path) GetNextHop() net.IP {
+	for _, attr := range p.pathAttrs {
+		if attr.GetCode() == packet.BGPPathAttrTypeNextHop {
+			return attr.(*packet.BGPPathAttrNextHop).Value
+		}
+	}
+
+	return net.IPv4zero
+}
+
+func (p *Path) SetReachabilityInfo(nhInfo *ribd.NextHopInfo) {
+	p.NextHop = nhInfo.NextHopIp
+	p.NextHopIfIdx = nhInfo.NextHopIfIndex
+	p.Metric = nhInfo.Metric
 }
