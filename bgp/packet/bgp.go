@@ -548,7 +548,7 @@ func (u *BGPPathAttrUnknown) Decode(pkt []byte) error {
 }
 
 func BGPGetPathAttr(pkt []byte) (BGPPathAttr) {
-	typeCode := (pkt[0] & 0x80) >> 7
+	typeCode := pkt[1]
 	var pathAttr BGPPathAttr
 
 	pathAttr, ok := BGPPathAttrTypeToStructMap[BGPPathAttrType(typeCode)]

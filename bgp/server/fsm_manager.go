@@ -123,3 +123,7 @@ func (fsmManager *FSMManager) AcceptPeerConn() {
 func (fsmManager *FSMManager) RejectPeerConn() {
 	fsmManager.acceptConn = false
 }
+
+func (fsmManager *FSMManager) SetBGPId(bgpId uint32) {
+	fsmManager.Peer.SetBGPId(bgpId)
+}
