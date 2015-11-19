@@ -267,7 +267,7 @@ func (m RouteServiceHandler) CreateV4Route( destNetIp         string,
                                             nextHopIp         string, 
                                             nextHopIfIndex  ribd.Int,
                                             routeType       ribd.Int) (rc ribd.Int, err error) {
- //   logger.Printf("Received create route request for ip %s mask %s\n", destNetIp, networkMask)
+    logger.Printf("Received create route request for ip %s mask %s\n", destNetIp, networkMask)
 	prefixLen, err := getPrefixLen(networkMask)
 	if(err != nil) {
 		return -1, err
@@ -472,7 +472,7 @@ func CreateRoutes(routeFile string){
 */
 
 func NewRouteServiceHandler () *RouteServiceHandler {
-	configFile := "../../config/params/clients.json"
+	configFile := "params/clients.json"
 	ConnectToClients(configFile)
 	//CreateRoutes("RouteSetup.json")
     return &RouteServiceHandler{}
