@@ -64,6 +64,7 @@ func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) {
 	}
 
 	for _, nlri := range body.NLRI {
+		adjRib.logger.Info(fmt.Sprintln("Processing nlri =", nlri.Prefix.String()))
 		dest, _ := adjRib.getDest(nlri, true)
 		dest.AddOrUpdatePath(peer, pktInfo.Src, body.PathAttributes)
 		dest.SelectRouteForLocRib()
