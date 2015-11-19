@@ -1,5 +1,6 @@
 package main
 import ("ribd"
+        "l3/rib/ribdCommonDefs"
         "asicdServices"
 	    "encoding/json"
 		"utils/patriciaDB"
@@ -7,7 +8,6 @@ import ("ribd"
 		"git.apache.org/thrift.git/lib/go/thrift"
         "errors"
 		"strconv"
-		//"patriciaDB"
 		"time"
          "net")
 
@@ -26,12 +26,6 @@ type AsicdClient struct {
 	ClientHdl          *asicdServices.AsicdServiceClient
 }
 
-const (
-      CONNECTED  = 0
-      STATIC     = 1
-      OSPF       = 89
-      BGP        = 8
-)
 const (
 	PROTOCOL_NONE = iota
 	PROTOCOL_CONNECTED
@@ -86,13 +80,13 @@ var count int
 func setProtocol(routeType    ribd.Int) (proto ribd.Int, err error) {
 	err=nil
 	switch(routeType) {
-		case CONNECTED:
+		case ribdCommonDefs.CONNECTED:
 		proto = PROTOCOL_CONNECTED
-		case STATIC:
+		case ribdCommonDefs.STATIC:
 		proto = PROTOCOL_STATIC
-		case OSPF:
+		case ribdCommonDefs.OSPF:
 		proto = PROTOCOL_OSPF
-		case BGP:
+		case ribdCommonDefs.BGP:
 		proto = PROTOCOL_BGP
 		default:
 		err=errors.New("Not accepted protocol")
