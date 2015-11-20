@@ -12,3 +12,7 @@ exe: $(COMPS)
 
 ipc: $(IPCS)
 	 $(foreach f,$^, make -C $(f) ipc;)
+
+install:
+	@echo "All files that need to be copied would go here"
+
