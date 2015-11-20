@@ -3,12 +3,12 @@ RMFORCE=rm -rf
 DESTDIR=$(SR_CODE_BASE)/snaproute/src/bin
 GENERATED_IPC=$(SR_CODE_BASE)/generated/src
 IPC_GEN_CMD=thrift 
-IPC_SRCS=rpc/bgpd.thrift
-SRCS=main.go
-COMP_NAME=bgpd
+SRCS=arphandler.go  arpmain.go arpapis.go
+IPC_SRCS=arpd.thrift
+COMP_NAME=arpd
 all:ipc exe
 ipc:
-	 $(IPC_GEN_CMD) -r --gen go -out $(GENERATED_IPC) $(IPC_SRCS)
+	 $(IPC_GEN_CMD) --gen go -out $(GENERATED_IPC) $(IPC_SRCS)
 
 exe: $(SRCS)
 	 go build -o $(DESTDIR)/$(COMP_NAME) $(SRCS)
