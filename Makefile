@@ -1,7 +1,9 @@
-COMPS=bgp\
+COMPS=arp\
+		bgp\
 		rib
 
-IPCS=bgp\
+IPCS=arp\
+	  bgp\
 	  rib
 all: ipc exe 
 
