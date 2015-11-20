@@ -8,6 +8,7 @@ import (
 	"log/syslog"
 	"math"
 	"net"
+	_ "ribd"
 )
 
 const BGP_INTERNAL_PREF = 100
@@ -54,6 +55,20 @@ func (d  *Destination) RemovePath(peerIp string) {
 	}
 }
 
+func constructNetmaskFromLen(ones, bits int) net.IP {
+	ip := make(net.IP, bits/8)
+	bytes := ones / 8
+	i := 0
+	for ;i < bytes; i++ {
+		ip[i] = 255
+	}
+	rem := ones % 8
+	if rem != 0 {
+		ip[i] = (255 << uint(8 - rem))
+	}
+	return ip
+}
+
 func (d *Destination) SelectRouteForLocRib() {
 	updatedPaths := make([]*Path, 0)
 	maxPref := int64(math.MinInt64)
@@ -71,6 +86,14 @@ func (d *Destination) SelectRouteForLocRib() {
 			reachabilityInfo, err := d.server.ribdClient.GetRouteReachabilityInfo(path.GetNextHop().String())
 			if err != nil {
 				d.logger.Info(fmt.Sprintf("NEXT_HOP[%s] is not reachable", d.nlri.Prefix))
+				/*reachabilityInfo = ribd.NewNextHopInfo()
+				reachabilityInfo.Metric = 1
+				reachabilityInfo.NextHopIp = path.GetNextHop().String()
+				if reachabilityInfo.NextHopIp[0] == '4' {
+					reachabilityInfo.NextHopIfIndex = 2
+				} else {
+					reachabilityInfo.NextHopIfIndex = 1
+				}*/
 				continue
 			}
 
@@ -107,14 +130,25 @@ func (d *Destination) SelectRouteForLocRib() {
 
 		if d.locRibPath == nil {
 			// Add route
-			d.logger.Info(fmt.Sprintf("Add route for ip=%s", d.nlri.Prefix.String()))
-			d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(), net.CIDRMask(int(d.nlri.Length), 32).String(),
-												selectedPath.Metric, selectedPath.NextHop, selectedPath.NextHopIfIdx, 8)
+			d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.nlri.Prefix.String(),
+										constructNetmaskFromLen(int(d.nlri.Length), 32).String(), selectedPath.NextHop))
+			ret, err := d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(),
+														constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
+														selectedPath.Metric, selectedPath.NextHop,
+														selectedPath.NextHopIfIdx, 8)
+			if err != nil {
+				d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
+			}
 		} else if d.locRibPath != selectedPath || d.locRibPath.IsUpdated() {
 			// Update path
 			d.logger.Info(fmt.Sprintf("Update route for ip=%s", d.nlri.Prefix.String()))
-			d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(), net.CIDRMask(int(d.nlri.Length), 32).String(),
-												selectedPath.Metric, selectedPath.NextHop, selectedPath.NextHopIfIdx, 8)
+			err := d.server.ribdClient.UpdateV4Route(d.nlri.Prefix.String(),
+													constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8,
+													selectedPath.NextHop, selectedPath.NextHopIfIdx,
+													selectedPath.Metric)
+			if err != nil {
+				d.logger.Err(fmt.Sprintf("UpdateV4Route failed with error: %s", err))
+			}
 		}
 
 		d.locRibPath = updatedPaths[0]
@@ -122,7 +156,11 @@ func (d *Destination) SelectRouteForLocRib() {
 		if d.locRibPath != nil {
 			// Remove route
 			d.logger.Info(fmt.Sprintf("Remove route for ip=%s", d.nlri.Prefix.String()))
-			d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(), net.CIDRMask(int(d.nlri.Length), 32).String(), 8)
+			ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
+														constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8)
+			if err != nil {
+				d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
+			}
 		}
 	}
 }
