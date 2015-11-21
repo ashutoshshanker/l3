@@ -12,7 +12,7 @@ const IP string = "localhost" //"10.0.2.15"
 const BGPPort string = "179"
 const CONF_PORT string = "2001"
 const BGPConfPort string = "4050"
-const RIBConfPort string = "9090"
+const RIBConfPort string = "5000"
 
 func main() {
 	fmt.Println("Start the logger")
