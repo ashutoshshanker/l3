@@ -2,12 +2,15 @@
 package server
 
 import (
+	"fmt"
 	"l3/bgp/packet"
+	"log/syslog"
 	"net"
 	"ribd"
 )
 
 type Path struct {
+	logger *syslog.Writer
 	peer *Peer
 	nlri packet.IPPrefix
 	pathAttrs []packet.BGPPathAttr
@@ -20,8 +23,9 @@ type Path struct {
 	Metric ribd.Int
 }
 
-func NewPath(peer *Peer, nlri packet.IPPrefix, pa []packet.BGPPathAttr, withdrawn bool, updated bool) *Path {
+func NewPath(logger *syslog.Writer, peer *Peer, nlri packet.IPPrefix, pa []packet.BGPPathAttr, withdrawn bool, updated bool) *Path {
 	path := &Path{
+		logger: logger,
 		peer: peer,
 		nlri: nlri,
 		pathAttrs: pa,
@@ -116,6 +120,11 @@ func (p *Path) GetNextHop() net.IP {
 
 func (p *Path) SetReachabilityInfo(nhInfo *ribd.NextHopInfo) {
 	p.NextHop = nhInfo.NextHopIp
+	if p.NextHop == "" || p.NextHop[0] == '0' {
+		p.logger.Info(fmt.Sprintf("Next hop for %s is %s. Using %s as the next hop", p.nlri.Prefix.String(),
+									p.NextHop, p.GetNextHop().String()))
+		p.NextHop = p.GetNextHop().String()
+	}
 	p.NextHopIfIdx = nhInfo.NextHopIfIndex
 	p.Metric = nhInfo.Metric
 }

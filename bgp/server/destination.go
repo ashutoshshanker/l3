@@ -40,7 +40,7 @@ func (d *Destination) AddOrUpdatePath(peer *Peer, peerIp string, pa []packet.BGP
 		path.UpdatePath(pa)
 	} else {
 		added = true
-		path = NewPath(peer, d.nlri, pa, false, true)
+		path = NewPath(d.logger, peer, d.nlri, pa, false, true)
 		d.peerPathMap[peerIp] = path
 	}
 
