@@ -86,14 +86,6 @@ func (d *Destination) SelectRouteForLocRib() {
 			reachabilityInfo, err := d.server.ribdClient.GetRouteReachabilityInfo(path.GetNextHop().String())
 			if err != nil {
 				d.logger.Info(fmt.Sprintf("NEXT_HOP[%s] is not reachable", d.nlri.Prefix))
-				/*reachabilityInfo = ribd.NewNextHopInfo()
-				reachabilityInfo.Metric = 1
-				reachabilityInfo.NextHopIp = path.GetNextHop().String()
-				if reachabilityInfo.NextHopIp[0] == '4' {
-					reachabilityInfo.NextHopIfIndex = 2
-				} else {
-					reachabilityInfo.NextHopIfIndex = 1
-				}*/
 				continue
 			}
 
