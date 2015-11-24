@@ -148,7 +148,7 @@ var BGPPathAttrTypeFlagsMap = map[BGPPathAttrType][]BGPPathAttrFlag {
 	BGPPathAttrTypeAggregator: []BGPPathAttrFlag{BGPPathAttrFlagOptional & BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
 }
 
-var BGPPathAttrTypeLenMap = map	[BGPPathAttrType]uint16 {
+var BGPPathAttrTypeLenMap = map[BGPPathAttrType]uint16 {
 	BGPPathAttrTypeOrigin: 1,
 	BGPPathAttrTypeNextHop: 4,
 	BGPPathAttrTypeMultiExitDisc: 4,
@@ -291,6 +291,13 @@ type IPPrefix struct	 {
 	Prefix net.IP
 }
 
+func (ip *IPPrefix) Encode() ([]byte, error) {
+	pkt := make([]byte, ip.Len())
+	pkt[0] = uint8(ip.Len()) - 1
+	copy(pkt, ip.Prefix[:pkt[0]])
+	return pkt, nil
+}
+
 func (ip *IPPrefix) Decode(pkt []byte) error {
 	ip.Length = pkt[0]
 	bytes := (ip.Length + 7) / 8
@@ -307,6 +314,7 @@ func	 (ip *IPPrefix) Len() uint32	{
 }
 
 type BGPPathAttr interface {
+	Encode() ([]byte, error)
 	Decode(pkt []byte) error
 	TotalLen() uint32
 	GetCode() BGPPathAttrType
@@ -317,6 +325,20 @@ type BGPPathAttrBase struct {
 	Code BGPPathAttrType
 	Length uint16
 	BGPPathAttrLen uint16
+}
+
+func (pa *BGPPathAttrBase) Encode() ([]byte, error) {
+	pkt := make([]byte, pa.TotalLen())
+	pkt[0] = uint8(pa.Flags)
+	pkt[1] = uint8(pa.Code)
+
+	if pa.Flags & BGPPathAttrFlagExtendedLen != 0 {
+		binary.BigEndian.PutUint16(pkt[2:], pa.Length)
+	} else {
+		pkt[2] = uint8(pa.Length)
+	}
+
+	return pkt, nil
 }
 
 func (pa *BGPPathAttrBase) checkFlags(pkt []byte) error {
@@ -391,6 +413,16 @@ type BGPPathAttrOrigin struct {
 	Value BGPPathAttrOriginType
 }
 
+func (o *BGPPathAttrOrigin) Encode() ([]byte, error) {
+	pkt, err := o.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, err
+	}
+
+	pkt[o.BGPPathAttrLen] = uint8(o.Value)
+	return pkt, nil
+}
+
 func (o *BGPPathAttrOrigin) Decode(pkt []byte) error {
 	err := o.BGPPathAttrBase.Decode(pkt)
 	if err != nil {
@@ -410,6 +442,17 @@ type BGPASPathSegment struct {
 	Length uint8
 	AS []uint16
 	BGPASPathSegmentLen uint16
+}
+
+func (ps *BGPASPathSegment) Encode(pkt []byte) error {
+	pkt[0] = uint8(ps.Type)
+	pkt[1] = ps.Length
+
+	for i, as := range ps.AS {
+		binary.BigEndian.PutUint16(pkt[(i * 2) + 2:], as)
+	}
+
+	return nil
 }
 
 func (ps *BGPASPathSegment) Decode(pkt []byte) error {
@@ -435,6 +478,24 @@ func (ps *BGPASPathSegment) Decode(pkt []byte) error {
 type BGPPathAttrASPath struct {
 	BGPPathAttrBase
 	Value []BGPASPathSegment
+}
+
+func (as *BGPPathAttrASPath) Encode() ([]byte, error) {
+	pkt, err := as.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, err
+	}
+
+	length := as.BGPPathAttrBase.BGPPathAttrLen
+	for _, val := range as.Value {
+		err = val.Encode(pkt[length:])
+		if err != nil {
+			return pkt, err
+		}
+		length += val.BGPASPathSegmentLen
+	}
+
+	return pkt, nil
 }
 
 func (as *BGPPathAttrASPath) Decode(pkt []byte) error {
@@ -468,6 +529,16 @@ type BGPPathAttrNextHop struct {
 	Value net.IP
 }
 
+func (n *BGPPathAttrNextHop) Encode() ([]byte, error) {
+	pkt, err := n.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, err
+	}
+
+	copy(pkt[n.BGPPathAttrBase.BGPPathAttrLen:], n.Value)
+	return pkt, nil
+}
+
 func (n *BGPPathAttrNextHop) Decode(pkt []byte) error {
 	err := n.BGPPathAttrBase.Decode(pkt)
 	if err != nil {
@@ -484,6 +555,16 @@ type BGPPathAttrMultiExitDisc struct {
 	Value uint32
 }
 
+func (m *BGPPathAttrMultiExitDisc) Encode() ([]byte, error) {
+	pkt, err := m.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, err
+	}
+
+	binary.BigEndian.PutUint32(pkt[m.BGPPathAttrBase.BGPPathAttrLen:], m.Value)
+	return pkt, nil
+}
+
 func (m *BGPPathAttrMultiExitDisc) Decode(pkt []byte) error {
 	err := m.BGPPathAttrBase.Decode(pkt)
 	if err != nil {
@@ -497,6 +578,16 @@ func (m *BGPPathAttrMultiExitDisc) Decode(pkt []byte) error {
 type BGPPathAttrLocalPref struct {
 	BGPPathAttrBase
 	Value uint32
+}
+
+func (l *BGPPathAttrLocalPref) Encode() ([]byte, error) {
+	pkt, err := l.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, err
+	}
+
+	binary.BigEndian.PutUint32(pkt[l.BGPPathAttrBase.BGPPathAttrLen:], l.Value)
+	return pkt, nil
 }
 
 func (l *BGPPathAttrLocalPref) Decode(pkt []byte) error {
@@ -519,6 +610,17 @@ type BGPPathAttrAggregator struct {
 	IP net.IP
 }
 
+func (a *BGPPathAttrAggregator) Encode() ([]byte, error) {
+	pkt, err := a.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, err
+	}
+
+	binary.BigEndian.PutUint16(pkt[a.BGPPathAttrBase.BGPPathAttrLen:], a.AS)
+	copy(pkt[a.BGPPathAttrBase.BGPPathAttrLen + 2:], a.IP)
+	return pkt, nil
+}
+
 func (a *BGPPathAttrAggregator) Decode(pkt []byte) error {
 	err := a.BGPPathAttrBase.Decode(pkt)
 	if err != nil {
@@ -534,6 +636,16 @@ func (a *BGPPathAttrAggregator) Decode(pkt []byte) error {
 type BGPPathAttrUnknown struct {
 	BGPPathAttrBase
 	Value []byte
+}
+
+func (u *BGPPathAttrUnknown) Encode() ([]byte, error) {
+	pkt, err := u.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, err
+	}
+
+	copy(pkt[u.BGPPathAttrBase.BGPPathAttrLen:], u.Value)
+	return pkt, nil
 }
 
 func (u *BGPPathAttrUnknown) Decode(pkt []byte) error {
@@ -568,7 +680,40 @@ type BGPUpdate struct {
 }
 
 func (msg *BGPUpdate) Encode() ([]byte, error) {
-	pkt := make([]byte, 10)
+	pkt := make([]byte, 2)
+
+	for _, route := range msg.WithdrawnRoutes {
+		bytes, err := route.Encode()
+		if err != nil {
+			return pkt, err
+		}
+
+		pkt = append(pkt, bytes...)
+	}
+	wdLen := len(pkt)
+	binary.BigEndian.PutUint16(pkt, uint16(wdLen - 2))
+
+	pkt = append(pkt, make([]byte, 2)...)
+	for _, pa := range msg.PathAttributes {
+		bytes, err := pa.Encode()
+		if err != nil {
+			return pkt, err
+		}
+
+		pkt = append(pkt, bytes...)
+	}
+	paLen := len(pkt) - wdLen
+	binary.BigEndian.PutUint16(pkt[wdLen:], uint16(paLen - 2))
+
+	for _, nlri := range msg.NLRI {
+		bytes, err := nlri.Encode()
+		if err != nil {
+			return pkt, err
+		}
+
+		pkt = append(pkt, bytes...)
+	}
+
 	return pkt, nil
 }
 
@@ -662,6 +807,13 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte) error {
 	return nil
 }
 
+func NewBGPUpdateMessage(wdRoutes []IPPrefix, pa []BGPPathAttr, nlri []IPPrefix) *BGPMessage {
+	return &BGPMessage{
+		Header: BGPHeader{Type: BGPMsgTypeUpdate},
+		Body: &BGPUpdate{WithdrawnRoutes: wdRoutes, PathAttributes: pa, NLRI: nlri},
+	}
+}
+
 type BGPMessage struct {
 	Header BGPHeader
 	Body   BGPBody
@@ -672,12 +824,14 @@ func (msg *BGPMessage) Encode() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if msg.Header.Length == 0 {
 		if BGPMsgHeaderLen + len(body) > BGPMsgMaxLen {
 			return nil, BGPMessageError{0, 0, nil, fmt.Sprintf("BGP message is %d bytes long", BGPMsgHeaderLen + len(body))}
 		}
 		msg.Header.Length = BGPMsgHeaderLen + uint16(len(body))
 	}
+
 	header, err := msg.Header.Encode()
 	if err != nil {
 		return nil, err
