@@ -4,6 +4,7 @@ import ("ribd"
         "asicdServices"
 	    "encoding/json"
 		"utils/patriciaDB"
+//		"patricia"
 	    "io/ioutil"
 		"git.apache.org/thrift.git/lib/go/thrift"
         "errors"
@@ -27,12 +28,12 @@ type AsicdClient struct {
 }
 
 const (
-	PROTOCOL_NONE = iota
-	PROTOCOL_CONNECTED
-	PROTOCOL_STATIC 
-	PROTOCOL_OSPF
-	PROTOCOL_BGP
-	PROTOCOL_LAST
+	PROTOCOL_NONE = -1
+	PROTOCOL_CONNECTED = 0
+	PROTOCOL_STATIC =1
+	PROTOCOL_OSPF =2
+	PROTOCOL_BGP=3
+	PROTOCOL_LAST =4
 )
 
 const (
@@ -42,19 +43,18 @@ const (
 
 type RouteInfoRecord struct {
    prefixLen                int
-   destNetIp				 string
-   networkMask              string
-   protocol                ribd.Int
-   nextHopIp               string
+   destNetIp				 net.IP//string
+   networkMask              net.IP//string
+   protocol                int
+   nextHopIp               net.IP
    nextHopIfIndex          ribd.Int 
    metric                  ribd.Int
    selected                bool
 }
 type RouteInfoRecordList struct {
-   destNet                  patriciaDB.Prefix  //this is the index /prefix into the trie and is computed as dest IP & mask
-   numRoutes                ribd.Int
-   selectedRouteIdx         ribd.Int
-   routeInfoList            [PROTOCOL_LAST] RouteInfoRecord	
+   numRoutes                int
+   selectedRouteIdx         int
+   routeInfoList            [PROTOCOL_LAST] RouteInfoRecord//map[int]RouteInfoRecord	
 }
 
 type ClientJson struct {
@@ -75,9 +75,10 @@ var RouteInfoMap = patriciaDB.NewTrie()
 var DummyRouteInfoRecord RouteInfoRecord//{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
 var asicdclnt AsicdClient
 var count int
+var ConnectedRoutes []*ribd.Routes
 
 
-func setProtocol(routeType    ribd.Int) (proto ribd.Int, err error) {
+func setProtocol(routeType    ribd.Int) (proto int, err error) {
 	err=nil
 	switch(routeType) {
 		case ribdCommonDefs.CONNECTED:
@@ -90,6 +91,7 @@ func setProtocol(routeType    ribd.Int) (proto ribd.Int, err error) {
 		proto = PROTOCOL_BGP
 		default:
 		err=errors.New("Not accepted protocol")
+		proto = -1
 	}
 	return proto,err
 }
@@ -99,9 +101,12 @@ func getSelectedRoute(routeInfoRecordList RouteInfoRecordList) (routeInfoRecord 
 	   if(routeInfoRecord.selected) { 
 	     return routeInfoRecord, nil
 	 }
-   }
-   err = errors.New("No route selected")*/
-   routeInfoRecord = routeInfoRecordList.routeInfoList[routeInfoRecordList.selectedRouteIdx]
+   }*/
+   if(routeInfoRecordList.selectedRouteIdx == PROTOCOL_NONE) {
+      err = errors.New("No route selected")
+	} else {
+		routeInfoRecord = routeInfoRecordList.routeInfoList[routeInfoRecordList.selectedRouteIdx]
+	}
    return routeInfoRecord, err
 }
 
@@ -112,7 +117,7 @@ func SelectV4Route( destNet     patriciaDB.Prefix,
 	var routeInfoRecordNew RouteInfoRecord
 	var routeInfoRecordOld RouteInfoRecord
 	var routeInfoRecordTemp RouteInfoRecord
-	var i ribd.Int
+	var i int
  //    logger.Printf("Selecting the best Route for destNet %v\n", destNet)
      if(op == add) {
 		selectedRoute, err := getSelectedRoute(routeInfoRecordList)
@@ -133,16 +138,18 @@ func SelectV4Route( destNet     patriciaDB.Prefix,
 			return nil
 		}
 		routeInfoRecordOld = routeInfoRecord
-		if(routeInfoRecord.selected == true) {
+		if(routeInfoRecord.protocol == routeInfoRecordList.selectedRouteIdx) {
 		  for i =0; i<PROTOCOL_LAST; i++ {
-			if(i==routeInfoRecord.protocol) {
+		//	routeInfoRecordTemp, ok := routeInfoRecordList.routeInfoList[i]
+			routeInfoRecordTemp = routeInfoRecordList.routeInfoList[i]
+			if(i == routeInfoRecord.protocol) {//if(ok != true || i==routeInfoRecord.protocol) {
 				continue
 			}
-			routeInfoRecordTemp = routeInfoRecordList.routeInfoList[i]
 			logger.Printf("temp protocol=%d", routeInfoRecordTemp.protocol)
 			if(routeInfoRecordTemp.protocol != PROTOCOL_NONE) {
 				logger.Printf(" selceting protocol %d", routeInfoRecordTemp.protocol)
-				routeInfoRecordList.routeInfoList[i].selected = true
+				routeInfoRecordTemp.selected = true
+				routeInfoRecordList.routeInfoList[i] = routeInfoRecordTemp
                routeInfoRecordNew = routeInfoRecordTemp
 			    routeInfoRecordList.selectedRouteIdx = i
 				break;
@@ -156,25 +163,25 @@ func SelectV4Route( destNet     patriciaDB.Prefix,
     if(routeInfoRecordOld.protocol != PROTOCOL_NONE) {
 		//call asicd to del
 		if(asicdclnt.IsConnected) {
-			asicdclnt.ClientHdl.DeleteIPv4Route(routeInfoRecord.destNetIp, routeInfoRecord.networkMask)
+			asicdclnt.ClientHdl.DeleteIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String())
 		}
 	}
 	if(routeInfoRecordNew.protocol != PROTOCOL_NONE) {
 		//call asicd to add
 		if(asicdclnt.IsConnected){
-			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp, routeInfoRecord.networkMask, routeInfoRecord.nextHopIp)
+			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String())
         //call arpd to resolve the ip 
 	    }
 	}
      return nil
 }
 
-func getIPInt(ipAddr string) (ipInt int, err error) {
-	ip := net.ParseIP(ipAddr)
-    if ip == nil {
-        return -1, errors.New("Invalid destination network IP Address")
+func getIPInt(ip net.IP) (ipInt int, err error) {
+   if ip == nil {
+		logger.Printf("ip address %v invalid\n", ip)
+        return ipInt, errors.New("Invalid destination network IP Address")
     }
-    ip = ip.To4()
+   ip = ip.To4()
     parsedPrefixIP := int(ip[3]) | int(ip[2]) << 8 | int(ip[1]) << 16 | int(ip[0]) << 24
     ipInt = parsedPrefixIP
 	return ipInt, nil
@@ -190,7 +197,7 @@ func getIP(ipAddr string) (ip net.IP, err error) {
 	return ip, nil
 }
 
-func getPrefixLen(networkMask string) (prefixLen int, err error) {
+func getPrefixLen(networkMask net.IP) (prefixLen int, err error) {
 	ipInt, err := getIPInt(networkMask)
 	if(err != nil) {
 		return -1, err
@@ -201,6 +208,11 @@ func getPrefixLen(networkMask string) (prefixLen int, err error) {
 	return prefixLen, nil
 }
 
+func (m RouteServiceHandler) GetConnectedRoutesInfo () (routes []*ribd.Routes, err error) {
+   logger.Println("Received GetConnectedRoutesInfo")
+	routes = ConnectedRoutes
+	return routes, err
+}
 func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIntf *ribd.NextHopInfo, err error) {
    t1 := time.Now()
    var retnextHopIntf ribd.NextHopInfo
@@ -216,7 +228,7 @@ func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIn
      for _,v := range rmapInfoList.routeInfoList {
 	    if(v.protocol != PROTOCOL_NONE || v.selected == true) {
            nextHopIntf.NextHopIfIndex = v.nextHopIfIndex
-		   nextHopIntf.NextHopIp = v.nextHopIp
+		   nextHopIntf.NextHopIp = v.nextHopIp.String()
 		   nextHopIntf.Metric = v.metric
 		   found = true
 		   break
@@ -225,7 +237,7 @@ func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIn
    }
 	
    if(found == false) {
-	  logger.Printf("dest IP %s not reachable\n", destNet)
+	  logger.Printf("dest IP %s not reachable\n", destNetIp)
 	  err = errors.New("dest ip address not reachable")
    }
    duration := time.Since(t1)
@@ -234,12 +246,12 @@ func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIn
    return nextHopIntf, err
 }
 
-func getNetworkPrefix(destNetIp string, networkMask string) (destNet patriciaDB.Prefix, err error) {
+func getNetworkPrefix(destNetIp net.IP, networkMask net.IP) (destNet patriciaDB.Prefix, err error) {
 	prefixLen, err := getPrefixLen(networkMask)
 	if(err != nil) {
 		return destNet, err
 	}
-    ip, err := getIP(destNetIp)
+ /*   ip, err := getIP(destNetIp)
     if err != nil {
         logger.Println("Invalid destination network IP Address")
 		return destNet, err
@@ -248,9 +260,9 @@ func getNetworkPrefix(destNetIp string, networkMask string) (destNet patriciaDB.
     if err != nil {
         logger.Println("Invalid network mask")
 		return destNet, err
-    }
-	 vdestMask := net.IPv4Mask(vdestMaskIp[0], vdestMaskIp[1], vdestMaskIp[2], vdestMaskIp[3])
-     netIp := ip.Mask(vdestMask)
+    }*/
+	 vdestMask := net.IPv4Mask(networkMask[0], networkMask[1], networkMask[2], networkMask[3])
+     netIp := destNetIp.Mask(vdestMask)
 	 numbytes := prefixLen / 8 
 	 if((prefixLen % 8) != 0) {
 		numbytes++
@@ -261,18 +273,63 @@ func getNetworkPrefix(destNetIp string, networkMask string) (destNet patriciaDB.
 	}
 	return destNet, nil
 }
+func updateConnectedRoutes(destNetIPAddr string, networkMaskAddr string, nextHopIfIndex ribd.Int, op int) {
+	var temproute ribd.Routes
+	route := &temproute
+	logger.Printf("number of connectd routes = %d\n", len(ConnectedRoutes))
+	if(len(ConnectedRoutes) == 0) {
+		if(op == del) {
+			logger.Println("Cannot delete a non-existent connected route")
+			return
+		}
+	   ConnectedRoutes = make([]*ribd.Routes,1)
+	   route.Ipaddr = destNetIPAddr
+	   route.Mask = networkMaskAddr
+	   route.IfIndex = nextHopIfIndex
+	   ConnectedRoutes[0] = route
+	   return
+    }
+	for i := 0;i<len(ConnectedRoutes);i++ {
+//		if(!strings.EqualFold(ConnectedRoutes[i].Ipaddr,destNetIPAddr) && !strings.EqualFold(ConnectedRoutes[i].Mask,networkMaskAddr)){
+	    if(ConnectedRoutes[i].Ipaddr == destNetIPAddr && ConnectedRoutes[i].Mask == networkMaskAddr) {
+			if(op == del) {
+				ConnectedRoutes = append(ConnectedRoutes[:i], ConnectedRoutes[i+1:]...)
+			}
+			return 
+		}
+	}
+	if(op == del) {
+		return
+	}
+	route.Ipaddr = destNetIPAddr
+	route.Mask = networkMaskAddr
+	route.IfIndex = nextHopIfIndex
+	ConnectedRoutes = append(ConnectedRoutes, route)
+}
 func (m RouteServiceHandler) CreateV4Route( destNetIp         string, 
                                             networkMask     string, 
                                             metric          ribd.Int,
-                                            nextHopIp         string, 
+                                            nextHopIp        string, 
                                             nextHopIfIndex  ribd.Int,
                                             routeType       ribd.Int) (rc ribd.Int, err error) {
-    logger.Printf("Received create route request for ip %s mask %s\n", destNetIp, networkMask)
-	prefixLen, err := getPrefixLen(networkMask)
+//    logger.Printf("Received create route request for ip %s mask %s\n", destNetIp, networkMask)
+   destNetIpAddr, err := getIP(destNetIp)
+	if(err != nil){
+		return 0,err
+	}
+	networkMaskAddr, err := getIP(networkMask)
+	if(err != nil){
+		return 0,err
+	}
+	nextHopIpAddr, err := getIP(nextHopIp)
+	if(err != nil){
+		return 0,err
+	}
+	prefixLen, err := getPrefixLen(networkMaskAddr)
 	if(err != nil) {
 		return -1, err
 	}
-    destNet, err := getNetworkPrefix(destNetIp, networkMask)
+    destNet, err := getNetworkPrefix(destNetIpAddr, networkMaskAddr)
 	if(err != nil) {
 		return -1, err
 	}
@@ -280,17 +337,18 @@ func (m RouteServiceHandler) CreateV4Route( destNetIp         string,
 	if(err != nil){
 		return 0,err
 	}
-//	logger.Printf("routePrototype %d for routeType %d", routePrototype, routeType)
-    routeInfoRecord := RouteInfoRecord{prefixLen:prefixLen, destNetIp:destNetIp, networkMask:networkMask, protocol:routePrototype, nextHopIp:nextHopIp, nextHopIfIndex:nextHopIfIndex, metric:metric, selected:false}
-//    ok := RouteInfoMap.Match(destNet)
-//	if !ok {
+	logger.Printf("routePrototype %d for routeType %d", routePrototype, routeType)
+    routeInfoRecord := RouteInfoRecord{prefixLen:prefixLen, destNetIp:destNetIpAddr, networkMask:networkMaskAddr, protocol:routePrototype, nextHopIp:nextHopIpAddr, nextHopIfIndex:nextHopIfIndex, metric:metric, selected:false}
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
 	if(routeInfoRecordListItem == nil) {
 		var newRouteInfoList RouteInfoRecordList
-		newRouteInfoList.destNet = destNet
+		//newRouteInfoList.routeInfoList = make(map[int]RouteInfoRecord)
 		newRouteInfoList.numRoutes = 1
 		newRouteInfoList.selectedRouteIdx = routePrototype
 		routeInfoRecord.selected = true
+		for i:=0;i<PROTOCOL_LAST;i++ {
+		   newRouteInfoList.routeInfoList[i].protocol = PROTOCOL_NONE
+		}
 		newRouteInfoList.routeInfoList[routePrototype] = routeInfoRecord
 		if ok := RouteInfoMap.Insert(destNet, newRouteInfoList); ok != true {
 			logger.Println(" return value not ok")
@@ -298,7 +356,7 @@ func (m RouteServiceHandler) CreateV4Route( destNetIp         string,
 		
 		//call asicd 
 		if(asicdclnt.IsConnected) {
-			asicdclnt.ClientHdl.CreateIPv4Route(destNetIp, networkMask, nextHopIp)
+			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String())
 	   }
 	} else {
        routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList) //RouteInfoMap.Get(destNet).(RouteInfoRecordList)
@@ -306,17 +364,27 @@ func (m RouteServiceHandler) CreateV4Route( destNetIp         string,
          routeInfoRecordList.numRoutes++		
 	   }
 	   routeInfoRecordList.routeInfoList[routePrototype]=routeInfoRecord
-	  // RouteInfoMap.Set(destNet, routeInfoList)
        err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, add)
+	}
+	if(routePrototype == PROTOCOL_CONNECTED){
+		updateConnectedRoutes(destNetIp, networkMask, nextHopIfIndex,add)
 	}
     return 0, err
 }
 
-func (m RouteServiceHandler) DeleteV4Route( destNetIp         string, 
-                                            networkMask       string,
+func (m RouteServiceHandler) DeleteV4Route( destNetIp        string, 
+                                            networkMask      string,
 											  routeType       ribd.Int) (rc ribd.Int, err error) {
     logger.Println("Received Route Delete request")
-    destNet, err := getNetworkPrefix(destNetIp, networkMask)
+   destNetIpAddr, err := getIP(destNetIp)
+	if(err != nil){
+		return 0,err
+	}
+	networkMaskAddr, err := getIP(networkMask)
+	if(err != nil){
+		return 0,err
+	}
+    destNet, err := getNetworkPrefix(destNetIpAddr, networkMaskAddr)
 	if(err != nil) {
 		return -1, err
 	}
@@ -330,22 +398,38 @@ func (m RouteServiceHandler) DeleteV4Route( destNetIp         string,
 		return 0,nil
 	}
     routeInfoRecordList := RouteInfoMap.Get(destNet).(RouteInfoRecordList)
-	//delete from slice
+	//delete from map
 	routeInfoRecord := routeInfoRecordList.routeInfoList[routePrototype]
 	routeInfoRecordList.routeInfoList[routePrototype]=DummyRouteInfoRecord
+	//delete(routeInfoRecordList.routeInfoList, routePrototype)
 	routeInfoRecordList.numRoutes--
 	err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, del)
+	if(routePrototype == PROTOCOL_CONNECTED){
+		updateConnectedRoutes(destNetIp, networkMask, 0,del)
+	}
     return 0, err
 }
 
-func (m RouteServiceHandler) UpdateV4Route( destNetIp         string, 
+func (m RouteServiceHandler) UpdateV4Route( destNetIp        string,
                                             networkMask     string, 
                                             routeType       ribd.Int,
                                             nextHopIp       string, 
                                             nextHopIfIndex  ribd.Int,
                                             metric          ribd.Int) (err error) {
     logger.Println("Received update route request")
-    destNet, err := getNetworkPrefix(destNetIp, networkMask)
+   destNetIpAddr, err := getIP(destNetIp)
+	if(err != nil){
+		return err
+	}
+	networkMaskAddr, err := getIP(networkMask)
+	if(err != nil){
+		return err
+	}
+	nextHopIpAddr, err := getIP(nextHopIp)
+	if(err != nil){
+		return err
+	}
+    destNet, err := getNetworkPrefix(destNetIpAddr, networkMaskAddr)
 	if(err != nil) {
 		return err
 	}
@@ -359,7 +443,7 @@ func (m RouteServiceHandler) UpdateV4Route( destNetIp         string,
        err = errors.New("No route found")
 	   return err
 	}
-    routeInfoRecord := RouteInfoRecord{protocol:routePrototype, nextHopIp:nextHopIp, nextHopIfIndex:nextHopIfIndex, metric:metric, selected:false}
+    routeInfoRecord := RouteInfoRecord{protocol:routePrototype, nextHopIp:nextHopIpAddr, nextHopIfIndex:nextHopIfIndex, metric:metric, selected:false}
     routeInfoRecordList := RouteInfoMap.Get(destNet).(RouteInfoRecordList)
 	routeInfoRecord.selected = routeInfoRecordList.routeInfoList[routePrototype].selected
 	routeInfoRecordList.routeInfoList[routePrototype] = routeInfoRecord
@@ -376,7 +460,7 @@ func printRoutesInfo(prefix patriciaDB.Prefix, item patriciaDB.Item) (err error)
 	   if(v.protocol == PROTOCOL_NONE) {
 		continue
 	}
-      logger.Printf("%v-> %s %s %d %d\n", prefix, v.destNetIp, v.networkMask, v.protocol, v.selected)
+      logger.Printf("%v-> %d %d %d %d\n", prefix, v.destNetIp, v.networkMask, v.protocol, v.selected)
 		count++
     }
 	return nil
@@ -472,7 +556,8 @@ func CreateRoutes(routeFile string){
 */
 
 func NewRouteServiceHandler () *RouteServiceHandler {
-	configFile := "params/clients.json"
+   DummyRouteInfoRecord.protocol = PROTOCOL_NONE
+   configFile := "params/clients.json"
 	ConnectToClients(configFile)
 	//CreateRoutes("RouteSetup.json")
     return &RouteServiceHandler{}
