@@ -1,7 +1,7 @@
 namespace go ribd
 typedef i32 int
 struct NextHopInfo {
-    1: binary NextHopIp,
+    1: string NextHopIp,
     2: int NextHopIfIndex,
 	3: int Metric,
 }

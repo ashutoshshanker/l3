@@ -228,7 +228,7 @@ func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIn
      for _,v := range rmapInfoList.routeInfoList {
 	    if(v.protocol != PROTOCOL_NONE || v.selected == true) {
            nextHopIntf.NextHopIfIndex = v.nextHopIfIndex
-		   nextHopIntf.NextHopIp = v.nextHopIp
+		   nextHopIntf.NextHopIp = v.nextHopIp.String()
 		   nextHopIntf.Metric = v.metric
 		   found = true
 		   break
