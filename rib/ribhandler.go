@@ -42,19 +42,17 @@ const (
 )
 
 type RouteInfoRecord struct {
-   prefixLen                int
    destNetIp				 net.IP//string
    networkMask              net.IP//string
-   protocol                int
    nextHopIp               net.IP
    nextHopIfIndex          ribd.Int 
    metric                  ribd.Int
-   selected                bool
+   protocol                int8
 }
+//implement priority queue of the routes
 type RouteInfoRecordList struct {
-   numRoutes                int
-   selectedRouteIdx         int
-   routeInfoList            [PROTOCOL_LAST] RouteInfoRecord//map[int]RouteInfoRecord	
+   selectedRouteIdx         int8
+   routeInfoList            [] RouteInfoRecord//map[int]RouteInfoRecord	
 }
 
 type ClientJson struct {
@@ -78,7 +76,7 @@ var count int
 var ConnectedRoutes []*ribd.Routes
 
 
-func setProtocol(routeType    ribd.Int) (proto int, err error) {
+func setProtocol(routeType    ribd.Int) (proto int8, err error) {
 	err=nil
 	switch(routeType) {
 		case ribdCommonDefs.CONNECTED:
@@ -97,11 +95,6 @@ func setProtocol(routeType    ribd.Int) (proto int, err error) {
 }
 
 func getSelectedRoute(routeInfoRecordList RouteInfoRecordList) (routeInfoRecord RouteInfoRecord, err error) {
-/*   for _,routeInfoRecord = range routeInfoRecordList.routeInfoList {
-	   if(routeInfoRecord.selected) { 
-	     return routeInfoRecord, nil
-	 }
-   }*/
    if(routeInfoRecordList.selectedRouteIdx == PROTOCOL_NONE) {
       err = errors.New("No route selected")
 	} else {
@@ -113,48 +106,50 @@ func getSelectedRoute(routeInfoRecordList RouteInfoRecordList) (routeInfoRecord 
 func SelectV4Route( destNet     patriciaDB.Prefix,         
                     routeInfoRecordList RouteInfoRecordList,
 					 routeInfoRecord RouteInfoRecord,
-					 op          ribd.Int) ( err error) {
+					 op          ribd.Int,
+					 index       int) ( err error) {
 	var routeInfoRecordNew RouteInfoRecord
 	var routeInfoRecordOld RouteInfoRecord
 	var routeInfoRecordTemp RouteInfoRecord
-	var i int
- //    logger.Printf("Selecting the best Route for destNet %v\n", destNet)
+	var i int8
+    logger.Printf("Selecting the best Route for destNet %v, index = %d\n", destNet, index)
      if(op == add) {
 		selectedRoute, err := getSelectedRoute(routeInfoRecordList)
 		if( err == nil && routeInfoRecord.protocol < selectedRoute.protocol) { 
-			selectedRoute.selected = false
-			routeInfoRecordList.routeInfoList[selectedRoute.protocol] = selectedRoute
+			routeInfoRecordList.routeInfoList[routeInfoRecordList.selectedRouteIdx] = selectedRoute
 			routeInfoRecordOld = selectedRoute
-			routeInfoRecord.selected = true
-			routeInfoRecordList.routeInfoList[routeInfoRecord.protocol] = routeInfoRecord
+			routeInfoRecordList.routeInfoList[index] = routeInfoRecord
 			routeInfoRecordNew = routeInfoRecord
-			routeInfoRecordList.selectedRouteIdx = routeInfoRecord.protocol
+			routeInfoRecordList.selectedRouteIdx = int8(index)
+			logger.Printf("new selected route idx = %d\n", routeInfoRecordList.selectedRouteIdx)
 	   }
 	 }	else if(op == del) {
-		logger.Println(" in del")
-		if(routeInfoRecordList.numRoutes == 0) {
+		logger.Println(" in del index selectedrouteIndex", index, routeInfoRecordList.selectedRouteIdx)
+		if(len(routeInfoRecordList.routeInfoList) == 0) {
 	  	   logger.Println(" in del,numRoutes now 0, so delete the node")
 			RouteInfoMap.Delete(destNet)
 			return nil
 		}
 		routeInfoRecordOld = routeInfoRecord
-		if(routeInfoRecord.protocol == routeInfoRecordList.selectedRouteIdx) {
-		  for i =0; i<PROTOCOL_LAST; i++ {
-		//	routeInfoRecordTemp, ok := routeInfoRecordList.routeInfoList[i]
+		if(int8(index) == routeInfoRecordList.selectedRouteIdx) {
+		  for i =0; i<int8(len(routeInfoRecordList.routeInfoList)); i++ {
 			routeInfoRecordTemp = routeInfoRecordList.routeInfoList[i]
-			if(i == routeInfoRecord.protocol) {//if(ok != true || i==routeInfoRecord.protocol) {
+			if(i == int8(index)) {//if(ok != true || i==routeInfoRecord.protocol) {
 				continue
 			}
 			logger.Printf("temp protocol=%d", routeInfoRecordTemp.protocol)
 			if(routeInfoRecordTemp.protocol != PROTOCOL_NONE) {
 				logger.Printf(" selceting protocol %d", routeInfoRecordTemp.protocol)
-				routeInfoRecordTemp.selected = true
 				routeInfoRecordList.routeInfoList[i] = routeInfoRecordTemp
                routeInfoRecordNew = routeInfoRecordTemp
 			    routeInfoRecordList.selectedRouteIdx = i
 				break;
 			}
 		  }
+		} else {
+			if(routeInfoRecordList.selectedRouteIdx > int8(index)) {
+				routeInfoRecordList.selectedRouteIdx--
+			}
 		}
 	 }
 	//update the patriciaDB trie with the updated route info record list
@@ -225,15 +220,13 @@ func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIn
   rmapInfoListItem := RouteInfoMap.GetLongestPrefixNode(patriciaDB.Prefix(destNetIp))
   if(rmapInfoListItem != nil) {
      rmapInfoList := rmapInfoListItem.(RouteInfoRecordList)
-     for _,v := range rmapInfoList.routeInfoList {
-	    if(v.protocol != PROTOCOL_NONE || v.selected == true) {
-           nextHopIntf.NextHopIfIndex = v.nextHopIfIndex
-		   nextHopIntf.NextHopIp = v.nextHopIp.String()
-		   nextHopIntf.Metric = v.metric
-		   found = true
-		   break
-	   }
-     }
+	if(rmapInfoList.selectedRouteIdx != PROTOCOL_NONE) {
+	  found = true
+	  v := rmapInfoList.routeInfoList[rmapInfoList.selectedRouteIdx]
+      nextHopIntf.NextHopIfIndex = v.nextHopIfIndex
+	  nextHopIntf.NextHopIp = v.nextHopIp.String()
+	  nextHopIntf.Metric = v.metric
+	}
    }
 	
    if(found == false) {
@@ -306,6 +299,18 @@ func updateConnectedRoutes(destNetIPAddr string, networkMaskAddr string, nextHop
 	route.IfIndex = nextHopIfIndex
 	ConnectedRoutes = append(ConnectedRoutes, route)
 }
+func IsRoutePresent( routeInfoRecordList RouteInfoRecordList,
+					  routePrototype int8) (found bool, i int) {
+   for i:=0; i<len(routeInfoRecordList.routeInfoList);i++ {
+	logger.Printf("len = %d i=%d routePrototype=%d\n", len(routeInfoRecordList.routeInfoList), i, routeInfoRecordList.routeInfoList[i].protocol)
+	   if(routeInfoRecordList.routeInfoList[i].protocol == routePrototype){
+		  found = true
+		  return true, i
+	   }
+	}
+	logger.Printf("retiurnong i = %d\n", i)
+	return found, i
+}
 func (m RouteServiceHandler) CreateV4Route( destNetIp         string, 
                                             networkMask     string, 
                                             metric          ribd.Int,
@@ -325,10 +330,10 @@ func (m RouteServiceHandler) CreateV4Route( destNetIp         string,
 	if(err != nil){
 		return 0,err
 	}
-	prefixLen, err := getPrefixLen(networkMaskAddr)
+/*	prefixLen, err := getPrefixLen(networkMaskAddr)
 	if(err != nil) {
 		return -1, err
-	}
+	}*/
     destNet, err := getNetworkPrefix(destNetIpAddr, networkMaskAddr)
 	if(err != nil) {
 		return -1, err
@@ -338,33 +343,27 @@ func (m RouteServiceHandler) CreateV4Route( destNetIp         string,
 		return 0,err
 	}
 	logger.Printf("routePrototype %d for routeType %d", routePrototype, routeType)
-    routeInfoRecord := RouteInfoRecord{prefixLen:prefixLen, destNetIp:destNetIpAddr, networkMask:networkMaskAddr, protocol:routePrototype, nextHopIp:nextHopIpAddr, nextHopIfIndex:nextHopIfIndex, metric:metric, selected:false}
+    routeInfoRecord := RouteInfoRecord{ destNetIp:destNetIpAddr, networkMask:networkMaskAddr, protocol:routePrototype, nextHopIp:nextHopIpAddr, nextHopIfIndex:nextHopIfIndex, metric:metric}
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
 	if(routeInfoRecordListItem == nil) {
-		var newRouteInfoList RouteInfoRecordList
-		//newRouteInfoList.routeInfoList = make(map[int]RouteInfoRecord)
-		newRouteInfoList.numRoutes = 1
-		newRouteInfoList.selectedRouteIdx = routePrototype
-		routeInfoRecord.selected = true
-		for i:=0;i<PROTOCOL_LAST;i++ {
-		   newRouteInfoList.routeInfoList[i].protocol = PROTOCOL_NONE
-		}
-		newRouteInfoList.routeInfoList[routePrototype] = routeInfoRecord
-		if ok := RouteInfoMap.Insert(destNet, newRouteInfoList); ok != true {
+		var newRouteInfoRecordList RouteInfoRecordList
+		newRouteInfoRecordList.routeInfoList = make([]RouteInfoRecord, 0)
+		newRouteInfoRecordList.routeInfoList = append(newRouteInfoRecordList.routeInfoList, routeInfoRecord)
+		newRouteInfoRecordList.selectedRouteIdx = 0
+		if ok := RouteInfoMap.Insert(destNet, newRouteInfoRecordList); ok != true {
 			logger.Println(" return value not ok")
 		}
-		
 		//call asicd 
 		if(asicdclnt.IsConnected) {
 			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String())
 	   }
 	} else {
        routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList) //RouteInfoMap.Get(destNet).(RouteInfoRecordList)
-	   if(routeInfoRecordList.routeInfoList[routePrototype].protocol == PROTOCOL_NONE) {
-         routeInfoRecordList.numRoutes++		
-	   }
-	   routeInfoRecordList.routeInfoList[routePrototype]=routeInfoRecord
-       err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, add)
+       found,_ := IsRoutePresent(routeInfoRecordList, routePrototype)
+	   if(!found){
+        routeInfoRecordList.routeInfoList = append(routeInfoRecordList.routeInfoList, routeInfoRecord)
+        err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, add, len(routeInfoRecordList.routeInfoList) - 1)
+       } 
 	}
 	if(routePrototype == PROTOCOL_CONNECTED){
 		updateConnectedRoutes(destNetIp, networkMask, nextHopIfIndex,add)
@@ -397,13 +396,19 @@ func (m RouteServiceHandler) DeleteV4Route( destNetIp        string,
 	if(!ok) {
 		return 0,nil
 	}
-    routeInfoRecordList := RouteInfoMap.Get(destNet).(RouteInfoRecordList)
-	//delete from map
-	routeInfoRecord := routeInfoRecordList.routeInfoList[routePrototype]
-	routeInfoRecordList.routeInfoList[routePrototype]=DummyRouteInfoRecord
-	//delete(routeInfoRecordList.routeInfoList, routePrototype)
-	routeInfoRecordList.numRoutes--
-	err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, del)
+    routeInfoRecordListItem := RouteInfoMap.Get(destNet)
+	if(routeInfoRecordListItem == nil){
+		return 0, err
+	}
+    routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
+	found, i := IsRoutePresent(routeInfoRecordList, routePrototype)
+	if(!found) {
+		logger.Println("Route not found")
+		return 0, err
+	}
+	routeInfoRecord := routeInfoRecordList.routeInfoList[i]
+	routeInfoRecordList.routeInfoList =  append(routeInfoRecordList.routeInfoList[:i], routeInfoRecordList.routeInfoList[i+1:]...)
+	err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, del, int(i))
 	if(routePrototype == PROTOCOL_CONNECTED){
 		updateConnectedRoutes(destNetIp, networkMask, 0,del)
 	}
@@ -443,24 +448,33 @@ func (m RouteServiceHandler) UpdateV4Route( destNetIp        string,
        err = errors.New("No route found")
 	   return err
 	}
-    routeInfoRecord := RouteInfoRecord{protocol:routePrototype, nextHopIp:nextHopIpAddr, nextHopIfIndex:nextHopIfIndex, metric:metric, selected:false}
-    routeInfoRecordList := RouteInfoMap.Get(destNet).(RouteInfoRecordList)
-	routeInfoRecord.selected = routeInfoRecordList.routeInfoList[routePrototype].selected
-	routeInfoRecordList.routeInfoList[routePrototype] = routeInfoRecord
+    routeInfoRecord := RouteInfoRecord{protocol:routePrototype, nextHopIp:nextHopIpAddr, nextHopIfIndex:nextHopIfIndex, metric:metric}
+    routeInfoRecordListItem := RouteInfoMap.Get(destNet)
+	if(routeInfoRecordListItem == nil) {
+		logger.Println("No route for destination network")
+		return err
+	}
+	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
+	found, i := IsRoutePresent(routeInfoRecordList, routePrototype)
+	if(!found) {
+		logger.Println("No entry present for this destination and protocol")
+		return err
+	}
+	routeInfoRecordList.routeInfoList[i] = routeInfoRecord
     RouteInfoMap.Set(destNet, routeInfoRecordList)
-	if(routeInfoRecord.selected == true) {
+	if(routeInfoRecordList.selectedRouteIdx == int8(i)) {
 		//call asicd to update info
 	}
     return err
 }
 
 func printRoutesInfo(prefix patriciaDB.Prefix, item patriciaDB.Item) (err error) {
-    rmapInfoList := item.(RouteInfoRecordList)
-	for _,v := range rmapInfoList.routeInfoList {
+    rmapInfoRecordList := item.(RouteInfoRecordList)
+	for _,v := range rmapInfoRecordList.routeInfoList {
 	   if(v.protocol == PROTOCOL_NONE) {
 		continue
 	}
-      logger.Printf("%v-> %d %d %d %d\n", prefix, v.destNetIp, v.networkMask, v.protocol, v.selected)
+   //   logger.Printf("%v-> %d %d %d %d\n", prefix, v.destNetIp, v.networkMask, v.protocol)
 		count++
     }
 	return nil
