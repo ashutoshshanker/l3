@@ -25,5 +25,6 @@ func CreateIPCHandles(address string) (thrift.TTransport, *thrift.TBinaryProtoco
 }
 
 func NewARPServiceHandler () *ARPServiceHandler {
+    initARPhandlerParams()
    return &ARPServiceHandler{}
 }
