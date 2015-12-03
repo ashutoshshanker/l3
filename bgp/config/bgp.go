@@ -64,6 +64,28 @@ type NeighborState struct {
 	Queues Queues
 }
 
+type TransportConfig struct {
+	TcpMss uint16
+	MTUDiscovery bool
+	PassiveMode bool
+	LocalAddress net.IP
+}
+
+type TransportState struct {
+	TcpMss uint16
+	MTUDiscovery bool
+	PassiveMode bool
+	LocalAddress net.IP
+	LocalPort uint16
+	RemoteAddress net.IP
+	RemotePort net.IP
+}
+
+type Transport struct {
+	Config TransportConfig
+	State TransportState
+}
+
 type PeerCommand struct {
     IP net.IP
     Command int
@@ -73,6 +95,7 @@ type Neighbor struct {
 	NeighborAddress net.IP
 	Config NeighborConfig
 	State NeighborState
+	Transport Transport
 }
 
 type Neighbors struct {

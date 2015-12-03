@@ -10,40 +10,43 @@ import (
 )
 
 type Path struct {
+	server *BGPServer
 	logger *syslog.Writer
 	peer *Peer
-	nlri packet.IPPrefix
 	pathAttrs []packet.BGPPathAttr
 	withdrawn bool
 	updated bool
-	Pref int64
-
+	Pref uint32
 	NextHop string
 	NextHopIfIdx ribd.Int
 	Metric ribd.Int
+	local bool
 }
 
-func NewPath(logger *syslog.Writer, peer *Peer, nlri packet.IPPrefix, pa []packet.BGPPathAttr, withdrawn bool, updated bool) *Path {
+func NewPath(server *BGPServer, peer *Peer, pa []packet.BGPPathAttr, withdrawn bool, updated bool, local bool) *Path {
 	path := &Path{
-		logger: logger,
+		server: server,
+		logger: server.logger,
 		peer: peer,
-		nlri: nlri,
 		pathAttrs: pa,
 		withdrawn: withdrawn,
 		updated: updated,
+		local: local,
 	}
 
 	path.Pref = path.calculatePref()
 	return path
 }
 
-func (p *Path) calculatePref() int64 {
-	var pref int64
-	if p.peer.IsInternal() {
+func (p *Path) calculatePref() uint32 {
+	var pref uint32
+	if p.local {
+		pref = BGP_INTERNAL_PREF
+	} else if p.peer.IsInternal() {
 		pref = BGP_INTERNAL_PREF
 		for _, attr := range p.pathAttrs {
 			if attr.GetCode() == packet.BGPPathAttrTypeLocalPref {
-				pref = int64(attr.(*packet.BGPPathAttrLocalPref).Value)
+				pref = attr.(*packet.BGPPathAttrLocalPref).Value
 				break
 			}
 		}
@@ -76,8 +79,12 @@ func (p *Path) IsUpdated() bool {
 	return p.updated
 }
 
-func (p *Path) GetPreference() int64 {
+func (p *Path) GetPreference() uint32 {
 	return p.Pref
+}
+
+func (p *Path) IsLocal() bool {
+	return p.local
 }
 
 func (p *Path) GetNumASes() uint32 {
@@ -118,13 +125,27 @@ func (p *Path) GetNextHop() net.IP {
 	return net.IPv4zero
 }
 
-func (p *Path) SetReachabilityInfo(nhInfo *ribd.NextHopInfo) {
-	p.NextHop = nhInfo.NextHopIp
-	if p.NextHop == "" || p.NextHop[0] == '0' {
-		p.logger.Info(fmt.Sprintf("Next hop for %s is %s. Using %s as the next hop", p.nlri.Prefix.String(),
-									p.NextHop, p.GetNextHop().String()))
-		p.NextHop = p.GetNextHop().String()
+func (p *Path) GetReachabilityInfo() {
+	ipStr := p.GetNextHop().String()
+	reachabilityInfo, err := p.server.ribdClient.GetRouteReachabilityInfo(ipStr)
+	if err != nil {
+		p.logger.Info(fmt.Sprintf("NEXT_HOP[%s] is not reachable", ipStr))
+		p.NextHop = ""
+		return
 	}
-	p.NextHopIfIdx = nhInfo.NextHopIfIndex
-	p.Metric = nhInfo.Metric
+	p.NextHop = reachabilityInfo.NextHopIp
+	if p.NextHop == "" || p.NextHop[0] == '0' {
+		p.logger.Info(fmt.Sprintf("Next hop for %s is %s. Using %s as the next hop", ipStr, p.NextHop, ipStr))
+		p.NextHop = ipStr
+	}
+	p.NextHopIfIdx = reachabilityInfo.NextHopIfIndex
+	p.Metric = reachabilityInfo.Metric
+}
+
+func (p *Path) IsReachable() bool {
+	if p.NextHop != "" {
+		return true
+	}
+
+	return false
 }

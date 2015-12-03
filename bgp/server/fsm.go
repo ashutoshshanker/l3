@@ -655,10 +655,12 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 func (st *EstablishedState) enter() {
 	st.logger.Info(fmt.Sprintln("EstablishedState: enter"))
 	st.fsm.SetIdleHoldTime(BGPIdleHoldTimeDefault)
+	st.fsm.ConnEstablished()
 }
 
 func (st *EstablishedState) leave() {
 	st.logger.Info(fmt.Sprintln("EstablishedState: leave"))
+	st.fsm.ConnBroken()
 }
 
 func (st *EstablishedState) state() BGPFSMState {
@@ -696,7 +698,6 @@ type FSM struct {
 	inConnCh     chan net.Conn
 	connInProgress bool
 
-	conn  net.Conn
 	event BGPFSMEvent
 
 	connectRetryCounter int
@@ -720,6 +721,7 @@ type FSM struct {
 	delayOpenTime  uint16
 	delayOpenTimer *time.Timer
 
+	pktTxCh    chan *packet.BGPMessage
 	pktRxCh    chan *packet.BGPPktInfo
 	eventRxCh  chan BGPFSMEvent
 	rxPktsFlag bool
@@ -747,6 +749,8 @@ func NewFSM(fsmManager *FSMManager, connDir config.ConnDir, gConf *config.Global
 		dampPeerOscl:     true,
 		idleHoldTime:     BGPIdleHoldTimeDefault,
 	}
+
+	fsm.pktTxCh = make(chan *packet.BGPMessage)
 	fsm.pktRxCh = make(chan *packet.BGPPktInfo)
 	fsm.eventRxCh = make(chan BGPFSMEvent)
 	fsm.connectRetryTimer = time.NewTimer(time.Duration(fsm.connectRetryTime) * time.Second)
@@ -759,10 +763,6 @@ func NewFSM(fsmManager *FSMManager, connDir config.ConnDir, gConf *config.Global
 	fsm.keepAliveTimer.Stop()
 	fsm.idleHoldTimer.Stop()
 	return &fsm
-}
-
-func (fsm *FSM) SetConn(conn net.Conn) {
-	fsm.conn = conn
 }
 
 func (fsm *FSM) StartFSM(state BaseStateIface) {
@@ -784,6 +784,14 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 		case inConnCh := <-fsm.inConnCh:
 			in := PeerConnDir{config.ConnDirOut, &inConnCh}
 			fsm.ProcessEvent(BGPEventTcpConnConfirmed, in)
+
+		case bgpMsg := <-fsm.pktTxCh:
+			if fsm.State.state() != BGPFSMEstablished {
+				fsm.logger.Info(fmt.Sprintln("Peer[%s] FSM is not in Established state, can't send the UPDATE message",
+											fsm.pConf.NeighborAddress))
+				continue
+			}
+			fsm.sendUpdateMessage(bgpMsg)
 
 		case bgpPktInfo := <-fsm.pktRxCh:
 			fsm.ProcessPacket(bgpPktInfo.Msg, bgpPktInfo.MsgError)
@@ -952,7 +960,18 @@ func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 }
 
 func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {
-	fsm.Manager.Peer.Server.BGPPktSrc <- packet.NewBGPPktSrc(fsm.Manager.Peer.Peer.NeighborAddress.String(), pkt)
+	fsm.logger.Info(fmt.Sprintln("ProcessUpdateMessag: Received a packet from", fsm.Manager.Peer.Neighbor.NeighborAddress.String()))
+	fsm.Manager.Peer.Server.BGPPktSrc <- packet.NewBGPPktSrc(fsm.Manager.Peer.Neighbor.NeighborAddress.String(), pkt)
+}
+
+func (fsm *FSM) sendUpdateMessage(bgpMsg *packet.BGPMessage) {
+	packet, _ := bgpMsg.Encode()
+	num, err := (*fsm.peerConn.conn).Write(packet)
+	if err != nil {
+		fsm.logger.Info(fmt.Sprintln("Conn.Write failed to send Update message with error:", err))
+	}
+	fsm.logger.Info(fmt.Sprintln("Conn.Write succeeded. sent Update message of", num, "bytes"))
+	fsm.StartKeepAliveTimer()
 }
 
 func (fsm *FSM) sendOpenMessage() {
@@ -1023,6 +1042,14 @@ func (fsm *FSM) stopRxPkts() {
 		fsm.rxPktsFlag = false
 		fsm.peerConn.StopReading()
 	}
+}
+
+func (fsm *FSM) ConnEstablished() {
+	fsm.Manager.PeerConnEstablished(fsm.peerConn.conn)
+}
+
+func (fsm *FSM) ConnBroken() {
+	fsm.Manager.PeerConnBroken()
 }
 
 func (fsm *FSM) AcceptPeerConn() {
