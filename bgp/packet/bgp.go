@@ -121,7 +121,7 @@ const (
 type BGPASPathSegmentType uint8
 
 const (
-	BGPASPathSet BGPASPathSegmentType = iota
+	BGPASPathSet BGPASPathSegmentType = iota + 1
 	BGPASPathSequence
 )
 
@@ -293,8 +293,9 @@ type IPPrefix struct	 {
 
 func (ip *IPPrefix) Encode() ([]byte, error) {
 	pkt := make([]byte, ip.Len())
-	pkt[0] = uint8(ip.Len()) - 1
-	copy(pkt, ip.Prefix[:pkt[0]])
+	pkt[0] = ip.Length
+	ipBytesStart := uint8(cap(ip.Prefix) - 4)
+	copy(pkt[1:], ip.Prefix[ipBytesStart:ipBytesStart + ((ip.Length + 7) / 8)])
 	return pkt, nil
 }
 
@@ -311,6 +312,13 @@ func (ip *IPPrefix) Decode(pkt []byte) error {
 
 func	 (ip *IPPrefix) Len() uint32	{
 	return uint32(((ip.Length + 7) / 8) + 1)
+}
+
+func NewIPPrefix(prefix net.IP, length uint8) *IPPrefix {
+	return &IPPrefix {
+		Length: length,
+		Prefix: prefix,
+	}
 }
 
 type BGPPathAttr interface {
@@ -437,6 +445,20 @@ func (o *BGPPathAttrOrigin) Decode(pkt []byte) error {
 	return nil
 }
 
+func NewBGPPathAttrOrigin(originType BGPPathAttrOriginType) *BGPPathAttrOrigin {
+	origin := &BGPPathAttrOrigin {
+		BGPPathAttrBase: BGPPathAttrBase {
+			Flags: 0x40,
+			Code: BGPPathAttrTypeOrigin,
+			Length: 1,
+			BGPPathAttrLen: 3,
+		},
+		Value: originType,
+	}
+
+	return origin
+}
+
 type BGPASPathSegment struct {
 	Type BGPASPathSegmentType
 	Length uint8
@@ -473,6 +495,29 @@ func (ps *BGPASPathSegment) Decode(pkt []byte) error {
 	}
 	ps.BGPASPathSegmentLen = uint16(ps.Length * 2 + 2)
 	return nil
+}
+
+func (ps *BGPASPathSegment) PrependAS(as uint16) bool {
+	if ps.Length >= 255 {
+		return false
+	}
+
+	ps.AS = append(ps.AS, as)
+	copy(ps.AS[1:], ps.AS[0:])
+	ps.AS[0] = as
+	ps.Length += 1
+	ps.BGPASPathSegmentLen += 2
+	return true
+}
+
+func NewBGPASPathSegmentSeq() *BGPASPathSegment{
+	as := make([]uint16, 0)
+	return &BGPASPathSegment {
+		Type: BGPASPathSequence,
+		Length: 0,
+		AS: as,
+		BGPASPathSegmentLen: 2,
+	}
 }
 
 type BGPPathAttrASPath struct {
@@ -524,6 +569,26 @@ func (as *BGPPathAttrASPath) Decode(pkt []byte) error {
 	return nil
 }
 
+func (as *BGPPathAttrASPath) AddASPathSegment(pathSeg *BGPASPathSegment) {
+	as.Value = append(as.Value, *pathSeg)
+	copy(as.Value[1:], as.Value[0:])
+	as.Value[0] = *pathSeg
+	as.BGPPathAttrBase.Length += pathSeg.BGPASPathSegmentLen
+}
+
+func NewBGPPathAttrASPath() *BGPPathAttrASPath {
+	asPath := &BGPPathAttrASPath {
+		BGPPathAttrBase: BGPPathAttrBase {
+			Flags: 0x50,
+			Code: BGPPathAttrTypeASPath,
+		},
+		Value: make([]BGPASPathSegment, 0),
+	}
+	asPath.BGPPathAttrBase.Length = 0
+	asPath.BGPPathAttrBase.BGPPathAttrLen = 4
+	return asPath
+}
+
 type BGPPathAttrNextHop struct {
 	BGPPathAttrBase
 	Value net.IP
@@ -535,7 +600,7 @@ func (n *BGPPathAttrNextHop) Encode() ([]byte, error) {
 		return pkt, err
 	}
 
-	copy(pkt[n.BGPPathAttrBase.BGPPathAttrLen:], n.Value)
+	copy(pkt[n.BGPPathAttrBase.BGPPathAttrLen:], n.Value[cap(n.Value) - int(n.Length):])
 	return pkt, nil
 }
 
@@ -550,6 +615,17 @@ func (n *BGPPathAttrNextHop) Decode(pkt []byte) error {
 	return nil
 }
 
+func NewBGPPathAttrNextHop() *BGPPathAttrNextHop {
+	return &BGPPathAttrNextHop {
+		BGPPathAttrBase: BGPPathAttrBase{
+			Flags: 0x40,
+			Code: BGPPathAttrTypeNextHop,
+			Length: 4,
+			BGPPathAttrLen: 3,
+		},
+		Value: net.IP{},
+	}
+}
 type BGPPathAttrMultiExitDisc struct {
 	BGPPathAttrBase
 	Value uint32
@@ -600,6 +676,16 @@ func (l *BGPPathAttrLocalPref) Decode(pkt []byte) error {
 	return nil
 }
 
+func NewBGPPathAttrLocalPref() *BGPPathAttrLocalPref {
+	return &BGPPathAttrLocalPref{
+		BGPPathAttrBase: BGPPathAttrBase{
+			Flags: BGPPathAttrFlagTransitive,
+			Code: BGPPathAttrTypeLocalPref,
+			Length: 4,
+			BGPPathAttrLen: 3,
+		},
+	}
+}
 type BGPPathAttrAtomicAggregate struct {
 	BGPPathAttrBase
 }

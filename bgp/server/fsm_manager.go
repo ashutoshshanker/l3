@@ -124,6 +124,18 @@ func (fsmManager *FSMManager) RejectPeerConn() {
 	fsmManager.acceptConn = false
 }
 
+func (fsmManager *FSMManager) PeerConnEstablished(conn *net.Conn) {
+	fsmManager.Peer.PeerConnEstablished(conn)
+}
+
+func (fsmManager *FSMManager) PeerConnBroken() {
+	fsmManager.Peer.PeerConnBroken()
+}
+
 func (fsmManager *FSMManager) SetBGPId(bgpId uint32) {
 	fsmManager.Peer.SetBGPId(bgpId)
+}
+
+func (mgr *FSMManager) SendUpdateMsg(bgpMsg *packet.BGPMessage) {
+	mgr.fsms[config.ConnDirOut].pktTxCh <- bgpMsg
 }
