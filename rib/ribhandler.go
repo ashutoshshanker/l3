@@ -4,8 +4,8 @@ import (
 	"arpd"
 	"asicdServices"
 	"encoding/json"
-	"l3/rib/ribdCommonDefs"
 	"infra/portd/portdCommonDefs"
+	"l3/rib/ribdCommonDefs"
 	"ribd"
 	"utils/patriciaDB"
 	//		"patricia"
@@ -178,8 +178,8 @@ func SelectV4Route(destNet patriciaDB.Prefix,
 		if asicdclnt.IsConnected {
 			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String())
 			//call arpd to resolve the ip
-			//arpdclnt.ClientHdl.RestolveArpIPV4(routeInfoRecord.destNetIp.String(),arpd.Int(routeInfoRecord.nextHopIfType), pd.Int(arrouteInfoRecord.nextHopIfIndex))
-			arpdclnt.ClientHdl.RestolveArpIPV4(routeInfoRecord.destNetIp.String(), arpd.Int(routeInfoRecord.nextHopIfIndex))
+			arpdclnt.ClientHdl.RestolveArpIPV4(routeInfoRecord.destNetIp.String(), arpd.Int(routeInfoRecord.nextHopIfType), arpd.Int(routeInfoRecord.nextHopIfIndex))
+			//arpdclnt.ClientHdl.RestolveArpIPV4(routeInfoRecord.destNetIp.String(), arpd.Int(routeInfoRecord.nextHopIfIndex))
 		}
 	}
 	return nil
@@ -357,7 +357,7 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 		return 0, err
 	}
 	logger.Printf("routePrototype %d for routeType %d", routePrototype, routeType)
-	routeInfoRecord := RouteInfoRecord{destNetIp: destNetIpAddr, networkMask: networkMaskAddr, protocol: routePrototype, nextHopIp: nextHopIpAddr, nextHopIfType:portdCommonDefs.VLAN,nextHopIfIndex: nextHopIfIndex, metric: metric}
+	routeInfoRecord := RouteInfoRecord{destNetIp: destNetIpAddr, networkMask: networkMaskAddr, protocol: routePrototype, nextHopIp: nextHopIpAddr, nextHopIfType: portdCommonDefs.VLAN, nextHopIfIndex: nextHopIfIndex, metric: metric}
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
 	if routeInfoRecordListItem == nil {
 		var newRouteInfoRecordList RouteInfoRecordList
@@ -433,7 +433,7 @@ func (m RouteServiceHandler) UpdateV4Route(destNetIp string,
 	networkMask string,
 	routeType ribd.Int,
 	nextHopIp string,
-//	nextHopIfType ribd.Int,
+	//	nextHopIfType ribd.Int,
 	nextHopIfIndex ribd.Int,
 	metric ribd.Int) (err error) {
 	logger.Println("Received update route request")
@@ -523,10 +523,10 @@ func CreateIPCHandles(address string) (thrift.TTransport, *thrift.TBinaryProtoco
 	return transport, protocolFactory
 }
 
-func connectToClient(client ClientJson) () {
+func connectToClient(client ClientJson) {
 	var timer *time.Timer
 	logger.Printf("in go routine ConnectToClient for connecting to %s\n", client.Name)
-	for ;; {
+	for {
 		timer = time.NewTimer(time.Second * 10)
 		<-timer.C
 		if client.Name == "asicd" {
@@ -537,9 +537,9 @@ func connectToClient(client ClientJson) () {
 				logger.Println("connecting to asicd")
 				asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
-			    timer.Stop()
-			    return
-			} 
+				timer.Stop()
+				return
+			}
 		}
 		if client.Name == "arpd" {
 			logger.Printf("found arpd at port %d", client.Port)
@@ -549,8 +549,8 @@ func connectToClient(client ClientJson) () {
 				logger.Println("connecting to arpd")
 				arpdclnt.ClientHdl = arpd.NewARPServiceClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
-			    timer.Stop()
-			    return
+				timer.Stop()
+				return
 			}
 		}
 	}

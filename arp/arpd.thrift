@@ -3,5 +3,5 @@ typedef i32 int
 
 service ARPService
 {
-    int RestolveArpIPV4(1:string destNetIp, 2:int vlanid);
+    int RestolveArpIPV4(1:string destNetIp,2:int iftype, 3:int vlanid);
 }
