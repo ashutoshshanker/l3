@@ -22,7 +22,7 @@ func StartServer(logger *syslog.Writer, handler *BGPHandler, port string) {
 	logger.Info(fmt.Sprintln("Starting the BGP config listener"))
 	err = server.Serve()
 	if err != nil {
-		logger.Info(fmt.Sprintln("Failed to start the listener"))
+		logger.Info(fmt.Sprintln("Failed to start the listener, err:", err))
 	}
 	logger.Info(fmt.Sprintln("Start the listener successfully"))
 	return

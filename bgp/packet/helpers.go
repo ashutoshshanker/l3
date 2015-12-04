@@ -2,7 +2,6 @@
 package packet
 
 import (
-	"fmt"
 	"net"
 )
 
@@ -96,7 +95,7 @@ func SetNextHop(updateMsg *BGPMessage, nextHop net.IP) {
 	}
 }
 
-func ConstructPathAttrForConnRoutes() []BGPPathAttr {
+func ConstructPathAttrForConnRoutes(ip net.IP) []BGPPathAttr {
 	pathAttrs := make([]BGPPathAttr, 0)
 
 	origin := NewBGPPathAttrOrigin(BGPPathAttrOriginIGP)
@@ -108,17 +107,15 @@ func ConstructPathAttrForConnRoutes() []BGPPathAttr {
 	pathAttrs = append(pathAttrs, asPath)
 
 	nextHop := NewBGPPathAttrNextHop()
+	nextHop.Value = ip
 	pathAttrs = append(pathAttrs, nextHop)
 
 	return pathAttrs
 }
 
 func ConstructIPPrefix(ipStr string, maskStr string) *IPPrefix {
-	fmt.Println("helpers:ConstructIPPrefix - ip str =", ipStr, "mask str =", maskStr)
 	ip := net.ParseIP(ipStr)
 	mask := net.IPMask(net.ParseIP(maskStr).To4())
-	fmt.Println("helpers:ConstructIPPrefix - ip =", ip, "mask =", mask)
-	ones, bits := mask.Size()
-	fmt.Println("helpers:ConstructIPPrefix - ones =", ones, "bits =", bits)
+	ones, _ := mask.Size()
 	return NewIPPrefix(ip.Mask(mask), uint8(ones))
 }
