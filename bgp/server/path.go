@@ -9,6 +9,16 @@ import (
 	"ribd"
 )
 
+const (
+	RouteTypeConnected uint8 = 1 << iota
+	RouteTypeStatic
+	RouteTypeIGP
+	RouteTypeEGP
+	RouteTypeMax
+)
+
+const RouteLocal = (RouteTypeConnected | RouteTypeStatic | RouteTypeIGP)
+
 type Path struct {
 	server *BGPServer
 	logger *syslog.Writer
@@ -20,10 +30,10 @@ type Path struct {
 	NextHop string
 	NextHopIfIdx ribd.Int
 	Metric ribd.Int
-	local bool
+	routeType uint8
 }
 
-func NewPath(server *BGPServer, peer *Peer, pa []packet.BGPPathAttr, withdrawn bool, updated bool, local bool) *Path {
+func NewPath(server *BGPServer, peer *Peer, pa []packet.BGPPathAttr, withdrawn bool, updated bool, routeType uint8) *Path {
 	path := &Path{
 		server: server,
 		logger: server.logger,
@@ -31,16 +41,34 @@ func NewPath(server *BGPServer, peer *Peer, pa []packet.BGPPathAttr, withdrawn b
 		pathAttrs: pa,
 		withdrawn: withdrawn,
 		updated: updated,
-		local: local,
+		routeType: routeType,
 	}
 
 	path.Pref = path.calculatePref()
 	return path
 }
 
+func (p *Path) Clone() *Path {
+	path := &Path{
+		server: p.server,
+		logger: p.server.logger,
+		peer: p.peer,
+		pathAttrs: p.pathAttrs,
+		withdrawn: p.withdrawn,
+		updated: p.updated,
+		Pref: p.Pref,
+		NextHop: p.NextHop,
+		NextHopIfIdx: p.NextHopIfIdx,
+		Metric: p.Metric,
+		routeType: p.routeType,
+	}
+
+	return path
+}
+
 func (p *Path) calculatePref() uint32 {
 	var pref uint32
-	if p.local {
+	if p.IsLocal() {
 		pref = BGP_INTERNAL_PREF
 	} else if p.peer.IsInternal() {
 		pref = BGP_INTERNAL_PREF
@@ -84,7 +112,7 @@ func (p *Path) GetPreference() uint32 {
 }
 
 func (p *Path) IsLocal() bool {
-	return p.local
+	return (p.routeType & RouteLocal) != 0
 }
 
 func (p *Path) GetNumASes() uint32 {

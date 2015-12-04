@@ -54,23 +54,22 @@ func updateRibOutInfo(action RouteSelectionAction, dest *Destination, withdrawn 
 	return withdrawn, updated
 }
 
-func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) (map[*Path][]packet.IPPrefix, []packet.IPPrefix) {
-	adjRib.logger.Info(fmt.Sprintln("AdjRib:ProcessUpdate - start"))
-	body := pktInfo.Msg.Body.(*packet.BGPUpdate)
+func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.IPPrefix, addPath *Path, rem []packet.IPPrefix,
+									remPath *Path) (map[*Path][]packet.IPPrefix, []packet.IPPrefix) {
 	var action RouteSelectionAction
 	withdrawn := make([]packet.IPPrefix, 0)
 	updated := make(map[*Path][]packet.IPPrefix)
 
-	path := NewPath(adjRib.server, peer, body.PathAttributes, true, false, false)
 	// process withdrawn routes
-	for _, nlri := range body.WithdrawnRoutes {
-		if !isIpInList(body.NLRI, nlri){
+	for _, nlri := range rem {
+		if !isIpInList(add, nlri){
 			adjRib.logger.Info(fmt.Sprintln("Processing withdraw destination", nlri.Prefix.String()))
 			dest, ok := adjRib.getDest(nlri, false)
 			if !ok {
 				adjRib.logger.Warning(fmt.Sprintln("Can't process withdraw field. Destination does not exist, Dest:", nlri.Prefix.String()))
+				continue
 			}
-			dest.RemovePath(pktInfo.Src, path)
+			dest.RemovePath(peerIP, remPath)
 			action = dest.SelectRouteForLocRib()
 			withdrawn, updated = updateRibOutInfo(action, dest, withdrawn, updated)
 		} else {
@@ -79,16 +78,39 @@ func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) (map[
 		}
 	}
 
-	path = NewPath(adjRib.server, peer, body.PathAttributes, false, true, false)
-	path.GetReachabilityInfo()
-
-	for _, nlri := range body.NLRI {
+	for _, nlri := range add {
 		adjRib.logger.Info(fmt.Sprintln("Processing nlri =", nlri.Prefix.String()))
 		dest, _ := adjRib.getDest(nlri, true)
-		dest.AddOrUpdatePath(pktInfo.Src, path)
+		dest.AddOrUpdatePath(peerIP, addPath)
 		action = dest.SelectRouteForLocRib()
 		withdrawn, updated = updateRibOutInfo(action, dest, withdrawn, updated)
 	}
 
+	return updated, withdrawn
+}
+
+func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) (map[*Path][]packet.IPPrefix, []packet.IPPrefix) {
+	adjRib.logger.Info(fmt.Sprintln("AdjRib:ProcessUpdate - start"))
+	body := pktInfo.Msg.Body.(*packet.BGPUpdate)
+
+	remPath := NewPath(adjRib.server, peer, body.PathAttributes, true, false, RouteTypeEGP)
+	addPath := NewPath(adjRib.server, peer, body.PathAttributes, false, true, RouteTypeEGP)
+	addPath.GetReachabilityInfo()
+
+	updated, withdrawn := adjRib.ProcessRoutes(pktInfo.Src, body.NLRI, addPath, body.WithdrawnRoutes, remPath)
+	addPath.updated = false
+	remPath = nil
+	return updated, withdrawn
+}
+
+func (adjRib *AdjRib) ProcessConnectedRoutes(src string, path *Path, add []packet.IPPrefix, remove []packet.IPPrefix) (
+											map[*Path][]packet.IPPrefix, []packet.IPPrefix) {
+	var removePath *Path
+	removePath = path.Clone()
+	removePath.withdrawn = true
+	path.updated = true
+	updated, withdrawn := adjRib.ProcessRoutes(src, add, path, remove, removePath)
+	path.updated = false
+	removePath = nil
 	return updated, withdrawn
 }

@@ -27,6 +27,7 @@ type BGPServer struct {
 
     PeerMap map[string]*Peer
 	adjRib *AdjRib
+	connRoutesPath *Path
 }
 
 func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *BGPServer {
@@ -73,15 +74,7 @@ func (server *BGPServer) IsPeerLocal(peerIp string) bool {
 	return server.PeerMap[peerIp].Neighbor.Config.PeerAS == server.BgpConfig.Global.Config.AS
 }
 
-func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
-	peer, ok := server.PeerMap[pktInfo.Src]
-	if !ok {
-		server.logger.Err(fmt.Sprintln("BgpServer:ProcessUpdate - Peer not found, address:", pktInfo.Src))
-		return
-	}
-
-	updated, withdrawn := server.adjRib.ProcessUpdate(peer, pktInfo)
-
+func (server *BGPServer) SendUpdate(updated map[*Path][]packet.IPPrefix, withdrawn[]packet.IPPrefix) {
 	firstMsg := true
 	for path, dest := range updated {
 		updateMsg := packet.NewBGPUpdateMessage(make([]packet.IPPrefix, 0), path.pathAttrs, dest)
@@ -92,15 +85,17 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 
 		for _, peer := range server.PeerMap {
 			// If we recieve the route from IBGP peer, don't send it to other IBGP peers
-			if peer.IsInternal() {
-				if path.peer.IsInternal() {
+			if path.peer != nil {
+				if peer.IsInternal() {
+					if path.peer.IsInternal() {
+						continue
+					}
+				}
+
+				// Don't send the update to the peer that sent the update.
+				if peer.Neighbor.Config.NeighborAddress.String() == path.peer.Neighbor.Config.NeighborAddress.String() {
 					continue
 				}
-			}
-
-			// Don't send the update to the peer that sent the update.
-			if peer.Neighbor.Config.NeighborAddress.String() == path.peer.Neighbor.Config.NeighborAddress.String() {
-				continue
 			}
 
 			peer.SendUpdate(*updateMsg, path)
@@ -108,13 +103,40 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 	}
 }
 
+func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
+	peer, ok := server.PeerMap[pktInfo.Src]
+	if !ok {
+		server.logger.Err(fmt.Sprintln("BgpServer:ProcessUpdate - Peer not found, address:", pktInfo.Src))
+		return
+	}
+
+	updated, withdrawn := server.adjRib.ProcessUpdate(peer, pktInfo)
+	server.SendUpdate(updated, withdrawn)
+}
+
+func (server *BGPServer) ProcessConnectedRoutes(routes []*ribd.Routes) {
+	dest := make([]packet.IPPrefix, 0, len(routes))
+	for _, r := range routes {
+		ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
+		dest = append(dest, *ipPrefix)
+	}
+
+	updated, withdrawn := server.adjRib.ProcessConnectedRoutes(server.BgpConfig.Global.Config.RouterId.String(),
+																server.connRoutesPath, dest, make([]packet.IPPrefix, 0))
+	server.SendUpdate(updated, withdrawn)
+}
+
 func (server *BGPServer) StartServer() {
     gConf := <-server.GlobalConfigCh
     server.BgpConfig.Global.Config = gConf
-	server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
+
+	pathAttrs := packet.ConstructPathAttrForConnRoutes(gConf.RouterId)
+	server.connRoutesPath = NewPath(server, nil, pathAttrs, false, false, RouteTypeConnected)
+
     server.logger.Info(fmt.Sprintln("Setting up Peer connections"))
     acceptCh := make(chan *net.TCPConn)
     go server.listenForPeers(acceptCh)
+	server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
 
 	for {
 		select {
@@ -168,18 +190,7 @@ func (server *BGPServer) StartServer() {
 
 		case <- server.connRoutesTimer.C:
 			routes, _ := server.ribdClient.GetConnectedRoutesInfo()
-			for _, r := range routes {
-				pathAttrs := packet.ConstructPathAttrForConnRoutes()
-				path := NewPath(server, nil, pathAttrs, false, false, true)
-				dest := make([]packet.IPPrefix, 0)
-				ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
-				dest = append(dest, *ipPrefix)
-				updateMsg := packet.NewBGPUpdateMessage(make([]packet.IPPrefix, 0), path.pathAttrs, dest)
-				for _, peer := range server.PeerMap {
-					peer.SendUpdate(*updateMsg, path)
-				}
-			}
-
+			server.ProcessConnectedRoutes(routes)
 			server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
         }
     }

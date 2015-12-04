@@ -48,13 +48,17 @@ func (d *Destination) AddOrUpdatePath(peerIp string, path *Path) bool {
 	if ok {
 		if d.locRibPath == oldPath {
 			d.locRibPath = path
+			d.recalculate = true
 		}
 	} else {
 		added = true
 	}
-	d.recalculate = true
-	d.peerPathMap[peerIp] = path
 
+	if d.locRibPath == nil || d.locRibPath.routeType >= path.routeType {
+		d.recalculate = true
+	}
+
+	d.peerPathMap[peerIp] = path
 	return added
 }
 
@@ -87,11 +91,13 @@ func constructNetmaskFromLen(ones, bits int) net.IP {
 func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 	updatedPaths := make([]*Path, 0)
 	maxPref := uint32(0)
+	routeType := RouteTypeMax
 	action := RouteSelectionNone
 
 	if !d.recalculate {
 		return action
 	}
+	d.recalculate = false
 
 	if d.locRibPath != nil && !d.locRibPath.IsWithdrawn() && !d.locRibPath.IsUpdated() {
 		maxPref = d.locRibPath.GetPreference()
@@ -100,8 +106,22 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 
 	for _, path := range d.peerPathMap {
 		if path.IsUpdated() || (d.locRibPath != nil && (d.locRibPath.IsWithdrawn() || d.locRibPath.IsUpdated())){
-			if !path.IsReachable() {
+			if !path.IsLocal() && !path.IsReachable() {
 				d.logger.Info(fmt.Sprintf("NEXT_HOP[%s] is not reachable", path.GetNextHop()))
+				continue
+			}
+
+			if path.routeType > routeType {
+				continue
+			} else if path.routeType < routeType {
+				if len(updatedPaths) > 0 {
+					updatedPaths[0] = path
+					updatedPaths = updatedPaths[:1]
+				} else {
+					updatedPaths = append(updatedPaths, path)
+				}
+				routeType = path.routeType
+				maxPref = path.GetPreference()
 				continue
 			}
 
@@ -109,6 +129,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 			if currPref > maxPref {
 				if len(updatedPaths) > 0 {
 					updatedPaths[0] = path
+					updatedPaths = updatedPaths[:1]
 				} else {
 					updatedPaths = append(updatedPaths, path)
 				}
@@ -137,25 +158,29 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 
 		if d.locRibPath == nil {
 			// Add route
-			d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.nlri.Prefix.String(),
-										constructNetmaskFromLen(int(d.nlri.Length), 32).String(), selectedPath.NextHop))
-			ret, err := d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(),
-														constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
-														selectedPath.Metric, selectedPath.NextHop,
-														selectedPath.NextHopIfIdx, 8)
-			if err != nil {
-				d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
+			if !selectedPath.IsLocal() {
+				d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.nlri.Prefix.String(),
+											constructNetmaskFromLen(int(d.nlri.Length), 32).String(), selectedPath.NextHop))
+				ret, err := d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(),
+															constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
+															selectedPath.Metric, selectedPath.NextHop,
+															selectedPath.NextHopIfIdx, 8)
+				if err != nil {
+					d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
+				}
 			}
 			action = RouteSelectionAdd
 		} else if d.locRibPath != selectedPath || d.locRibPath.IsUpdated() {
 			// Update path
-			d.logger.Info(fmt.Sprintf("Update route for ip=%s", d.nlri.Prefix.String()))
-			err := d.server.ribdClient.UpdateV4Route(d.nlri.Prefix.String(),
-													constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8,
-													selectedPath.NextHop, selectedPath.NextHopIfIdx,
-													selectedPath.Metric)
-			if err != nil {
-				d.logger.Err(fmt.Sprintf("UpdateV4Route failed with error: %s", err))
+			if !d.locRibPath.IsLocal() {
+				d.logger.Info(fmt.Sprintf("Update route for ip=%s", d.nlri.Prefix.String()))
+				err := d.server.ribdClient.UpdateV4Route(d.nlri.Prefix.String(),
+														constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8,
+														selectedPath.NextHop, selectedPath.NextHopIfIdx,
+														selectedPath.Metric)
+				if err != nil {
+					d.logger.Err(fmt.Sprintf("UpdateV4Route failed with error: %s", err))
+				}
 			}
 			action = RouteSelectionReplace
 		}
@@ -164,11 +189,13 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 	} else {
 		if d.locRibPath != nil {
 			// Remove route
-			d.logger.Info(fmt.Sprintf("Remove route for ip=%s", d.nlri.Prefix.String()))
-			ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
-														constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8)
-			if err != nil {
-				d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
+			if !d.locRibPath.IsLocal() {
+				d.logger.Info(fmt.Sprintf("Remove route for ip=%s", d.nlri.Prefix.String()))
+				ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
+															constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8)
+				if err != nil {
+					d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
+				}
 			}
 			action = RouteSelectionDelete
 		}
