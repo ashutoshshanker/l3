@@ -26,9 +26,9 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 		Global: &globalConf,
 		Neighbor: &config.Neighbor{
 			NeighborAddress: peerConf.NeighborAddress,
-			Config: peerConf,
+			Config:          peerConf,
 		},
-		BGPId:  0,
+		BGPId: 0,
 	}
 	peer.fsmManager = NewFSMManager(&peer, &globalConf, &peerConf)
 	return &peer
@@ -81,18 +81,24 @@ func (p *Peer) SetBGPId(bgpId uint32) {
 
 func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 	if p.Neighbor.Transport.Config.LocalAddress == nil {
-		p.logger.Err(fmt.Sprintf("Can't send Update message, local address not set for peer[%s]", p.Neighbor.NeighborAddress))
+		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message, local address not set", p.Neighbor.NeighborAddress))
 		return false
 	}
 
 	if p.IsInternal() {
-		packet.PrependAS(bgpMsg, 0, false)
+		// Do change these path attrs for local routes
+		if path.peer != nil {
+			packet.PrependAS(bgpMsg, 0, false)
+		}
 		packet.SetNextHop(bgpMsg, p.Neighbor.Transport.Config.LocalAddress)
 		packet.SetLocalPref(bgpMsg, path.GetPreference())
 	} else {
-		packet.PrependAS(bgpMsg, p.Neighbor.Config.LocalAS, true)
+		// Do change these path attrs for local routes
+		if path.peer != nil {
+			packet.PrependAS(bgpMsg, p.Neighbor.Config.LocalAS, true)
+			packet.RemoveMultiExitDisc(bgpMsg)
+		}
 		packet.SetNextHop(bgpMsg, p.Neighbor.Transport.Config.LocalAddress)
-		packet.RemoveMultiExitDisc(bgpMsg)
 		packet.RemoveLocalPref(bgpMsg)
 	}
 
@@ -102,7 +108,7 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 	host, _, err := net.SplitHostPort((*conn).LocalAddr().String())
 	if err != nil {
-		p.logger.Err(fmt.Sprintf("Can't find local address from the peer connection: %s", (*conn).LocalAddr()))
+		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't find local address from the peer connection: %s", p.Neighbor.NeighborAddress, (*conn).LocalAddr()))
 		return
 	}
 	p.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
@@ -113,7 +119,7 @@ func (p *Peer) PeerConnBroken() {
 }
 
 func (p *Peer) SendUpdate(bgpMsg packet.BGPMessage, path *Path) {
-	p.logger.Info(fmt.Sprintf("Peer: Send update message to peer %s", p.Neighbor.NeighborAddress))
+	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message", p.Neighbor.NeighborAddress))
 	bgpMsgRef := &bgpMsg
 	if p.updatePathAttrs(bgpMsgRef, path) {
 		p.fsmManager.SendUpdateMsg(bgpMsgRef)
