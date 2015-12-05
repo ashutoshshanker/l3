@@ -132,10 +132,11 @@ func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
 			logWriter.Err(fmt.Sprintf("Failed to get ifname for interface : ", vlan_id, "type : ", iftype))
 			return ARP_ERR_REQ_FAIL, err
 		}
+		logWriter.Err(fmt.Sprintln("Server:Connecting to device ", linux_device))
 		handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout)
 		//handle, err = pcap.OpenLive(device, snapshot_len, promiscuous, timeout)
 		if handle == nil {
-			logWriter.Err(fmt.Sprintln("Server: No device found.: ", device))
+			logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
 			return 0, nil
 		}
 		arp_cache.dev_handle = handle
@@ -237,8 +238,8 @@ func initARPhandlerParams() {
 	}
 
 	// connect to asicd and portd
-	configFile := "/opt/flexswitch/params/clients.json"
-	ConnectToClients(configFile)
+	//configFile := params_dir + "/clients.json"
+	//ConnectToClients(configFile)
 
 	//initPortParams()
 
@@ -270,9 +271,9 @@ func BuildAsicToLinuxMap(cfgFile string) {
 
 }
 func initPortParams() {
-	configFile := "/opt/flexswitch/params/clients.json"
+	configFile := params_dir + "/clients.json"
 	ConnectToClients(configFile)
-	portCfgFile := "/opt/flexswitch/params/portd.json"
+	portCfgFile := params_dir + "/portd.json"
 	BuildAsicToLinuxMap(portCfgFile)
 }
 

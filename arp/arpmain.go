@@ -2,6 +2,7 @@ package main
 
 import (
 	"arpd"
+	"flag"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"log"
 	"os"
@@ -20,7 +21,9 @@ func main() {
 	if err != nil {
 		logger.Println("Failed to create Socket with:", addr)
 	}
-	handler := NewARPServiceHandler()
+	paramsDir := flag.String("params", "", "Directory Location for config files")
+	flag.Parse()
+	handler := NewARPServiceHandler(*paramsDir)
 	processor := arpd.NewARPServiceProcessor(handler)
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
