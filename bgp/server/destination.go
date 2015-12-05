@@ -15,6 +15,7 @@ const BGP_INTERNAL_PREF = 100
 const BGP_EXTERNAL_PREF = 50
 
 type RouteSelectionAction uint8
+
 const (
 	RouteSelectionNone RouteSelectionAction = iota
 	RouteSelectionAdd
@@ -23,19 +24,19 @@ const (
 )
 
 type Destination struct {
-	server *BGPServer
-	logger *syslog.Writer
-	nlri packet.IPPrefix
+	server      *BGPServer
+	logger      *syslog.Writer
+	nlri        packet.IPPrefix
 	peerPathMap map[string]*Path
-	locRibPath *Path
+	locRibPath  *Path
 	recalculate bool
 }
 
 func NewDestination(server *BGPServer, nlri packet.IPPrefix) *Destination {
 	dest := &Destination{
-		server: server,
-		logger: server.logger,
-		nlri: nlri,
+		server:      server,
+		logger:      server.logger,
+		nlri:        nlri,
 		peerPathMap: make(map[string]*Path),
 	}
 
@@ -62,7 +63,7 @@ func (d *Destination) AddOrUpdatePath(peerIp string, path *Path) bool {
 	return added
 }
 
-func (d  *Destination) RemovePath(peerIp string, path *Path) {
+func (d *Destination) RemovePath(peerIp string, path *Path) {
 	if oldPath, ok := d.peerPathMap[peerIp]; ok {
 		if d.locRibPath == oldPath {
 			d.recalculate = true
@@ -78,12 +79,12 @@ func constructNetmaskFromLen(ones, bits int) net.IP {
 	ip := make(net.IP, bits/8)
 	bytes := ones / 8
 	i := 0
-	for ;i < bytes; i++ {
+	for ; i < bytes; i++ {
 		ip[i] = 255
 	}
 	rem := ones % 8
 	if rem != 0 {
-		ip[i] = (255 << uint(8 - rem))
+		ip[i] = (255 << uint(8-rem))
 	}
 	return ip
 }
@@ -105,7 +106,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 	}
 
 	for _, path := range d.peerPathMap {
-		if path.IsUpdated() || (d.locRibPath != nil && (d.locRibPath.IsWithdrawn() || d.locRibPath.IsUpdated())){
+		if path.IsUpdated() || (d.locRibPath != nil && (d.locRibPath.IsWithdrawn() || d.locRibPath.IsUpdated())) {
 			if !path.IsLocal() && !path.IsReachable() {
 				d.logger.Info(fmt.Sprintf("NEXT_HOP[%s] is not reachable", path.GetNextHop()))
 				continue
@@ -160,11 +161,11 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 			// Add route
 			if !selectedPath.IsLocal() {
 				d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.nlri.Prefix.String(),
-											constructNetmaskFromLen(int(d.nlri.Length), 32).String(), selectedPath.NextHop))
+					constructNetmaskFromLen(int(d.nlri.Length), 32).String(), selectedPath.NextHop))
 				ret, err := d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(),
-															constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
-															selectedPath.Metric, selectedPath.NextHop,
-															selectedPath.NextHopIfIdx, 8)
+					constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
+					selectedPath.Metric, selectedPath.NextHop,
+					selectedPath.NextHopIfIdx, 8)
 				if err != nil {
 					d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
 				}
@@ -175,9 +176,9 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 			if !d.locRibPath.IsLocal() {
 				d.logger.Info(fmt.Sprintf("Update route for ip=%s", d.nlri.Prefix.String()))
 				err := d.server.ribdClient.UpdateV4Route(d.nlri.Prefix.String(),
-														constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8,
-														selectedPath.NextHop, selectedPath.NextHopIfIdx,
-														selectedPath.Metric)
+					constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8,
+					selectedPath.NextHop, selectedPath.NextHopIfIdx,
+					selectedPath.Metric)
 				if err != nil {
 					d.logger.Err(fmt.Sprintf("UpdateV4Route failed with error: %s", err))
 				}
@@ -192,7 +193,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 			if !d.locRibPath.IsLocal() {
 				d.logger.Info(fmt.Sprintf("Remove route for ip=%s", d.nlri.Prefix.String()))
 				ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
-															constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8)
+					constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8)
 				if err != nil {
 					d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 				}
@@ -315,7 +316,7 @@ func (d *Destination) getRoutesWithLowestBGPId(updatedPaths []*Path) []*Path {
 func CompareNeighborAddress(a net.IP, b net.IP) (int, error) {
 	if len(a) != len(b) {
 		return 0, config.AddressError{fmt.Sprintf("Address lenghts not equal, Neighbor Address: %s, compare address: %s",
-													a.String(), b.String())}
+			a.String(), b.String())}
 	}
 
 	for i, val := range a {
@@ -333,10 +334,9 @@ func (d *Destination) getRoutesWithLowestPeerAddress(updatedPaths []*Path) []*Pa
 	n := len(updatedPaths)
 	idx := 0
 
-
 	for i, path := range updatedPaths {
 		val, err := CompareNeighborAddress(path.peer.Neighbor.NeighborAddress,
-											updatedPaths[0].peer.Neighbor.NeighborAddress)
+			updatedPaths[0].peer.Neighbor.NeighborAddress)
 		if err != nil {
 			d.logger.Err(fmt.Sprintf("CompareNeighborAddress failed with %s", err))
 		}

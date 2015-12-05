@@ -31,12 +31,18 @@ func NewBGPHandler(server *server.BGPServer, logger *syslog.Writer) *BGPHandler 
 
 func (h *BGPHandler) CreateBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create global config attrs:", bgpGlobal))
-	ip := net.ParseIP(bgpGlobal.RouterId)
-	if ip != nil	 {
-		h.logger.Info(fmt.Sprintln("CreateBGPGlobal - IP is not valid:", bgpGlobal.RouterId))
+	if bgpGlobal.RouterId == "localhost" {
+		bgpGlobal.RouterId = "127.0.0.1"
 	}
+
+	ip := net.ParseIP(bgpGlobal.RouterId)
+	if ip == nil {
+		h.logger.Info(fmt.Sprintln("CreateBGPGlobal - IP is not valid:", bgpGlobal.RouterId))
+		return false, nil
+	}
+
 	gConf := config.GlobalConfig{
-		AS: uint32(bgpGlobal.AS),
+		AS:       uint32(bgpGlobal.AS),
 		RouterId: ip,
 	}
 	h.server.GlobalConfigCh <- gConf
