@@ -18,6 +18,9 @@ ifndef SR_CODE_BASE
 	 $(error SR_CODE_BASE is not set)
 endif
 
+install:
+	@echo "BGP has no files to install"
+
 clean:guard
 	 $(RM) $(DESTDIR)/$(COMP_NAME) 
 	 $(RMFORCE) $(GENERATED_IPC)/$(COMP_NAME)
