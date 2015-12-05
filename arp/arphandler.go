@@ -1,5 +1,10 @@
 package main
-import ( "git.apache.org/thrift.git/lib/go/thrift")
+
+import (
+	"git.apache.org/thrift.git/lib/go/thrift"
+)
+
+var params_dir string
 
 type ARPServiceHandler struct {
 }
@@ -24,7 +29,8 @@ func CreateIPCHandles(address string) (thrift.TTransport, *thrift.TBinaryProtoco
 	return transport, protocolFactory
 }
 
-func NewARPServiceHandler () *ARPServiceHandler {
-    initARPhandlerParams()
-   return &ARPServiceHandler{}
+func NewARPServiceHandler(paramsDir string) *ARPServiceHandler {
+	params_dir = paramsDir
+	initARPhandlerParams()
+	return &ARPServiceHandler{}
 }
