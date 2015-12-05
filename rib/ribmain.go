@@ -32,8 +32,6 @@ func main() {
 	if err != nil {
 		logger.Println("Failed to create Socket with:", addr)
 	}
-	paramsDir := flag.String("params", "", "Directory Location for config files")
-	flag.Parse()
 	handler := NewRouteServiceHandler(*paramsDir)
 	processor := ribd.NewRouteServiceProcessor(handler)
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
