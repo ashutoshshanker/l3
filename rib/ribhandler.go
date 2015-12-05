@@ -370,6 +370,7 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 		//call asicd
 		if asicdclnt.IsConnected {
 			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String())
+			arpdclnt.ClientHdl.RestolveArpIPV4(routeInfoRecord.destNetIp.String(), arpd.Int(routeInfoRecord.nextHopIfType), arpd.Int(routeInfoRecord.nextHopIfIndex))
 		}
 	} else {
 		routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList) //RouteInfoMap.Get(destNet).(RouteInfoRecordList)
@@ -629,9 +630,9 @@ func CreateRoutes(routeFile string){
 }
 */
 
-func NewRouteServiceHandler() *RouteServiceHandler {
+func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
-	configFile := "params/clients.json"
+	configFile := paramsDir + "/clients.json"
 	ConnectToClients(configFile)
 	//CreateRoutes("RouteSetup.json")
 	return &RouteServiceHandler{}
