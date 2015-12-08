@@ -13,20 +13,12 @@ func PrependAS(updateMsg *BGPMessage, AS uint32, setAS bool) {
 			asPathSegments := pa.(*BGPPathAttrASPath).Value
 			if setAS && (len(asPathSegments) == 0 || (asPathSegments[0].Type == BGPASPathSet || asPathSegments[0].Length >= 255)) {
 				newASPathSegment := NewBGPASPathSegmentSeq()
-//				var dummyASPathSegment BGPASPathSegment
-//				pa.(*BGPPathAttrASPath).Value = append(pa.(*BGPPathAttrASPath).Value, dummyASPathSegment)
-//				copy(pa.(*BGPPathAttrASPath).Value[1:], pa.(*BGPPathAttrASPath).Value[0:])
-//				pa.(*BGPPathAttrASPath).Value[0] = *newASPathSegment
-//				pa.(*BGPPathAttrASPath).BGPPathAttrBase.Length += 2
 				pa.(*BGPPathAttrASPath).AddASPathSegment(newASPathSegment)
 			}
 
 			if setAS {
+				asPathSegments = pa.(*BGPPathAttrASPath).Value
 				asPathSegments[0].PrependAS(uint16(AS))
-//				asPathSegments[0].AS = append(asPathSegments[0].AS, 0)
-//				copy(asPathSegments[0].AS[1:], asPathSegments[0].AS[0:])
-//				asPathSegments[0].AS[0] = uint16(AS)
-//				asPathSegments[0].Length += 1
 				pa.(*BGPPathAttrASPath).BGPPathAttrBase.Length += 2
 			}
 			return
@@ -39,7 +31,7 @@ func removePathAttr(updateMsg *BGPMessage, code BGPPathAttrType) {
 
 	for idx, pa := range body.PathAttributes {
 		if pa.GetCode() == code {
-			body.PathAttributes = append(body.PathAttributes[:idx], body.PathAttributes[idx + 1:]...)
+			body.PathAttributes = append(body.PathAttributes[:idx], body.PathAttributes[idx+1:]...)
 			return
 		}
 	}
@@ -69,7 +61,7 @@ func SetLocalPref(updateMsg *BGPMessage, pref uint32) {
 	for idx, pa = range body.PathAttributes {
 		if pa.GetCode() > BGPPathAttrTypeLocalPref {
 			break
-		} else if idx == len(body.PathAttributes) - 1 {
+		} else if idx == len(body.PathAttributes)-1 {
 			idx += 1
 		}
 	}
@@ -78,8 +70,8 @@ func SetLocalPref(updateMsg *BGPMessage, pref uint32) {
 		paLocalPref := NewBGPPathAttrLocalPref()
 		paLocalPref.Value = pref
 		body.PathAttributes = append(body.PathAttributes, paLocalPref)
-		if idx < len(body.PathAttributes) - 1 {
-			copy(body.PathAttributes[idx + 1:], body.PathAttributes[idx:])
+		if idx < len(body.PathAttributes)-1 {
+			copy(body.PathAttributes[idx+1:], body.PathAttributes[idx:])
 			body.PathAttributes[idx] = paLocalPref
 		}
 	}
@@ -95,15 +87,16 @@ func SetNextHop(updateMsg *BGPMessage, nextHop net.IP) {
 	}
 }
 
-func ConstructPathAttrForConnRoutes(ip net.IP) []BGPPathAttr {
+func ConstructPathAttrForConnRoutes(ip net.IP, as uint32) []BGPPathAttr {
 	pathAttrs := make([]BGPPathAttr, 0)
 
 	origin := NewBGPPathAttrOrigin(BGPPathAttrOriginIGP)
 	pathAttrs = append(pathAttrs, origin)
 
 	asPath := NewBGPPathAttrASPath()
-	//asPathSeq := NewBGPASPathSegmentSeq()
-	//asPath.AddASPathSegment(asPathSeq)
+	asPathSeq := NewBGPASPathSegmentSeq()
+	asPathSeq.PrependAS(uint16(as))
+	asPath.AddASPathSegment(asPathSeq)
 	pathAttrs = append(pathAttrs, asPath)
 
 	nextHop := NewBGPPathAttrNextHop()

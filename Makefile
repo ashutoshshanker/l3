@@ -5,7 +5,7 @@ COMPS=arp\
 IPCS=arp\
 	  bgp\
 	  rib
-all: ipc exe 
+all: ipc exe install
 
 exe: $(COMPS)
 	 $(foreach f,$^, make -C $(f) exe;)
@@ -16,6 +16,6 @@ ipc: $(IPCS)
 clean: $(COMPS)
 	 $(foreach f,$^, make -C $(f) clean;)
 
-install:
-	@echo "All files that need to be copied would go here"
+install: $(COMPS)
+	 $(foreach f,$^, make -C $(f) install;)
 
