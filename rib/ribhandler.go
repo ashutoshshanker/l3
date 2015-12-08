@@ -4,7 +4,6 @@ import (
 	"arpd"
 	"asicdServices"
 	"encoding/json"
-	"infra/portd/portdCommonDefs"
 	"l3/rib/ribdCommonDefs"
 	"ribd"
 	"utils/patriciaDB"
@@ -439,7 +438,7 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	networkMask string,
 	metric ribd.Int,
 	nextHopIp string,
-	//nextHopIfType ribd.Int,
+	nextHopIfType ribd.Int,
 	nextHopIfIndex ribd.Int,
 	routeType ribd.Int) (rc ribd.Int, err error) {
 	logger.Printf("Received create route request for ip %s mask %s\n", destNetIp, networkMask)
@@ -472,7 +471,7 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 		return 0, err
 	}
 	logger.Printf("routePrototype %d for routeType %d", routePrototype, routeType)
-	routeInfoRecord := RouteInfoRecord{destNetIp: destNetIpAddr, networkMask: networkMaskAddr, protocol: routePrototype, nextHopIp: nextHopIpAddr, nextHopIfType: portdCommonDefs.VLAN, nextHopIfIndex: nextHopIfIndex, metric: metric, sliceIdx:len(destNetSlice)}
+	routeInfoRecord := RouteInfoRecord{destNetIp: destNetIpAddr, networkMask: networkMaskAddr, protocol: routePrototype, nextHopIp: nextHopIpAddr, nextHopIfType: int8(nextHopIfType), nextHopIfIndex: nextHopIfIndex, metric: metric, sliceIdx:len(destNetSlice)}
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
 	if routeInfoRecordListItem == nil {
 		var newRouteInfoRecordList RouteInfoRecordList

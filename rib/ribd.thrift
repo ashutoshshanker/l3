@@ -23,7 +23,7 @@ struct RoutesGetInfo {
 //typedef RouteList  list<Routes>
 service RouteService 
 {
-    int createV4Route (1:string destNetIp, 2:string networkMask, 3:int metric, 4:string nextHopIp, 5:int nextHopIfIndex, 6:int routeType);
+    int createV4Route (1:string destNetIp, 2:string networkMask, 3:int metric, 4:string nextHopIp, 5: int nextHopIfType, 6:int nextHopIfIndex, 7:int routeType);
     void updateV4Route (1:string destNetIp, 2:string networkMask, 3:int routeType, 4:string nextHopIp, 5:int nextHopIfIndex, 6:int metric);
     int deleteV4Route (1:string destNetIp, 2:string networkMask, 3:int routeType);
     NextHopInfo getRouteReachabilityInfo(1: string desIPv4MasktNet);
