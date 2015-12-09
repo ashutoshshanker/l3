@@ -28,6 +28,7 @@ type Path struct {
 	updated bool
 	Pref uint32
 	NextHop string
+	NextHopIfType ribd.Int
 	NextHopIfIdx ribd.Int
 	Metric ribd.Int
 	routeType uint8
@@ -166,6 +167,7 @@ func (p *Path) GetReachabilityInfo() {
 		p.logger.Info(fmt.Sprintf("Next hop for %s is %s. Using %s as the next hop", ipStr, p.NextHop, ipStr))
 		p.NextHop = ipStr
 	}
+	p.NextHopIfType = reachabilityInfo.NextHopIfType
 	p.NextHopIfIdx = reachabilityInfo.NextHopIfIndex
 	p.Metric = reachabilityInfo.Metric
 }
