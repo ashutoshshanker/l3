@@ -26,6 +26,7 @@ type BGPServer struct {
 	connRoutesTimer *time.Timer
 
 	PeerMap        map[string]*Peer
+	Neighbors      []*Peer
 	adjRib         *AdjRib
 	connRoutesPath *Path
 }
@@ -40,6 +41,7 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
 	bgpServer.BGPPktSrc = make(chan *packet.BGPPktSrc)
 	bgpServer.PeerMap = make(map[string]*Peer)
+	bgpServer.Neighbors = make([]*Peer, 0)
 	bgpServer.adjRib = NewAdjRib(bgpServer)
 	bgpServer.connRoutesTimer = time.NewTimer(time.Duration(10) * time.Second)
 	bgpServer.connRoutesTimer.Stop()
@@ -126,6 +128,21 @@ func (server *BGPServer) ProcessConnectedRoutes(routes []*ribd.Routes) {
 	server.SendUpdate(updated, withdrawn)
 }
 
+func (server *BGPServer) addPeerToList(peer *Peer) {
+	server.Neighbors = append(server.Neighbors, peer)
+}
+
+func (server *BGPServer) removePeerFromList(peer *Peer) {
+	for idx, item := range server.Neighbors {
+		if item == peer {
+			server.Neighbors[idx] = server.Neighbors[len(server.Neighbors)-1]
+			server.Neighbors[len(server.Neighbors)-1] = nil
+			server.Neighbors = server.Neighbors[:len(server.Neighbors)-1]
+			break
+		}
+	}
+}
+
 func (server *BGPServer) StartServer() {
 	gConf := <-server.GlobalConfigCh
 	server.logger.Info(fmt.Sprintln("Recieved global conf:", gConf))
@@ -150,6 +167,7 @@ func (server *BGPServer) StartServer() {
 			server.logger.Info(fmt.Sprintln("Add Peer ip:", addPeer.NeighborAddress.String()))
 			peer := NewPeer(server, server.BgpConfig.Global.Config, addPeer)
 			server.PeerMap[addPeer.NeighborAddress.String()] = peer
+			server.addPeerToList(peer)
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:
@@ -159,8 +177,9 @@ func (server *BGPServer) StartServer() {
 				server.logger.Info(fmt.Sprintln("Failed to remove peer. Peer at that address does not exist,",
 					remPeer.NeighborAddress.String()))
 			}
-			peer.Cleanup()
+			server.removePeerFromList(peer)
 			delete(server.PeerMap, remPeer.NeighborAddress.String())
+			peer.Cleanup()
 
 		case tcpConn := <-acceptCh:
 			server.logger.Info(fmt.Sprintln("Connected to", tcpConn.RemoteAddr().String()))
@@ -196,4 +215,34 @@ func (server *BGPServer) StartServer() {
 		}
 	}
 
+}
+
+func (s *BGPServer) GetBGPGlobalState() config.GlobalState {
+	return s.BgpConfig.Global.State
+}
+
+func (s *BGPServer) GetBGPNeighborState(neighborIP string) *config.NeighborState {
+	peer, ok := s.PeerMap[neighborIP]
+	if !ok {
+		s.logger.Err(fmt.Sprintf("GetBGPNeighborState - Neighbor not found for address:%s", neighborIP))
+		return nil
+	}
+	return &peer.Neighbor.State
+}
+
+func (s *BGPServer) BulkGetBGPNeighbors(index int, count int) (int, int, []*config.NeighborState) {
+	if index + count > len(s.Neighbors) {
+		count = len(s.Neighbors) - index
+	}
+
+	result := make([]*config.NeighborState, count)
+	for i := 0; i < count; i++ {
+		result[i] = &s.Neighbors[i + index].Neighbor.State
+	}
+
+	index += count
+	if index >= len(s.Neighbors) {
+		index = 0
+	}
+	return index, count, result
 }
