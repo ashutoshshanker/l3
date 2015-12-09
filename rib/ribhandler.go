@@ -326,7 +326,7 @@ func (m RouteServiceHandler) GetBulkRoutes( fromIndex ribd.Int, rcount ribd.Int)
 	routes = &returnRouteGetInfo
 	for ;;i++ {
 		logger.Printf("Fetching trie record for index %d\n", i+fromIndex)
-		if(i+fromIndex == ribd.Int(len(destNetSlice))) {
+		if(i+fromIndex >= ribd.Int(len(destNetSlice))) {
 			logger.Println("All the routes fetched")
 			moreRoutes = false
 			break
