@@ -10,7 +10,11 @@ import (
 	//		"patricia"
 	"errors"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/op/go-nanomsg"
+	"asicd/asicdConstDefs"
 	"io/ioutil"
+//	"encoding/binary"
+//	"bytes"
 	"net"
 	"strconv"
 	"time"
@@ -322,7 +326,7 @@ func (m RouteServiceHandler) GetBulkRoutes( fromIndex ribd.Int, rcount ribd.Int)
 	routes = &returnRouteGetInfo
 	for ;;i++ {
 		logger.Printf("Fetching trie record for index %d\n", i+fromIndex)
-		if(i+fromIndex == ribd.Int(len(destNetSlice))) {
+		if(i+fromIndex >= ribd.Int(len(destNetSlice))) {
 			logger.Println("All the routes fetched")
 			moreRoutes = false
 			break
@@ -344,8 +348,10 @@ func (m RouteServiceHandler) GetBulkRoutes( fromIndex ribd.Int, rcount ribd.Int)
 		    nextRoute.Ipaddr = prefixNodeRoute.destNetIp.String()
 		    nextRoute.Mask = prefixNodeRoute.networkMask.String()
 		    nextRoute.NextHopIp = prefixNodeRoute.nextHopIp.String()
+			nextRoute.NextHopIfType = ribd.Int(prefixNodeRoute.nextHopIfType)
 			nextRoute.IfIndex = prefixNodeRoute.nextHopIfIndex
 			nextRoute.Metric = prefixNodeRoute.metric
+			nextRoute.Prototype = ribd.Int(prefixNodeRoute.protocol)
 			toIndex = ribd.Int(prefixNodeRoute.sliceIdx)
 			if(len(returnRoutes) == 0){
 				returnRoutes = make([]*ribd.Routes, 0)
@@ -764,11 +770,64 @@ func CreateRoutes(routeFile string){
    }
 }
 */
-
+func processEvents(sub *nanomsg.SubSocket) {
+	logger.Println("in process events")
+  /* for ;; {
+	  logger.Println("In for loop")
+      rcvdMsg,err := sub.Recv(0)
+	  if(err != nil) {
+	     logger.Println("Error in receiving")
+		 return	
+	  }
+      buf := bytes.NewReader(rcvdMsg)
+      var MsgType asicdConstDefs.AsicdNotifyMsg
+      err = binary.Read(buf, binary.LittleEndian, &MsgType)
+      if err != nil {
+        //handle error
+		logger.Println("Error reading buf")
+		return
+      }	
+      switch MsgType.MsgType {
+        case asicdConstDefs.NOTIFY_LINK_STATE_CHANGE:
+		   logger.Println("received link state change event")
+           var msg asicdConstDefs.LinkStateInfo
+           err = binary.Read(buf, binary.LittleEndian, &msg)
+            if err != nil {
+               //handle error
+			   logger.Println("error reading msg")
+			   return
+            }
+         //msg.Port, msg.LinkStatus contain relevant info
+      }
+   }*/
+}
+func setupEventHandlers() {
+	logger.Println("Setting up event handlers")
+	sub, err := nanomsg.NewSubSocket()
+	 if err != nil {
+        logger.Println("Failed to open sub socket")
+        return
+    }
+	logger.Println("opened socket")
+	ep, err := sub.Connect(asicdConstDefs.PUB_SOCKET_ADDR)
+	if err != nil {
+        logger.Println("Failed to connect to pub socket - ", ep)
+        return
+    }
+	logger.Println("Connected to ", ep.Address)
+	err = sub.Subscribe("")
+	if(err != nil) {
+		logger.Println("Failed to subscribe to all topics")
+		return 
+	}
+	logger.Println("Subscribed")
+	go processEvents(sub)
+}
 func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
 	configFile := paramsDir + "/clients.json"
 	ConnectToClients(configFile)
+	setupEventHandlers()
 	//CreateRoutes("RouteSetup.json")
 	return &RouteServiceHandler{}
 }
