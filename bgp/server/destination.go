@@ -164,7 +164,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 					constructNetmaskFromLen(int(d.nlri.Length), 32).String(), selectedPath.NextHop))
 				ret, err := d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(),
 					constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
-					selectedPath.Metric, selectedPath.NextHop,
+					selectedPath.Metric, selectedPath.NextHop, selectedPath.NextHopIfType,
 					selectedPath.NextHopIfIdx, 8)
 				if err != nil {
 					d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
