@@ -13,8 +13,8 @@ import (
 	"github.com/op/go-nanomsg"
 	"asicd/asicdConstDefs"
 	"io/ioutil"
-	"encoding/binary"
-	"bytes"
+//	"encoding/binary"
+//	"bytes"
 	"net"
 	"strconv"
 	"time"
@@ -772,7 +772,7 @@ func CreateRoutes(routeFile string){
 */
 func processEvents(sub *nanomsg.SubSocket) {
 	logger.Println("in process events")
-   for ;; {
+  /* for ;; {
 	  logger.Println("In for loop")
       rcvdMsg,err := sub.Recv(0)
 	  if(err != nil) {
@@ -799,7 +799,7 @@ func processEvents(sub *nanomsg.SubSocket) {
             }
          //msg.Port, msg.LinkStatus contain relevant info
       }
-   }
+   }*/
 }
 func setupEventHandlers() {
 	logger.Println("Setting up event handlers")
