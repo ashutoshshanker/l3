@@ -10,13 +10,15 @@ struct Routes {
 	1: string Ipaddr,
 	2: string Mask,
 	3: string NextHopIp,
-	4: int IfIndex,
-	5: int Metric,
+	4: int NextHopIfType
+	5: int IfIndex,
+	6: int Metric,
+	7: int Prototype,
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
 	2: int EndIdx,
-	3: int count,
+	3: int Count,
 	4: bool More,
 	5: list<Routes> RouteList,
 }
