@@ -49,6 +49,16 @@ func (h *BGPHandler) CreateBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 	return true, nil
 }
 
+func (h *BGPHandler) GetBGPGlobal() (*bgpd.BGPGlobalState, error) {
+	bgpGlobal := h.server.GetBGPGlobalState()
+	bgpGlobalResponse := bgpd.NewBGPGlobalState()
+	bgpGlobalResponse.AS = int32(bgpGlobal.AS)
+	bgpGlobalResponse.RouterId = bgpGlobal.RouterId.String()
+	bgpGlobalResponse.TotalPaths = int32(bgpGlobal.TotalPaths)
+	bgpGlobalResponse.TotalPrefixes = int32(bgpGlobal.TotalPrefixes)
+	return bgpGlobalResponse, nil
+}
+
 func (h *BGPHandler) UpdateBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update global config attrs:", bgpGlobal))
 	return true, nil
@@ -68,11 +78,52 @@ func (h *BGPHandler) CreateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, err
 	pConf := config.NeighborConfig{
 		PeerAS:          uint32(bgpNeighbor.PeerAS),
 		LocalAS:         uint32(bgpNeighbor.LocalAS),
+		AuthPassword:    bgpNeighbor.AuthPassword,
 		Description:     bgpNeighbor.Description,
 		NeighborAddress: ip,
 	}
 	h.server.AddPeerCh <- pConf
 	return true, nil
+}
+
+func convertToThriftNeighbor(neighborState *config.NeighborState) *bgpd.BGPNeighborState {
+	bgpNeighborResponse := bgpd.NewBGPNeighborState()
+	bgpNeighborResponse.PeerAS = int32(neighborState.PeerAS)
+	bgpNeighborResponse.LocalAS = int32(neighborState.LocalAS)
+	bgpNeighborResponse.AuthPassword = neighborState.AuthPassword
+	bgpNeighborResponse.PeerType = bgpd.PeerType(neighborState.PeerType)
+	bgpNeighborResponse.Description = neighborState.Description
+	bgpNeighborResponse.NeighborAddress = neighborState.NeighborAddress.String()
+	bgpNeighborResponse.SessionState = int32(neighborState.SessionState)
+	bgpNeighborResponse.Messages.Received.Notification = int64(neighborState.Messages.Received.Notification)
+	bgpNeighborResponse.Messages.Received.Update = int64(neighborState.Messages.Received.Update)
+	bgpNeighborResponse.Messages.Sent.Notification = int64(neighborState.Messages.Sent.Notification)
+	bgpNeighborResponse.Messages.Sent.Update = int64(neighborState.Messages.Sent.Update)
+	bgpNeighborResponse.Queues.Input = int32(neighborState.Queues.Input)
+	bgpNeighborResponse.Queues.Output = int32(neighborState.Queues.Output)
+	return bgpNeighborResponse
+}
+
+func (h *BGPHandler) GetBGPNeighbor(neighborAddress string) (*bgpd.BGPNeighborState, error) {
+	bgpNeighborState := h.server.GetBGPNeighborState(neighborAddress)
+	bgpNeighborResponse := convertToThriftNeighbor(bgpNeighborState)
+	return bgpNeighborResponse, nil
+}
+
+func (h *BGPHandler) BulkGetBGPNeighbors(index int64, count int64) (*bgpd.BGPNeighborStateBulk, error) {
+	nextIdx, currCount, bgpNeighbors := h.server.BulkGetBGPNeighbors(int(index), int(count))
+	bgpNeighborsResponse := make([]*bgpd.BGPNeighborState, len(bgpNeighbors))
+	for idx, item := range bgpNeighbors {
+		bgpNeighborsResponse[idx] = convertToThriftNeighbor(item)
+	}
+
+	bgpNeighborStateBulk := bgpd.NewBGPNeighborStateBulk()
+	bgpNeighborStateBulk.NextIndex = int64(nextIdx)
+	bgpNeighborStateBulk.Count = int64(currCount)
+	bgpNeighborStateBulk.More = nextIdx == 0
+	bgpNeighborStateBulk.StateList = bgpNeighborsResponse
+
+	return bgpNeighborStateBulk, nil
 }
 
 func (h *BGPHandler) UpdateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, error) {
