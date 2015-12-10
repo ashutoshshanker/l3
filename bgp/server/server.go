@@ -8,6 +8,7 @@ import (
 	"log/syslog"
 	"net"
 	"ribd"
+	"sync"
 	"time"
 )
 
@@ -25,6 +26,7 @@ type BGPServer struct {
 	BGPPktSrc       chan *packet.BGPPktSrc
 	connRoutesTimer *time.Timer
 
+	NeighborMutex  sync.RWMutex
 	PeerMap        map[string]*Peer
 	Neighbors      []*Peer
 	adjRib         *AdjRib
@@ -40,6 +42,7 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.RemPeerCh = make(chan config.NeighborConfig)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
 	bgpServer.BGPPktSrc = make(chan *packet.BGPPktSrc)
+	bgpServer.NeighborMutex = sync.RWMutex{}
 	bgpServer.PeerMap = make(map[string]*Peer)
 	bgpServer.Neighbors = make([]*Peer, 0)
 	bgpServer.adjRib = NewAdjRib(bgpServer)
@@ -167,7 +170,9 @@ func (server *BGPServer) StartServer() {
 			server.logger.Info(fmt.Sprintln("Add Peer ip:", addPeer.NeighborAddress.String()))
 			peer := NewPeer(server, server.BgpConfig.Global.Config, addPeer)
 			server.PeerMap[addPeer.NeighborAddress.String()] = peer
+			server.NeighborMutex.Lock()
 			server.addPeerToList(peer)
+			server.NeighborMutex.Unlock()
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:
@@ -177,7 +182,9 @@ func (server *BGPServer) StartServer() {
 				server.logger.Info(fmt.Sprintln("Failed to remove peer. Peer at that address does not exist,",
 					remPeer.NeighborAddress.String()))
 			}
+			server.NeighborMutex.Lock()
 			server.removePeerFromList(peer)
+			server.NeighborMutex.Unlock()
 			delete(server.PeerMap, remPeer.NeighborAddress.String())
 			peer.Cleanup()
 
@@ -231,6 +238,9 @@ func (s *BGPServer) GetBGPNeighborState(neighborIP string) *config.NeighborState
 }
 
 func (s *BGPServer) BulkGetBGPNeighbors(index int, count int) (int, int, []*config.NeighborState) {
+	defer s.NeighborMutex.RUnlock()
+
+	s.NeighborMutex.RLock()
 	if index + count > len(s.Neighbors) {
 		count = len(s.Neighbors) - index
 	}

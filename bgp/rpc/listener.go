@@ -110,7 +110,7 @@ func (h *BGPHandler) GetBGPNeighbor(neighborAddress string) (*bgpd.BGPNeighborSt
 	return bgpNeighborResponse, nil
 }
 
-func (h *BGPHandler) BulkGetBGPNeighbors(index int32, count int32) (*bgpd.BGPNeighborStateBulk, error) {
+func (h *BGPHandler) BulkGetBGPNeighbors(index int64, count int64) (*bgpd.BGPNeighborStateBulk, error) {
 	nextIdx, currCount, bgpNeighbors := h.server.BulkGetBGPNeighbors(int(index), int(count))
 	bgpNeighborsResponse := make([]*bgpd.BGPNeighborState, len(bgpNeighbors))
 	for idx, item := range bgpNeighbors {
@@ -118,8 +118,9 @@ func (h *BGPHandler) BulkGetBGPNeighbors(index int32, count int32) (*bgpd.BGPNei
 	}
 
 	bgpNeighborStateBulk := bgpd.NewBGPNeighborStateBulk()
-	bgpNeighborStateBulk.NextIndex = int32(nextIdx)
-	bgpNeighborStateBulk.Count = int32(currCount)
+	bgpNeighborStateBulk.NextIndex = int64(nextIdx)
+	bgpNeighborStateBulk.Count = int64(currCount)
+	bgpNeighborStateBulk.More = nextIdx == 0
 	bgpNeighborStateBulk.StateList = bgpNeighborsResponse
 
 	return bgpNeighborStateBulk, nil

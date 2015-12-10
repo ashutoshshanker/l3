@@ -54,10 +54,11 @@ struct BGPNeighborState {
 }
 
 struct BGPNeighborStateBulk {
-	1: i32 currIndex,
-	2: i32 nextIndex,
-	3: i32 count,
-	4: list<BGPNeighborState> stateList,
+	1: i64 CurrIndex,
+	2: i64 NextIndex,
+	3: i64 Count,
+	4: bool More,
+	5: list<BGPNeighborState> StateList,
 }
 
 service BGPServer
@@ -69,7 +70,7 @@ service BGPServer
 
     bool CreateBGPNeighbor(1: BGPNeighbor neighbor);
 	BGPNeighborState GetBGPNeighbor(1: string ip);
-	BGPNeighborStateBulk BulkGetBGPNeighbors(1: i32 index, 2: i32  count);
+	BGPNeighborStateBulk BulkGetBGPNeighbors(1: i64 index, 2: i64 count);
     bool UpdateBGPNeighbor(1: BGPNeighbor neighbor);
     bool DeleteBGPNeighbor(1: BGPNeighbor neighbor);
 }
