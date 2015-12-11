@@ -320,7 +320,6 @@ func (ip *IPPrefix) Clone() *IPPrefix {
 	x := *ip
 	x.Prefix = make(net.IP, len(ip.Prefix), cap(ip.Prefix))
 	copy(x.Prefix, ip.Prefix)
-	fmt.Println("IPPrefix Clone: ip.Prefix:", ip.Prefix, "x.Prefix", x.Prefix)
 	return &x
 }
 
@@ -671,7 +670,6 @@ func (n *BGPPathAttrNextHop) Encode() ([]byte, error) {
 		return pkt, err
 	}
 
-	fmt.Println("BGPPathAttrNextHop Encode - pkt: cap =", cap(pkt), "len =", len(pkt), "Value: cap =", cap(n.Value), "len =", len(n.Value), "nexthop len =", n.Length)
 	copy(pkt[n.BGPPathAttrBase.BGPPathAttrLen:], n.Value[cap(n.Value)-int(n.Length):])
 	return pkt, nil
 }
