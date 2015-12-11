@@ -8,6 +8,7 @@ import (
 	"log/syslog"
 	"net"
 	"time"
+	"sync/atomic"
 )
 
 type Peer struct {
@@ -30,6 +31,21 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 		},
 		BGPId: 0,
 	}
+
+	peer.Neighbor.State = config.NeighborState{
+		PeerAS: peerConf.PeerAS,
+		LocalAS: peerConf.LocalAS,
+		AuthPassword: peerConf.AuthPassword,
+		Description: peerConf.Description,
+		NeighborAddress: peerConf.NeighborAddress,
+	}
+
+	if peerConf.LocalAS == peerConf.PeerAS {
+		peer.Neighbor.State.PeerType = config.PeerTypeInternal
+	} else {
+		peer.Neighbor.State.PeerType = config.PeerTypeExternal
+	}
+
 	peer.fsmManager = NewFSMManager(&peer, &globalConf, &peerConf)
 	return &peer
 }
@@ -118,10 +134,15 @@ func (p *Peer) PeerConnBroken() {
 	p.Neighbor.Transport.Config.LocalAddress = nil
 }
 
+func (p *Peer) FSMStateChange(state BGPFSMState) {
+	p.Neighbor.State.SessionState = uint32(state)
+}
+
 func (p *Peer) SendUpdate(bgpMsg packet.BGPMessage, path *Path) {
 	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message", p.Neighbor.NeighborAddress))
 	bgpMsgRef := &bgpMsg
 	if p.updatePathAttrs(bgpMsgRef, path) {
+		atomic.AddUint32(&p.Neighbor.State.Queues.Output, 1)
 		p.fsmManager.SendUpdateMsg(bgpMsgRef)
 	}
 }

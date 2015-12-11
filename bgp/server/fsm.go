@@ -9,6 +9,7 @@ import (
 	"log/syslog"
 	"net"
 	"time"
+	"sync/atomic"
 )
 
 type BGPFSMState int
@@ -719,6 +720,7 @@ type PeerConnDir struct {
 
 type FSM struct {
 	logger   *syslog.Writer
+	peer     *Peer
 	gConf    *config.GlobalConfig
 	pConf    *config.NeighborConfig
 	Manager  *FSMManager
@@ -762,11 +764,12 @@ type FSM struct {
 	rxPktsFlag bool
 }
 
-func NewFSM(fsmManager *FSMManager, connDir config.ConnDir, gConf *config.GlobalConfig, pConf *config.NeighborConfig) *FSM {
+func NewFSM(fsmManager *FSMManager, connDir config.ConnDir, peer *Peer) *FSM {
 	fsm := FSM{
 		logger:           fsmManager.logger,
-		gConf:            gConf,
-		pConf:            pConf,
+		peer:             peer,
+		gConf:            peer.Global,
+		pConf:            &peer.Neighbor.Config,
 		Manager:          fsmManager,
 		connDir:          connDir,
 		connectRetryTime: BGPConnectRetryTime,      // seconds
@@ -879,6 +882,7 @@ func (fsm *FSM) ProcessPacket(msg *packet.BGPMessage, msgErr *packet.BGPMessageE
 			event = BGPEventUpdateMsg
 
 		case packet.BGPMsgTypeNotification:
+			fsm.peer.Neighbor.State.Messages.Received.Notification++
 			event = BGPEventNotifMsg
 
 		case packet.BGPMsgTypeKeepAlive:
@@ -896,6 +900,7 @@ func (fsm *FSM) ChangeState(newState BaseStateIface) {
 	fsm.State.leave()
 	fsm.State = newState
 	fsm.State.enter()
+	fsm.peer.FSMStateChange(fsm.State.state())
 }
 
 func (fsm *FSM) ApplyAutomaticStart() {
@@ -996,15 +1001,19 @@ func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 
 func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "ProcessUpdateMessage"))
+	atomic.AddUint32(&fsm.peer.Neighbor.State.Queues.Input, 1)
 	fsm.Manager.Peer.Server.BGPPktSrc <- packet.NewBGPPktSrc(fsm.Manager.Peer.Neighbor.NeighborAddress.String(), pkt)
 }
 
 func (fsm *FSM) sendUpdateMessage(bgpMsg *packet.BGPMessage) {
+	atomic.AddUint32(&fsm.peer.Neighbor.State.Queues.Output, ^uint32(0))
 	packet, _ := bgpMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
 		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write failed to send Update message with error:", err))
+		return
 	}
+	fsm.peer.Neighbor.State.Messages.Sent.Update++
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write succeeded. sent Update message of", num, "bytes"))
 	fsm.StartKeepAliveTimer()
 }
@@ -1035,7 +1044,9 @@ func (fsm *FSM) SendNotificationMessage(code uint8, subCode uint8, data []byte) 
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
 		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write failed to send Notification message with error:", err))
+		return
 	}
+	fsm.peer.Neighbor.State.Messages.Sent.Notification++
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write succeeded. sent Notification message with", num, "bytes"))
 }
 

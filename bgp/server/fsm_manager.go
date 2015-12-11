@@ -60,7 +60,7 @@ func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config
 }
 
 func (fsmManager *FSMManager) Init() {
-	fsmManager.fsms[config.ConnDirOut] = NewFSM(fsmManager, config.ConnDirOut, fsmManager.gConf, fsmManager.pConf)
+	fsmManager.fsms[config.ConnDirOut] = NewFSM(fsmManager, config.ConnDirOut, fsmManager.Peer)
 	go fsmManager.fsms[config.ConnDirOut].StartFSM(NewIdleState(fsmManager.fsms[config.ConnDirOut]))
 
 	for {

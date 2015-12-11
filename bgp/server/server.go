@@ -9,6 +9,7 @@ import (
 	"net"
 	"ribd"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -115,6 +116,8 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 		return
 	}
 
+	atomic.AddUint32(&peer.Neighbor.State.Queues.Input, ^uint32(0))
+	peer.Neighbor.State.Messages.Received.Update++
 	updated, withdrawn := server.adjRib.ProcessUpdate(peer, pktInfo)
 	server.SendUpdate(updated, withdrawn)
 }
