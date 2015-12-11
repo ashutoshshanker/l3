@@ -12,12 +12,13 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/op/go-nanomsg"
 	"asicd/asicdConstDefs"
+	"infra/portd/portdCommonDefs"
 	"io/ioutil"
-//	"encoding/binary"
-//	"bytes"
 	"net"
 	"strconv"
 	"time"
+	"encoding/binary"
+	"bytes"
 )
 
 type RouteServiceHandler struct {
@@ -53,7 +54,10 @@ const (
 	add = iota
 	del
 )
-
+const (
+	SUB_PORTD = 0
+	SUB_ASICD = 1
+)
 type RouteInfoRecord struct {
 	destNetIp      net.IP //string
 	networkMask    net.IP //string
@@ -97,7 +101,10 @@ var count int
 var ConnectedRoutes []*ribd.Routes
 var destNetSlice []localDB
 var acceptConfig bool
-
+var AsicdSub *nanomsg.SubSocket
+var PortdSub *nanomsg.SubSocket
+var RIBD_PUB  *nanomsg.PubSocket
+/*
 func setProtocol(routeType ribd.Int) (proto int8, err error) {
 	err = nil
 	switch routeType {
@@ -115,7 +122,7 @@ func setProtocol(routeType ribd.Int) (proto int8, err error) {
 	}
 	return proto, err
 }
-
+*/
 func getSelectedRoute(routeInfoRecordList RouteInfoRecordList) (routeInfoRecord RouteInfoRecord, err error) {
 	if routeInfoRecordList.selectedRouteIdx == PROTOCOL_NONE {
 		err = errors.New("No route selected")
@@ -261,7 +268,7 @@ func getNetworkPrefix(destNetIp net.IP, networkMask net.IP) (destNet patriciaDB.
 	}
 	return destNet, nil
 }
-func updateConnectedRoutes(destNetIPAddr string, networkMaskAddr string, nextHopIfIndex ribd.Int, op int) {
+func updateConnectedRoutes(destNetIPAddr string, networkMaskAddr string, nextHopIfIndex ribd.Int, nextHopIfType ribd.Int, op int) {
 	var temproute ribd.Routes
 	route := &temproute
 	logger.Printf("number of connectd routes = %d\n", len(ConnectedRoutes))
@@ -273,6 +280,7 @@ func updateConnectedRoutes(destNetIPAddr string, networkMaskAddr string, nextHop
 		ConnectedRoutes = make([]*ribd.Routes, 1)
 		route.Ipaddr = destNetIPAddr
 		route.Mask = networkMaskAddr
+		route.NextHopIfType = nextHopIfType
 		route.IfIndex = nextHopIfIndex
 		ConnectedRoutes[0] = route
 		return
@@ -292,6 +300,7 @@ func updateConnectedRoutes(destNetIPAddr string, networkMaskAddr string, nextHop
 	route.Ipaddr = destNetIPAddr
 	route.Mask = networkMaskAddr
 	route.IfIndex = nextHopIfIndex
+	route.NextHopIfType = nextHopIfType
 	ConnectedRoutes = append(ConnectedRoutes, route)
 }
 func IsRoutePresent(routeInfoRecordList RouteInfoRecordList,
@@ -436,8 +445,10 @@ func (m RouteServiceHandler) GetRoute ( destNetIp string, networkMask string) (r
 	route.Ipaddr = destNetIp
 	route.Mask = networkMask
 	route.NextHopIp = routeInfoRecord.nextHopIp.String()
+	route.NextHopIfType = ribd.Int(routeInfoRecord.nextHopIfType)
 	route.IfIndex = routeInfoRecord.nextHopIfIndex
 	route.Metric =  routeInfoRecord.metric
+	route.Prototype = ribd.Int(routeInfoRecord.protocol)
 	return route, err
 } 
 func (m RouteServiceHandler) CreateV4Route(destNetIp string,
@@ -472,10 +483,11 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	if err != nil {
 		return -1, err
 	}
-	routePrototype, err := setProtocol(routeType)
+	routePrototype := int8(routeType)
+/*	routePrototype, err := setProtocol(routeType)
 	if err != nil {
 		return 0, err
-	}
+	}*/
 	logger.Printf("routePrototype %d for routeType %d", routePrototype, routeType)
 	routeInfoRecord := RouteInfoRecord{destNetIp: destNetIpAddr, networkMask: networkMaskAddr, protocol: routePrototype, nextHopIp: nextHopIpAddr, nextHopIfType: int8(nextHopIfType), nextHopIfIndex: nextHopIfIndex, metric: metric, sliceIdx:len(destNetSlice)}
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
@@ -507,20 +519,17 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 			err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, add, len(routeInfoRecordList.routeInfoList)-1)
 		}
 	}
-	if routePrototype == PROTOCOL_CONNECTED {
-		updateConnectedRoutes(destNetIp, networkMask, nextHopIfIndex, add)
+	if routePrototype == ribdCommonDefs.CONNECTED { //PROTOCOL_CONNECTED {
+		updateConnectedRoutes(destNetIp, networkMask, nextHopIfIndex, nextHopIfType,add)
 	}
 	return 0, err
 }
 
-func (m RouteServiceHandler) DeleteV4Route(destNetIp string,
+func deleteV4Route(destNetIp string,
 	networkMask string,
 	routeType ribd.Int) (rc ribd.Int, err error) {
-	logger.Println("Received Route Delete request")
-	if(!acceptConfig) {
-		logger.Println("Not ready to accept config")
-		//return 0,err
-	}
+	logger.Println("deleteV4Route")
+
 	destNetIpAddr, err := getIP(destNetIp)
 	if err != nil {
 		return 0, err
@@ -534,10 +543,11 @@ func (m RouteServiceHandler) DeleteV4Route(destNetIp string,
 		return -1, err
 	}
 	logger.Printf("destNet = %v\n", destNet)
-	routePrototype, err := setProtocol(routeType)
+	routePrototype := int8(routeType)
+/*	routePrototype, err := setProtocol(routeType)
 	if err != nil {
 		return 0, err
-	}
+	}*/
 	ok := RouteInfoMap.Match(destNet)
 	if !ok {
 		return 0, nil
@@ -555,12 +565,23 @@ func (m RouteServiceHandler) DeleteV4Route(destNetIp string,
 	routeInfoRecord := routeInfoRecordList.routeInfoList[i]
 	routeInfoRecordList.routeInfoList = append(routeInfoRecordList.routeInfoList[:i], routeInfoRecordList.routeInfoList[i+1:]...)
 	err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, del, int(i))
-	if routePrototype == PROTOCOL_CONNECTED {
-		updateConnectedRoutes(destNetIp, networkMask, 0, del)
+	if routePrototype == ribdCommonDefs.CONNECTED { //PROTOCOL_CONNECTED {
+		updateConnectedRoutes(destNetIp, networkMask, 0, 0,del)
 	}
 	return 0, err
 }
 
+func (m RouteServiceHandler) DeleteV4Route(destNetIp string,
+	networkMask string,
+	routeType ribd.Int) (rc ribd.Int, err error) {
+	logger.Println("Received Route Delete request")
+	if(!acceptConfig) {
+		logger.Println("Not ready to accept config")
+		//return 0,err
+	}
+	_,err = deleteV4Route(destNetIp, networkMask, routeType)
+	return 0, err
+}
 func (m RouteServiceHandler) UpdateV4Route(destNetIp string,
 	networkMask string,
 	routeType ribd.Int,
@@ -590,10 +611,11 @@ func (m RouteServiceHandler) UpdateV4Route(destNetIp string,
 		return err
 	}
 	logger.Printf("destNet = %v\n", destNet)
-	routePrototype, err := setProtocol(routeType)
+	routePrototype := int8(routeType)
+/*	routePrototype, err := setProtocol(routeType)
 	if err != nil {
 		return err
-	}
+	}*/
 	ok := RouteInfoMap.Match(destNet)
 	if !ok {
 		err = errors.New("No route found")
@@ -639,6 +661,35 @@ func (m RouteServiceHandler) PrintV4Routes() (err error) {
 	return nil
 }
 
+func processLinkDownEvent(ifIndex ribd.Int){
+	logger.Println("processLinkDown")
+   for i:=0;i<len(ConnectedRoutes);i++ {
+      if(ConnectedRoutes[i].NextHopIfType == portdCommonDefs.PHY&&ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){
+	     logger.Printf("Delete this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)	
+
+		 //Send a event
+	     msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : *ConnectedRoutes[i]}
+	     msgbufbytes, err := json.Marshal( msgBuf)
+         msg := ribdCommonDefs.RibdNotifyMsg {MsgType:ribdCommonDefs.NOTIFY_ROUTE_DELETED, MsgBuf: msgbufbytes}
+	     buf, err := json.Marshal( msg)
+	     if err != nil {
+		   logger.Println("Error in marshalling Json")
+		   return
+	     }
+	     logger.Println("buf", buf)
+   	     RIBD_PUB.Send(buf, nanomsg.DontWait)
+		
+         //Delete this route
+		 deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, 0)
+	  }	
+   }
+}
+
+func (m RouteServiceHandler) LinkDown(ifIndex ribd.Int) (err error){
+	logger.Println("LinkDown")
+	processLinkDownEvent(ifIndex)
+	return nil
+}
 //
 // This method gets Thrift related IPC handles.
 //
@@ -653,7 +704,7 @@ func CreateIPCHandles(address string) (thrift.TTransport, *thrift.TBinaryProtoco
 	transport, err = thrift.NewTSocket(address)
 	transport = transportFactory.GetTransport(transport)
 	if err = transport.Open(); err != nil {
-		logger.Println("Failed to Open Transport", transport, protocolFactory)
+	//	logger.Println("Failed to Open Transport", transport, protocolFactory)
 		return nil, nil
 	}
 	return transport, protocolFactory
@@ -666,11 +717,11 @@ func connectToClient(client ClientJson) {
 		timer = time.NewTimer(time.Second * 10)
 		<-timer.C
 		if client.Name == "asicd" {
-			logger.Printf("found asicd at port %d", client.Port)
+			//logger.Printf("found asicd at port %d", client.Port)
 			asicdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
 			asicdclnt.Transport, asicdclnt.PtrProtocolFactory = CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
-				logger.Println("connecting to asicd")
+				//logger.Println("connecting to asicd")
 				asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
 				if(arpdclnt.IsConnected == true) {
@@ -681,11 +732,11 @@ func connectToClient(client ClientJson) {
 			}
 		}
 		if client.Name == "arpd" {
-			logger.Printf("found arpd at port %d", client.Port)
+			//logger.Printf("found arpd at port %d", client.Port)
 			arpdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
 			arpdclnt.Transport, arpdclnt.PtrProtocolFactory = CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
-				logger.Println("connecting to arpd")
+				//logger.Println("connecting to arpd")
 				arpdclnt.ClientHdl = arpd.NewARPServiceClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
 				if(asicdclnt.IsConnected == true) {
@@ -770,46 +821,94 @@ func CreateRoutes(routeFile string){
    }
 }
 */
-func processEvents(sub *nanomsg.SubSocket) {
-	logger.Println("in process events")
-  /* for ;; {
+
+func processAsicdEvents(sub *nanomsg.SubSocket) {
+	
+	logger.Println("in process Asicd events")
+    for {
+	  logger.Println("In for loop")
+      rcvdMsg,err := sub.Recv(0)
+	  if(err != nil) {
+	     logger.Println("Error in receiving ", err)
+		 return	
+	  }
+	  logger.Println("After recv rcvdMsg buf", rcvdMsg)
+      buf := bytes.NewReader(rcvdMsg)
+      var MsgType asicdConstDefs.AsicdNotifyMsg
+      err = binary.Read(buf, binary.LittleEndian, &MsgType)
+      if err != nil {
+	     logger.Println("Error in reading msgtype ", err)
+		 return	
+      }
+      switch MsgType {
+        case asicdConstDefs.NOTIFY_LINK_STATE_CHANGE:
+           var msg asicdConstDefs.LinkStateInfo
+           err = binary.Read(buf, binary.LittleEndian, &msg)
+           if err != nil {
+    	     logger.Println("Error in reading msg ", err)
+		     return	
+           }
+		    logger.Printf("Msg linkstatus = %d msg port = %d\n", msg.LinkStatus, msg.Port)
+		    if(msg.LinkStatus == asicdConstDefs.LINK_STATE_DOWN) {
+				processLinkDownEvent(ribd.Int(msg.Port))
+			}
+       }
+	}
+}
+
+func processPortdEvents(sub *nanomsg.SubSocket) {
+	
+	logger.Println("in process Port events")
+    for {
 	  logger.Println("In for loop")
       rcvdMsg,err := sub.Recv(0)
 	  if(err != nil) {
 	     logger.Println("Error in receiving")
 		 return	
 	  }
-      buf := bytes.NewReader(rcvdMsg)
-      var MsgType asicdConstDefs.AsicdNotifyMsg
-      err = binary.Read(buf, binary.LittleEndian, &MsgType)
-      if err != nil {
-        //handle error
-		logger.Println("Error reading buf")
+	  logger.Println("After recv rcvdMsg buf", rcvdMsg)
+	  MsgType := portdCommonDefs.PortdNotifyMsg {}
+	  err = json.Unmarshal(rcvdMsg, &MsgType)
+	  if err != nil {
+		logger.Println("Error in Unmarshalling rcvdMsg Json")
 		return
-      }	
+	  }
+	  logger.Printf(" MsgTYpe=%v\n", MsgType)
       switch MsgType.MsgType {
-        case asicdConstDefs.NOTIFY_LINK_STATE_CHANGE:
+        case portdCommonDefs.NOTIFY_LINK_STATE_CHANGE:
 		   logger.Println("received link state change event")
-           var msg asicdConstDefs.LinkStateInfo
-           err = binary.Read(buf, binary.LittleEndian, &msg)
-            if err != nil {
-               //handle error
-			   logger.Println("error reading msg")
-			   return
-            }
-         //msg.Port, msg.LinkStatus contain relevant info
+           msg := portdCommonDefs.LinkStateInfo {}
+	       err = json.Unmarshal(MsgType.MsgBuf, &msg)
+	       if err != nil {
+		      logger.Println("Error in Unmarshalling msgType Json")
+		      return
+	        }
+		    logger.Printf("Msg linkstatus = %d msg port = %d\n", msg.LinkStatus, msg.Port)
+		    if(msg.LinkStatus == portdCommonDefs.LINK_STATE_DOWN) {
+				processLinkDownEvent(ribd.Int(msg.Port))
+			}
       }
-   }*/
+	}
 }
-func setupEventHandlers() {
-	logger.Println("Setting up event handlers")
+func processEvents(sub *nanomsg.SubSocket, subType ribd.Int) {
+	logger.Println("in process events for sub ", subType)
+	if(subType == SUB_ASICD){
+		logger.Println("process Asicd events")
+		processAsicdEvents(sub)
+	} else if(subType == SUB_PORTD){
+		logger.Println("process portd events")
+		processPortdEvents(sub)
+	}
+}
+func setupEventHandler(sub *nanomsg.SubSocket, address string, subtype ribd.Int) {
+	logger.Println("Setting up event handlers for sub type ", subtype)
 	sub, err := nanomsg.NewSubSocket()
 	 if err != nil {
         logger.Println("Failed to open sub socket")
         return
     }
 	logger.Println("opened socket")
-	ep, err := sub.Connect(asicdConstDefs.PUB_SOCKET_ADDR)
+	ep, err := sub.Connect(address)
 	if err != nil {
         logger.Println("Failed to connect to pub socket - ", ep)
         return
@@ -821,13 +920,40 @@ func setupEventHandlers() {
 		return 
 	}
 	logger.Println("Subscribed")
-	go processEvents(sub)
+	err = sub.SetRecvBuffer(1024 * 1204)
+    if err != nil {
+        logger.Println("Failed to set recv buffer size")
+        return
+    }
+		//processPortdEvents(sub)
+	processEvents(sub, subtype)
 }
+func InitPublisher()(pub *nanomsg.PubSocket) {
+	pub, err := nanomsg.NewPubSocket()
+    if err != nil {
+        logger.Println("Failed to open pub socket")
+        return nil
+    }
+    ep, err := pub.Bind(ribdCommonDefs.PUB_SOCKET_ADDR)
+    if err != nil {
+        logger.Println("Failed to bind pub socket - ", ep)
+        return nil
+    }
+    err = pub.SetSendBuffer(1024*1024)
+    if err != nil {
+        logger.Println("Failed to set send buffer size")
+        return nil
+    }
+	return pub
+}
+
 func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
 	configFile := paramsDir + "/clients.json"
 	ConnectToClients(configFile)
-	setupEventHandlers()
+	RIBD_PUB = InitPublisher()
+	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
+	go setupEventHandler(PortdSub, portdCommonDefs.PUB_SOCKET_ADDR, SUB_PORTD)
 	//CreateRoutes("RouteSetup.json")
 	return &RouteServiceHandler{}
 }

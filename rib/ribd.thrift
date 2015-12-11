@@ -33,4 +33,5 @@ service RouteService
     void printV4Routes();
 	RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
+	void linkDown(1: int ifIndex);
 }
