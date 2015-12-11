@@ -73,6 +73,12 @@ type PortConfigJson struct {
 	Ifname string `json:Ifname`
 }
 
+type arpUpdateMsg struct {
+        ip string
+        ent arpEntry
+        port int
+}
+
 /*
  * connection params.
  */
@@ -97,10 +103,16 @@ var asicdClient AsicdClient //Thrift client to connect to asicd
 var portdClient PortdClient //portd services client
 var rec_handle_map map[*pcap.Handle]int
 
+
+var portCfgList []PortConfigJson
+
+var arp_cache_update_chl chan arpUpdateMsg = make(chan arpUpdateMsg, 100)
+
+
 /*** TEMP DEFINES **/
 var myMac = "00:11:22:33:44:55"
-
 //var myMac = "08:00:27:75:bc:4d"
+//var myMac = "fa:15:f5:69:a4:c9"
 
 /****** Utility APIs.****/
 func getIP(ipAddr string) (ip net.IP, err int) {
@@ -125,23 +137,28 @@ func getHWAddr(macAddr string) (mac net.HardwareAddr, err error) {
 func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
 	iftype arpd.Int, vlan_id arpd.Int) (rc arpd.Int, err error) {
 
+        logger.Println("Calling ResotolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id))
+        var linux_device string
 	if portdClient.IsConnected {
-		linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
-		logger.Println(linux_device)
-		if err != nil {
-			logWriter.Err(fmt.Sprintf("Failed to get ifname for interface : ", vlan_id, "type : ", iftype))
-			return ARP_ERR_REQ_FAIL, err
-		}
-		logWriter.Err(fmt.Sprintln("Server:Connecting to device ", linux_device))
-		handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout)
-		//handle, err = pcap.OpenLive(device, snapshot_len, promiscuous, timeout)
-		if handle == nil {
-			logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
-			return 0, nil
-		}
-		arp_cache.dev_handle = handle
-		initPortParams()
-		go processPacket(targetIp, vlan_id)
+//		linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
+                for _, port_cfg := range portCfgList {
+                    linux_device = port_cfg.Ifname
+                    logger.Println("linux_device ", linux_device)
+                    if err != nil {
+                            logWriter.Err(fmt.Sprintf("Failed to get ifname for interface : ", vlan_id, "type : ", iftype))
+                            return ARP_ERR_REQ_FAIL, err
+                    }
+                    logWriter.Err(fmt.Sprintln("Server:Connecting to device ", linux_device))
+                    handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout)
+                    //handle, err = pcap.OpenLive(device, snapshot_len, promiscuous, timeout)
+                    if handle == nil {
+                            logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
+                            return 0, nil
+                    }
+                    arp_cache.dev_handle = handle
+                    //initPortParams()
+                    go processPacket(targetIp, vlan_id)
+                }
 
 	} else {
 		logWriter.Err("portd client is not connected.")
@@ -237,16 +254,18 @@ func initARPhandlerParams() {
 		return
 	}
 
-	// connect to asicd and portd
-	//configFile := params_dir + "/clients.json"
-	//ConnectToClients(configFile)
-
-	//initPortParams()
+	//connect to asicd and portd
+        logger.Println("Calling initARPhandlerParam() to connect to clients...")
+	configFile := params_dir + "/clients.json"
+	ConnectToClients(configFile)
+        go updateArpCache()
+	initPortParams()
+        /* Open Response thread */
+        processResponse()
 
 }
 
 func BuildAsicToLinuxMap(cfgFile string) {
-	var portCfgList []PortConfigJson
 	bytes, err := ioutil.ReadFile(cfgFile)
 	if err != nil {
 		logger.Println("Error in reading port configuration file")
@@ -268,27 +287,38 @@ func BuildAsicToLinuxMap(cfgFile string) {
 		}
 		rec_handle_map[local_handle] = v.Port
 	}
+        logger.Println("BuildAsicToLinuxMap() : ", rec_handle_map)
 
 }
 func initPortParams() {
-	configFile := params_dir + "/clients.json"
-	ConnectToClients(configFile)
+	//configFile := params_dir + "/clients.json"
+	//ConnectToClients(configFile)
 	portCfgFile := params_dir + "/portd.json"
 	BuildAsicToLinuxMap(portCfgFile)
 }
 
 func processPacket(targetIp string, vlanid arpd.Int) {
 	logWriter.Err("Receive the ARP request")
-	logger.Println("Receive arp req for ", targetIp)
+	//logger.Println("Receive arp req for ", targetIp)
+        logger.Println("processPacket() : Arp request for ", targetIp)
 	_, exist := arp_cache.arpMap[targetIp]
 	if !exist {
 		// 1) send arp request
+                logger.Println("Sending Arp requeust.")
 		success := sendArpReq(targetIp, device_ip)
 		if success != ARP_REQ_SUCCESS {
 			logWriter.Err(fmt.Sprintf("Failed to send ARP request. for Ip : ", targetIp))
 			return
 		}
-		processResponse(targetIp, vlanid)
+                arp_cache_update_chl <- arpUpdateMsg {
+                                            ip: targetIp,
+                                            ent: arpEntry {
+                                                    macAddr: []byte{0,0,0,0,0,0},
+                                                    vlanid: vlanid,
+                                                 },
+                                            port: 0,
+                                         }
+	        //processResponse(targetIp, vlanid)
 		logWriter.Err("Receive arp response")
 
 	}
@@ -300,15 +330,19 @@ func processPacket(targetIp string, vlanid arpd.Int) {
 	return
 }
 
-func processResponse(targetIp string, vlanid arpd.Int) {
+//func processResponse(targetIp string, vlanid arpd.Int) {
+func processResponse() {
 	myMac_addr, fail := getHWAddr(myMac)
+        //logger.Println("Process Response...", targetIp, " ", int32(vlanid))
 	if fail != nil {
 		logWriter.Err(fmt.Sprintf("corrupted my mac : ", myMac))
 		return
 	}
 	for rec_handle, port_id := range rec_handle_map {
-		go receiveArpResponse(targetIp, rec_handle,
-			myMac_addr, vlanid, port_id)
+		//go receiveArpResponse(targetIp, rec_handle,
+		//	myMac_addr, vlanid, port_id)
+		go receiveArpResponse(rec_handle,
+			myMac_addr, port_id)
 	}
 	return
 }
@@ -318,6 +352,8 @@ func processResponse(targetIp string, vlanid arpd.Int) {
  *  Send the ARP request for ip targetIP
  */
 func sendArpReq(targetIp string, myIp string) int {
+        logger.Println("sendArpReq(): sending arp requeust for targetIp ", targetIp)
+        logger.Println("sendArpReq(): sending arp requeust for myIp ", myIp)
 	source_ip, err := getIP(myIp)
 	if err != ARP_REQ_SUCCESS {
 		logWriter.Err(fmt.Sprintf("Corrupted source ip :  ", myIp))
@@ -357,6 +393,8 @@ func sendArpReq(targetIp string, myIp string) int {
 	arp_layer.DstProtAddress = dest_ip
 	gopacket.SerializeLayers(buffer, options, &eth_layer, &arp_layer)
 
+        //logger.Println("Buffer Bytes : ", buffer.Bytes)
+        logger.Println("Buffer : ", buffer)
 	if err := arp_cache.dev_handle.WritePacketData(buffer.Bytes()); err != nil {
 		return ARP_ERR_REQ_FAIL
 	}
@@ -368,9 +406,8 @@ func sendArpReq(targetIp string, myIp string) int {
  * Process ARP response from the interface for ARP
  * req sent for targetIp
  */
-func receiveArpResponse(targetIp string, rec_handle *pcap.Handle,
-	myMac net.HardwareAddr, vlanid arpd.Int, port_id int) (err int, destMac net.HardwareAddr) {
-	logger.Println("Check arp response for #### ", targetIp)
+func receiveArpResponse(rec_handle *pcap.Handle,
+	myMac net.HardwareAddr, port_id int) (err int, destMac net.HardwareAddr) {
 	src := gopacket.NewPacketSource(rec_handle, layers.LayerTypeEthernet)
 	in := src.Packets()
 	for {
@@ -393,30 +430,18 @@ func receiveArpResponse(targetIp string, rec_handle *pcap.Handle,
 				continue
 			}
 
-			logWriter.Err(fmt.Sprintf("arp response### ", net.IP(arp.SourceProtAddress), " ", net.HardwareAddr(arp.SourceHwAddress)))
-			logger.Println("Arp response ###", net.IP(arp.SourceProtAddress), " ", net.HardwareAddr(arp.SourceHwAddress))
+			//logWriter.Err(fmt.Sprintf("arp response### ", net.IP(arp.SourceProtAddress), " ", net.HardwareAddr(arp.SourceHwAddress)))
+			logger.Println("Received Arp response from: ", (net.IP(arp.SourceProtAddress)).String(), " ", (net.HardwareAddr(arp.SourceHwAddress)).String())
 
 			destMac = net.HardwareAddr(arp.SourceHwAddress)
-			/* update cache
-			 */
-			arp_entry := arpEntry{
-				vlanid:  vlanid,
-				macAddr: destMac,
-			}
-			updateArpCache(net.IP(arp.SourceProtAddress).String(), arp_entry)
-			logger.Println("ip ", net.IP(arp.SourceProtAddress), "mac", net.HardwareAddr(arp.SourceHwAddress))
-			if err != ARP_REQ_SUCCESS {
-				logWriter.Err("Failed to receive arp response")
-			}
-			logWriter.Err(fmt.Sprintf("MAC entry as - ", destMac))
-
-			//3) Update asicd.
-			if asicdClient.IsConnected {
-				rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(targetIp, destMac.String(), (int32)(vlanid), (int32)(port_id))
-				logWriter.Err(fmt.Sprintf("Asicd rv: ", rv, " error : ", error))
-			} else {
-				logWriter.Err("Asicd client is not connected.")
-			}
+                        arp_cache_update_chl <- arpUpdateMsg {
+                                                    ip: (net.IP(arp.SourceProtAddress)).String(),
+                                                    ent: arpEntry {
+                                                            macAddr: destMac,
+                                                            vlanid: 0,
+                                                         },
+                                                    port: port_id,
+                                                 }
 			return
 		}
 
@@ -440,18 +465,31 @@ func initArpCache() bool {
  * @fn UpdateArpCache
  *  Update IP to the ARP mapping for the hash table.
  */
-func updateArpCache(targetIp string, arp_entry arpEntry) bool {
-
-	_, exist := arp_cache.arpMap[targetIp]
-
-	if !exist {
-		logWriter.Err(fmt.Sprintf("Update cache."))
-		arp_cache.arpMap[targetIp] = arp_entry
-		return true
-	}
-	logWriter.Err(fmt.Sprintf("Entry exists.."))
-
-	return true
+func updateArpCache() {
+        for {
+            msg := <-arp_cache_update_chl
+            if msg.ent.vlanid == 0 {
+                ent := arp_cache.arpMap[msg.ip]
+                ent.macAddr = msg.ent.macAddr;
+                arp_cache.arpMap[msg.ip] = ent
+                //3) Update asicd.
+                if asicdClient.IsConnected {
+                        rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(msg.ip,
+                                             "00:00:00:00:00:00", 0, 0)
+                        logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
+                        rv, error = asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
+                                             (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), (int32)(msg.port))
+                        logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                } else {
+                        logWriter.Err("Asicd client is not connected.")
+                }
+            } else {
+                ent := arp_cache.arpMap[msg.ip]
+                ent.vlanid = msg.ent.vlanid;
+                arp_cache.arpMap[msg.ip] = ent
+            }
+        }
+	return
 }
 
 func printArpEntries() {
