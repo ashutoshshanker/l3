@@ -661,10 +661,10 @@ func (m RouteServiceHandler) PrintV4Routes() (err error) {
 	return nil
 }
 
-func processLinkDownEvent(ifIndex ribd.Int){
+func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int){
 	logger.Println("processLinkDown")
    for i:=0;i<len(ConnectedRoutes);i++ {
-      if(ConnectedRoutes[i].NextHopIfType == portdCommonDefs.PHY&&ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){
+      if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){		
 	     logger.Printf("Delete this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)	
 
 		 //Send a event
@@ -687,7 +687,7 @@ func processLinkDownEvent(ifIndex ribd.Int){
 
 func (m RouteServiceHandler) LinkDown(ifIndex ribd.Int) (err error){
 	logger.Println("LinkDown")
-	processLinkDownEvent(ifIndex)
+	processLinkDownEvent(portdCommonDefs.PHY,ifIndex)
 	return nil
 }
 //
@@ -850,7 +850,7 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
            }
 		    logger.Printf("Msg linkstatus = %d msg port = %d\n", msg.LinkStatus, msg.Port)
 		    if(msg.LinkStatus == asicdConstDefs.LINK_STATE_DOWN) {
-				processLinkDownEvent(ribd.Int(msg.Port))
+				processLinkDownEvent(portdCommonDefs.PHY, ribd.Int(msg.Port))		//asicd always sends out link state events for PHY ports
 			}
        }
 	}
@@ -883,9 +883,9 @@ func processPortdEvents(sub *nanomsg.SubSocket) {
 		      logger.Println("Error in Unmarshalling msgType Json")
 		      return
 	        }
-		    logger.Printf("Msg linkstatus = %d msg port = %d\n", msg.LinkStatus, msg.Port)
+		    logger.Printf("Msg linkstatus = %d msg linktype = %d linkId = %d\n", msg.LinkStatus, msg.LinkType, msg.LinkId)
 		    if(msg.LinkStatus == portdCommonDefs.LINK_STATE_DOWN) {
-				processLinkDownEvent(ribd.Int(msg.Port))
+				processLinkDownEvent(ribd.Int(msg.LinkType), ribd.Int(msg.LinkId))
 			}
       }
 	}
