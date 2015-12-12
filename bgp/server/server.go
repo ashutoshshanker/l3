@@ -2,9 +2,13 @@
 package server
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	nanomsg "github.com/op/go-nanomsg"
 	"l3/bgp/config"
 	"l3/bgp/packet"
+	"l3/rib/ribdCommonDefs"
 	"log/syslog"
 	"net"
 	"ribd"
@@ -26,6 +30,10 @@ type BGPServer struct {
 	PeerCommandCh   chan config.PeerCommand
 	BGPPktSrc       chan *packet.BGPPktSrc
 	connRoutesTimer *time.Timer
+
+	ribSubSocket    *nanomsg.SubSocket
+	ribSubSocketCh   chan []byte
+	ribSubSocketErrCh  chan error
 
 	NeighborMutex  sync.RWMutex
 	PeerMap        map[string]*Peer
@@ -49,7 +57,8 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.adjRib = NewAdjRib(bgpServer)
 	bgpServer.connRoutesTimer = time.NewTimer(time.Duration(10) * time.Second)
 	bgpServer.connRoutesTimer.Stop()
-
+	bgpServer.ribSubSocketCh = make(chan []byte)
+	bgpServer.ribSubSocketErrCh = make(chan error)
 	return bgpServer
 }
 
@@ -74,6 +83,31 @@ func (server *BGPServer) listenForPeers(acceptCh chan *net.TCPConn) {
 		}
 		acceptCh <- tcpConn
 	}
+}
+
+func (server *BGPServer) listenForRIBUpdates(address string) error {
+	var err error
+	if server.ribSubSocket, err = nanomsg.NewSubSocket(); err != nil {
+		server.logger.Err(fmt.Sprintln("Failed to create RIB subscribe socket, error:", err))
+		return err
+	}
+
+	if err = server.ribSubSocket.Subscribe(""); err != nil {
+		server.logger.Err(fmt.Sprintln("Failed to subscribe to \"\" on RIB subscribe socket, error:", err))
+		return err
+	}
+
+	if _, err = server.ribSubSocket.Connect(address); err != nil {
+		server.logger.Err(fmt.Sprintln("Failed to connect to RIB publisher socket, address:", address, "error:", err))
+		return err
+	}
+
+	server.logger.Info(fmt.Sprintln("Connected to RIB publisher at address:", address))
+	if err = server.ribSubSocket.SetRecvBuffer(1024 * 1024); err != nil {
+		server.logger.Err(fmt.Sprintln("Failed to set the buffer size for RIB publisher socket, error:", err))
+		return err
+	}
+	return nil
 }
 
 func (server *BGPServer) IsPeerLocal(peerIp string) bool {
@@ -122,15 +156,21 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 	server.SendUpdate(updated, withdrawn)
 }
 
-func (server *BGPServer) ProcessConnectedRoutes(routes []*ribd.Routes) {
+func (server *BGPServer) convertDestIPToIPPrefix(routes []*ribd.Routes) []packet.IPPrefix {
 	dest := make([]packet.IPPrefix, 0, len(routes))
 	for _, r := range routes {
 		ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
 		dest = append(dest, *ipPrefix)
 	}
+	return dest
+}
 
+func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribd.Routes, withdrawnRoutes []*ribd.Routes) {
+	server.logger.Info(fmt.Sprintln("valid routes:", installedRoutes, "invalid routes:", withdrawnRoutes))
+	valid := server.convertDestIPToIPPrefix(installedRoutes)
+	invalid := server.convertDestIPToIPPrefix(withdrawnRoutes)
 	updated, withdrawn := server.adjRib.ProcessConnectedRoutes(server.BgpConfig.Global.Config.RouterId.String(),
-		server.connRoutesPath, dest, make([]packet.IPPrefix, 0))
+		server.connRoutesPath, valid, invalid)
 	server.SendUpdate(updated, withdrawn)
 }
 
@@ -157,10 +197,27 @@ func (server *BGPServer) StartServer() {
 	pathAttrs := packet.ConstructPathAttrForConnRoutes(gConf.RouterId, gConf.AS)
 	server.connRoutesPath = NewPath(server, nil, pathAttrs, false, false, RouteTypeConnected)
 
-	server.logger.Info(fmt.Sprintln("Setting up Peer connections"))
+	server.logger.Info("Listen for RIBd updates")
+	server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
+
+	server.logger.Info("Setting up Peer connections")
 	acceptCh := make(chan *net.TCPConn)
 	go server.listenForPeers(acceptCh)
 	server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
+
+	go func() {
+		for {
+			server.logger.Info("Read on RIB subscriber socket...")
+			rxBuf, err := server.ribSubSocket.Recv(0)
+			if err != nil {
+				server.logger.Err(fmt.Sprintln("Recv on RIB subscriber socket failed with error:", err))
+				server.ribSubSocketErrCh <- err
+				continue
+			}
+			server.logger.Info(fmt.Sprintln("RIB subscriber recv returned:", rxBuf))
+			server.ribSubSocketCh <- rxBuf
+		}
+	}()
 
 	for {
 		select {
@@ -220,8 +277,27 @@ func (server *BGPServer) StartServer() {
 
 		case <-server.connRoutesTimer.C:
 			routes, _ := server.ribdClient.GetConnectedRoutesInfo()
-			server.ProcessConnectedRoutes(routes)
+			server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
 			server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
+
+		case rxBuf := <-server.ribSubSocketCh:
+			var route ribdCommonDefs.RoutelistInfo
+			routes := make([]*ribd.Routes, 0, 1)
+			reader := bytes.NewReader(rxBuf)
+			decoder := json.NewDecoder(reader)
+			msg := ribdCommonDefs.RibdNotifyMsg{}
+			for err := decoder.Decode(&msg); err == nil; err = decoder.Decode(&msg) {
+				err = json.Unmarshal(msg.MsgBuf, &route)
+				if err != nil {
+					server.logger.Err("Err in processing routes from RIB")
+				}
+				server.logger.Info(fmt.Sprintln("Remove connected route, dest:", route.RouteInfo.Ipaddr, "netmask:", route.RouteInfo.Mask, "nexthop:", route.RouteInfo.NextHopIp))
+				routes = append(routes, &route.RouteInfo)
+			}
+			server.ProcessConnectedRoutes(make([]*ribd.Routes, 0), routes)
+
+		case <-server.ribSubSocketErrCh:
+			;
 		}
 	}
 
