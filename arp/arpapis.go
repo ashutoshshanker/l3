@@ -97,7 +97,8 @@ var (
 	//device          string = "fpPort2"
 	//device       string = "eth0"
 	snapshot_len int32  = 1024 //packet capture length
-	promiscuous  bool   = true //mode
+	//promiscuous  bool   = true //mode
+	promiscuous  bool   = false //mode
 	err          error
 	timeout      time.Duration = 60 * time.Second
         timeout_counter int = 10
@@ -105,11 +106,11 @@ var (
 	handle       *pcap.Handle  // handle for pcap connection
 	device_ip    string        = "40.1.1.1"
 	//device_ip       string = "10.0.2.15"
-	filter_string   string = "arp host 10.1.10.1"
-	filter_optimize int    = 0
+	//filter_string   string = "arp host 10.1.10.1"
+	//filter_optimize int    = 0
 	logWriter       *syslog.Writer
 	log_err         error
-	rec_handle      []*pcap.Handle
+	//rec_handle      []*pcap.Handle
 )
 var arp_cache *arpCache
 var asicdClient AsicdClient //Thrift client to connect to asicd
@@ -123,7 +124,7 @@ var arp_cache_update_chl chan arpUpdateMsg = make(chan arpUpdateMsg, 100)
 
 
 /*** TEMP DEFINES **/
-var myMac = "00:11:22:33:44:55"
+//var myMac = "00:11:22:33:44:55"
 //var myMac = "08:00:27:75:bc:4d"
 //var myMac = "fa:15:f5:69:a4:c9"
 
@@ -146,11 +147,30 @@ func getHWAddr(macAddr string) (mac net.HardwareAddr, err error) {
 	return mac, nil
 }
 
+func getMacAddrInterfaceName(ifName string) (macAddr string, err error) {
+
+        ifi, err := net.InterfaceByName(ifName)
+        if err != nil {
+            logWriter.Err(fmt.Sprintf("Failed to get the mac address of ", ifName))
+            return macAddr, err
+        }
+        macAddr = ifi.HardwareAddr.String()
+	return macAddr, nil
+}
+
 /***** Thrift APIs ******/
 func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
 	iftype arpd.Int, vlan_id arpd.Int) (rc arpd.Int, err error) {
 
         logger.Println("Calling ResotolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id))
+/*
+        var if_name string
+        if iftype == 0 { //VLAN
+            if_name = fmt.Sprintf("SVI%d", vlan_id)
+        } else if iftype == 1 {
+            if_name = fmt.Sprintf("fpPort-", vlan_id)
+        }
+*/
         var linux_device string
 //        if portdClient.IsConnected {
 //		linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
@@ -169,7 +189,13 @@ func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
                             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
                             return 0, nil
                     }
-                    go processPacket(targetIp, iftype, vlan_id, handle)
+                    mac_addr, err := getMacAddrInterfaceName(port_cfg.Ifname)
+                    if err != nil {
+                        logWriter.Err(fmt.Sprintln("Unable to get the MAC addr of ", port_cfg.Ifname))
+                        continue
+                    }
+                    logger.Println("MAC addr of ", port_cfg.Ifname, ": ", mac_addr)
+                    go processPacket(targetIp, iftype, vlan_id, handle, mac_addr)
                 }
 
 //	} else {
@@ -309,11 +335,11 @@ func initPortParams() {
 	BuildAsicToLinuxMap(portCfgFile)
 }
 
-func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pcap.Handle) {
+func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pcap.Handle, mac_addr string) {
         logger.Println("processPacket() : Arp request for ", targetIp)
 	_, exist := arp_cache.arpMap[targetIp]
 	if !exist {
-                sendArpReq(targetIp, device_ip, handle)
+                sendArpReq(targetIp, device_ip, handle, mac_addr)
                 arp_cache_update_chl <- arpUpdateMsg {
                                             ip: targetIp,
                                             ent: arpEntry {
@@ -341,16 +367,22 @@ func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pc
 }
 
 func processResponse() {
-	myMac_addr, fail := getHWAddr(myMac)
-	if fail != nil {
-		logWriter.Err(fmt.Sprintf("corrupted my mac : ", myMac))
-		return
-	}
         for port_id, p_hdl := range pcap_handle_map {
                 logger.Println("ifName = ", p_hdl.ifName, " Port = ", port_id)
                 if p_hdl.pcap_handle == nil {
                     logger.Println("Hello handle is nil");
                     continue
+                }
+                mac_addr, err := getMacAddrInterfaceName(p_hdl.ifName)
+                if err != nil {
+                    logWriter.Err(fmt.Sprintln("Unable to get the MAC addr of ", p_hdl.ifName))
+                    continue
+                }
+                logger.Println("MAC addr of ", p_hdl.ifName, ": ", mac_addr)
+                myMac_addr, fail := getHWAddr(mac_addr)
+                if fail != nil {
+                        logWriter.Err(fmt.Sprintf("corrupted my mac : ", mac_addr))
+                        continue
                 }
                 go receiveArpResponse(p_hdl.pcap_handle, myMac_addr,
                                       port_id, p_hdl.ifName)
@@ -362,7 +394,7 @@ func processResponse() {
  *@fn sendArpReq
  *  Send the ARP request for ip targetIP
  */
-func sendArpReq(targetIp string, myIp string, handle *pcap.Handle) int {
+func sendArpReq(targetIp string, myIp string, handle *pcap.Handle, myMac string) int {
         logger.Println("sendArpReq(): sending arp requeust for targetIp ", targetIp,
                         " myIP ", myIp)
 
@@ -586,7 +618,13 @@ func refresh_arp_entry(ip string, ifName string) {
             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", ifName, err))
             return
         }
-        sendArpReq(ip, device_ip, handle)
+        mac_addr, err := getMacAddrInterfaceName(ifName)
+        if err != nil {
+            logWriter.Err(fmt.Sprintln("Unable to get the MAC addr of ", ifName))
+            return
+        }
+        logger.Println("MAC addr of ", ifName, ": ", mac_addr)
+        sendArpReq(ip, device_ip, handle, mac_addr)
         return
 }
 
@@ -610,7 +648,13 @@ func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int) {
                             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
                             return
                     }
-                    sendArpReq(ip, device_ip, handle)
+                    mac_addr, err := getMacAddrInterfaceName(port_cfg.Ifname)
+                    if err != nil {
+                        logWriter.Err(fmt.Sprintln("Unable to get the MAC addr of ", port_cfg.Ifname))
+                        continue
+                    }
+                    logger.Println("MAC addr of ", port_cfg.Ifname, ": ", mac_addr)
+                    sendArpReq(ip, device_ip, handle, mac_addr)
                 }
 
 //	} else {
@@ -622,7 +666,7 @@ func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int) {
 func printArpEntries() {
 	logger.Println("************")
 	for ip, arp := range arp_cache.arpMap {
-		logger.Println("IP: ", ip, " VLAN: ", arp.vlanid, " MAC: ", arp.macAddr, " CNT: ", arp.counter, " PORT: ", arp.port, " IfName: ", arp.ifName, " IfType: ", arp.ifType, " Valid: ", arp.valid)
+		logger.Println("IP:", ip, " VLAN:", arp.vlanid, " MAC:", arp.macAddr, "CNT:", arp.counter, "PORT:", arp.port, " IfName:", arp.ifName, " IfType:", arp.ifType, " Valid:", arp.valid)
 	}
 	logger.Println("************")
 }
