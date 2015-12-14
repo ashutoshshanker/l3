@@ -60,6 +60,7 @@ type arpEntry struct {
         port    int
         ifName  string
         ifType  arpd.Int
+        localIP string
 }
 
 type arpCache struct {
@@ -104,7 +105,7 @@ var (
         timeout_counter int = 10
         retry_cnt    int    = 2
 	handle       *pcap.Handle  // handle for pcap connection
-	device_ip    string        = "40.1.1.1"
+	//device_ip    string        = "40.1.1.1"
 	//device_ip       string = "10.0.2.15"
 	//filter_string   string = "arp host 10.1.10.1"
 	//filter_optimize int    = 0
@@ -158,19 +159,58 @@ func getMacAddrInterfaceName(ifName string) (macAddr string, err error) {
 	return macAddr, nil
 }
 
+func getIPv4ForInterfaceName(ifname string) (iface_ip string, err error) {
+    interfaces, err := net.Interfaces()
+    if err != nil {
+        logWriter.Err(fmt.Sprintf("Failed to get the interface"))
+        return "", err
+    }
+    for _, inter := range interfaces {
+        if inter.Name == ifname {
+            if addrs, err := inter.Addrs(); err == nil {
+                for _, addr := range addrs {
+                    switch ip := addr.(type) {
+                        case *net.IPNet:
+                            if ip.IP.DefaultMask() != nil {
+                                return (ip.IP).String(), nil
+                            }
+                    }
+                }
+            } else {
+                logWriter.Err(fmt.Sprintf("Failed to get the ip address of", ifname))
+                return "", err
+            }
+        }
+    }
+    return "", err
+}
+
+func getIPv4ForInterface(iftype arpd.Int, vlan_id arpd.Int) (ip_addr string, err error) {
+    var if_name string
+
+    if iftype == 0 { //VLAN
+        if_name = fmt.Sprintf("SVI%d", vlan_id)
+    } else if iftype == 1 { //PHY
+        if_name = fmt.Sprintf("fpPort-", vlan_id)
+    } else {
+        return "", err
+    }
+
+    logger.Println("Local Interface name =", if_name)
+    return getIPv4ForInterfaceName(if_name)
+}
+
 /***** Thrift APIs ******/
 func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
 	iftype arpd.Int, vlan_id arpd.Int) (rc arpd.Int, err error) {
 
         logger.Println("Calling ResotolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id))
-/*
-        var if_name string
-        if iftype == 0 { //VLAN
-            if_name = fmt.Sprintf("SVI%d", vlan_id)
-        } else if iftype == 1 {
-            if_name = fmt.Sprintf("fpPort-", vlan_id)
+        ip_addr, err := getIPv4ForInterface(iftype, vlan_id)
+        if len(ip_addr) == 0 || err != nil {
+            logWriter.Err(fmt.Sprintf("Failed to get the ip address of ifType:", iftype, "VLAN:", vlan_id))
+            return ARP_ERR_REQ_FAIL, err
         }
-*/
+        logger.Println("Local IP address of is:", ip_addr)
         var linux_device string
 //        if portdClient.IsConnected {
 //		linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
@@ -187,7 +227,7 @@ func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
                     handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout)
                     if handle == nil {
                             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
-                            return 0, nil
+                            return 0, err
                     }
                     mac_addr, err := getMacAddrInterfaceName(port_cfg.Ifname)
                     if err != nil {
@@ -195,7 +235,7 @@ func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
                         continue
                     }
                     logger.Println("MAC addr of ", port_cfg.Ifname, ": ", mac_addr)
-                    go processPacket(targetIp, iftype, vlan_id, handle, mac_addr)
+                    go processPacket(targetIp, iftype, vlan_id, handle, mac_addr, ip_addr)
                 }
 
 //	} else {
@@ -335,11 +375,11 @@ func initPortParams() {
 	BuildAsicToLinuxMap(portCfgFile)
 }
 
-func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pcap.Handle, mac_addr string) {
-        logger.Println("processPacket() : Arp request for ", targetIp)
+func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pcap.Handle, mac_addr string, localIp string) {
+        logger.Println("processPacket() : Arp request for ", targetIp, "from", localIp)
 	_, exist := arp_cache.arpMap[targetIp]
 	if !exist {
-                sendArpReq(targetIp, device_ip, handle, mac_addr)
+                sendArpReq(targetIp, handle, mac_addr, localIp)
                 arp_cache_update_chl <- arpUpdateMsg {
                                             ip: targetIp,
                                             ent: arpEntry {
@@ -349,6 +389,7 @@ func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pc
                                                     port: -1,
                                                     ifName: "",
                                                     ifType: iftype,
+                                                    localIP: localIp,
                                                     counter: timeout_counter,
                                                  },
                                             msg_type: 0,
@@ -394,13 +435,13 @@ func processResponse() {
  *@fn sendArpReq
  *  Send the ARP request for ip targetIP
  */
-func sendArpReq(targetIp string, myIp string, handle *pcap.Handle, myMac string) int {
+func sendArpReq(targetIp string, handle *pcap.Handle, myMac string, localIp string) int {
         logger.Println("sendArpReq(): sending arp requeust for targetIp ", targetIp,
-                        " myIP ", myIp)
+                        "local IP ", localIp)
 
-	source_ip, err := getIP(myIp)
+	source_ip, err := getIP(localIp)
 	if err != ARP_REQ_SUCCESS {
-		logWriter.Err(fmt.Sprintf("Corrupted source ip :  ", myIp))
+		logWriter.Err(fmt.Sprintf("Corrupted source ip :  ", localIp))
 		return ARP_ERR_REQ_FAIL
 	}
 	dest_ip, err := getIP(targetIp)
@@ -437,7 +478,7 @@ func sendArpReq(targetIp string, myIp string, handle *pcap.Handle, myMac string)
 	arp_layer.DstProtAddress = dest_ip
 	gopacket.SerializeLayers(buffer, options, &eth_layer, &arp_layer)
 
-        logger.Println("Buffer : ", buffer)
+        //logger.Println("Buffer : ", buffer)
         // send arp request and retry after timeout if arp cache is not updated
         if err := handle.WritePacketData(buffer.Bytes()); err != nil {
             return ARP_ERR_REQ_FAIL
@@ -491,6 +532,7 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                                                             port: port_id,
                                                             ifName: if_Name,
                                                             ifType: ent.ifType,
+                                                            localIP: ent.localIP,
                                                             counter: timeout_counter,
                                                          },
                                                     msg_type: 1,
@@ -539,6 +581,7 @@ func updateArpCache() {
                 ent.port    = msg.ent.port
                 ent.ifName  = msg.ent.ifName
                 ent.ifType  = msg.ent.ifType
+                ent.localIP = msg.ent.localIP
                 arp_cache.arpMap[msg.ip] = ent
                 logger.Println("updateArpCache(): ", arp_cache.arpMap[msg.ip])
                 //3) Update asicd.
@@ -562,6 +605,7 @@ func updateArpCache() {
                 ent.port    = msg.ent.port
                 ent.ifName  = msg.ent.ifName
                 ent.ifType  = msg.ent.ifType
+                ent.localIP = msg.ent.localIP
                 arp_cache.arpMap[msg.ip] = ent
             } else if msg.msg_type == 2 {
                 for ip, arp := range arp_cache.arpMap {
@@ -580,7 +624,7 @@ func updateArpCache() {
                         logger.Println("1. Decrementing counter for ", ip);
                         arp_cache.arpMap[ip] = ent
                         //Send arp request after entry expires
-                        refresh_arp_entry(ip, ent.ifName)
+                        refresh_arp_entry(ip, ent.ifName, ent.localIP)
                     } else if ((arp.counter <= (timeout_counter)) &&
                                (arp.counter > (timeout_counter - retry_cnt))) &&
                               arp.valid == false {
@@ -590,7 +634,7 @@ func updateArpCache() {
                         ent.counter = cnt
                         logger.Println("2. Decrementing counter for ", ip);
                         arp_cache.arpMap[ip] = ent
-                        retry_arp_req(ip, ent.vlanid, ent.ifType)
+                        retry_arp_req(ip, ent.vlanid, ent.ifType, ent.localIP)
                     } else if (arp.counter == (timeout_counter - retry_cnt)) &&
                                arp.valid == false {
                         logger.Println("2. Deleting entry ", ip, " from Arp cache")
@@ -611,7 +655,7 @@ func updateArpCache() {
         }
 }
 
-func refresh_arp_entry(ip string, ifName string) {
+func refresh_arp_entry(ip string, ifName string, localIP string) {
         logWriter.Err(fmt.Sprintln("Refresh ARP entry ", ifName))
         handle, err = pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout)
         if handle == nil {
@@ -624,11 +668,11 @@ func refresh_arp_entry(ip string, ifName string) {
             return
         }
         logger.Println("MAC addr of ", ifName, ": ", mac_addr)
-        sendArpReq(ip, device_ip, handle, mac_addr)
+        sendArpReq(ip, handle, mac_addr, localIP)
         return
 }
 
-func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int) {
+func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int, localIP string) {
         logger.Println("Calling ResotolveArpIPv4...", ip, " ", int32(ifType), " ", int32(vlanid))
         var linux_device string
 //        if portdClient.IsConnected {
@@ -654,7 +698,7 @@ func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int) {
                         continue
                     }
                     logger.Println("MAC addr of ", port_cfg.Ifname, ": ", mac_addr)
-                    sendArpReq(ip, device_ip, handle, mac_addr)
+                    sendArpReq(ip, handle, mac_addr, localIP)
                 }
 
 //	} else {
@@ -666,7 +710,7 @@ func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int) {
 func printArpEntries() {
 	logger.Println("************")
 	for ip, arp := range arp_cache.arpMap {
-		logger.Println("IP:", ip, " VLAN:", arp.vlanid, " MAC:", arp.macAddr, "CNT:", arp.counter, "PORT:", arp.port, " IfName:", arp.ifName, " IfType:", arp.ifType, " Valid:", arp.valid)
+		logger.Println("IP:", ip, " VLAN:", arp.vlanid, " MAC:", arp.macAddr, "CNT:", arp.counter, "PORT:", arp.port, "IfName:", arp.ifName, "IfType:", arp.ifType, "LocalIP:", arp.localIP, "Valid:", arp.valid)
 	}
 	logger.Println("************")
 }
@@ -686,6 +730,7 @@ func timeout_thread() {
                                             port: -1,
                                             ifName: "",
                                             ifType: -1,
+                                            localIP: "",
                                             counter: timeout_counter,
                                          },
                                     msg_type: 2,
