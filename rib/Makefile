@@ -11,7 +11,7 @@ ipc:
 	 $(IPC_GEN_CMD) --gen go -out $(GENERATED_IPC) $(IPC_SRCS)
 
 exe: $(SRCS)
-	 go build -o $(DESTDIR)/$(COMP_NAME) -ldflags="-r /opt/flexswitch/sharedlib:$(SR_CODE_BASE)/snaproute/src/asicd/plugins:$(SR_CODE_BASE)/snaproute/src/asicd/plugins/opennsl" $(SRCS)
+	 go build -o $(DESTDIR)/$(COMP_NAME) -ldflags="$(GOLDFLAGS)" $(SRCS)
 
 guard:
 ifndef SR_CODE_BASE
