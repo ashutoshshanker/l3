@@ -5,22 +5,20 @@ import (
 	"net"
 )
 
-func PrependAS(updateMsg *BGPMessage, AS uint32, setAS bool) {
+func PrependAS(updateMsg *BGPMessage, AS uint32) {
 	body := updateMsg.Body.(*BGPUpdate)
 
 	for _, pa := range body.PathAttributes {
 		if pa.GetCode() == BGPPathAttrTypeASPath {
 			asPathSegments := pa.(*BGPPathAttrASPath).Value
-			if setAS && (len(asPathSegments) == 0 || (asPathSegments[0].Type == BGPASPathSet || asPathSegments[0].Length >= 255)) {
+			if len(asPathSegments) == 0 || asPathSegments[0].Type == BGPASPathSet || asPathSegments[0].Length >= 255 {
 				newASPathSegment := NewBGPASPathSegmentSeq()
 				pa.(*BGPPathAttrASPath).AddASPathSegment(newASPathSegment)
 			}
 
-			if setAS {
-				asPathSegments = pa.(*BGPPathAttrASPath).Value
-				asPathSegments[0].PrependAS(uint16(AS))
-				pa.(*BGPPathAttrASPath).BGPPathAttrBase.Length += 2
-			}
+			asPathSegments = pa.(*BGPPathAttrASPath).Value
+			asPathSegments[0].PrependAS(uint16(AS))
+			pa.(*BGPPathAttrASPath).BGPPathAttrBase.Length += 2
 			return
 		}
 	}
@@ -90,13 +88,10 @@ func SetNextHop(updateMsg *BGPMessage, nextHop net.IP) {
 func ConstructPathAttrForConnRoutes(ip net.IP, as uint32) []BGPPathAttr {
 	pathAttrs := make([]BGPPathAttr, 0)
 
-	origin := NewBGPPathAttrOrigin(BGPPathAttrOriginIGP)
+	origin := NewBGPPathAttrOrigin(BGPPathAttrOriginIncomplete)
 	pathAttrs = append(pathAttrs, origin)
 
 	asPath := NewBGPPathAttrASPath()
-	asPathSeq := NewBGPASPathSegmentSeq()
-	asPathSeq.PrependAS(uint16(as))
-	asPath.AddASPathSegment(asPathSeq)
 	pathAttrs = append(pathAttrs, asPath)
 
 	nextHop := NewBGPPathAttrNextHop()
