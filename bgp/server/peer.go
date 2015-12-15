@@ -102,18 +102,14 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 	}
 
 	if p.IsInternal() {
-		// Do change these path attrs for local routes
-		if path.peer != nil {
-			packet.PrependAS(bgpMsg, 0, false)
-		}
 		packet.SetNextHop(bgpMsg, p.Neighbor.Transport.Config.LocalAddress)
 		packet.SetLocalPref(bgpMsg, path.GetPreference())
 	} else {
 		// Do change these path attrs for local routes
 		if path.peer != nil {
-			packet.PrependAS(bgpMsg, p.Neighbor.Config.LocalAS, true)
 			packet.RemoveMultiExitDisc(bgpMsg)
 		}
+		packet.PrependAS(bgpMsg, p.Neighbor.Config.LocalAS)
 		packet.SetNextHop(bgpMsg, p.Neighbor.Transport.Config.LocalAddress)
 		packet.RemoveLocalPref(bgpMsg)
 	}
