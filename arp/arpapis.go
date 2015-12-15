@@ -494,7 +494,7 @@ func sendArpReq(targetIp string, handle *pcap.Handle, myMac string, localIp stri
 func receiveArpResponse(rec_handle *pcap.Handle,
 	myMac net.HardwareAddr, port_id int, if_Name string) {
         logger.Println("Starting Arp response recv thread on ", port_id, if_Name)
-        var destMac net.HardwareAddr
+        var src_Mac net.HardwareAddr
 	src := gopacket.NewPacketSource(rec_handle, layers.LayerTypeEthernet)
 	in := src.Packets()
 	for {
@@ -520,23 +520,42 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 
 			logger.Println("Received Arp response from: ", (net.IP(arp.SourceProtAddress)).String(), " ", (net.HardwareAddr(arp.SourceHwAddress)).String())
 
-			destMac = net.HardwareAddr(arp.SourceHwAddress)
-                        ip_addr := (net.IP(arp.SourceProtAddress)).String()
-                        ent := arp_cache.arpMap[ip_addr]
-                        arp_cache_update_chl <- arpUpdateMsg {
-                                                    ip: ip_addr,
-                                                    ent: arpEntry {
-                                                            macAddr: destMac,
-                                                            vlanid: ent.vlanid,
-                                                            valid: true,
-                                                            port: port_id,
-                                                            ifName: if_Name,
-                                                            ifType: ent.ifType,
-                                                            localIP: ent.localIP,
-                                                            counter: timeout_counter,
-                                                         },
-                                                    msg_type: 1,
-                                                 }
+                        src_Mac = net.HardwareAddr(arp.SourceHwAddress)
+                        src_ip_addr := (net.IP(arp.SourceProtAddress)).String()
+                        //dest_Mac := net.HardwareAddr(arp.DstHwAddress)
+                        dest_ip_addr := (net.IP(arp.DstProtAddress)).String()
+                        ent, exist := arp_cache.arpMap[src_ip_addr]
+                        if exist {
+                            arp_cache_update_chl <- arpUpdateMsg {
+                                                        ip: src_ip_addr,
+                                                        ent: arpEntry {
+                                                                macAddr: src_Mac,
+                                                                vlanid: ent.vlanid,
+                                                                valid: true,
+                                                                port: port_id,
+                                                                ifName: if_Name,
+                                                                ifType: ent.ifType,
+                                                                localIP: ent.localIP,
+                                                                counter: timeout_counter,
+                                                             },
+                                                        msg_type: 1,
+                                                     }
+                        } else {
+                            arp_cache_update_chl <- arpUpdateMsg {
+                                                        ip: src_ip_addr,
+                                                        ent: arpEntry {
+                                                                macAddr: src_Mac,
+                                                                vlanid: 1, // Need to be re-visited
+                                                                valid: true,
+                                                                port: port_id,
+                                                                ifName: if_Name,
+                                                                ifType: 1,
+                                                                localIP: dest_ip_addr,
+                                                                counter: timeout_counter,
+                                                             },
+                                                        msg_type: 3,
+                                                     }
+                        }
 		}
 
 	}
@@ -583,19 +602,19 @@ func updateArpCache() {
                 ent.ifType  = msg.ent.ifType
                 ent.localIP = msg.ent.localIP
                 arp_cache.arpMap[msg.ip] = ent
-                logger.Println("updateArpCache(): ", arp_cache.arpMap[msg.ip])
+                logger.Println("1 updateArpCache(): ", arp_cache.arpMap[msg.ip])
                 //3) Update asicd.
                 if asicdClient.IsConnected {
-                        logger.Println("Deleting an entry in asic for ", msg.ip)
+                        logger.Println("1. Deleting an entry in asic for ", msg.ip)
                         rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(msg.ip,
                                              "00:00:00:00:00:00", 0, 0)
                         logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
-                        logger.Println("Creating an entry in asic for ", msg.ip)
+                        logger.Println("1. Creating an entry in asic for ", msg.ip)
                         rv, error = asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
                                              (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), (int32)(msg.ent.port))
                         logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
                 } else {
-                        logWriter.Err("Asicd client is not connected.")
+                        logWriter.Err("1. Asicd client is not connected.")
                 }
             } else if msg.msg_type == 0 {
                 ent := arp_cache.arpMap[msg.ip]
@@ -651,6 +670,34 @@ func updateArpCache() {
                         delete(arp_cache.arpMap, ip)
                     }
                 }
+            } else if msg.msg_type == 3 {
+                logger.Println("Received ARP response from neighbor...", msg.ip)
+                ent := arp_cache.arpMap[msg.ip]
+                ent.macAddr = msg.ent.macAddr
+                ent.vlanid = msg.ent.vlanid
+                ent.valid = msg.ent.valid
+                ent.counter = msg.ent.counter
+                ent.port    = msg.ent.port
+                ent.ifName  = msg.ent.ifName
+                ent.ifType  = msg.ent.ifType
+                ent.localIP = msg.ent.localIP
+                arp_cache.arpMap[msg.ip] = ent
+                logger.Println("2. updateArpCache(): ", arp_cache.arpMap[msg.ip])
+                //3) Update asicd.
+                if asicdClient.IsConnected {
+                        logger.Println("2. Creating an entry in asic for IP:", msg.ip, "MAC:",
+                                        (msg.ent.macAddr).String(), "VLAN:",
+                                        (int32)(arp_cache.arpMap[msg.ip].vlanid))
+                        rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
+                                             (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid),
+                                             (int32)(msg.ent.port))
+                        logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                } else {
+                        logWriter.Err("2. Asicd client is not connected.")
+                }
+            } else {
+                logger.Println("Invalid Msg type.")
+                continue
             }
         }
 }
