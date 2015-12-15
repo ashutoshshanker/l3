@@ -199,6 +199,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 				}
 			}
 			action = RouteSelectionDelete
+			d.locRibPath = nil
 		}
 	}
 

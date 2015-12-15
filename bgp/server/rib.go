@@ -89,7 +89,7 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.IPPrefix, addPat
 	return updated, withdrawn
 }
 
-func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) (map[*Path][]packet.IPPrefix, []packet.IPPrefix) {
+func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) (map[*Path][]packet.IPPrefix, []packet.IPPrefix, *Path) {
 	body := pktInfo.Msg.Body.(*packet.BGPUpdate)
 
 	remPath := NewPath(adjRib.server, peer, body.PathAttributes, true, false, RouteTypeEGP)
@@ -98,18 +98,16 @@ func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) (map[
 
 	updated, withdrawn := adjRib.ProcessRoutes(pktInfo.Src, body.NLRI, addPath, body.WithdrawnRoutes, remPath)
 	addPath.updated = false
-	remPath = nil
-	return updated, withdrawn
+	return updated, withdrawn, remPath
 }
 
 func (adjRib *AdjRib) ProcessConnectedRoutes(src string, path *Path, add []packet.IPPrefix, remove []packet.IPPrefix) (
-	map[*Path][]packet.IPPrefix, []packet.IPPrefix) {
+	map[*Path][]packet.IPPrefix, []packet.IPPrefix, *Path) {
 	var removePath *Path
 	removePath = path.Clone()
 	removePath.withdrawn = true
 	path.updated = true
 	updated, withdrawn := adjRib.ProcessRoutes(src, add, path, remove, removePath)
 	path.updated = false
-	removePath = nil
-	return updated, withdrawn
+	return updated, withdrawn, removePath
 }

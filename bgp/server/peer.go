@@ -139,7 +139,7 @@ func (p *Peer) FSMStateChange(state BGPFSMState) {
 }
 
 func (p *Peer) SendUpdate(bgpMsg packet.BGPMessage, path *Path) {
-	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message", p.Neighbor.NeighborAddress))
+	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%s, withdraw routes:%s", p.Neighbor.NeighborAddress, bgpMsg.Body.(*packet.BGPUpdate).NLRI, bgpMsg.Body.(*packet.BGPUpdate).WithdrawnRoutes))
 	bgpMsgRef := &bgpMsg
 	if p.updatePathAttrs(bgpMsgRef, path) {
 		atomic.AddUint32(&p.Neighbor.State.Queues.Output, 1)

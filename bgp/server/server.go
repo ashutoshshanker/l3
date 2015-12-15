@@ -114,32 +114,35 @@ func (server *BGPServer) IsPeerLocal(peerIp string) bool {
 	return server.PeerMap[peerIp].Neighbor.Config.PeerAS == server.BgpConfig.Global.Config.AS
 }
 
-func (server *BGPServer) SendUpdate(updated map[*Path][]packet.IPPrefix, withdrawn []packet.IPPrefix) {
-	firstMsg := true
-	for path, dest := range updated {
-		updateMsg := packet.NewBGPUpdateMessage(make([]packet.IPPrefix, 0), path.pathAttrs, dest)
-		if firstMsg {
-			firstMsg = false
-			updateMsg.Body.(*packet.BGPUpdate).WithdrawnRoutes = withdrawn
-		}
-
-		for _, peer := range server.PeerMap {
-			// If we recieve the route from IBGP peer, don't send it to other IBGP peers
-			if path.peer != nil {
-				if peer.IsInternal() {
-					if path.peer.IsInternal() {
-						continue
-					}
-				}
-
-				// Don't send the update to the peer that sent the update.
-				if peer.Neighbor.Config.NeighborAddress.String() == path.peer.Neighbor.Config.NeighborAddress.String() {
+func (server *BGPServer) sendUpdateMsgToAllPeers(msg *packet.BGPMessage, path *Path) {
+	for _, peer := range server.PeerMap {
+		// If we recieve the route from IBGP peer, don't send it to other IBGP peers
+		if path.peer != nil {
+			if peer.IsInternal() {
+				if path.peer.IsInternal() {
 					continue
 				}
 			}
 
-			peer.SendUpdate(*updateMsg.Clone(), path)
+			// Don't send the update to the peer that sent the update.
+			if peer.Neighbor.Config.NeighborAddress.String() == path.peer.Neighbor.Config.NeighborAddress.String() {
+				continue
+			}
 		}
+
+		peer.SendUpdate(*msg.Clone(), path)
+	}
+}
+
+func (server *BGPServer) SendUpdate(updated map[*Path][]packet.IPPrefix, withdrawn []packet.IPPrefix, withdrawPath *Path) {
+	if len(withdrawn) > 0 {
+		updateMsg := packet.NewBGPUpdateMessage(withdrawn, withdrawPath.pathAttrs, make([]packet.IPPrefix, 0))
+		server.sendUpdateMsgToAllPeers(updateMsg, withdrawPath)
+	}
+
+	for path, dest := range updated {
+		updateMsg := packet.NewBGPUpdateMessage(make([]packet.IPPrefix, 0), path.pathAttrs, dest)
+		server.sendUpdateMsgToAllPeers(updateMsg, path)
 	}
 }
 
@@ -152,8 +155,8 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 
 	atomic.AddUint32(&peer.Neighbor.State.Queues.Input, ^uint32(0))
 	peer.Neighbor.State.Messages.Received.Update++
-	updated, withdrawn := server.adjRib.ProcessUpdate(peer, pktInfo)
-	server.SendUpdate(updated, withdrawn)
+	updated, withdrawn, withdrawPath := server.adjRib.ProcessUpdate(peer, pktInfo)
+	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
 func (server *BGPServer) convertDestIPToIPPrefix(routes []*ribd.Routes) []packet.IPPrefix {
@@ -169,9 +172,9 @@ func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribd.Routes, 
 	server.logger.Info(fmt.Sprintln("valid routes:", installedRoutes, "invalid routes:", withdrawnRoutes))
 	valid := server.convertDestIPToIPPrefix(installedRoutes)
 	invalid := server.convertDestIPToIPPrefix(withdrawnRoutes)
-	updated, withdrawn := server.adjRib.ProcessConnectedRoutes(server.BgpConfig.Global.Config.RouterId.String(),
+	updated, withdrawn, withdrawPath := server.adjRib.ProcessConnectedRoutes(server.BgpConfig.Global.Config.RouterId.String(),
 		server.connRoutesPath, valid, invalid)
-	server.SendUpdate(updated, withdrawn)
+	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
 func (server *BGPServer) addPeerToList(peer *Peer) {
