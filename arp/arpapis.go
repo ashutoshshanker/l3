@@ -120,8 +120,8 @@ var (
 	//rec_handle      []*pcap.Handle
         dbHdl           *sql.DB
         UsrConfDbName   string = "/../bin/UsrConfDb.db"
-        //dump_arp_table  bool = false
-        dump_arp_table  bool = true
+        dump_arp_table  bool = false
+        //dump_arp_table  bool = true
 )
 var arp_cache *arpCache
 var asicdClient AsicdClient //Thrift client to connect to asicd
@@ -753,6 +753,7 @@ func initArpCache() bool {
  */
 func updateArpCache() {
     var cnt int
+    var dbCmd string
         for {
             msg := <-arp_cache_update_chl
             if msg.msg_type == 1 {
@@ -808,6 +809,17 @@ func updateArpCache() {
             } else if msg.msg_type == 2 {
                 for ip, arp := range arp_cache.arpMap {
                     if arp.counter == -2 && arp.valid == true {
+                        dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
+                        logger.Println(dbCmd)
+                        if dbHdl != nil {
+                            logger.Println("Executing DB Command:", dbCmd)
+                            _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
+                            if err != nil {
+                                logWriter.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for %s %s", ip, err))
+                            }
+                        } else {
+                            logger.Println("DB handler is nil");
+                        }
                         logger.Println("1. Deleting entry ", ip, " from Arp cache")
                         delete(arp_cache.arpMap, ip)
                         logger.Println("Deleting an entry in asic for ", ip)
@@ -845,6 +857,17 @@ func updateArpCache() {
                         //logger.Println("3. Decrementing counter for ", ip);
                         arp_cache.arpMap[ip] = ent
                     } else {
+                        dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
+                        logger.Println(dbCmd)
+                        if dbHdl != nil {
+                            logger.Println("Executing DB Command:", dbCmd)
+                            _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
+                            if err != nil {
+                                logWriter.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for %s %s", ip, err))
+                            }
+                        } else {
+                            logger.Println("DB handler is nil");
+                        }
                         logger.Println("3. Deleting entry ", ip, " from Arp cache")
                         delete(arp_cache.arpMap, ip)
                     }
