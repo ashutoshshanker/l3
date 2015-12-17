@@ -129,7 +129,7 @@ var portdClient PortdClient //portd services client
 
 var pcap_handle_map map[int]pcapHandle
 
-var portCfgList []PortConfigJson
+//var portCfgList []PortConfigJson
 
 var arp_cache_update_chl chan arpUpdateMsg = make(chan arpUpdateMsg, 100)
 
@@ -489,6 +489,7 @@ func initARPhandlerParams() {
 
 }
 
+/*
 func BuildAsicToLinuxMap(cfgFile string) {
 	bytes, err := ioutil.ReadFile(cfgFile)
 	if err != nil {
@@ -514,13 +515,33 @@ func BuildAsicToLinuxMap(cfgFile string) {
                 ent.ifName = v.Ifname
                 pcap_handle_map[v.Port] = ent
 	}
-
+}
+*/
+func BuildAsicToLinuxMap() {
+        pcap_handle_map = make(map[int]pcapHandle)
+        var ifName string
+	for i := 1; i < 73; i++ {
+                ifName = fmt.Sprintf("fpPort-%d", i)
+                logger.Println("BuildAsicToLinuxMap : iface = ", ifName)
+                logger.Println("BuildAsicToLinuxMap : port = ", i)
+		local_handle, err := pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout_pcap)
+		if local_handle == nil {
+			logWriter.Err(fmt.Sprintln("Server: No device found.: ", ifName, err))
+		}
+                ent := pcap_handle_map[i]
+                ent.pcap_handle = local_handle
+                ent.ifName = ifName
+                pcap_handle_map[i] = ent
+	}
 }
 func initPortParams() {
 	//configFile := params_dir + "/clients.json"
 	//ConnectToClients(configFile)
+/*
 	portCfgFile := params_dir + "/portd.json"
 	BuildAsicToLinuxMap(portCfgFile)
+*/
+	BuildAsicToLinuxMap()
 }
 
 func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pcap.Handle, mac_addr string, localIp string) {
