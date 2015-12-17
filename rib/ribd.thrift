@@ -14,6 +14,8 @@ struct Routes {
 	5: int IfIndex,
 	6: int Metric,
 	7: int Prototype,
+	8: bool IsValid,
+	9: int SliceIdx,
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -33,5 +35,6 @@ service RouteService
     void printV4Routes();
 	RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
-	void linkDown(1: int ifIndex);
+	void linkDown(1: int ifType, 2:int ifIndex);
+	void linkUp(1: int ifType, 2:int ifIndex);
 }
