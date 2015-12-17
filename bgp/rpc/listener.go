@@ -70,10 +70,10 @@ func (h *BGPHandler) DeleteBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 }
 
 func (h *BGPHandler) CreateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create peer attrs:", bgpNeighbor))
+	h.logger.Info(fmt.Sprintln("Create BGP neighbor attrs:", bgpNeighbor))
 	ip := net.ParseIP(bgpNeighbor.NeighborAddress)
 	if ip == nil {
-		h.logger.Info(fmt.Sprintln("CreatePeer - IP is not valid:", bgpNeighbor.NeighborAddress))
+		h.logger.Info(fmt.Sprintf("Can't create BGP neighbor - IP[%s] not valid", bgpNeighbor.NeighborAddress))
 	}
 	pConf := config.NeighborConfig{
 		PeerAS:          uint32(bgpNeighbor.PeerAS),
@@ -142,19 +142,14 @@ func (h *BGPHandler) UpdateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, err
 	return true, nil
 }
 
-func (h *BGPHandler) DeleteBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Delete peer attrs:", bgpNeighbor))
-	ip := net.ParseIP(bgpNeighbor.NeighborAddress)
+func (h *BGPHandler) DeleteBGPNeighbor(neighborAddress string) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Delete BGP neighbor:", neighborAddress))
+	ip := net.ParseIP(neighborAddress)
 	if ip == nil {
-		h.logger.Info(fmt.Sprintln("CreatePeer - IP is not valid:", bgpNeighbor.NeighborAddress))
+		h.logger.Info(fmt.Sprintf("Can't delete BGP neighbor - IP[%s] not valid", neighborAddress))
+		return false, nil
 	}
-	pConf := config.NeighborConfig{
-		PeerAS:          uint32(bgpNeighbor.PeerAS),
-		LocalAS:         uint32(bgpNeighbor.LocalAS),
-		Description:     bgpNeighbor.Description,
-		NeighborAddress: ip,
-	}
-	h.server.RemPeerCh <- pConf
+	h.server.RemPeerCh <- neighborAddress
 	return true, nil
 }
 

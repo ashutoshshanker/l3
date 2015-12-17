@@ -26,7 +26,7 @@ type BGPServer struct {
 	BgpConfig       config.Bgp
 	GlobalConfigCh  chan config.GlobalConfig
 	AddPeerCh       chan config.NeighborConfig
-	RemPeerCh       chan config.NeighborConfig
+	RemPeerCh       chan string
 	PeerCommandCh   chan config.PeerCommand
 	BGPPktSrc       chan *packet.BGPPktSrc
 	connRoutesTimer *time.Timer
@@ -48,7 +48,7 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.ribdClient = ribdClient
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
 	bgpServer.AddPeerCh = make(chan config.NeighborConfig)
-	bgpServer.RemPeerCh = make(chan config.NeighborConfig)
+	bgpServer.RemPeerCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
 	bgpServer.BGPPktSrc = make(chan *packet.BGPPktSrc)
 	bgpServer.NeighborMutex = sync.RWMutex{}
@@ -239,16 +239,15 @@ func (server *BGPServer) StartServer() {
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:
-			server.logger.Info(fmt.Sprintln("Remove Peer"))
-			peer, ok := server.PeerMap[remPeer.NeighborAddress.String()]
+			server.logger.Info(fmt.Sprintln("Remove Peer:", remPeer))
+			peer, ok := server.PeerMap[remPeer]
 			if !ok {
-				server.logger.Info(fmt.Sprintln("Failed to remove peer. Peer at that address does not exist,",
-					remPeer.NeighborAddress.String()))
+				server.logger.Info(fmt.Sprintln("Failed to remove peer. Peer at that address does not exist,", remPeer))
 			}
 			server.NeighborMutex.Lock()
 			server.removePeerFromList(peer)
 			server.NeighborMutex.Unlock()
-			delete(server.PeerMap, remPeer.NeighborAddress.String())
+			delete(server.PeerMap, remPeer)
 			peer.Cleanup()
 
 		case tcpConn := <-acceptCh:
