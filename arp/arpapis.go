@@ -103,10 +103,11 @@ type pcapHandle struct {
 var (
 	//device          string = "fpPort2"
 	//device       string = "eth0"
-	snapshot_len int32  = 1024 //packet capture length
+	snapshot_len int32  = 65549 //packet capture length
 	//promiscuous  bool   = true //mode
 	promiscuous  bool   = false //mode
 	err          error
+	timeout_pcap      time.Duration = 10 * time.Second
 	timeout      time.Duration = 60 * time.Second
         timeout_counter int = 10
         retry_cnt    int    = 2
@@ -120,8 +121,7 @@ var (
 	//rec_handle      []*pcap.Handle
         dbHdl           *sql.DB
         UsrConfDbName   string = "/../bin/UsrConfDb.db"
-        dump_arp_table  bool = false
-        //dump_arp_table  bool = true
+        dump_arp_table  bool = true
 )
 var arp_cache *arpCache
 var asicdClient AsicdClient //Thrift client to connect to asicd
@@ -234,7 +234,7 @@ func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
                             return ARP_ERR_REQ_FAIL, err
                     }
                     logWriter.Err(fmt.Sprintln("Server:Connecting to device ", linux_device))
-                    handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout)
+                    handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout_pcap)
                     if handle == nil {
                             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
                             return 0, err
@@ -505,7 +505,7 @@ func BuildAsicToLinuxMap(cfgFile string) {
 	for _, v := range portCfgList {
                 logger.Println("BuildAsicToLinuxMap : iface = ", v.Ifname)
                 logger.Println("BuildAsicToLinuxMap : port = ", v.Port)
-		local_handle, err := pcap.OpenLive(v.Ifname, snapshot_len, promiscuous, timeout)
+		local_handle, err := pcap.OpenLive(v.Ifname, snapshot_len, promiscuous, timeout_pcap)
 		if local_handle == nil {
 			logWriter.Err(fmt.Sprintln("Server: No device found.: ", v.Ifname, err))
 		}
@@ -693,12 +693,12 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 				continue
 			}
 
-			logger.Println("Received Arp response from: ", (net.IP(arp.SourceProtAddress)).String(), " ", (net.HardwareAddr(arp.SourceHwAddress)).String())
 
                         src_Mac = net.HardwareAddr(arp.SourceHwAddress)
                         src_ip_addr := (net.IP(arp.SourceProtAddress)).String()
-                        //dest_Mac := net.HardwareAddr(arp.DstHwAddress)
+                        dest_Mac := net.HardwareAddr(arp.DstHwAddress)
                         dest_ip_addr := (net.IP(arp.DstProtAddress)).String()
+			logger.Println("Received Arp response SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr, "DST_MAC:", dest_Mac)
                         ent, exist := arp_cache.arpMap[src_ip_addr]
                         if exist {
                             arp_cache_update_chl <- arpUpdateMsg {
@@ -785,14 +785,16 @@ func updateArpCache() {
                 }
                 //3) Update asicd.
                 if asicdClient.IsConnected {
+/*
                         logger.Println("1. Deleting an entry in asic for ", msg.ip)
                         rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(msg.ip,
                                              "00:00:00:00:00:00", 0, 0)
                         logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
-                        logger.Println("1. Creating an entry in asic for ", msg.ip)
-                        rv, error = asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
+*/
+                        logger.Println("1. Updating an entry in asic for ", msg.ip)
+                        rv, error := asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.ip,
                                              (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), (int32)(msg.ent.port))
-                        logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                        logWriter.Err(fmt.Sprintf("Asicd Update rv: ", rv, " error : ", error))
                 } else {
                         logWriter.Err("1. Asicd client is not connected.")
                 }
@@ -910,7 +912,7 @@ func updateArpCache() {
 
 func refresh_arp_entry(ip string, ifName string, localIP string) {
         logWriter.Err(fmt.Sprintln("Refresh ARP entry ", ifName))
-        handle, err = pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout)
+        handle, err = pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout_pcap)
         if handle == nil {
             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", ifName, err))
             return
@@ -940,7 +942,7 @@ func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int, localIP string) 
                             return
                     }
                     logWriter.Err(fmt.Sprintln("Server:Connecting to device ", linux_device))
-                    handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout)
+                    handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout_pcap)
                     if handle == nil {
                             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
                             return
