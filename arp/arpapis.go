@@ -7,6 +7,7 @@ import (
 	"asicdServices"
 	"bytes"
         "reflect"
+        "strings"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
@@ -97,6 +98,10 @@ type pcapHandle struct {
         ifName          string
 }
 
+type portProperty struct {
+    untagged_vlanid     arpd.Int
+}
+
 /*
  * connection params.
  */
@@ -128,6 +133,7 @@ var asicdClient AsicdClient //Thrift client to connect to asicd
 var portdClient PortdClient //portd services client
 
 var pcap_handle_map map[int]pcapHandle
+var port_property_map map[int]portProperty
 
 //var portCfgList []PortConfigJson
 
@@ -210,11 +216,116 @@ func getIPv4ForInterface(iftype arpd.Int, vlan_id arpd.Int) (ip_addr string, err
     return getIPv4ForInterfaceName(if_name)
 }
 
+//Note: Caller validates that portStr is a valid port range string
+func parsePortRange(portStr string) (int, int, error) {
+        portNums := strings.Split(portStr, "-")
+        startPort, err := strconv.Atoi(portNums[0])
+        if err != nil {
+                return 0, 0, err
+        }
+        endPort, err := strconv.Atoi(portNums[1])
+        if err != nil {
+                return 0, 0, err
+        }
+        return startPort, endPort, nil
+}
+
+
+/*
+ * Utility function to parse from a user specified port string to a port bitmap.
+ * Supported formats for port string shown below:
+ * - 1,2,3,10 (comma separate list of ports)
+ * - 1-10,24,30-31 (hypen separated port ranges)
+ * - 00011 (direct port bitmap)
+ */
+func parseUsrPortStrToPbm(usrPortStr string) (string, error) {
+        //FIXME: Assuming max of 256 ports, create common def (another instance in main.go)
+        var portList [256]int
+        var pbmStr string = ""
+        //Handle ',' separated strings
+        if strings.Contains(usrPortStr, ",") {
+                commaSepList := strings.Split(usrPortStr, ",")
+                for _, subStr := range commaSepList {
+                        //Substr contains '-' separated range
+                        if strings.Contains(subStr, "-") {
+                                startPort, endPort, err := parsePortRange(subStr)
+                                if err != nil {
+                                        return pbmStr, err
+                                }
+                                for port := startPort; port <= endPort; port++ {
+                                        portList[port] = 1
+                                }
+                        } else {
+                                //Substr is a port number
+                                port, err := strconv.Atoi(subStr)
+                                if err != nil {
+                                        return pbmStr, err
+                                }
+                                portList[port] = 1
+                        }
+                }
+        } else if strings.Contains(usrPortStr, "-") {
+                //Handle '-' separated range
+                startPort, endPort, err := parsePortRange(usrPortStr)
+                if err != nil {
+                        return pbmStr, err
+                }
+                for port := startPort; port <= endPort; port++ {
+                        portList[port] = 1
+                }
+        } else {
+        if len(usrPortStr) > 1 {
+            //Port bitmap directly specified
+            return usrPortStr, nil
+        } else {
+            //Handle single port number
+            port, err := strconv.Atoi(usrPortStr)
+            if err != nil {
+                return pbmStr, err
+            }
+            portList[port] = 1
+        }
+        }
+        //Convert portList to port bitmap string
+        var zeroStr string = ""
+        for _, port := range portList {
+                if port == 1 {
+                        pbmStr += zeroStr
+                        pbmStr += "1"
+                        zeroStr = ""
+                } else {
+                        zeroStr += "0"
+                }
+        }
+        return pbmStr, nil
+}
+
 /***** Thrift APIs ******/
-func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
+func (m ARPServiceHandler) UpdateUntaggedPortToVlanMap(vlanid arpd.Int,
+        untaggedPorts string) (rval arpd.Int, err error) {
+
+    logger.Println("Received UpdateUntaggedPortToVlanMap(): vlanid:", vlanid, "ports:", untaggedPorts)
+
+    portTagStr, err := parseUsrPortStrToPbm(untaggedPorts)
+    if err != nil {
+        return 0, err
+    }
+
+    for i := 0; i < len(portTagStr); i++ {
+        if (portTagStr[i] - '0') == 1 {
+            ent := port_property_map[i]
+            ent.untagged_vlanid = vlanid
+            port_property_map[i] = ent
+        }
+    }
+
+    return rval, nil
+}
+
+func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
 	iftype arpd.Int, vlan_id arpd.Int) (rc arpd.Int, err error) {
 
-        logger.Println("Calling ResotolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id))
+        logger.Println("Calling ResolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id))
         ip_addr, err := getIPv4ForInterface(iftype, vlan_id)
         if len(ip_addr) == 0 || err != nil {
             logWriter.Err(fmt.Sprintf("Failed to get the ip address of ifType:", iftype, "VLAN:", vlan_id))
@@ -542,6 +653,7 @@ func initPortParams() {
 	BuildAsicToLinuxMap(portCfgFile)
 */
 	BuildAsicToLinuxMap()
+        port_property_map = make(map[int]portProperty)
 }
 
 func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pcap.Handle, mac_addr string, localIp string) {
@@ -949,7 +1061,7 @@ func refresh_arp_entry(ip string, ifName string, localIP string) {
 }
 
 func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int, localIP string) {
-        logger.Println("Calling ResotolveArpIPv4...", ip, " ", int32(ifType), " ", int32(vlanid))
+        //logger.Println("Calling ResolveArpIPv4...", ip, " ", int32(ifType), " ", int32(vlanid))
 //        var linux_device string
         if portdClient.IsConnected {
 		linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(ifType), int32(vlanid))
