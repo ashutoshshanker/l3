@@ -428,8 +428,8 @@ func updateARPCacheFromDB() {
             ent.vlanid = arpd.Int(vlanid)
             ent.ifName = ifName
             ent.localIP = src_ip
-            ent.counter = timeout_counter
-            ent.valid = false
+            ent.counter = 0
+            ent.valid = true
             arp_cache.arpMap[ip] = ent
         }
 
