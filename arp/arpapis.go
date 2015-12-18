@@ -849,11 +849,18 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                                                         msg_type: 1,
                                                      }
                         } else {
+                            port_map_ent, exists := port_property_map[port_id]
+                            var vlan_id arpd.Int
+                            if exists {
+                                vlan_id = port_map_ent.untagged_vlanid
+                            } else {
+                                vlan_id = 1
+                            }
                             arp_cache_update_chl <- arpUpdateMsg {
                                                         ip: src_ip_addr,
                                                         ent: arpEntry {
                                                                 macAddr: src_Mac,
-                                                                vlanid: 1, // Need to be re-visited
+                                                                vlanid: vlan_id, // Need to be re-visited
                                                                 valid: true,
                                                                 port: port_id,
                                                                 ifName: if_Name,
