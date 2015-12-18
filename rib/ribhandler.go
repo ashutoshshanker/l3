@@ -138,7 +138,7 @@ func getSelectedRoute(routeInfoRecordList RouteInfoRecordList) (routeInfoRecord 
 	return routeInfoRecord, err
 }
 
-func SelectV4Route(destNet patriciaDB.Prefix,
+func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 	routeInfoRecordList RouteInfoRecordList,
 	routeInfoRecord RouteInfoRecord,
 	op ribd.Int,
@@ -147,19 +147,26 @@ func SelectV4Route(destNet patriciaDB.Prefix,
 	var routeInfoRecordOld RouteInfoRecord
 	var routeInfoRecordTemp RouteInfoRecord
 	var i int8
-	logger.Printf("Selecting the best Route for destNet %v, index = %d\n", destNet, index)
+	logger.Printf("Selecting the best Route for destNetPrefix %v, index = %d\n", destNetPrefix, index)
 	if op == add {
 		selectedRoute, err := getSelectedRoute(routeInfoRecordList)
 		logger.Printf("Selected route protocol = %d, routeinforecord.protool=%d\n", selectedRoute.protocol, routeInfoRecord.protocol)
 		if err == nil && ((selectedRoute.protocol == PROTOCOL_NONE && routeInfoRecord.protocol != PROTOCOL_NONE) ||routeInfoRecord.protocol <= selectedRoute.protocol) {
 			routeInfoRecordList.routeInfoList[routeInfoRecordList.selectedRouteIdx] = selectedRoute
 			routeInfoRecordOld = selectedRoute
-			if(destNetSlice != nil) {// && destNetSlice[routeInfoRecord.sliceIdx].prefix == destNet) {
+			destNetSlice[routeInfoRecordOld.sliceIdx].isValid = false
+			//destNetSlice is a slice of localDB maintained for a getBulk operations. An entry is created in this db when we create a new route
+			if(destNetSlice != nil && (len(destNetSlice) > int(routeInfoRecord.sliceIdx) ) ) { //&& bytes.Equal(destNetSlice[routeInfoRecord.sliceIdx].prefix, destNet)) {
+				if(bytes.Equal(destNetSlice[routeInfoRecord.sliceIdx].prefix, destNetPrefix) == false) {
+					logger.Println("Unexpected destination network prefix found at the slice Idx ", routeInfoRecord.sliceIdx)
+					return err
+				}
+				//There is already an entry in the destNetSlice at the route index and was invalidated earlier because  of a link down of the nexthop intf of the route or if the route was deleted
 				logger.Println("sliceIdx ", routeInfoRecord.sliceIdx)
 				destNetSlice[routeInfoRecord.sliceIdx].isValid = true
-			} else {
+			} else {		//this is a new route being added
 			   routeInfoRecord.sliceIdx = len(destNetSlice)
-               localDBRecord := localDB{prefix:destNet, isValid:true}
+               localDBRecord := localDB{prefix:destNetPrefix, isValid:true}
 			   if(destNetSlice == nil) {
 				 destNetSlice = make([]localDB, 0)
 			   } 
@@ -174,13 +181,17 @@ func SelectV4Route(destNet patriciaDB.Prefix,
 		logger.Println(" in del index selectedrouteIndex", index, routeInfoRecordList.selectedRouteIdx)
 		if len(routeInfoRecordList.routeInfoList) == 0 {
 			logger.Println(" in del,numRoutes now 0, so delete the node")
-			RouteInfoMap.Delete(destNet)
+			RouteInfoMap.Delete(destNetPrefix)
 			return nil
 		}
 		routeInfoRecordOld = routeInfoRecord
 		routeInfoRecord.protocol = PROTOCOL_NONE
 		routeInfoRecordList.routeInfoList[routeInfoRecordList.selectedRouteIdx] = routeInfoRecord
-        destNetSlice[routeInfoRecord.sliceIdx].isValid = false
+		if(destNetSlice == nil || int(routeInfoRecord.sliceIdx) >= len(destNetSlice)) {
+			logger.Println("Destination slice not found at the expected slice index ", routeInfoRecord.sliceIdx)
+			return err
+		}
+        destNetSlice[routeInfoRecord.sliceIdx].isValid = false   //invalidate this entry in the local db
 		if int8(index) == routeInfoRecordList.selectedRouteIdx {
 			for i = 0; i < int8(len(routeInfoRecordList.routeInfoList)); i++ {
 				routeInfoRecordTemp = routeInfoRecordList.routeInfoList[i]
@@ -193,13 +204,14 @@ func SelectV4Route(destNet patriciaDB.Prefix,
 					routeInfoRecordList.routeInfoList[i] = routeInfoRecordTemp
 					routeInfoRecordNew = routeInfoRecordTemp
 					routeInfoRecordList.selectedRouteIdx = i
+					destNetSlice[routeInfoRecordNew.sliceIdx].isValid = true
 					break
 				}
 			}
 		}
 	}
 	//update the patriciaDB trie with the updated route info record list
-	RouteInfoMap.Set(patriciaDB.Prefix(destNet), routeInfoRecordList)
+	RouteInfoMap.Set(patriciaDB.Prefix(destNetPrefix), routeInfoRecordList)
 
 	if routeInfoRecordOld.protocol != PROTOCOL_NONE {
 		//call asicd to del
@@ -211,6 +223,8 @@ func SelectV4Route(destNet patriciaDB.Prefix,
 		//call asicd to add
 		if asicdclnt.IsConnected {
 			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String())
+		}
+		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 			//call arpd to resolve the ip
 			logger.Println("### Sending ARP Resolve for ", routeInfoRecord.nextHopIp.String(), routeInfoRecord.nextHopIfType)
 			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.nextHopIp.String(), arpd.Int(routeInfoRecord.nextHopIfType), arpd.Int(routeInfoRecord.nextHopIfIndex))
@@ -303,7 +317,7 @@ func updateConnectedRoutes(destNetIPAddr string, networkMaskAddr string, nextHop
 		if ConnectedRoutes[i].Ipaddr == destNetIPAddr && ConnectedRoutes[i].Mask == networkMaskAddr {
 			if op == del {
 				ConnectedRoutes = append(ConnectedRoutes[:i], ConnectedRoutes[i+1:]...)
-			} else if op == invalidate {
+			} else if op == invalidate { //op is invalidate when a link on which the connectedroutes is configured goes down
 				ConnectedRoutes[i].IsValid = false
 			}
 			return
@@ -344,13 +358,13 @@ func (m RouteServiceHandler) GetBulkRoutes( fromIndex ribd.Int, rcount ribd.Int)
 	var returnRouteGetInfo ribd.RoutesGetInfo
 	var prefixNodeRouteList RouteInfoRecordList
 	var prefixNodeRoute RouteInfoRecord
+	i = 0
+	routes = &returnRouteGetInfo
 	moreRoutes := true
     if(destNetSlice == nil) {
 		logger.Println("destNetSlice not initialized")
 		return routes, err
 	}
-	i = 0
-	routes = &returnRouteGetInfo
 	for ;;i++ {
 		logger.Printf("Fetching trie record for index %d\n", i+fromIndex)
 		if(i+fromIndex >= ribd.Int(len(destNetSlice))) {
@@ -379,6 +393,7 @@ func (m RouteServiceHandler) GetBulkRoutes( fromIndex ribd.Int, rcount ribd.Int)
 			nextRoute.IfIndex = prefixNodeRoute.nextHopIfIndex
 			nextRoute.Metric = prefixNodeRoute.metric
 			nextRoute.Prototype = ribd.Int(prefixNodeRoute.protocol)
+			nextRoute.IsValid = destNetSlice[i+fromIndex].isValid
 			toIndex = ribd.Int(prefixNodeRoute.sliceIdx)
 			if(len(returnRoutes) == 0){
 				returnRoutes = make([]*ribd.Routes, 0)
@@ -481,6 +496,11 @@ func (m RouteServiceHandler) GetRoute ( destNetIp string, networkMask string) (r
 	route.Prototype = ribd.Int(routeInfoRecord.protocol)
 	return route, err
 } 
+/**
+   This function is called when :
+ - a user/routing protocol installs a new route. In that case, addType will be RIBAndFIB
+ - when a operationally down link comes up. In this case, the addType will be FIBOnly because on a link down, the route is still preserved in the RIB database and only deleted from FIB (Asic)
+**/
 func createV4Route(destNetIp string,
 	networkMask string,
 	metric ribd.Int,
@@ -544,7 +564,8 @@ func createV4Route(destNetIp string,
 		//call asicd
 		if asicdclnt.IsConnected {
 			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String())
-
+		}
+		if arpdclnt.IsConnected && routeType != ribdCommonDefs.CONNECTED {
 			logger.Println("### 22 Sending ARP Resolve for ", routeInfoRecord.nextHopIp.String(), routeInfoRecord.nextHopIfType)
 			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.nextHopIp.String(), arpd.Int(routeInfoRecord.nextHopIfType), arpd.Int(routeInfoRecord.nextHopIfIndex))
 		}
@@ -577,9 +598,39 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 		//return 0, err
 	}
     _,err = createV4Route(destNetIp, networkMask, metric, nextHopIp, nextHopIfType, nextHopIfIndex, routeType, FIBAndRIB, ribd.Int(len(destNetSlice)))
+	
+	if(err != nil) {
+		logger.Println("creating v4 route failed with err ", err)
+		return 0, err
+	}
+	
+	//If this is not a connected route, then nothing more to do
+	if(routeType != ribdCommonDefs.CONNECTED) {
+	    logger.Println("This is not a connected route, nothing more to do")
+		return 0, err
+	}
+	logger.Println("This is a connected route, so send a route add event")
+
+	//Send a event
+	route := ribd.Routes { Ipaddr : destNetIp, Mask : networkMask,	NextHopIp : nextHopIp, NextHopIfType: nextHopIfType, IfIndex : nextHopIfIndex, Metric : metric}
+
+	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : route}
+	msgbufbytes, err := json.Marshal( msgBuf)
+    msg := ribdCommonDefs.RibdNotifyMsg {MsgType:ribdCommonDefs.NOTIFY_ROUTE_CREATED, MsgBuf: msgbufbytes}
+	buf, err := json.Marshal( msg)
+	if err != nil {
+		logger.Println("Error in marshalling Json")
+		return
+	}
+	logger.Println("buf", buf)
+   	RIBD_PUB.Send(buf, nanomsg.DontWait)
 	return 0, err
 }
-
+/**
+   This function is called when:
+   -  a user/protocol deletes a route - delType = FIBAndRIB
+   - when a link goes down and we have connected routes on that link - delType = FIBOnly
+**/
 func deleteV4Route(destNetIp string,
 	networkMask string,
 	routeType ribd.Int,
@@ -619,13 +670,13 @@ func deleteV4Route(destNetIp string,
 		return 0, err
 	}
 	routeInfoRecord := routeInfoRecordList.routeInfoList[i]
-	err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, del, int(i))
-
-	if(delType != FIBOnly) {
+	if(delType != FIBOnly) { //if this is not FIBOnly, then we have to delete this route from the RIB data base as well.
 	   routeInfoRecordList.routeInfoList = append(routeInfoRecordList.routeInfoList[:i], routeInfoRecordList.routeInfoList[i+1:]...)
 	}
+	err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, del, int(i)) //this function will invalidate the route in destNetSlice and also delete the entry in FIB (Asic)
+
 	if routePrototype == ribdCommonDefs.CONNECTED { //PROTOCOL_CONNECTED {
-		if delType == FIBOnly {
+		if delType == FIBOnly { //link gone down, just invalidate the connected route
 		   updateConnectedRoutes(destNetIp, networkMask, "",0, 0,invalidate,0)
 		} else {
 		   updateConnectedRoutes(destNetIp, networkMask, "",0, 0,del,0)
