@@ -207,7 +207,6 @@ func (st *IdleState) enter() {
 func (st *IdleState) leave() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "State: Idle - leave"))
 	st.fsm.StopIdleHoldTimer()
-	st.fsm.SetPassiveTcpEstablishment(true)
 }
 
 func (st *IdleState) state() BGPFSMState {
@@ -772,6 +771,7 @@ type FSM struct {
 	autoStart     bool
 	autoStop      bool
 	passiveTcpEst bool
+	passiveTcpEstCh chan bool
 	dampPeerOscl  bool
 	idleHoldTime  uint16
 	idleHoldTimer *time.Timer
@@ -807,7 +807,8 @@ func NewFSM(fsmManager *FSMManager, connDir config.ConnDir, peer *Peer) *FSM {
 		autoStart:        true,
 		autoStop:         true,
 		passiveTcpEst:    false,
-		dampPeerOscl:     true,
+		passiveTcpEstCh:  make(chan bool),
+		dampPeerOscl:     false,
 		idleHoldTime:     BGPIdleHoldTimeDefault,
 	}
 
@@ -849,6 +850,9 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 		case <-fsm.closeCh:
 			fsm.ProcessEvent(BGPEventManualStop, nil)
 			return
+
+		case val := <-fsm.passiveTcpEstCh:
+			fsm.SetPassiveTcpEstablishment(val)
 
 		case bgpMsg := <-fsm.pktTxCh:
 			if fsm.State.state() != BGPFSMEstablished {
@@ -1017,6 +1021,7 @@ func (fsm *FSM) StopIdleHoldTimer() {
 }
 
 func (fsm *FSM) HandleAnotherConnection(data interface{}) {
+	fsm.logger.Info(fmt.Sprintf("**** COLLISION DETECTED ****"))
 	pConnDir := data.(PeerConnDir)
 	fsm.Manager.HandleAnotherConnection(pConnDir.connDir, pConnDir.conn)
 }
