@@ -7,6 +7,7 @@ import (
 	"asicdServices"
 	"bytes"
         "reflect"
+        "strings"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
@@ -97,16 +98,21 @@ type pcapHandle struct {
         ifName          string
 }
 
+type portProperty struct {
+    untagged_vlanid     arpd.Int
+}
+
 /*
  * connection params.
  */
 var (
 	//device          string = "fpPort2"
 	//device       string = "eth0"
-	snapshot_len int32  = 1024 //packet capture length
+	snapshot_len int32  = 65549 //packet capture length
 	//promiscuous  bool   = true //mode
 	promiscuous  bool   = false //mode
 	err          error
+	timeout_pcap      time.Duration = 10 * time.Second
 	timeout      time.Duration = 60 * time.Second
         timeout_counter int = 10
         retry_cnt    int    = 2
@@ -121,15 +127,15 @@ var (
         dbHdl           *sql.DB
         UsrConfDbName   string = "/../bin/UsrConfDb.db"
         dump_arp_table  bool = false
-        //dump_arp_table  bool = true
 )
 var arp_cache *arpCache
 var asicdClient AsicdClient //Thrift client to connect to asicd
 var portdClient PortdClient //portd services client
 
 var pcap_handle_map map[int]pcapHandle
+var port_property_map map[int]portProperty
 
-var portCfgList []PortConfigJson
+//var portCfgList []PortConfigJson
 
 var arp_cache_update_chl chan arpUpdateMsg = make(chan arpUpdateMsg, 100)
 
@@ -210,11 +216,116 @@ func getIPv4ForInterface(iftype arpd.Int, vlan_id arpd.Int) (ip_addr string, err
     return getIPv4ForInterfaceName(if_name)
 }
 
+//Note: Caller validates that portStr is a valid port range string
+func parsePortRange(portStr string) (int, int, error) {
+        portNums := strings.Split(portStr, "-")
+        startPort, err := strconv.Atoi(portNums[0])
+        if err != nil {
+                return 0, 0, err
+        }
+        endPort, err := strconv.Atoi(portNums[1])
+        if err != nil {
+                return 0, 0, err
+        }
+        return startPort, endPort, nil
+}
+
+
+/*
+ * Utility function to parse from a user specified port string to a port bitmap.
+ * Supported formats for port string shown below:
+ * - 1,2,3,10 (comma separate list of ports)
+ * - 1-10,24,30-31 (hypen separated port ranges)
+ * - 00011 (direct port bitmap)
+ */
+func parseUsrPortStrToPbm(usrPortStr string) (string, error) {
+        //FIXME: Assuming max of 256 ports, create common def (another instance in main.go)
+        var portList [256]int
+        var pbmStr string = ""
+        //Handle ',' separated strings
+        if strings.Contains(usrPortStr, ",") {
+                commaSepList := strings.Split(usrPortStr, ",")
+                for _, subStr := range commaSepList {
+                        //Substr contains '-' separated range
+                        if strings.Contains(subStr, "-") {
+                                startPort, endPort, err := parsePortRange(subStr)
+                                if err != nil {
+                                        return pbmStr, err
+                                }
+                                for port := startPort; port <= endPort; port++ {
+                                        portList[port] = 1
+                                }
+                        } else {
+                                //Substr is a port number
+                                port, err := strconv.Atoi(subStr)
+                                if err != nil {
+                                        return pbmStr, err
+                                }
+                                portList[port] = 1
+                        }
+                }
+        } else if strings.Contains(usrPortStr, "-") {
+                //Handle '-' separated range
+                startPort, endPort, err := parsePortRange(usrPortStr)
+                if err != nil {
+                        return pbmStr, err
+                }
+                for port := startPort; port <= endPort; port++ {
+                        portList[port] = 1
+                }
+        } else {
+        if len(usrPortStr) > 1 {
+            //Port bitmap directly specified
+            return usrPortStr, nil
+        } else {
+            //Handle single port number
+            port, err := strconv.Atoi(usrPortStr)
+            if err != nil {
+                return pbmStr, err
+            }
+            portList[port] = 1
+        }
+        }
+        //Convert portList to port bitmap string
+        var zeroStr string = ""
+        for _, port := range portList {
+                if port == 1 {
+                        pbmStr += zeroStr
+                        pbmStr += "1"
+                        zeroStr = ""
+                } else {
+                        zeroStr += "0"
+                }
+        }
+        return pbmStr, nil
+}
+
 /***** Thrift APIs ******/
-func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
+func (m ARPServiceHandler) UpdateUntaggedPortToVlanMap(vlanid arpd.Int,
+        untaggedPorts string) (rval arpd.Int, err error) {
+
+    logger.Println("Received UpdateUntaggedPortToVlanMap(): vlanid:", vlanid, "ports:", untaggedPorts)
+
+    portTagStr, err := parseUsrPortStrToPbm(untaggedPorts)
+    if err != nil {
+        return 0, err
+    }
+
+    for i := 0; i < len(portTagStr); i++ {
+        if (portTagStr[i] - '0') == 1 {
+            ent := port_property_map[i]
+            ent.untagged_vlanid = vlanid
+            port_property_map[i] = ent
+        }
+    }
+
+    return rval, nil
+}
+
+func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
 	iftype arpd.Int, vlan_id arpd.Int) (rc arpd.Int, err error) {
 
-        logger.Println("Calling ResotolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id))
+        logger.Println("Calling ResolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id))
         ip_addr, err := getIPv4ForInterface(iftype, vlan_id)
         if len(ip_addr) == 0 || err != nil {
             logWriter.Err(fmt.Sprintf("Failed to get the ip address of ifType:", iftype, "VLAN:", vlan_id))
@@ -234,7 +345,7 @@ func (m ARPServiceHandler) RestolveArpIPV4(targetIp string,
                             return ARP_ERR_REQ_FAIL, err
                     }
                     logWriter.Err(fmt.Sprintln("Server:Connecting to device ", linux_device))
-                    handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout)
+                    handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout_pcap)
                     if handle == nil {
                             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
                             return 0, err
@@ -337,9 +448,9 @@ func ConnectToClients(paramsFile string) {
 	}
 }
 
-func storeArpTableInDB(ifType int, vlanid int, ifName string, dest_ip string, src_ip string) error {
+func storeArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_ip string, src_ip string) error {
     var dbCmd string
-    dbCmd = fmt.Sprintf(`INSERT INTO ARPCache (ifType, vlanid, ifName, src_ip, key) VALUES ('%d', '%d', '%s', '%s', '%s') ;`, ifType, vlanid, ifName, src_ip, dest_ip)
+    dbCmd = fmt.Sprintf(`INSERT INTO ARPCache (ifType, vlanid, ifName, portid, src_ip, key) VALUES ('%d', '%d', '%s', '%d', '%s', '%s') ;`, ifType, vlanid, ifName, portid, src_ip, dest_ip)
     logger.Println(dbCmd)
     if dbHdl != nil {
         logger.Println("Executing DB Command:", dbCmd)
@@ -389,7 +500,7 @@ func intantiateDB() error {
 
     dbCmd := "CREATE TABLE IF NOT EXISTS ARPCache " +
             "(key string PRIMARY KEY ," +
-            "ifType int, vlanid int, ifName string, src_ip string)"
+            "ifType int, vlanid int, ifName string, portid int, src_ip string)"
 
     _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
     if err != nil {
@@ -402,10 +513,12 @@ func intantiateDB() error {
 
 func updateARPCacheFromDB() {
         var ent arpEntry
+        var port_prop_ent portProperty
         var ip      string
         var ifType  int
         var vlanid  int
         var ifName  string
+        var portid  int
         var src_ip  string
         //var dbCmd string
 
@@ -416,21 +529,25 @@ func updateARPCacheFromDB() {
             return
         }
         for rows.Next() {
-            err = rows.Scan(&ip, &ifType, &vlanid, &ifName, &src_ip)
+            err = rows.Scan(&ip, &ifType, &vlanid, &ifName, &portid, &src_ip)
             if err != nil {
                 logWriter.Err(fmt.Sprintf("Unable to Scan entry from DB:", err))
                 return
             }
-            logger.Println("Data Retrived From DB IP:", ip, "IFTYPE:", ifType, "VLANID:", vlanid, "IFNAME:", ifName, "SRC_IP:", src_ip)
+            logger.Println("Data Retrived From DB IP:", ip, "IFTYPE:", ifType, "VLANID:", vlanid, "IFNAME:", ifName, "PORTID:", portid, "SRC_IP:", src_ip)
 
             ent = arp_cache.arpMap[ip]
             ent.ifType = arpd.Int(ifType)
             ent.vlanid = arpd.Int(vlanid)
             ent.ifName = ifName
+            ent.port = portid
             ent.localIP = src_ip
-            ent.counter = timeout_counter
-            ent.valid = false
+            ent.counter = 0
+            ent.valid = true
             arp_cache.arpMap[ip] = ent
+            port_prop_ent = port_property_map[portid]
+            port_prop_ent.untagged_vlanid = arpd.Int(vlanid)
+            port_property_map[portid] = port_prop_ent
         }
 
 }
@@ -458,6 +575,7 @@ func initARPhandlerParams() {
 
 	// Initialise arp cache.
 	success := initArpCache()
+        port_property_map = make(map[int]portProperty)
 	if success != true {
 		logWriter.Err("server: Failed to initialise ARP cache")
 		logger.Println("Failed to initialise ARP cache")
@@ -489,6 +607,7 @@ func initARPhandlerParams() {
 
 }
 
+/*
 func BuildAsicToLinuxMap(cfgFile string) {
 	bytes, err := ioutil.ReadFile(cfgFile)
 	if err != nil {
@@ -505,7 +624,7 @@ func BuildAsicToLinuxMap(cfgFile string) {
 	for _, v := range portCfgList {
                 logger.Println("BuildAsicToLinuxMap : iface = ", v.Ifname)
                 logger.Println("BuildAsicToLinuxMap : port = ", v.Port)
-		local_handle, err := pcap.OpenLive(v.Ifname, snapshot_len, promiscuous, timeout)
+		local_handle, err := pcap.OpenLive(v.Ifname, snapshot_len, promiscuous, timeout_pcap)
 		if local_handle == nil {
 			logWriter.Err(fmt.Sprintln("Server: No device found.: ", v.Ifname, err))
 		}
@@ -514,13 +633,33 @@ func BuildAsicToLinuxMap(cfgFile string) {
                 ent.ifName = v.Ifname
                 pcap_handle_map[v.Port] = ent
 	}
-
+}
+*/
+func BuildAsicToLinuxMap() {
+        pcap_handle_map = make(map[int]pcapHandle)
+        var ifName string
+	for i := 1; i < 73; i++ {
+                ifName = fmt.Sprintf("fpPort-%d", i)
+                //logger.Println("BuildAsicToLinuxMap : iface = ", ifName)
+                //logger.Println("BuildAsicToLinuxMap : port = ", i)
+		local_handle, err := pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout_pcap)
+		if local_handle == nil {
+			logWriter.Err(fmt.Sprintln("Server: No device found.: ", ifName, err))
+		}
+                ent := pcap_handle_map[i]
+                ent.pcap_handle = local_handle
+                ent.ifName = ifName
+                pcap_handle_map[i] = ent
+	}
 }
 func initPortParams() {
 	//configFile := params_dir + "/clients.json"
 	//ConnectToClients(configFile)
+/*
 	portCfgFile := params_dir + "/portd.json"
 	BuildAsicToLinuxMap(portCfgFile)
+*/
+	BuildAsicToLinuxMap()
 }
 
 func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pcap.Handle, mac_addr string, localIp string) {
@@ -584,9 +723,9 @@ func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pc
 
 func processResponse() {
         for port_id, p_hdl := range pcap_handle_map {
-                logger.Println("ifName = ", p_hdl.ifName, " Port = ", port_id)
+                //logger.Println("ifName = ", p_hdl.ifName, " Port = ", port_id)
                 if p_hdl.pcap_handle == nil {
-                    logger.Println("Hello handle is nil");
+                    logger.Println("pcap handle is nil");
                     continue
                 }
                 mac_addr, err := getMacAddrInterfaceName(p_hdl.ifName)
@@ -594,7 +733,7 @@ func processResponse() {
                     logWriter.Err(fmt.Sprintln("Unable to get the MAC addr of ", p_hdl.ifName))
                     continue
                 }
-                logger.Println("MAC addr of ", p_hdl.ifName, ": ", mac_addr)
+                //logger.Println("MAC addr of ", p_hdl.ifName, ": ", mac_addr)
                 myMac_addr, fail := getHWAddr(mac_addr)
                 if fail != nil {
                         logWriter.Err(fmt.Sprintf("corrupted my mac : ", mac_addr))
@@ -693,12 +832,12 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 				continue
 			}
 
-			logger.Println("Received Arp response from: ", (net.IP(arp.SourceProtAddress)).String(), " ", (net.HardwareAddr(arp.SourceHwAddress)).String())
 
                         src_Mac = net.HardwareAddr(arp.SourceHwAddress)
                         src_ip_addr := (net.IP(arp.SourceProtAddress)).String()
-                        //dest_Mac := net.HardwareAddr(arp.DstHwAddress)
+                        dest_Mac := net.HardwareAddr(arp.DstHwAddress)
                         dest_ip_addr := (net.IP(arp.DstProtAddress)).String()
+			logger.Println("Received Arp response SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr, "DST_MAC:", dest_Mac)
                         ent, exist := arp_cache.arpMap[src_ip_addr]
                         if exist {
                             arp_cache_update_chl <- arpUpdateMsg {
@@ -716,11 +855,18 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                                                         msg_type: 1,
                                                      }
                         } else {
+                            port_map_ent, exists := port_property_map[port_id]
+                            var vlan_id arpd.Int
+                            if exists {
+                                vlan_id = port_map_ent.untagged_vlanid
+                            } else {
+                                vlan_id = 1
+                            }
                             arp_cache_update_chl <- arpUpdateMsg {
                                                         ip: src_ip_addr,
                                                         ent: arpEntry {
                                                                 macAddr: src_Mac,
-                                                                vlanid: 1, // Need to be re-visited
+                                                                vlanid: vlan_id, // Need to be re-visited
                                                                 valid: true,
                                                                 port: port_id,
                                                                 ifName: if_Name,
@@ -779,20 +925,22 @@ func updateArpCache() {
                 ent.localIP = msg.ent.localIP
                 arp_cache.arpMap[msg.ip] = ent
                 logger.Println("1 updateArpCache(): ", arp_cache.arpMap[msg.ip])
-                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, msg.ip, ent.localIP)
+                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP)
                 if err != nil {
                     logWriter.Err("Unable to cache ARP Table in DB")
                 }
                 //3) Update asicd.
                 if asicdClient.IsConnected {
+/*
                         logger.Println("1. Deleting an entry in asic for ", msg.ip)
                         rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(msg.ip,
                                              "00:00:00:00:00:00", 0, 0)
                         logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
-                        logger.Println("1. Creating an entry in asic for ", msg.ip)
-                        rv, error = asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
+*/
+                        logger.Println("1. Updating an entry in asic for ", msg.ip)
+                        rv, error := asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.ip,
                                              (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), (int32)(msg.ent.port))
-                        logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                        logWriter.Err(fmt.Sprintf("Asicd Update rv: ", rv, " error : ", error))
                 } else {
                         logWriter.Err("1. Asicd client is not connected.")
                 }
@@ -885,7 +1033,7 @@ func updateArpCache() {
                 ent.localIP = msg.ent.localIP
                 arp_cache.arpMap[msg.ip] = ent
                 logger.Println("2. updateArpCache(): ", arp_cache.arpMap[msg.ip])
-                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, msg.ip, ent.localIP)
+                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP)
                 if err != nil {
                     logWriter.Err("Unable to cache ARP Table in DB")
                 }
@@ -910,7 +1058,7 @@ func updateArpCache() {
 
 func refresh_arp_entry(ip string, ifName string, localIP string) {
         logWriter.Err(fmt.Sprintln("Refresh ARP entry ", ifName))
-        handle, err = pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout)
+        handle, err = pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout_pcap)
         if handle == nil {
             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", ifName, err))
             return
@@ -926,7 +1074,7 @@ func refresh_arp_entry(ip string, ifName string, localIP string) {
 }
 
 func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int, localIP string) {
-        logger.Println("Calling ResotolveArpIPv4...", ip, " ", int32(ifType), " ", int32(vlanid))
+        //logger.Println("Calling ResolveArpIPv4...", ip, " ", int32(ifType), " ", int32(vlanid))
 //        var linux_device string
         if portdClient.IsConnected {
 		linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(ifType), int32(vlanid))
@@ -940,7 +1088,7 @@ func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int, localIP string) 
                             return
                     }
                     logWriter.Err(fmt.Sprintln("Server:Connecting to device ", linux_device))
-                    handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout)
+                    handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout_pcap)
                     if handle == nil {
                             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
                             return
