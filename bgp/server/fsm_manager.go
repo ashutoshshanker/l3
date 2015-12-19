@@ -65,6 +65,7 @@ func (fsmManager *FSMManager) Init() {
 	fsmManager.fsms[config.ConnDirOut] = NewFSM(fsmManager, config.ConnDirOut, fsmManager.Peer)
 	fsmManager.activeFSM = config.ConnDirOut
 	go fsmManager.fsms[config.ConnDirOut].StartFSM(NewIdleState(fsmManager.fsms[config.ConnDirOut]))
+	fsmManager.fsms[config.ConnDirOut].passiveTcpEstCh <- true
 
 	for {
 		select {
@@ -179,6 +180,7 @@ func (mgr *FSMManager) HandleAnotherConnection(connDir config.ConnDir, conn *net
 	}
 	go mgr.fsms[connDir].StartFSM(state)
 	connCh <- *conn
+	mgr.fsms[connDir].passiveTcpEstCh <- true
 }
 
 func (mgr *FSMManager) ReceivedBGPOpenMessage(connDir config.ConnDir, bgpId uint32) {
