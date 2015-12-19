@@ -145,11 +145,13 @@ func (baseState *BaseState) state() BGPFSMState {
 
 type IdleState struct {
 	BaseState
+	passive bool
 }
 
 func NewIdleState(fsm *FSM) *IdleState {
 	state := IdleState{
 		BaseState: NewBaseState(fsm),
+		passive: false,
 	}
 	return &state
 }
@@ -165,18 +167,31 @@ func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ChangeState(NewConnectState(st.fsm))
 
 	case BGPEventManualStartPassTcpEst, BGPEventAutoStartPassTcpEst:
+		st.fsm.SetConnectRetryCounter(0)
+		st.fsm.StartConnectRetryTimer()
+		st.fsm.AcceptPeerConn()
 		st.fsm.ChangeState(NewActiveState(st.fsm))
 
 	case BGPEventAutoStartDampPeerOscl, BGPEventAutoStartDampPeerOsclPassTcpEst:
 		st.fsm.SetIdleHoldTime(IdleHoldTimeInterval[st.fsm.GetIdleHoldTime()])
 		st.fsm.StartIdleHoldTimer()
+		if event == BGPEventAutoStartDampPeerOsclPassTcpEst {
+			st.passive = true
+		} else {
+			st.passive = false
+		}
 
 	case BGPEventIdleHoldTimerExp:
-		st.fsm.SetConnectRetryCounter(0)
+		//st.fsm.SetConnectRetryCounter(0)
 		st.fsm.StartConnectRetryTimer()
-		st.fsm.InitiateConnToPeer()
-		st.fsm.AcceptPeerConn()
-		st.fsm.ChangeState(NewConnectState(st.fsm))
+		if st.passive {
+			st.fsm.AcceptPeerConn()
+			st.fsm.ChangeState(NewActiveState(st.fsm))
+		} else {
+			st.fsm.InitiateConnToPeer()
+			st.fsm.AcceptPeerConn()
+			st.fsm.ChangeState(NewConnectState(st.fsm))
+		}
 	}
 }
 
@@ -192,6 +207,7 @@ func (st *IdleState) enter() {
 func (st *IdleState) leave() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "State: Idle - leave"))
 	st.fsm.StopIdleHoldTimer()
+	st.fsm.SetPassiveTcpEstablishment(true)
 }
 
 func (st *IdleState) state() BGPFSMState {
@@ -226,6 +242,7 @@ func (st *ConnectState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.StopConnToPeer()
 		st.fsm.StartConnectRetryTimer()
 		st.fsm.InitiateConnToPeer()
+		st.fsm.AcceptPeerConn()
 
 	case BGPEventDelayOpenTimerExp: // Supported later
 
@@ -417,11 +434,13 @@ func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
 	case BGPEventTcpConnValid: // Supported later
 
 	case BGPEventTcpCrAcked, BGPEventTcpConnConfirmed: // Collistion detection... needs work
+		st.fsm.HandleAnotherConnection(data)
 
 	case BGPEventTcpConnFails:
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
 		st.fsm.StartConnectRetryTimer()
+		st.fsm.AcceptPeerConn()
 		st.fsm.ChangeState(NewActiveState(st.fsm))
 
 	case BGPEventBGPOpen:
@@ -529,6 +548,7 @@ func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
 	case BGPEventTcpConnValid: // Supported later
 
 	case BGPEventTcpCrAcked, BGPEventTcpConnConfirmed: // Collision Detection... needs work
+		st.fsm.HandleAnotherConnection(data)
 
 	case BGPEventTcpConnFails, BGPEventNotifMsg:
 		st.fsm.StopConnectRetryTimer()
@@ -640,6 +660,7 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 	case BGPEventTcpConnValid: // Supported later
 
 	case BGPEventTcpCrAcked, BGPEventTcpConnConfirmed: // Collistion detection... needs work
+		st.fsm.HandleAnotherConnection(data)
 
 	case BGPEventTcpConnFails, BGPEventNotifMsgVerErr, BGPEventNotifMsg:
 		st.fsm.StopConnectRetryTimer()
@@ -733,6 +754,7 @@ type FSM struct {
 	outConnErrCh   chan error
 	stopConnCh     chan bool
 	inConnCh       chan net.Conn
+	closeCh        chan bool
 	connInProgress bool
 
 	event BGPFSMEvent
@@ -780,6 +802,7 @@ func NewFSM(fsmManager *FSMManager, connDir config.ConnDir, peer *Peer) *FSM {
 		outConnErrCh:     make(chan error),
 		stopConnCh:       make(chan bool),
 		inConnCh:         make(chan net.Conn),
+		closeCh:          make(chan bool),
 		connInProgress:   false,
 		autoStart:        true,
 		autoStop:         true,
@@ -822,6 +845,10 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 		case inConnCh := <-fsm.inConnCh:
 			in := PeerConnDir{config.ConnDirOut, &inConnCh}
 			fsm.ProcessEvent(BGPEventTcpConnConfirmed, in)
+
+		case <-fsm.closeCh:
+			fsm.ProcessEvent(BGPEventManualStop, nil)
+			return
 
 		case bgpMsg := <-fsm.pktTxCh:
 			if fsm.State.state() != BGPFSMEstablished {
@@ -920,6 +947,11 @@ func (fsm *FSM) ApplyAutomaticStart() {
 		fsm.ProcessEvent(event, nil)
 	}
 }
+
+func (fsm *FSM) SetPassiveTcpEstablishment(flag bool) {
+	fsm.passiveTcpEst = flag
+}
+
 func (fsm *FSM) StartConnectRetryTimer() {
 	fsm.connectRetryTimer.Reset(time.Duration(fsm.connectRetryTime) * time.Second)
 }
@@ -984,6 +1016,11 @@ func (fsm *FSM) StopIdleHoldTimer() {
 	fsm.idleHoldTimer.Stop()
 }
 
+func (fsm *FSM) HandleAnotherConnection(data interface{}) {
+	pConnDir := data.(PeerConnDir)
+	fsm.Manager.HandleAnotherConnection(pConnDir.connDir, pConnDir.conn)
+}
+
 func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 	body := pkt.Body.(*packet.BGPOpen)
 	if body.HoldTime < fsm.holdTime {
@@ -996,7 +1033,7 @@ func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 		fsm.peerType = config.PeerTypeExternal
 	}
 
-	fsm.Manager.SetBGPId(binary.LittleEndian.Uint32(body.BGPId))
+	fsm.Manager.SetBGPId(binary.LittleEndian.Uint32(body.BGPId.To4()))
 }
 
 func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {

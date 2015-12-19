@@ -2,6 +2,7 @@
 package server
 
 import (
+	"encoding/binary"
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
@@ -26,13 +27,14 @@ type FSMManager struct {
 	logger       *syslog.Writer
 	gConf        *config.GlobalConfig
 	pConf        *config.NeighborConfig
-	fsms         map[config.ConnDir]*FSM
+	fsms         [config.ConnDirMax]*FSM
 	configCh     chan CONFIG
 	conns        [config.ConnDirMax]net.Conn
 	connectCh    chan net.Conn
 	connectErrCh chan error
 	acceptCh     chan net.Conn
 	acceptErrCh  chan error
+	closeCh      chan bool
 	acceptConn   bool
 	commandCh    chan int
 	activeFSM    config.ConnDir
@@ -52,8 +54,8 @@ func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config
 	fsmManager.acceptCh = make(chan net.Conn)
 	fsmManager.acceptErrCh = make(chan error)
 	fsmManager.acceptConn = false
+	fsmManager.closeCh = make(chan bool)
 	fsmManager.commandCh = make(chan int)
-	fsmManager.fsms = make(map[config.ConnDir]*FSM)
 	fsmManager.activeFSM = config.ConnDirOut
 	fsmManager.pktRxCh = make(chan BgpPkt)
 	return &fsmManager
@@ -61,6 +63,7 @@ func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config
 
 func (fsmManager *FSMManager) Init() {
 	fsmManager.fsms[config.ConnDirOut] = NewFSM(fsmManager, config.ConnDirOut, fsmManager.Peer)
+	fsmManager.activeFSM = config.ConnDirOut
 	go fsmManager.fsms[config.ConnDirOut].StartFSM(NewIdleState(fsmManager.fsms[config.ConnDirOut]))
 
 	for {
@@ -79,14 +82,22 @@ func (fsmManager *FSMManager) Init() {
 				//go fsmManager.fsms[ConnDirIn].StartFSM(NewActiveState(fsmManager.fsms[ConnDirIn]))
 				//fsmManager.fsms[ConnDirIn].eventRxCh <- BGPEventTcpConnConfirmed
 				//fsmManager.fsms[ConnDirIn].ProcessEvent(BGP_EVENT_TCP_CONN_CONFIRMED)
-				fsmManager.fsms[config.ConnDirOut].inConnCh <- inConn
+				if fsmManager.fsms[config.ConnDirOut] != nil {
+					fsmManager.fsms[config.ConnDirOut].inConnCh <- inConn
+				}
 			}
 
 		case <-fsmManager.acceptErrCh:
-			fsmManager.fsms[config.ConnDirIn].eventRxCh <- BGPEventTcpConnFails
+			if fsmManager.fsms[config.ConnDirIn] != nil {
+				fsmManager.fsms[config.ConnDirIn].eventRxCh <- BGPEventTcpConnFails
 			//fsmManager.fsms[ConnDirIn].ProcessEvent(BGP_EVENT_TCP_CONN_FAILS)
-			fsmManager.conns[config.ConnDirIn].Close()
-			fsmManager.conns[config.ConnDirIn] = nil
+				//fsmManager.conns[config.ConnDirIn].Close()
+				fsmManager.conns[config.ConnDirIn] = nil
+			}
+
+		case <-fsmManager.closeCh:
+			fsmManager.Cleanup()
+			return
 
 		/*case outConn := <-fsmManager.connectCh:
 			fsmManager.conns[ConnDirOut] = outConn
@@ -138,4 +149,52 @@ func (fsmManager *FSMManager) SetBGPId(bgpId uint32) {
 
 func (mgr *FSMManager) SendUpdateMsg(bgpMsg *packet.BGPMessage) {
 	mgr.fsms[config.ConnDirOut].pktTxCh <- bgpMsg
+}
+
+func (mgr *FSMManager) Cleanup() {
+	for dir, fsm := range mgr.fsms {
+		if fsm != nil {
+			mgr.logger.Info(fmt.Sprintf("Cleanup FSM for peer:%s conn:%d", mgr.pConf.NeighborAddress, dir))
+			fsm.closeCh <- true
+			fsm = nil
+		}
+	}
+}
+
+func (mgr *FSMManager) HandleAnotherConnection(connDir config.ConnDir, conn *net.Conn) {
+	if mgr.fsms[connDir] != nil {
+		mgr.logger.Err(fmt.Sprintf("Neighbor %s: A FSM for this connection direction already exists",
+			mgr.pConf.NeighborAddress))
+		return
+	}
+
+	mgr.fsms[connDir] = NewFSM(mgr, connDir, mgr.Peer)
+
+	var state BaseStateIface
+	state = NewActiveState(mgr.fsms[connDir])
+	connCh := mgr.fsms[connDir].inConnCh
+	if connDir == config.ConnDirOut {
+		state = NewConnectState(mgr.fsms[connDir])
+		connCh = mgr.fsms[connDir].outConnCh
+	}
+	go mgr.fsms[connDir].StartFSM(state)
+	connCh <- *conn
+}
+
+func (mgr *FSMManager) ReceivedBGPOpenMessage(connDir config.ConnDir, bgpId uint32) {
+	localBGPId := binary.LittleEndian.Uint32(mgr.gConf.RouterId.To4())
+	for i, fsm := range mgr.fsms {
+		if i != int(connDir) && fsm != nil && fsm.State.state() >= BGPFSMOpensent {
+			var closeConnDir config.ConnDir
+			if fsm.State.state() == BGPFSMEstablished {
+				closeConnDir = connDir
+			} else if localBGPId > bgpId {
+				closeConnDir = config.ConnDirIn
+			} else {
+				closeConnDir = config.ConnDirOut
+			}
+			mgr.fsms[closeConnDir].closeCh <- true
+			mgr.fsms[closeConnDir] = nil
+		}
+	}
 }

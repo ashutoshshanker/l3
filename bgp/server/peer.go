@@ -54,7 +54,9 @@ func (p *Peer) Init() {
 	go p.fsmManager.Init()
 }
 
-func (p *Peer) Cleanup() {}
+func (p *Peer) Cleanup() {
+	p.fsmManager.closeCh <- true
+}
 
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
 	p.fsmManager.acceptCh <- conn
@@ -96,8 +98,14 @@ func (p *Peer) SetBGPId(bgpId uint32) {
 }
 
 func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
+	if bgpMsg == nil || bgpMsg.Body.(*packet.BGPUpdate).PathAttributes == nil {
+		p.logger.Err(fmt.Sprintf("Neighbor %s: Path attrs not found in BGP Update message", p.Neighbor.NeighborAddress))
+		return true
+	}
+
 	if p.Neighbor.Transport.Config.LocalAddress == nil {
-		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message, local address not set", p.Neighbor.NeighborAddress))
+		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message, FSM is not in Established state",
+			p.Neighbor.NeighborAddress))
 		return false
 	}
 
