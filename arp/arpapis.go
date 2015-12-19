@@ -126,7 +126,7 @@ var (
 	//rec_handle      []*pcap.Handle
         dbHdl           *sql.DB
         UsrConfDbName   string = "/../bin/UsrConfDb.db"
-        dump_arp_table  bool = true
+        dump_arp_table  bool = false
 )
 var arp_cache *arpCache
 var asicdClient AsicdClient //Thrift client to connect to asicd
@@ -448,9 +448,9 @@ func ConnectToClients(paramsFile string) {
 	}
 }
 
-func storeArpTableInDB(ifType int, vlanid int, ifName string, dest_ip string, src_ip string) error {
+func storeArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_ip string, src_ip string) error {
     var dbCmd string
-    dbCmd = fmt.Sprintf(`INSERT INTO ARPCache (ifType, vlanid, ifName, src_ip, key) VALUES ('%d', '%d', '%s', '%s', '%s') ;`, ifType, vlanid, ifName, src_ip, dest_ip)
+    dbCmd = fmt.Sprintf(`INSERT INTO ARPCache (ifType, vlanid, ifName, portid, src_ip, key) VALUES ('%d', '%d', '%s', '%d', '%s', '%s') ;`, ifType, vlanid, ifName, portid, src_ip, dest_ip)
     logger.Println(dbCmd)
     if dbHdl != nil {
         logger.Println("Executing DB Command:", dbCmd)
@@ -500,7 +500,7 @@ func intantiateDB() error {
 
     dbCmd := "CREATE TABLE IF NOT EXISTS ARPCache " +
             "(key string PRIMARY KEY ," +
-            "ifType int, vlanid int, ifName string, src_ip string)"
+            "ifType int, vlanid int, ifName string, portid int, src_ip string)"
 
     _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
     if err != nil {
@@ -513,10 +513,12 @@ func intantiateDB() error {
 
 func updateARPCacheFromDB() {
         var ent arpEntry
+        var port_prop_ent portProperty
         var ip      string
         var ifType  int
         var vlanid  int
         var ifName  string
+        var portid  int
         var src_ip  string
         //var dbCmd string
 
@@ -527,21 +529,25 @@ func updateARPCacheFromDB() {
             return
         }
         for rows.Next() {
-            err = rows.Scan(&ip, &ifType, &vlanid, &ifName, &src_ip)
+            err = rows.Scan(&ip, &ifType, &vlanid, &ifName, &portid, &src_ip)
             if err != nil {
                 logWriter.Err(fmt.Sprintf("Unable to Scan entry from DB:", err))
                 return
             }
-            logger.Println("Data Retrived From DB IP:", ip, "IFTYPE:", ifType, "VLANID:", vlanid, "IFNAME:", ifName, "SRC_IP:", src_ip)
+            logger.Println("Data Retrived From DB IP:", ip, "IFTYPE:", ifType, "VLANID:", vlanid, "IFNAME:", ifName, "PORTID:", portid, "SRC_IP:", src_ip)
 
             ent = arp_cache.arpMap[ip]
             ent.ifType = arpd.Int(ifType)
             ent.vlanid = arpd.Int(vlanid)
             ent.ifName = ifName
+            ent.port = portid
             ent.localIP = src_ip
             ent.counter = 0
             ent.valid = true
             arp_cache.arpMap[ip] = ent
+            port_prop_ent = port_property_map[portid]
+            port_prop_ent.untagged_vlanid = arpd.Int(vlanid)
+            port_property_map[portid] = port_prop_ent
         }
 
 }
@@ -569,6 +575,7 @@ func initARPhandlerParams() {
 
 	// Initialise arp cache.
 	success := initArpCache()
+        port_property_map = make(map[int]portProperty)
 	if success != true {
 		logWriter.Err("server: Failed to initialise ARP cache")
 		logger.Println("Failed to initialise ARP cache")
@@ -633,8 +640,8 @@ func BuildAsicToLinuxMap() {
         var ifName string
 	for i := 1; i < 73; i++ {
                 ifName = fmt.Sprintf("fpPort-%d", i)
-                logger.Println("BuildAsicToLinuxMap : iface = ", ifName)
-                logger.Println("BuildAsicToLinuxMap : port = ", i)
+                //logger.Println("BuildAsicToLinuxMap : iface = ", ifName)
+                //logger.Println("BuildAsicToLinuxMap : port = ", i)
 		local_handle, err := pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout_pcap)
 		if local_handle == nil {
 			logWriter.Err(fmt.Sprintln("Server: No device found.: ", ifName, err))
@@ -653,7 +660,6 @@ func initPortParams() {
 	BuildAsicToLinuxMap(portCfgFile)
 */
 	BuildAsicToLinuxMap()
-        port_property_map = make(map[int]portProperty)
 }
 
 func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pcap.Handle, mac_addr string, localIp string) {
@@ -717,9 +723,9 @@ func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pc
 
 func processResponse() {
         for port_id, p_hdl := range pcap_handle_map {
-                logger.Println("ifName = ", p_hdl.ifName, " Port = ", port_id)
+                //logger.Println("ifName = ", p_hdl.ifName, " Port = ", port_id)
                 if p_hdl.pcap_handle == nil {
-                    logger.Println("Hello handle is nil");
+                    logger.Println("pcap handle is nil");
                     continue
                 }
                 mac_addr, err := getMacAddrInterfaceName(p_hdl.ifName)
@@ -727,7 +733,7 @@ func processResponse() {
                     logWriter.Err(fmt.Sprintln("Unable to get the MAC addr of ", p_hdl.ifName))
                     continue
                 }
-                logger.Println("MAC addr of ", p_hdl.ifName, ": ", mac_addr)
+                //logger.Println("MAC addr of ", p_hdl.ifName, ": ", mac_addr)
                 myMac_addr, fail := getHWAddr(mac_addr)
                 if fail != nil {
                         logWriter.Err(fmt.Sprintf("corrupted my mac : ", mac_addr))
@@ -919,7 +925,7 @@ func updateArpCache() {
                 ent.localIP = msg.ent.localIP
                 arp_cache.arpMap[msg.ip] = ent
                 logger.Println("1 updateArpCache(): ", arp_cache.arpMap[msg.ip])
-                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, msg.ip, ent.localIP)
+                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP)
                 if err != nil {
                     logWriter.Err("Unable to cache ARP Table in DB")
                 }
@@ -1027,7 +1033,7 @@ func updateArpCache() {
                 ent.localIP = msg.ent.localIP
                 arp_cache.arpMap[msg.ip] = ent
                 logger.Println("2. updateArpCache(): ", arp_cache.arpMap[msg.ip])
-                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, msg.ip, ent.localIP)
+                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP)
                 if err != nil {
                     logWriter.Err("Unable to cache ARP Table in DB")
                 }
