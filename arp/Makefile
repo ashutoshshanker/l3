@@ -3,7 +3,7 @@ RMFORCE=rm -rf
 DESTDIR=$(SR_CODE_BASE)/snaproute/src/bin
 GENERATED_IPC=$(SR_CODE_BASE)/generated/src
 IPC_GEN_CMD=thrift 
-SRCS=arphandler.go  arpmain.go arpapis.go
+SRCS=arphandler.go  arpmain.go arpapis.go arpConstDefs.go arpUtils.go arpRPC.go arpDB.go
 IPC_SRCS=arpd.thrift
 COMP_NAME=arpd
 all:ipc exe
