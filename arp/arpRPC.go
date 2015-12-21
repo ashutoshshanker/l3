@@ -11,7 +11,8 @@ import (
 func (m ARPServiceHandler) UpdateUntaggedPortToVlanMap(vlanid arpd.Int,
         untaggedPorts string) (rval arpd.Int, err error) {
 
-    logger.Println("Received UpdateUntaggedPortToVlanMap(): vlanid:", vlanid, "ports:", untaggedPorts)
+    //logger.Println("Received UpdateUntaggedPortToVlanMap(): vlanid:", vlanid, "ports:", untaggedPorts)
+    logWriter.Info(fmt.Sprintln("Received UpdateUntaggedPortToVlanMap(): vlanid:", vlanid, "ports:", untaggedPorts))
 
     portTagStr, err := parseUsrPortStrToPbm(untaggedPorts)
     if err != nil {
@@ -32,13 +33,15 @@ func (m ARPServiceHandler) UpdateUntaggedPortToVlanMap(vlanid arpd.Int,
 func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
         iftype arpd.Int, vlan_id arpd.Int) (rc arpd.Int, err error) {
 
-        logger.Println("Calling ResolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id))
+        //logger.Println("Calling ResolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id))
+        logWriter.Info(fmt.Sprintln("ResolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id)))
         ip_addr, err := getIPv4ForInterface(iftype, vlan_id)
         if len(ip_addr) == 0 || err != nil {
             logWriter.Err(fmt.Sprintf("Failed to get the ip address of ifType:", iftype, "VLAN:", vlan_id))
             return ARP_ERR_REQ_FAIL, err
         }
-        logger.Println("Local IP address of is:", ip_addr)
+        //logger.Println("Local IP address of is:", ip_addr)
+        logWriter.Info(fmt.Sprintln("Local IP address of is:", ip_addr))
         //var linux_device string
         if portdClient.IsConnected {
                 linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
@@ -46,12 +49,13 @@ func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
                 for _, port_cfg := range portCfgList {
                     linux_device = port_cfg.Ifname
 */
-                    logger.Println("linux_device ", linux_device)
+                    //logger.Println("linux_device ", linux_device)
+                    logWriter.Info(fmt.Sprintln("linux_device ", linux_device))
                     if err != nil {
                             logWriter.Err(fmt.Sprintf("Failed to get ifname for interface : ", vlan_id, "type : ", iftype))
                             return ARP_ERR_REQ_FAIL, err
                     }
-                    logWriter.Err(fmt.Sprintln("Server:Connecting to device ", linux_device))
+                    logWriter.Info(fmt.Sprintln("Server:Connecting to device ", linux_device))
                     handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout_pcap)
                     if handle == nil {
                             logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
@@ -69,7 +73,8 @@ func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
                     if err != nil {
                         logWriter.Err(fmt.Sprintln("Unable to get the MAC addr of ", linux_device))
                     }
-                    logger.Println("MAC addr of ", linux_device, ": ", mac_addr)
+                    //logger.Println("MAC addr of ", linux_device, ": ", mac_addr)
+                    logWriter.Info(fmt.Sprintln("MAC addr of ", linux_device, ": ", mac_addr))
 
                     go processPacket(targetIp, iftype, vlan_id, handle, mac_addr, ip_addr)
 /*
@@ -78,7 +83,7 @@ func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
 
         } else {
                 logWriter.Err("portd client is not connected.")
-                logger.Println("Portd is not connected.")
+                //logger.Println("Portd is not connected.")
         }
 
         return ARP_REQ_SUCCESS, err
