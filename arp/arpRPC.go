@@ -4,7 +4,7 @@ import (
     "arpd"
     "fmt"
     "github.com/google/gopacket/pcap"
-    "time"
+//    "time"
 )
 
 /***** Thrift APIs ******/
@@ -98,9 +98,8 @@ func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
  *     hostTimeout = 10 sec
  *     routerTimeout = 10sec
  */
-func (m ARPServiceHandler) SetArpTimeout(ifName string,
-        hostTimeout int,
-        routerTimeout int) (rc arpd.Int, err error) {
+func (m ARPServiceHandler) SetArpConfig(Timeout arpd.Int) (rc arpd.Int, err error) {
+/*
         cp := arp_cache
         if time.Duration(hostTimeout) > cp.hostTO {
                 cp.hostTO = time.Duration(hostTimeout)
@@ -108,6 +107,8 @@ func (m ARPServiceHandler) SetArpTimeout(ifName string,
         if time.Duration(routerTimeout) > cp.routerTO {
                 cp.routerTO = time.Duration(routerTimeout)
         }
+*/
+        logger.Println("Received ARP timeout value:", Timeout)
         return 0, nil
 
 }
