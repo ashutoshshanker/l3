@@ -98,7 +98,7 @@ func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
  *     hostTimeout = 10 sec
  *     routerTimeout = 10sec
  */
-func (m ARPServiceHandler) ArpTimeout(Timeout arpd.Int) (rc arpd.Int, err error) {
+func (m ARPServiceHandler) SetArpConfig(Timeout arpd.Int) (rc arpd.Int, err error) {
 /*
         cp := arp_cache
         if time.Duration(hostTimeout) > cp.hostTO {
