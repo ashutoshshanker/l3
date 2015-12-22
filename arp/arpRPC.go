@@ -4,6 +4,7 @@ import (
     "arpd"
     "fmt"
     "github.com/google/gopacket/pcap"
+    "errors"
 //    "time"
 )
 
@@ -92,24 +93,21 @@ func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
 
 
 /*
- * @fn SetArpTimeout
- *     This API sets arp cache timeout.
- *     current defauls -
- *     hostTimeout = 10 sec
- *     routerTimeout = 10sec
+ * Function: SetArpConfig
  */
-func (m ARPServiceHandler) SetArpConfig(Timeout arpd.Int) (rc arpd.Int, err error) {
-/*
-        cp := arp_cache
-        if time.Duration(hostTimeout) > cp.hostTO {
-                cp.hostTO = time.Duration(hostTimeout)
+func (m ARPServiceHandler) SetArpConfig(refresh_timeout arpd.Int) (rc arpd.Int, err error) {
+        ref_timeout := int(refresh_timeout)
+        logger.Println("Received ARP timeout value:", refresh_timeout)
+        if ref_timeout < min_refresh_timeout {
+            logger.Println("Refresh Timeout is below minimum allowed refresh timeout")
+            return 0, errors.New(fmt.Sprintln("Timeout value too low. Minimum timeout value is %s seconds", min_refresh_timeout))
+        } else if ref_timeout == config_refresh_timeout {
+            logger.Println("Refresh Timeout is same as already configured refresh timeout")
+            return 0, nil
         }
-        if time.Duration(routerTimeout) > cp.routerTO {
-                cp.routerTO = time.Duration(routerTimeout)
-        }
-*/
-        logger.Println("Received ARP timeout value:", Timeout)
+
+        timeout_counter = ref_timeout / timer_granularity
+        go updateCounterInArpCache()
         return 0, nil
 
 }
-
