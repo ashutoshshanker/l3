@@ -134,10 +134,10 @@ func (server *BGPServer) sendUpdateMsgToAllPeers(msg *packet.BGPMessage, path *P
 	}
 }
 
-func (server *BGPServer) SendUpdate(updated map[*Path][]packet.IPPrefix, withdrawn []packet.IPPrefix) {
+func (server *BGPServer) SendUpdate(updated map[*Path][]packet.IPPrefix, withdrawn []packet.IPPrefix, withdrawPath *Path) {
 	if len(withdrawn) > 0 {
 		updateMsg := packet.NewBGPUpdateMessage(withdrawn, nil, nil)
-		server.sendUpdateMsgToAllPeers(updateMsg, nil)
+		server.sendUpdateMsgToAllPeers(updateMsg, withdrawPath)
 	}
 
 	for path, dest := range updated {
@@ -155,8 +155,8 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 
 	atomic.AddUint32(&peer.Neighbor.State.Queues.Input, ^uint32(0))
 	peer.Neighbor.State.Messages.Received.Update++
-	updated, withdrawn := server.adjRib.ProcessUpdate(peer, pktInfo)
-	server.SendUpdate(updated, withdrawn)
+	updated, withdrawn, withdrawPath := server.adjRib.ProcessUpdate(peer, pktInfo)
+	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
 func (server *BGPServer) convertDestIPToIPPrefix(routes []*ribd.Routes) []packet.IPPrefix {
@@ -172,14 +172,14 @@ func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribd.Routes, 
 	server.logger.Info(fmt.Sprintln("valid routes:", installedRoutes, "invalid routes:", withdrawnRoutes))
 	valid := server.convertDestIPToIPPrefix(installedRoutes)
 	invalid := server.convertDestIPToIPPrefix(withdrawnRoutes)
-	updated, withdrawn := server.adjRib.ProcessConnectedRoutes(server.BgpConfig.Global.Config.RouterId.String(),
+	updated, withdrawn, withdrawPath := server.adjRib.ProcessConnectedRoutes(server.BgpConfig.Global.Config.RouterId.String(),
 		server.connRoutesPath, valid, invalid)
-	server.SendUpdate(updated, withdrawn)
+	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
 func (server *BGPServer) ProcessRemovePeer(peerIp string, peer *Peer) {
-	updated, withdrawn := server.adjRib.RemoveUpdatesFromNeighbor(peerIp, peer)
-	server.SendUpdate(updated, withdrawn)
+	updated, withdrawn, withdrawPath := server.adjRib.RemoveUpdatesFromNeighbor(peerIp, peer)
+	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
 func (server *BGPServer) addPeerToList(peer *Peer) {
