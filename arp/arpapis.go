@@ -655,7 +655,7 @@ func updateArpCache() {
                 arp_cache.arpMap[msg.ip] = ent
                 //logger.Println("1 updateArpCache(): ", arp_cache.arpMap[msg.ip])
                 logWriter.Info(fmt.Sprintln("1 updateArpCache(): ", arp_cache.arpMap[msg.ip]))
-                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP)
+                err := updateArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
                 if err != nil {
                     logWriter.Err("Unable to cache ARP Table in DB")
                 }
@@ -685,6 +685,10 @@ func updateArpCache() {
                 ent.ifType  = msg.ent.ifType
                 ent.localIP = msg.ent.localIP
                 arp_cache.arpMap[msg.ip] = ent
+                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, "incomplete")
+                if err != nil {
+                    logWriter.Err("Unable to cache ARP Table in DB")
+                }
             } else if msg.msg_type == 2 {
                 for ip, arp := range arp_cache.arpMap {
                     if arp.counter == -2 && arp.valid == true {
@@ -734,6 +738,20 @@ func updateArpCache() {
                         //logger.Println("2. Deleting entry ", ip, " from Arp cache")
                         logWriter.Info(fmt.Sprintln("2. Deleting entry ", ip, " from Arp cache"))
                         delete(arp_cache.arpMap, ip)
+                        dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
+                        //logger.Println(dbCmd)
+                        logWriter.Info(dbCmd)
+                        if dbHdl != nil {
+                            //logger.Println("Executing DB Command:", dbCmd)
+                            logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
+                            _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
+                            if err != nil {
+                                logWriter.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for %s %s", ip, err))
+                            }
+                        } else {
+                            //logger.Println("DB handler is nil");
+                            logWriter.Err("DB handler is nil");
+                        }
                     } else if arp.counter != 0 {
                         ent := arp_cache.arpMap[ip]
                         cnt = arp.counter
@@ -776,7 +794,7 @@ func updateArpCache() {
                 arp_cache.arpMap[msg.ip] = ent
                 //logger.Println("2. updateArpCache(): ", arp_cache.arpMap[msg.ip])
                 logWriter.Info(fmt.Sprintln("2. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
-                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP)
+                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
                 if err != nil {
                     logWriter.Err("Unable to cache ARP Table in DB")
                 }
@@ -808,7 +826,7 @@ func updateArpCache() {
                 arp_cache.arpMap[msg.ip] = ent
                 //logger.Println("3. updateArpCache(): ", arp_cache.arpMap[msg.ip])
                 logWriter.Info(fmt.Sprintln("3. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
-                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP)
+                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
                 if err != nil {
                     logWriter.Err("Unable to cache ARP Table in DB")
                 }
