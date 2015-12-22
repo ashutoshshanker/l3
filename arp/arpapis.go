@@ -443,114 +443,161 @@ func sendArpReq(targetIp string, handle *pcap.Handle, myMac string, localIp stri
  * req sent for targetIp
  */
 func receiveArpResponse(rec_handle *pcap.Handle,
-	myMac net.HardwareAddr, port_id int, if_Name string) {
-        var src_Mac net.HardwareAddr
+    myMac net.HardwareAddr, port_id int, if_Name string) {
+    var src_Mac net.HardwareAddr
 
-	src := gopacket.NewPacketSource(rec_handle, layers.LayerTypeEthernet)
-	in := src.Packets()
-	for {
-		packet, ok := <-in
-		if ok {
-                        //logger.Println("Receive some packet on arp response thread")
+    src := gopacket.NewPacketSource(rec_handle, layers.LayerTypeEthernet)
+    in := src.Packets()
+    for {
+        packet, ok := <-in
+        if ok {
+            //logger.Println("Receive some packet on arp response thread")
 
-			//vlan_layer := packet.Layer(layers.LayerTypeEthernet)
-			//vlan_tag := vlan_layer.(*layers.Ethernet)
-			//vlan_id := vlan_layer.LayerContents()
-			//logWriter.Err(vlan_tag.)
-			arpLayer := packet.Layer(layers.LayerTypeARP)
-			if arpLayer != nil {
-                            arp := arpLayer.(*layers.ARP)
-                            if arp == nil {
-                                    continue
-                            }
-                            if arp.Operation != layers.ARPReply || bytes.Equal([]byte(myMac), arp.SourceHwAddress) {
-                                    continue
-                            }
+            //vlan_layer := packet.Layer(layers.LayerTypeEthernet)
+            //vlan_tag := vlan_layer.(*layers.Ethernet)
+            //vlan_id := vlan_layer.LayerContents()
+            //logWriter.Err(vlan_tag.)
+            arpLayer := packet.Layer(layers.LayerTypeARP)
+            if arpLayer != nil {
+                arp := arpLayer.(*layers.ARP)
+                if arp == nil {
+                    continue
+                }
+                if bytes.Equal([]byte(myMac), arp.SourceHwAddress) {
+                    continue
+                }
 
-
-                            src_Mac = net.HardwareAddr(arp.SourceHwAddress)
-                            src_ip_addr := (net.IP(arp.SourceProtAddress)).String()
-                            dest_Mac := net.HardwareAddr(arp.DstHwAddress)
-                            dest_ip_addr := (net.IP(arp.DstProtAddress)).String()
-                            //logger.Println("Received Arp response SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr, "DST_MAC:", dest_Mac)
-                            logWriter.Info(fmt.Sprintln("Received Arp response SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr, "DST_MAC:", dest_Mac))
-                            ent, exist := arp_cache.arpMap[src_ip_addr]
-                            if exist {
-                                arp_cache_update_chl <- arpUpdateMsg {
-                                                            ip: src_ip_addr,
-                                                            ent: arpEntry {
-                                                                    macAddr: src_Mac,
-                                                                    vlanid: ent.vlanid,
-                                                                    valid: true,
-                                                                    port: port_id,
-                                                                    ifName: if_Name,
-                                                                    ifType: ent.ifType,
-                                                                    localIP: ent.localIP,
-                                                                    counter: timeout_counter,
-                                                                 },
-                                                            msg_type: 1,
-                                                         }
-                            } else {
-                                port_map_ent, exists := port_property_map[port_id]
-                                var vlan_id arpd.Int
-                                if exists {
-                                    vlan_id = port_map_ent.untagged_vlanid
-                                } else {
-                                    vlan_id = 1
-                                }
-                                arp_cache_update_chl <- arpUpdateMsg {
-                                                            ip: src_ip_addr,
-                                                            ent: arpEntry {
-                                                                    macAddr: src_Mac,
-                                                                    vlanid: vlan_id, // Need to be re-visited
-                                                                    valid: true,
-                                                                    port: port_id,
-                                                                    ifName: if_Name,
-                                                                    ifType: 1,
-                                                                    localIP: dest_ip_addr,
-                                                                    counter: timeout_counter,
-                                                                 },
-                                                            msg_type: 3,
-                                                         }
-                            }
-			} else {
-                            if nw := packet.NetworkLayer(); nw != nil {
-                                src_ip, dst_ip := nw.NetworkFlow().Endpoints()
-                                dst_ip_addr := dst_ip.String()
-                                dstip := net.ParseIP(dst_ip_addr)
-                                src_ip_addr := src_ip.String()
-/*
-                                if src_ip_addr == localIP || dst_ip_addr == localIP {
-                                    continue
-                                }
-*/
-                                _, exist := arp_cache.arpMap[dst_ip_addr]
-                                if !exist {
-                                    //dst_ip_addr := src_ip.String()
-                                    route, err := netlink.RouteGet(dstip)
-                                    var ifName string
-                                    for _, rt := range route {
-                                        if rt.LinkIndex > 1 {
-                                            ifName, err = getInterfaceNameByIndex(rt.LinkIndex)
-                                            if err != nil || ifName == "" {
-                                                logWriter.Err(fmt.Sprintf("Unable to get the outgoing interface", err))
-                                                continue
-                                            }
-                                        }
-                                    }
-                                    if ifName == "" {
-                                        continue
-                                    }
-                                    //logger.Println("Receive Some packet from src_ip:", src_ip_addr, "dst_ip:", dst_ip_addr, "Outgoing Interface:", ifName)
-                                    logWriter.Info(fmt.Sprintln("Receive Some packet from src_ip:", src_ip_addr, "dst_ip:", dst_ip_addr, "Outgoing Interface:", ifName))
-                                    go createAndSendArpReuqest(dst_ip_addr, ifName)
-                                }
-                            }
-
+                if arp.Operation == layers.ARPReply {
+                    src_Mac = net.HardwareAddr(arp.SourceHwAddress)
+                    src_ip_addr := (net.IP(arp.SourceProtAddress)).String()
+                    dest_Mac := net.HardwareAddr(arp.DstHwAddress)
+                    dest_ip_addr := (net.IP(arp.DstProtAddress)).String()
+                    logger.Println("Received Arp response SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr, "DST_MAC:", dest_Mac)
+                    logWriter.Info(fmt.Sprintln("Received Arp response SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr, "DST_MAC:", dest_Mac))
+                    ent, exist := arp_cache.arpMap[src_ip_addr]
+                    if exist {
+                        arp_cache_update_chl <- arpUpdateMsg {
+                                                    ip: src_ip_addr,
+                                                    ent: arpEntry {
+                                                        macAddr: src_Mac,
+                                                        vlanid: ent.vlanid,
+                                                        valid: true,
+                                                        port: port_id,
+                                                        ifName: if_Name,
+                                                        ifType: ent.ifType,
+                                                        localIP: ent.localIP,
+                                                        counter: timeout_counter,
+                                                    },
+                                                    msg_type: 1,
+                                                }
+                    } else {
+                        port_map_ent, exists := port_property_map[port_id]
+                        var vlan_id arpd.Int
+                        if exists {
+                            vlan_id = port_map_ent.untagged_vlanid
+                        } else {
+                            vlan_id = 1
                         }
-		}
+                        arp_cache_update_chl <- arpUpdateMsg {
+                                                    ip: src_ip_addr,
+                                                    ent: arpEntry {
+                                                        macAddr: src_Mac,
+                                                        vlanid: vlan_id, // Need to be re-visited
+                                                        valid: true,
+                                                        port: port_id,
+                                                        ifName: if_Name,
+                                                        ifType: 1,
+                                                        localIP: dest_ip_addr,
+                                                        counter: timeout_counter,
+                                                    },
+                                                    msg_type: 3,
+                                                }
+                    }
+                } else if arp.Operation == layers.ARPRequest {
+                    src_Mac = net.HardwareAddr(arp.SourceHwAddress)
+                    src_ip_addr := (net.IP(arp.SourceProtAddress)).String()
+                    dest_ip_addr := (net.IP(arp.DstProtAddress)).String()
+                    dstip := net.ParseIP(dest_ip_addr)
+                    logger.Println("Received Arp request SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr)
+                    logWriter.Info(fmt.Sprintln("Received Arp Request SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr))
+                    _, exist := arp_cache.arpMap[src_ip_addr]
+                    if !exist {
 
-	}
+                        route, err := netlink.RouteGet(dstip)
+                        var ifName string
+                        for _, rt := range route {
+                            if rt.LinkIndex > 0 {
+                                ifName, err = getInterfaceNameByIndex(rt.LinkIndex)
+                                if err != nil || ifName == "" {
+                                    //logger.Println("Unable to get the outgoing interface", err)
+                                    logWriter.Err(fmt.Sprintf("Unable to get the outgoing interface", err))
+                                    continue
+                                }
+                            }
+                        }
+                        //logger.Println("Outgoing interface:", ifName)
+                        if ifName != "lo" {
+                            continue
+                        }
+                        port_map_ent, exists := port_property_map[port_id]
+                        var vlan_id arpd.Int
+                        if exists {
+                            vlan_id = port_map_ent.untagged_vlanid
+                        } else {
+                            vlan_id = 1
+                        }
+                        arp_cache_update_chl <- arpUpdateMsg {
+                                                    ip: src_ip_addr,
+                                                    ent: arpEntry {
+                                                        macAddr: src_Mac,
+                                                        vlanid: vlan_id, // Need to be re-visited
+                                                        valid: true,
+                                                        port: port_id,
+                                                        ifName: if_Name,
+                                                        ifType: 1,
+                                                        localIP: dest_ip_addr,
+                                                        counter: timeout_counter,
+                                                    },
+                                                    msg_type: 4,
+                                                }
+                    }
+                }
+            } else {
+                if nw := packet.NetworkLayer(); nw != nil {
+                    src_ip, dst_ip := nw.NetworkFlow().Endpoints()
+                    dst_ip_addr := dst_ip.String()
+                    dstip := net.ParseIP(dst_ip_addr)
+                    src_ip_addr := src_ip.String()
+                    /*
+                    if src_ip_addr == localIP || dst_ip_addr == localIP {
+                        continue
+                    }
+                    */
+                    _, exist := arp_cache.arpMap[dst_ip_addr]
+                    if !exist {
+                        //dst_ip_addr := src_ip.String()
+                        route, err := netlink.RouteGet(dstip)
+                        var ifName string
+                        for _, rt := range route {
+                            if rt.LinkIndex > 1 {
+                                ifName, err = getInterfaceNameByIndex(rt.LinkIndex)
+                                if err != nil || ifName == "" {
+                                    logWriter.Err(fmt.Sprintf("Unable to get the outgoing interface", err))
+                                    continue
+                                }
+                            }
+                        }
+                        if ifName == "" {
+                            continue
+                        }
+                        //logger.Println("Receive Some packet from src_ip:", src_ip_addr, "dst_ip:", dst_ip_addr, "Outgoing Interface:", ifName)
+                        logWriter.Info(fmt.Sprintln("Receive Some packet from src_ip:", src_ip_addr, "dst_ip:", dst_ip_addr, "Outgoing Interface:", ifName))
+                        go createAndSendArpReuqest(dst_ip_addr, ifName)
+                    }
+                }
+            }
+        }
+    }
 }
 
 func createAndSendArpReuqest(targetIP string, outgoingIfName string) {
@@ -726,8 +773,8 @@ func updateArpCache() {
                     }
                 }
             } else if msg.msg_type == 3 {
-                //logger.Println("Received ARP response from neighbor...", msg.ip)
-                logWriter.Info(fmt.Sprintln("Received ARP response from neighbor...", msg.ip))
+                logger.Println("Received ARP response from neighbor...", msg.ip)
+                //logWriter.Info(fmt.Sprintln("Received ARP response from neighbor...", msg.ip))
                 ent := arp_cache.arpMap[msg.ip]
                 ent.macAddr = msg.ent.macAddr
                 ent.vlanid = msg.ent.vlanid
@@ -748,6 +795,40 @@ func updateArpCache() {
                 if asicdClient.IsConnected {
                         //logger.Println("2. Creating an entry in asic for IP:", msg.ip, "MAC:",
                         logWriter.Info(fmt.Sprintln("2. Creating an entry in asic for IP:", msg.ip, "MAC:",
+                                        (msg.ent.macAddr).String(), "VLAN:",
+                                        (int32)(arp_cache.arpMap[msg.ip].vlanid)))
+                        rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
+                                             (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid),
+                                             (int32)(msg.ent.port))
+                        logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                } else {
+                        logWriter.Err("2. Asicd client is not connected.")
+                }
+            } else if msg.msg_type == 4 {
+                logger.Println("Received ARP Request from neighbor...", msg.ip)
+                //logWriter.Info(fmt.Sprintln("Received ARP Request from neighbor...", msg.ip))
+                ent := arp_cache.arpMap[msg.ip]
+                ent.macAddr = msg.ent.macAddr
+                ent.vlanid = msg.ent.vlanid
+                ent.valid = msg.ent.valid
+                ent.counter = msg.ent.counter
+                ent.port    = msg.ent.port
+                ent.ifName  = msg.ent.ifName
+                ent.ifType  = msg.ent.ifType
+                ent.localIP = msg.ent.localIP
+                arp_cache.arpMap[msg.ip] = ent
+                //logger.Println("3. updateArpCache(): ", arp_cache.arpMap[msg.ip])
+                logWriter.Info(fmt.Sprintln("3. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
+                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP)
+                if err != nil {
+                    logWriter.Err("Unable to cache ARP Table in DB")
+                }
+                //3) Update asicd.
+                if asicdClient.IsConnected {
+                        //logger.Println("3. Creating an entry in asic for IP:", msg.ip, "MAC:",
+                          //              (msg.ent.macAddr).String(), "VLAN:",
+                            //            (int32)(arp_cache.arpMap[msg.ip].vlanid))
+                        logWriter.Info(fmt.Sprintln("3. Creating an entry in asic for IP:", msg.ip, "MAC:",
                                         (msg.ent.macAddr).String(), "VLAN:",
                                         (int32)(arp_cache.arpMap[msg.ip].vlanid)))
                         rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,

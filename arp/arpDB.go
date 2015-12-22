@@ -11,10 +11,10 @@ import (
 func storeArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_ip string, src_ip string) error {
     var dbCmd string
     dbCmd = fmt.Sprintf(`INSERT INTO ARPCache (ifType, vlanid, ifName, portid, src_ip, key) VALUES ('%d', '%d', '%s', '%d', '%s', '%s') ;`, ifType, vlanid, ifName, portid, src_ip, dest_ip)
-    //logger.Println(dbCmd)
+    logger.Println(dbCmd)
     //logWriter.Info(dbCmd)
     if dbHdl != nil {
-        //logger.Println("Executing DB Command:", dbCmd)
+        logger.Println("Executing DB Command:", dbCmd)
         logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
         _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
         if err != nil {
