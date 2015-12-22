@@ -74,7 +74,8 @@ func getIPv4ForInterface(iftype arpd.Int, vlan_id arpd.Int) (ip_addr string, err
         return "", err
     }
 
-    logger.Println("Local Interface name =", if_name)
+    //logger.Println("Local Interface name =", if_name)
+    logWriter.Info(fmt.Sprintln("Local Interface name =", if_name))
     return getIPv4ForInterfaceName(if_name)
 }
 
