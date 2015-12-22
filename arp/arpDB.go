@@ -8,9 +8,9 @@ import (
     "database/sql"
 )
 
-func storeArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_ip string, src_ip string) error {
+func storeArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_ip string, src_ip string, dest_mac string) error {
     var dbCmd string
-    dbCmd = fmt.Sprintf(`INSERT INTO ARPCache (ifType, vlanid, ifName, portid, src_ip, key) VALUES ('%d', '%d', '%s', '%d', '%s', '%s') ;`, ifType, vlanid, ifName, portid, src_ip, dest_ip)
+    dbCmd = fmt.Sprintf(`INSERT INTO ARPCache (ifType, vlanid, ifName, portid, src_ip, mac, key) VALUES ('%d', '%d', '%s', '%d', '%s', '%s', '%s') ;`, ifType, vlanid, ifName, portid, src_ip, dest_mac, dest_ip)
     logger.Println(dbCmd)
     //logWriter.Info(dbCmd)
     if dbHdl != nil {
@@ -19,6 +19,26 @@ func storeArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_i
         _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
         if err != nil {
             logWriter.Err(fmt.Sprintln("Failed to Insert entry for", dest_ip, "in DB"))
+            return err
+        }
+    } else {
+        //logger.Println("DB handler is nil");
+        logWriter.Err("DB handler is nil");
+    }
+    return nil
+}
+
+func updateArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_ip string, src_ip string, dest_mac string) error {
+    var dbCmd string
+    dbCmd = fmt.Sprintf(`UPDATE ARPCache SET ifType='%s', vlanid='%d', ifName='%s', portid='%d', src_ip='%s', mac='%s' WHERE key='%s' ;`, ifType, vlanid, ifName, portid, src_ip, dest_mac, dest_ip)
+    logger.Println(dbCmd)
+    //logWriter.Info(dbCmd)
+    if dbHdl != nil {
+        logger.Println("Executing DB Command:", dbCmd)
+        logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
+        _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
+        if err != nil {
+            logWriter.Err(fmt.Sprintln("Failed to Update entry for", dest_ip, "in DB"))
             return err
         }
     } else {
@@ -47,7 +67,7 @@ func intantiateDB() error {
 
     dbCmd := "CREATE TABLE IF NOT EXISTS ARPCache " +
             "(key string PRIMARY KEY ," +
-            "ifType int, vlanid int, ifName string, portid int, src_ip string)"
+            "ifType int, vlanid int, ifName string, portid int, src_ip string, mac string)"
 
     _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
     if err != nil {
@@ -67,6 +87,7 @@ func updateARPCacheFromDB() {
         var ifName  string
         var portid  int
         var src_ip  string
+        var mac     string
         //var dbCmd string
 
         //logger.Println("Populate ARP Cache from DB entries")
@@ -77,14 +98,18 @@ func updateARPCacheFromDB() {
             return
         }
         for rows.Next() {
-            err = rows.Scan(&ip, &ifType, &vlanid, &ifName, &portid, &src_ip)
+            err = rows.Scan(&ip, &ifType, &vlanid, &ifName, &portid, &src_ip, &mac)
             if err != nil {
                 logWriter.Err(fmt.Sprintf("Unable to Scan entry from DB:", err))
                 return
             }
             //logger.Println("Data Retrived From DB IP:", ip, "IFTYPE:", ifType, "VLANID:", vlanid, "IFNAME:", ifName, "PORTID:", portid, "SRC_IP:", src_ip)
-            logWriter.Info(fmt.Sprintln("Data Retrived From DB IP:", ip, "IFTYPE:", ifType, "VLANID:", vlanid, "IFNAME:", ifName, "PORTID:", portid, "SRC_IP:", src_ip))
+            logWriter.Info(fmt.Sprintln("Data Retrived From DB IP:", ip, "IFTYPE:", ifType, "VLANID:", vlanid, "IFNAME:", ifName, "PORTID:", portid, "SRC_IP:", src_ip, "MAC:", mac))
 
+            if mac == "incomplete" {
+                continue
+            }
+            logger.Println("Adding arp cache entry for ", ip)
             ent = arp_cache.arpMap[ip]
             ent.ifType = arpd.Int(ifType)
             ent.vlanid = arpd.Int(vlanid)
