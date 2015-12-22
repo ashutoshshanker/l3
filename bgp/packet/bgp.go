@@ -106,6 +106,9 @@ const (
 	BGPPathAttrTypeLocalPref
 	BGPPathAttrTypeAtomicAggregate
 	BGPPathAttrTypeAggregator
+	_
+	BGPPathAttrTypeOriginatorId
+	BGPPathAttrTypeClusterList
 	BGPPathAttrTypeUnknown
 )
 
@@ -815,6 +818,114 @@ func (a *BGPPathAttrAggregator) Decode(pkt []byte) error {
 	a.IP = make(net.IP, 4)
 	copy(a.IP, pkt[a.BGPPathAttrLen+2:a.BGPPathAttrLen+6])
 	return nil
+}
+
+func NewBGPPathAttrAggregator() *BGPPathAttrAggregator {
+	return &BGPPathAttrAggregator{
+		BGPPathAttrBase: BGPPathAttrBase{
+			Flags: BGPPathAttrFlagTransitive | BGPPathAttrFlagOptional,
+			Code: BGPPathAttrTypeAggregator,
+			Length: 6,
+			BGPPathAttrLen: 3,
+		},
+		AS: 0,
+		IP: net.IP{},
+	}
+}
+type BGPPathAttrOriginatorId struct {
+	BGPPathAttrBase
+	Value uint32
+}
+
+func (o *BGPPathAttrOriginatorId) Clone() BGPPathAttr {
+	x := *o
+	x.BGPPathAttrBase = o.BGPPathAttrBase.Clone()
+	return &x
+}
+
+func (o *BGPPathAttrOriginatorId) Encode() ([]byte, error) {
+	pkt, err := o.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, err
+	}
+
+	binary.BigEndian.PutUint32(pkt[o.BGPPathAttrBase.BGPPathAttrLen:], o.Value)
+	return pkt, nil
+}
+
+func (o *BGPPathAttrOriginatorId) Decode(pkt []byte) error {
+	err := o.BGPPathAttrBase.Decode(pkt)
+	if err != nil {
+		return err
+	}
+
+	o.Value = binary.BigEndian.Uint32(pkt[o.BGPPathAttrLen:o.BGPPathAttrLen+4])
+	return nil
+}
+
+func NewBGPPathAttrOriginatorId() *BGPPathAttrOriginatorId {
+	return &BGPPathAttrOriginatorId{
+		BGPPathAttrBase: BGPPathAttrBase{
+			Flags: BGPPathAttrFlagOptional,
+			Code: BGPPathAttrTypeOriginatorId,
+			Length: 4,
+			BGPPathAttrLen: 3,
+		},
+	}
+}
+
+type BGPPathAttrClusterList struct {
+	BGPPathAttrBase
+	Value []uint32
+}
+
+func (c *BGPPathAttrClusterList) Clone() BGPPathAttr {
+	x := *c
+	x.BGPPathAttrBase = c.BGPPathAttrBase.Clone()
+	x.Value = make([]uint32, len(c.Value))
+	for i, _ := range c.Value {
+		x.Value[i] = c.Value[i]
+	}
+	return &x
+}
+
+func (c *BGPPathAttrClusterList) Encode() ([]byte, error) {
+	pkt, err := c.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, nil
+	}
+
+	var i uint16
+	for i = 0; i < uint16(len(c.Value)); i++ {
+		binary.BigEndian.PutUint32(pkt[c.BGPPathAttrBase.BGPPathAttrLen+(4*i):], c.Value[i])
+	}
+	return pkt, nil
+}
+
+func (c *BGPPathAttrClusterList) Decode(pkt []byte) error {
+	pkt, err := c.BGPPathAttrBase.Encode()
+	if err != nil {
+		return err
+	}
+
+	var i uint16
+	c.Value = make([]uint32, c.Length/4)
+	for i = 0;i < uint16(c.Length/4); i++ {
+		c.Value[i] = binary.BigEndian.Uint32(pkt[c.BGPPathAttrLen+(4*i):c.BGPPathAttrLen+(4*i)+4])
+	}
+	return nil
+}
+
+func NewBGPPathAttrClusterList() *BGPPathAttrClusterList {
+	return &BGPPathAttrClusterList{
+		BGPPathAttrBase: BGPPathAttrBase{
+			Flags: BGPPathAttrFlagOptional,
+			Code: BGPPathAttrTypeOriginatorId,
+			Length: 4,
+			BGPPathAttrLen: 3,
+		},
+		Value: make([]uint32, 0),
+	}
 }
 
 type BGPPathAttrUnknown struct {

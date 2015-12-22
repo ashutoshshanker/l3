@@ -39,6 +39,8 @@ struct BGPNeighbor {
 	3: string AuthPassword,
     4: string Description,
     5: string NeighborAddress,
+	6: string RouteReflectorClusterId,
+	7: bool RouteReflectorClient,
 }
 
 struct BGPNeighborState {
@@ -51,6 +53,8 @@ struct BGPNeighborState {
 	7: i32 SessionState,
 	8: BGPMessages Messages,
 	9: BGPQueues Queues,
+	10: string RouteReflectorClusterId,
+	11: bool RouteReflectorClient,
 }
 
 struct BGPNeighborStateBulk {
