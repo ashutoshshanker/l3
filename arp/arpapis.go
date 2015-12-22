@@ -90,27 +90,22 @@ type portProperty struct {
  * connection params.
  */
 var (
-	//device          string = "fpPort2"
-	//device       string = "eth0"
-	snapshot_len int32  = 65549 //packet capture length
-	//promiscuous  bool   = true //mode
-	promiscuous  bool   = false //mode
-	err          error
-	timeout_pcap      time.Duration = 10 * time.Second
-	timeout      time.Duration = 60 * time.Second
-        timeout_counter int = 10
-        retry_cnt    int    = 2
-	handle       *pcap.Handle  // handle for pcap connection
-	//device_ip    string        = "40.1.1.1"
-	//device_ip       string = "10.0.2.15"
-	//filter_string   string = "arp host 10.1.10.1"
-	//filter_optimize int    = 0
-	logWriter       *syslog.Writer
-	log_err         error
-	//rec_handle      []*pcap.Handle
-        dbHdl           *sql.DB
-        UsrConfDbName   string = "/../bin/UsrConfDb.db"
-        dump_arp_table  bool = false
+	snapshot_len            int32 = 65549  //packet capture length
+	promiscuous             bool = false  //mode
+	err                     error
+	timeout_pcap            time.Duration = 10 * time.Second
+        config_refresh_timeout  int = 600       // 600 Seconds
+        min_refresh_timeout     int = 300       // 300 Seconds
+        timer_granularity       int = 60        // 60 Seconds
+	timeout                 time.Duration = time.Duration(timer_granularity) * time.Second
+        timeout_counter         int = 10
+        retry_cnt               int = 2
+	handle                  *pcap.Handle    // handle for pcap connection
+	logWriter               *syslog.Writer
+	log_err                 error
+        dbHdl                   *sql.DB
+        UsrConfDbName           string = "/../bin/UsrConfDb.db"
+        dump_arp_table          bool = false
 )
 var arp_cache *arpCache
 var asicdClient AsicdClient //Thrift client to connect to asicd
@@ -122,12 +117,6 @@ var port_property_map map[int]portProperty
 //var portCfgList []PortConfigJson
 
 var arp_cache_update_chl chan arpUpdateMsg = make(chan arpUpdateMsg, 100)
-
-
-/*** TEMP DEFINES **/
-//var myMac = "00:11:22:33:44:55"
-//var myMac = "08:00:27:75:bc:4d"
-//var myMac = "fa:15:f5:69:a4:c9"
 
 /*****Local API calls. *****/
 
@@ -838,6 +827,13 @@ func updateArpCache() {
                 } else {
                         logWriter.Err("2. Asicd client is not connected.")
                 }
+            } else if msg.msg_type == 5 { //Update Refresh Timer
+                for ip, arp := range arp_cache.arpMap {
+                    ent := arp_cache.arpMap[ip]
+                    cnt = arp.counter
+                    ent.counter = timeout_counter
+                    arp_cache.arpMap[ip] = ent
+                }
             } else {
                 //logger.Println("Invalid Msg type.")
                 logWriter.Err("Invalid Msg type.")
@@ -947,4 +943,22 @@ func timeout_thread() {
                                     msg_type: 2,
                                  }
     }
+}
+
+func updateCounterInArpCache() {
+    arp_cache_update_chl <- arpUpdateMsg {
+                                ip: "0",
+                                ent: arpEntry {
+                                        macAddr: []byte{0, 0, 0, 0, 0, 0},
+                                        vlanid: 0,
+                                        valid: false,
+                                        port: -1,
+                                        ifName: "",
+                                        ifType: -1,
+                                        localIP: "",
+                                        counter: timeout_counter,
+                                     },
+                                msg_type: 5,
+                             }
+
 }
