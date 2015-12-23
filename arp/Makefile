@@ -1,6 +1,6 @@
 RM=rm -f
 RMFORCE=rm -rf
-DESTDIR=$(SR_CODE_BASE)/snaproute/src/bin
+DESTDIR=$(SR_CODE_BASE)/snaproute/src/out/bin
 GENERATED_IPC=$(SR_CODE_BASE)/generated/src
 IPC_GEN_CMD=thrift 
 SRCS=arphandler.go  arpmain.go arpapis.go arpConstDefs.go arpUtils.go arpRPC.go arpDB.go
