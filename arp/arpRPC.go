@@ -111,3 +111,8 @@ func (m ARPServiceHandler) SetArpConfig(refresh_timeout arpd.Int) (rc arpd.Int, 
         return 0, nil
 
 }
+
+func (m ARPServiceHandler) GetBulkArpEntry(currMarker arpd.Int, count arpd.Int) (arps *arpd.ArpEntryBulk, err error) {
+    logger.Println("Inside GetBulkArpEntry...")
+    return nil, nil
+}
