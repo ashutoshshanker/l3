@@ -112,7 +112,61 @@ func (m ARPServiceHandler) SetArpConfig(refresh_timeout arpd.Int) (rc arpd.Int, 
 
 }
 
-func (m ARPServiceHandler) GetBulkArpEntry(currMarker arpd.Int, count arpd.Int) (arps *arpd.ArpEntryBulk, err error) {
+func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (arpEntry *arpd.ArpEntryBulk, err error) {
     logger.Println("Inside GetBulkArpEntry...")
-    return nil, nil
+    var tempArpEntry []arpd.ArpEntry = make([]arpd.ArpEntry, count)
+    var nextArpEntry *arpd.ArpEntry
+    var returnArpEntry []*arpd.ArpEntry
+    var returnArpEntryBulk arpd.ArpEntryBulk
+    var more bool
+    var index, cnt, endIdx int
+    arpEntry = &returnArpEntryBulk
+
+    if arp_msg_slice == nil {
+        logger.Println("Arp Entry Slice is not initialized")
+        return arpEntry, err
+    }
+
+    index = int(fromIndex)
+    cnt = int(count)
+    length := len(arp_msg_slice)
+
+    if index + cnt > length {
+        cnt = length - index
+        endIdx = 0
+        more = false
+    } else {
+        endIdx = index + cnt
+        more = true
+    }
+
+    for i := 0; i < cnt; i++ {
+        arp_entry_req_chl<- arpEntryRequestMsg {
+                                idx:    (index + i),
+                            }
+
+        arp_res_msg := <-arp_entry_res_chl
+        nextArpEntry = &tempArpEntry[i]
+        if arp_res_msg.arp_msg.valid == true {
+            nextArpEntry.IpAddr = arp_res_msg.arp_msg.ipAddr
+            nextArpEntry.MacAddr = arp_res_msg.arp_msg.macAddr
+            nextArpEntry.Vlan = arpd.Int(arp_res_msg.arp_msg.vlan)
+            nextArpEntry.Intf = arp_res_msg.arp_msg.intf
+        } else {
+            nextArpEntry.IpAddr = arp_res_msg.arp_msg.ipAddr
+            nextArpEntry.MacAddr = "incomplete"
+            nextArpEntry.Vlan = -1
+            nextArpEntry.Intf = "none"
+        }
+        if len(returnArpEntry) == 0 {
+            returnArpEntry = make([]*arpd.ArpEntry, 0)
+        }
+        returnArpEntry = append(returnArpEntry, nextArpEntry)
+    }
+    arpEntry.ArpList = returnArpEntry
+    arpEntry.StartIdx = fromIndex
+    arpEntry.EndIdx = arpd.Int(endIdx)
+    arpEntry.More = more
+    arpEntry.Count = arpd.Int(cnt)
+    return arpEntry, err
 }

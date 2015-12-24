@@ -44,22 +44,23 @@ type PortdClient struct {
 }
 
 type arpEntry struct {
-	macAddr net.HardwareAddr
-	vlanid  arpd.Int
-        valid   bool
-        counter int
-        port    int
-        ifName  string
-        ifType  arpd.Int
-        localIP string
+	macAddr     net.HardwareAddr
+	vlanid      arpd.Int
+        valid       bool
+        counter     int
+        port        int
+        ifName      string
+        ifType      arpd.Int
+        localIP     string
+        sliceIdx    int
 }
 
 type arpCache struct {
 	cacheTimeout time.Duration
-	arpMap       map[string]arpEntry
-	//dev_handle   *pcap.Handle
-	hostTO       time.Duration
-	routerTO     time.Duration
+	arpMap          map[string]arpEntry
+	//dev_handle      *pcap.Handle
+	//hostTO          time.Duration
+	//routerTO        time.Duration
 }
 
 type ClientJson struct {
@@ -75,6 +76,14 @@ type arpUpdateMsg struct {
         ip string
         ent arpEntry
         msg_type int
+}
+
+type arpMsgSlice struct {
+        ipAddr      string
+        macAddr     string
+        vlan        int
+        intf        string
+        valid       bool
 }
 
 type pcapHandle struct {
@@ -104,7 +113,7 @@ var (
 	logWriter               *syslog.Writer
 	log_err                 error
         dbHdl                   *sql.DB
-        UsrConfDbName           string = "/../bin/UsrConfDb.db"
+        UsrConfDbName           string = "/UsrConfDb.db"
         dump_arp_table          bool = false
 )
 var arp_cache *arpCache
@@ -114,9 +123,21 @@ var portdClient PortdClient //portd services client
 var pcap_handle_map map[int]pcapHandle
 var port_property_map map[int]portProperty
 
+var arp_msg_slice []arpMsgSlice
+
 //var portCfgList []PortConfigJson
 
+type arpEntryResponseMsg struct {
+    arp_msg     arpMsgSlice
+}
+
+type arpEntryRequestMsg struct {
+    idx         int
+}
+
 var arp_cache_update_chl chan arpUpdateMsg = make(chan arpUpdateMsg, 100)
+var arp_entry_req_chl chan arpEntryRequestMsg = make(chan arpEntryRequestMsg, 100)
+var arp_entry_res_chl chan arpEntryResponseMsg = make(chan arpEntryResponseMsg, 100)
 
 /*****Local API calls. *****/
 
@@ -627,235 +648,319 @@ func initArpCache() bool {
  */
 func updateArpCache() {
     var cnt int
+    var arp_msg_ent arpMsgSlice
     var dbCmd string
         for {
-            msg := <-arp_cache_update_chl
-            if msg.msg_type == 1 {
-            //if msg.ent.vlanid == 0 {
-                ent := arp_cache.arpMap[msg.ip]
-                if reflect.DeepEqual(ent.macAddr, msg.ent.macAddr) &&
-                   ent.valid == msg.ent.valid && ent.port == msg.ent.port &&
-                   ent.ifName == msg.ent.ifName && ent.vlanid == msg.ent.vlanid &&
-                   ent.ifType == msg.ent.ifType {
-                   //logger.Println("Updating counter after retry after expiry")
-                   logWriter.Info(fmt.Sprintln("Updating counter after retry after expiry"))
-                   ent.counter = msg.ent.counter
-                   arp_cache.arpMap[msg.ip] = ent
-                   continue
-                }
-                ent.macAddr = msg.ent.macAddr
-                ent.valid = msg.ent.valid
-                ent.vlanid = msg.ent.vlanid
-                // Every entry will be expired after 10 mins
-                ent.counter = msg.ent.counter
-                ent.port    = msg.ent.port
-                ent.ifName  = msg.ent.ifName
-                ent.ifType  = msg.ent.ifType
-                ent.localIP = msg.ent.localIP
-                arp_cache.arpMap[msg.ip] = ent
-                //logger.Println("1 updateArpCache(): ", arp_cache.arpMap[msg.ip])
-                logWriter.Info(fmt.Sprintln("1 updateArpCache(): ", arp_cache.arpMap[msg.ip]))
-                err := updateArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
-                if err != nil {
-                    logWriter.Err("Unable to cache ARP Table in DB")
-                }
-                //3) Update asicd.
-                if asicdClient.IsConnected {
-/*
-                        logger.Println("1. Deleting an entry in asic for ", msg.ip)
-                        rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(msg.ip,
-                                             "00:00:00:00:00:00", 0, 0)
-                        logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
-*/
-                        //logger.Println("1. Updating an entry in asic for ", msg.ip)
-                        logWriter.Info(fmt.Sprintln("1. Updating an entry in asic for ", msg.ip))
-                        rv, error := asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.ip,
-                                             (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), (int32)(msg.ent.port))
-                        logWriter.Err(fmt.Sprintf("Asicd Update rv: ", rv, " error : ", error))
-                } else {
-                        logWriter.Err("1. Asicd client is not connected.")
-                }
-            } else if msg.msg_type == 0 {
-                ent := arp_cache.arpMap[msg.ip]
-                ent.vlanid = msg.ent.vlanid
-                ent.valid = msg.ent.valid
-                ent.counter = msg.ent.counter
-                ent.port    = msg.ent.port
-                ent.ifName  = msg.ent.ifName
-                ent.ifType  = msg.ent.ifType
-                ent.localIP = msg.ent.localIP
-                arp_cache.arpMap[msg.ip] = ent
-                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, "incomplete")
-                if err != nil {
-                    logWriter.Err("Unable to cache ARP Table in DB")
-                }
-            } else if msg.msg_type == 2 {
-                for ip, arp := range arp_cache.arpMap {
-                    if arp.counter == -2 && arp.valid == true {
-                        dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
-                        //logger.Println(dbCmd)
-                        logWriter.Info(dbCmd)
-                        if dbHdl != nil {
-                            //logger.Println("Executing DB Command:", dbCmd)
-                            logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
-                            _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
-                            if err != nil {
-                                logWriter.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for %s %s", ip, err))
-                            }
-                        } else {
-                            //logger.Println("DB handler is nil");
-                            logWriter.Err("DB handler is nil");
+            select {
+                case msg := <-arp_cache_update_chl:
+                    if msg.msg_type == 1 {
+                    //if msg.ent.vlanid == 0 {
+                        ent, exist := arp_cache.arpMap[msg.ip]
+                        if reflect.DeepEqual(ent.macAddr, msg.ent.macAddr) &&
+                           ent.valid == msg.ent.valid && ent.port == msg.ent.port &&
+                           ent.ifName == msg.ent.ifName && ent.vlanid == msg.ent.vlanid &&
+                           ent.ifType == msg.ent.ifType && exist {
+                           //logger.Println("Updating counter after retry after expiry")
+                           logWriter.Info(fmt.Sprintln("Updating counter after retry after expiry"))
+                           ent.counter = msg.ent.counter
+                           arp_cache.arpMap[msg.ip] = ent
+                           continue
                         }
-                        //logger.Println("1. Deleting entry ", ip, " from Arp cache")
-                        logWriter.Info(fmt.Sprintln("1. Deleting entry ", ip, " from Arp cache"))
-                        delete(arp_cache.arpMap, ip)
-                        //logger.Println("Deleting an entry in asic for ", ip)
-                        logWriter.Info(fmt.Sprintln("Deleting an entry in asic for ", ip))
-                        rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(ip,
-                                             "00:00:00:00:00:00", 0, 0)
-                        logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
-                    } else if (arp.counter == 0 || arp.counter == -1) && arp.valid == true {
-                        ent := arp_cache.arpMap[ip]
-                        cnt = arp.counter
-                        cnt--
-                        ent.counter = cnt
-                        //logger.Println("1. Decrementing counter for ", ip);
-                        arp_cache.arpMap[ip] = ent
-                        //Send arp request after entry expires
-                        refresh_arp_entry(ip, ent.ifName, ent.localIP)
-                    } else if ((arp.counter <= (timeout_counter)) &&
-                               (arp.counter > (timeout_counter - retry_cnt))) &&
-                              arp.valid == false {
-                        ent := arp_cache.arpMap[ip]
-                        cnt = arp.counter
-                        cnt--
-                        ent.counter = cnt
-                        //logger.Println("2. Decrementing counter for ", ip);
-                        arp_cache.arpMap[ip] = ent
-                        retry_arp_req(ip, ent.vlanid, ent.ifType, ent.localIP)
-                    } else if (arp.counter == (timeout_counter - retry_cnt)) &&
-                               arp.valid == false {
-                        //logger.Println("2. Deleting entry ", ip, " from Arp cache")
-                        logWriter.Info(fmt.Sprintln("2. Deleting entry ", ip, " from Arp cache"))
-                        delete(arp_cache.arpMap, ip)
-                        dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
-                        //logger.Println(dbCmd)
-                        logWriter.Info(dbCmd)
-                        if dbHdl != nil {
-                            //logger.Println("Executing DB Command:", dbCmd)
-                            logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
-                            _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
-                            if err != nil {
-                                logWriter.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for %s %s", ip, err))
-                            }
+                        if !exist {
+                            ent.sliceIdx = len(arp_msg_slice)
+                            arp_msg_ent.ipAddr = msg.ip
+                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
+                            arp_msg_ent.vlan = int(msg.ent.vlanid)
+                            arp_msg_ent.intf = msg.ent.ifName
+                            arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
                         } else {
-                            //logger.Println("DB handler is nil");
-                            logWriter.Err("DB handler is nil");
+                            arp_msg_ent.ipAddr = msg.ip
+                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
+                            arp_msg_ent.vlan = int(msg.ent.vlanid)
+                            arp_msg_ent.intf = msg.ent.ifName
+                            arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_slice[ent.sliceIdx] = arp_msg_ent
                         }
-                    } else if arp.counter != 0 {
-                        ent := arp_cache.arpMap[ip]
-                        cnt = arp.counter
-                        cnt--
-                        ent.counter = cnt
-                        //logger.Println("3. Decrementing counter for ", ip);
-                        arp_cache.arpMap[ip] = ent
+                        ent.macAddr = msg.ent.macAddr
+                        ent.valid = msg.ent.valid
+                        ent.vlanid = msg.ent.vlanid
+                        // Every entry will be expired after 10 mins
+                        ent.counter = msg.ent.counter
+                        ent.port    = msg.ent.port
+                        ent.ifName  = msg.ent.ifName
+                        ent.ifType  = msg.ent.ifType
+                        ent.localIP = msg.ent.localIP
+                        arp_cache.arpMap[msg.ip] = ent
+                        //logger.Println("1 updateArpCache(): ", arp_cache.arpMap[msg.ip])
+                        logWriter.Info(fmt.Sprintln("1 updateArpCache(): ", arp_cache.arpMap[msg.ip]))
+                        err := updateArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
+                        if err != nil {
+                            logWriter.Err("Unable to cache ARP Table in DB")
+                        }
+                        //3) Update asicd.
+                        if asicdClient.IsConnected {
+        /*
+                                logger.Println("1. Deleting an entry in asic for ", msg.ip)
+                                rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(msg.ip,
+                                                     "00:00:00:00:00:00", 0, 0)
+                                logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
+        */
+                                //logger.Println("1. Updating an entry in asic for ", msg.ip)
+                                logWriter.Info(fmt.Sprintln("1. Updating an entry in asic for ", msg.ip))
+                                rv, error := asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.ip,
+                                                     (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), (int32)(msg.ent.port))
+                                logWriter.Err(fmt.Sprintf("Asicd Update rv: ", rv, " error : ", error))
+                        } else {
+                                logWriter.Err("1. Asicd client is not connected.")
+                        }
+                    } else if msg.msg_type == 0 {
+                        ent, exist := arp_cache.arpMap[msg.ip]
+                        if !exist {
+                            ent.sliceIdx = len(arp_msg_slice)
+                            arp_msg_ent.ipAddr = msg.ip
+                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
+                            arp_msg_ent.vlan = int(msg.ent.vlanid)
+                            arp_msg_ent.intf = msg.ent.ifName
+                            arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
+                        } else {
+                            arp_msg_ent.ipAddr = msg.ip
+                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
+                            arp_msg_ent.vlan = int(msg.ent.vlanid)
+                            arp_msg_ent.intf = msg.ent.ifName
+                            arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_slice[ent.sliceIdx] = arp_msg_ent
+                        }
+                        ent.vlanid = msg.ent.vlanid
+                        ent.valid = msg.ent.valid
+                        ent.counter = msg.ent.counter
+                        ent.port    = msg.ent.port
+                        ent.ifName  = msg.ent.ifName
+                        ent.ifType  = msg.ent.ifType
+                        ent.localIP = msg.ent.localIP
+                        arp_cache.arpMap[msg.ip] = ent
+                        err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, "incomplete")
+                        if err != nil {
+                            logWriter.Err("Unable to cache ARP Table in DB")
+                        }
+                    } else if msg.msg_type == 2 {
+                        for ip, arp := range arp_cache.arpMap {
+                            if arp.counter == -2 && arp.valid == true {
+                                dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
+                                //logger.Println(dbCmd)
+                                logWriter.Info(dbCmd)
+                                if dbHdl != nil {
+                                    //logger.Println("Executing DB Command:", dbCmd)
+                                    logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
+                                    _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
+                                    if err != nil {
+                                        logWriter.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for %s %s", ip, err))
+                                    }
+                                } else {
+                                    //logger.Println("DB handler is nil");
+                                    logWriter.Err("DB handler is nil");
+                                }
+                                //logger.Println("1. Deleting entry ", ip, " from Arp cache")
+                                logWriter.Info(fmt.Sprintln("1. Deleting entry ", ip, " from Arp cache"))
+                                ent := arp_cache.arpMap[ip]
+                                arp_msg_ent = arp_msg_slice[ent.sliceIdx]
+                                arp_msg_ent.valid = false
+                                arp_msg_slice[ent.sliceIdx] = arp_msg_ent
+                                delete(arp_cache.arpMap, ip)
+                                //logger.Println("Deleting an entry in asic for ", ip)
+                                logWriter.Info(fmt.Sprintln("Deleting an entry in asic for ", ip))
+                                rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(ip,
+                                                     "00:00:00:00:00:00", 0, 0)
+                                logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
+                            } else if (arp.counter == 0 || arp.counter == -1) && arp.valid == true {
+                                ent := arp_cache.arpMap[ip]
+                                cnt = arp.counter
+                                cnt--
+                                ent.counter = cnt
+                                //logger.Println("1. Decrementing counter for ", ip);
+                                arp_cache.arpMap[ip] = ent
+                                //Send arp request after entry expires
+                                refresh_arp_entry(ip, ent.ifName, ent.localIP)
+                            } else if ((arp.counter <= (timeout_counter)) &&
+                                       (arp.counter > (timeout_counter - retry_cnt))) &&
+                                      arp.valid == false {
+                                ent := arp_cache.arpMap[ip]
+                                cnt = arp.counter
+                                cnt--
+                                ent.counter = cnt
+                                //logger.Println("2. Decrementing counter for ", ip);
+                                arp_cache.arpMap[ip] = ent
+                                retry_arp_req(ip, ent.vlanid, ent.ifType, ent.localIP)
+                            } else if (arp.counter == (timeout_counter - retry_cnt)) &&
+                                       arp.valid == false {
+                                //logger.Println("2. Deleting entry ", ip, " from Arp cache")
+                                logWriter.Info(fmt.Sprintln("2. Deleting entry ", ip, " from Arp cache"))
+                                ent := arp_cache.arpMap[ip]
+                                arp_msg_ent = arp_msg_slice[ent.sliceIdx]
+                                arp_msg_ent.valid = false
+                                arp_msg_slice[ent.sliceIdx] = arp_msg_ent
+                                delete(arp_cache.arpMap, ip)
+                                dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
+                                //logger.Println(dbCmd)
+                                logWriter.Info(dbCmd)
+                                if dbHdl != nil {
+                                    //logger.Println("Executing DB Command:", dbCmd)
+                                    logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
+                                    _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
+                                    if err != nil {
+                                        logWriter.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for %s %s", ip, err))
+                                    }
+                                } else {
+                                    //logger.Println("DB handler is nil");
+                                    logWriter.Err("DB handler is nil");
+                                }
+                            } else if arp.counter != 0 {
+                                ent := arp_cache.arpMap[ip]
+                                cnt = arp.counter
+                                cnt--
+                                ent.counter = cnt
+                                //logger.Println("3. Decrementing counter for ", ip);
+                                arp_cache.arpMap[ip] = ent
+                            } else {
+                                dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
+                                //logger.Println(dbCmd)
+                                logWriter.Info(dbCmd)
+                                if dbHdl != nil {
+                                    //logger.Println("Executing DB Command:", dbCmd)
+                                    logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
+                                    _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
+                                    if err != nil {
+                                        logWriter.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for %s %s", ip, err))
+                                    }
+                                } else {
+                                    //logger.Println("DB handler is nil");
+                                    logWriter.Err("DB handler is nil");
+                                }
+                                //logger.Println("3. Deleting entry ", ip, " from Arp cache")
+                                logWriter.Info(fmt.Sprintln("3. Deleting entry ", ip, " from Arp cache"))
+                                ent := arp_cache.arpMap[ip]
+                                arp_msg_ent = arp_msg_slice[ent.sliceIdx]
+                                arp_msg_ent.valid = false
+                                arp_msg_slice[ent.sliceIdx] = arp_msg_ent
+                                delete(arp_cache.arpMap, ip)
+                            }
+                        }
+                    } else if msg.msg_type == 3 {
+                        logger.Println("Received ARP response from neighbor...", msg.ip)
+                        //logWriter.Info(fmt.Sprintln("Received ARP response from neighbor...", msg.ip))
+                        ent, exist := arp_cache.arpMap[msg.ip]
+                        if !exist {
+                            ent.sliceIdx = len(arp_msg_slice)
+                            arp_msg_ent.ipAddr = msg.ip
+                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
+                            arp_msg_ent.vlan = int(msg.ent.vlanid)
+                            arp_msg_ent.intf = msg.ent.ifName
+                            arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
+                        } else {
+                            arp_msg_ent.ipAddr = msg.ip
+                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
+                            arp_msg_ent.vlan = int(msg.ent.vlanid)
+                            arp_msg_ent.intf = msg.ent.ifName
+                            arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_slice[ent.sliceIdx] = arp_msg_ent
+                        }
+                        ent.macAddr = msg.ent.macAddr
+                        ent.vlanid = msg.ent.vlanid
+                        ent.valid = msg.ent.valid
+                        ent.counter = msg.ent.counter
+                        ent.port    = msg.ent.port
+                        ent.ifName  = msg.ent.ifName
+                        ent.ifType  = msg.ent.ifType
+                        ent.localIP = msg.ent.localIP
+                        arp_cache.arpMap[msg.ip] = ent
+                        //logger.Println("2. updateArpCache(): ", arp_cache.arpMap[msg.ip])
+                        logWriter.Info(fmt.Sprintln("2. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
+                        err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
+                        if err != nil {
+                            logWriter.Err("Unable to cache ARP Table in DB")
+                        }
+                        //3) Update asicd.
+                        if asicdClient.IsConnected {
+                                //logger.Println("2. Creating an entry in asic for IP:", msg.ip, "MAC:",
+                                logWriter.Info(fmt.Sprintln("2. Creating an entry in asic for IP:", msg.ip, "MAC:",
+                                                (msg.ent.macAddr).String(), "VLAN:",
+                                                (int32)(arp_cache.arpMap[msg.ip].vlanid)))
+                                rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
+                                                     (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid),
+                                                     (int32)(msg.ent.port))
+                                logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                        } else {
+                                logWriter.Err("2. Asicd client is not connected.")
+                        }
+                    } else if msg.msg_type == 4 {
+                        logger.Println("Received ARP Request from neighbor...", msg.ip)
+                        //logWriter.Info(fmt.Sprintln("Received ARP Request from neighbor...", msg.ip))
+                        ent, exist := arp_cache.arpMap[msg.ip]
+                        if !exist {
+                            ent.sliceIdx = len(arp_msg_slice)
+                            arp_msg_ent.ipAddr = msg.ip
+                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
+                            arp_msg_ent.vlan = int(msg.ent.vlanid)
+                            arp_msg_ent.intf = msg.ent.ifName
+                            arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
+                        } else {
+                            arp_msg_ent.ipAddr = msg.ip
+                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
+                            arp_msg_ent.vlan = int(msg.ent.vlanid)
+                            arp_msg_ent.intf = msg.ent.ifName
+                            arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_slice[ent.sliceIdx] = arp_msg_ent
+                        }
+                        ent.macAddr = msg.ent.macAddr
+                        ent.vlanid = msg.ent.vlanid
+                        ent.valid = msg.ent.valid
+                        ent.counter = msg.ent.counter
+                        ent.port    = msg.ent.port
+                        ent.ifName  = msg.ent.ifName
+                        ent.ifType  = msg.ent.ifType
+                        ent.localIP = msg.ent.localIP
+                        arp_cache.arpMap[msg.ip] = ent
+                        //logger.Println("3. updateArpCache(): ", arp_cache.arpMap[msg.ip])
+                        logWriter.Info(fmt.Sprintln("3. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
+                        err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
+                        if err != nil {
+                            logWriter.Err("Unable to cache ARP Table in DB")
+                        }
+                        //3) Update asicd.
+                        if asicdClient.IsConnected {
+                                //logger.Println("3. Creating an entry in asic for IP:", msg.ip, "MAC:",
+                                  //              (msg.ent.macAddr).String(), "VLAN:",
+                                    //            (int32)(arp_cache.arpMap[msg.ip].vlanid))
+                                logWriter.Info(fmt.Sprintln("3. Creating an entry in asic for IP:", msg.ip, "MAC:",
+                                                (msg.ent.macAddr).String(), "VLAN:",
+                                                (int32)(arp_cache.arpMap[msg.ip].vlanid)))
+                                rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
+                                                     (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid),
+                                                     (int32)(msg.ent.port))
+                                logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                        } else {
+                                logWriter.Err("2. Asicd client is not connected.")
+                        }
+                    } else if msg.msg_type == 5 { //Update Refresh Timer
+                        for ip, arp := range arp_cache.arpMap {
+                            ent := arp_cache.arpMap[ip]
+                            cnt = arp.counter
+                            ent.counter = timeout_counter
+                            arp_cache.arpMap[ip] = ent
+                        }
                     } else {
-                        dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
-                        //logger.Println(dbCmd)
-                        logWriter.Info(dbCmd)
-                        if dbHdl != nil {
-                            //logger.Println("Executing DB Command:", dbCmd)
-                            logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
-                            _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
-                            if err != nil {
-                                logWriter.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for %s %s", ip, err))
-                            }
-                        } else {
-                            //logger.Println("DB handler is nil");
-                            logWriter.Err("DB handler is nil");
-                        }
-                        //logger.Println("3. Deleting entry ", ip, " from Arp cache")
-                        logWriter.Info(fmt.Sprintln("3. Deleting entry ", ip, " from Arp cache"))
-                        delete(arp_cache.arpMap, ip)
+                        //logger.Println("Invalid Msg type.")
+                        logWriter.Err("Invalid Msg type.")
+                        continue
                     }
-                }
-            } else if msg.msg_type == 3 {
-                logger.Println("Received ARP response from neighbor...", msg.ip)
-                //logWriter.Info(fmt.Sprintln("Received ARP response from neighbor...", msg.ip))
-                ent := arp_cache.arpMap[msg.ip]
-                ent.macAddr = msg.ent.macAddr
-                ent.vlanid = msg.ent.vlanid
-                ent.valid = msg.ent.valid
-                ent.counter = msg.ent.counter
-                ent.port    = msg.ent.port
-                ent.ifName  = msg.ent.ifName
-                ent.ifType  = msg.ent.ifType
-                ent.localIP = msg.ent.localIP
-                arp_cache.arpMap[msg.ip] = ent
-                //logger.Println("2. updateArpCache(): ", arp_cache.arpMap[msg.ip])
-                logWriter.Info(fmt.Sprintln("2. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
-                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
-                if err != nil {
-                    logWriter.Err("Unable to cache ARP Table in DB")
-                }
-                //3) Update asicd.
-                if asicdClient.IsConnected {
-                        //logger.Println("2. Creating an entry in asic for IP:", msg.ip, "MAC:",
-                        logWriter.Info(fmt.Sprintln("2. Creating an entry in asic for IP:", msg.ip, "MAC:",
-                                        (msg.ent.macAddr).String(), "VLAN:",
-                                        (int32)(arp_cache.arpMap[msg.ip].vlanid)))
-                        rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
-                                             (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid),
-                                             (int32)(msg.ent.port))
-                        logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
-                } else {
-                        logWriter.Err("2. Asicd client is not connected.")
-                }
-            } else if msg.msg_type == 4 {
-                logger.Println("Received ARP Request from neighbor...", msg.ip)
-                //logWriter.Info(fmt.Sprintln("Received ARP Request from neighbor...", msg.ip))
-                ent := arp_cache.arpMap[msg.ip]
-                ent.macAddr = msg.ent.macAddr
-                ent.vlanid = msg.ent.vlanid
-                ent.valid = msg.ent.valid
-                ent.counter = msg.ent.counter
-                ent.port    = msg.ent.port
-                ent.ifName  = msg.ent.ifName
-                ent.ifType  = msg.ent.ifType
-                ent.localIP = msg.ent.localIP
-                arp_cache.arpMap[msg.ip] = ent
-                //logger.Println("3. updateArpCache(): ", arp_cache.arpMap[msg.ip])
-                logWriter.Info(fmt.Sprintln("3. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
-                err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
-                if err != nil {
-                    logWriter.Err("Unable to cache ARP Table in DB")
-                }
-                //3) Update asicd.
-                if asicdClient.IsConnected {
-                        //logger.Println("3. Creating an entry in asic for IP:", msg.ip, "MAC:",
-                          //              (msg.ent.macAddr).String(), "VLAN:",
-                            //            (int32)(arp_cache.arpMap[msg.ip].vlanid))
-                        logWriter.Info(fmt.Sprintln("3. Creating an entry in asic for IP:", msg.ip, "MAC:",
-                                        (msg.ent.macAddr).String(), "VLAN:",
-                                        (int32)(arp_cache.arpMap[msg.ip].vlanid)))
-                        rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
-                                             (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid),
-                                             (int32)(msg.ent.port))
-                        logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
-                } else {
-                        logWriter.Err("2. Asicd client is not connected.")
-                }
-            } else if msg.msg_type == 5 { //Update Refresh Timer
-                for ip, arp := range arp_cache.arpMap {
-                    ent := arp_cache.arpMap[ip]
-                    cnt = arp.counter
-                    ent.counter = timeout_counter
-                    arp_cache.arpMap[ip] = ent
-                }
-            } else {
-                //logger.Println("Invalid Msg type.")
-                logWriter.Err("Invalid Msg type.")
-                continue
+                case arp_req_msg := <-arp_entry_req_chl:
+                    arp_entry_res_chl<-arpEntryResponseMsg {
+                                            arp_msg: arp_msg_slice[arp_req_msg.idx],
+                                        }
+                default:
             }
         }
 }
@@ -945,6 +1050,7 @@ func timeout_thread() {
             printArpEntries()
             //logger.Println("========================================================")
             logWriter.Info("========================================================")
+            //logger.Println(arp_msg_slice)
         }
         arp_cache_update_chl <- arpUpdateMsg {
                                     ip: "0",

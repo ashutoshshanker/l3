@@ -8,8 +8,8 @@ struct ArpEntry {
         4: string Intf,
 }
 struct ArpEntryBulk {
-        1: int CurrIdx,
-        2: int NextIdx,
+        1: int StartIdx,
+        2: int EndIdx,
         3: int Count,
         4: bool More,
         5: list<ArpEntry> ArpList,
