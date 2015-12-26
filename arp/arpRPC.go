@@ -121,9 +121,17 @@ func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (
     var more bool
     var index, cnt, endIdx int
     arpEntry = &returnArpEntryBulk
+    var ret bool
 
     if arp_msg_slice == nil {
         logger.Println("Arp Entry Slice is not initialized")
+        return arpEntry, err
+    }
+
+    ret = arp_entry_timer.Stop()
+    if ret == false {
+        logWriter.Err("Arpd is busy refreshing arp cache")
+        err = errors.New("Arpd is busy refreshing arp cache")
         return arpEntry, err
     }
 
@@ -131,7 +139,7 @@ func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (
     cnt = int(count)
     length := len(arp_msg_slice)
 
-    if index + cnt > length {
+    if index + cnt >= length {
         cnt = length - index
         endIdx = 0
         more = false
@@ -168,5 +176,8 @@ func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (
     arpEntry.EndIdx = arpd.Int(endIdx)
     arpEntry.More = more
     arpEntry.Count = arpd.Int(cnt)
+
+    arp_entry_timer.Reset(arp_entry_duration)
+
     return arpEntry, err
 }
