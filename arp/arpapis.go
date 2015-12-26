@@ -95,6 +95,14 @@ type portProperty struct {
     untagged_vlanid     arpd.Int
 }
 
+type arpEntryResponseMsg struct {
+    arp_msg     arpMsgSlice
+}
+
+type arpEntryRequestMsg struct {
+    idx         int
+}
+
 /*
  * connection params.
  */
@@ -115,6 +123,8 @@ var (
         dbHdl                   *sql.DB
         UsrConfDbName           string = "/UsrConfDb.db"
         dump_arp_table          bool = false
+        arp_entry_timer         *time.Timer
+        arp_entry_duration      time.Duration = 10 * time.Minute
 )
 var arp_cache *arpCache
 var asicdClient AsicdClient //Thrift client to connect to asicd
@@ -127,17 +137,11 @@ var arp_msg_slice []arpMsgSlice
 
 //var portCfgList []PortConfigJson
 
-type arpEntryResponseMsg struct {
-    arp_msg     arpMsgSlice
-}
-
-type arpEntryRequestMsg struct {
-    idx         int
-}
-
 var arp_cache_update_chl chan arpUpdateMsg = make(chan arpUpdateMsg, 100)
 var arp_entry_req_chl chan arpEntryRequestMsg = make(chan arpEntryRequestMsg, 100)
 var arp_entry_res_chl chan arpEntryResponseMsg = make(chan arpEntryResponseMsg, 100)
+var arp_entry_refresh_start_chl chan bool = make(chan bool, 100)
+var arp_entry_refresh_done_chl chan bool = make(chan bool, 100)
 
 /*****Local API calls. *****/
 
@@ -245,10 +249,29 @@ func initARPhandlerParams() {
         signalList := []os.Signal{syscall.SIGHUP}
         signal.Notify(sigChan, signalList...)
         go sigHandler(sigChan)
+        go arp_entry_refresh()
 	initPortParams()
         /* Open Response thread */
         processResponse()
 
+}
+
+func arp_entry_refresh() {
+    var arp_entry_ref_func func()
+    arp_entry_ref_func = func() {
+        arp_entry_refresh_start_chl<-true
+        arp_entry_refresh_done_msg := <-arp_entry_refresh_done_chl
+        if arp_entry_refresh_done_msg == true {
+            logWriter.Info("ARP Entry refresh done")
+        } else {
+            logWriter.Err("ARP Entry refresh not done")
+            //logger.Println("ARP Entry refresh not done")
+        }
+
+        arp_entry_timer.Reset(arp_entry_duration)
+    }
+
+    arp_entry_timer = time.AfterFunc(arp_entry_duration, arp_entry_ref_func)
 }
 
 /*
@@ -960,6 +983,25 @@ func updateArpCache() {
                     arp_entry_res_chl<-arpEntryResponseMsg {
                                             arp_msg: arp_msg_slice[arp_req_msg.idx],
                                         }
+                case arp_entry_refresh_start_msg := <-arp_entry_refresh_start_chl:
+                    if arp_entry_refresh_start_msg == true {
+                        arp_msg_slice = []arpMsgSlice{}
+                        for ip, arp := range arp_cache.arpMap {
+                            logWriter.Info("Refreshing ARP entry")
+                            arp.sliceIdx = len(arp_msg_slice)
+                            arp_cache.arpMap[ip] = arp
+                            arp_msg_ent.ipAddr = ip
+                            arp_msg_ent.macAddr = net.HardwareAddr(arp.macAddr).String()
+                            arp_msg_ent.vlan = int(arp.vlanid)
+                            arp_msg_ent.intf = arp.ifName
+                            arp_msg_ent.valid = arp.valid
+                            arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
+                        }
+                        arp_entry_refresh_done_chl<-true
+                    } else {
+                        logWriter.Err("Invalid arp_entry_refresh_start_msg")
+                        arp_entry_refresh_done_chl<-false
+                    }
                 default:
             }
         }
@@ -1035,7 +1077,7 @@ func printArpEntries() {
 	logWriter.Info("************")
 	for ip, arp := range arp_cache.arpMap {
 		//logger.Println("IP:", ip, " VLAN:", arp.vlanid, " MAC:", arp.macAddr, "CNT:", arp.counter, "PORT:", arp.port, "IfName:", arp.ifName, "IfType:", arp.ifType, "LocalIP:", arp.localIP, "Valid:", arp.valid)
-		logWriter.Info(fmt.Sprintln("IP:", ip, " VLAN:", arp.vlanid, " MAC:", arp.macAddr, "CNT:", arp.counter, "PORT:", arp.port, "IfName:", arp.ifName, "IfType:", arp.ifType, "LocalIP:", arp.localIP, "Valid:", arp.valid))
+		logWriter.Info(fmt.Sprintln("IP:", ip, " VLAN:", arp.vlanid, " MAC:", arp.macAddr, "CNT:", arp.counter, "PORT:", arp.port, "IfName:", arp.ifName, "IfType:", arp.ifType, "LocalIP:", arp.localIP, "Valid:", arp.valid, "SliceIdx:", arp.sliceIdx))
 	}
 	logWriter.Info("************")
 	//logger.Println("************")
@@ -1050,7 +1092,7 @@ func timeout_thread() {
             printArpEntries()
             //logger.Println("========================================================")
             logWriter.Info("========================================================")
-            //logger.Println(arp_msg_slice)
+            logger.Println(arp_msg_slice)
         }
         arp_cache_update_chl <- arpUpdateMsg {
                                     ip: "0",
