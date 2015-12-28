@@ -36,6 +36,11 @@ func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
 
         //logger.Println("Calling ResolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id))
         logWriter.Info(fmt.Sprintln("ResolveArpIPv4...", targetIp, " ", int32(iftype), " ", int32(vlan_id)))
+        if targetIp == "0.0.0.0" {
+            logWriter.Err(fmt.Sprintln("Not resolving Mac address for ", targetIp))
+            err = errors.New(fmt.Sprintln("Not resolving ARP for", targetIp))
+            return 0, err
+        }
         ip_addr, err := getIPv4ForInterface(iftype, vlan_id)
         if len(ip_addr) == 0 || err != nil {
             logWriter.Err(fmt.Sprintf("Failed to get the ip address of ifType:", iftype, "VLAN:", vlan_id))
@@ -123,7 +128,7 @@ func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (
     arpEntry = &returnArpEntryBulk
     var ret bool
 
-    if arp_msg_slice == nil {
+    if arpSlice == nil {
         logger.Println("Arp Entry Slice is not initialized")
         return arpEntry, err
     }
@@ -137,7 +142,7 @@ func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (
 
     index = int(fromIndex)
     cnt = int(count)
-    length := len(arp_msg_slice)
+    length := len(arpSlice)
 
     if index + cnt >= length {
         cnt = length - index
@@ -167,7 +172,7 @@ func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (
             nextArpEntry.ExpiryTimeLeft = timeLeft.String()
         } else {
             nextArpEntry.IpAddr = arp_res_msg.arp_msg.ipAddr
-            nextArpEntry.MacAddr = "incomplete"
+            nextArpEntry.MacAddr = arp_res_msg.arp_msg.macAddr
             nextArpEntry.Vlan = -1
             nextArpEntry.Intf = "none"
             nextArpEntry.ExpiryTimeLeft = "N/A"

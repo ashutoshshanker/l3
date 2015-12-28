@@ -136,7 +136,7 @@ var portdClient PortdClient //portd services client
 var pcap_handle_map map[int]pcapHandle
 var port_property_map map[int]portProperty
 
-var arp_msg_slice []arpMsgSlice
+var arpSlice []string
 
 //var portCfgList []PortConfigJson
 
@@ -674,8 +674,9 @@ func initArpCache() bool {
  */
 func updateArpCache() {
     var cnt int
-    var arp_msg_ent arpMsgSlice
     var dbCmd string
+    var arpIPtoSliceIdxMap map[string]int = make(map[string]int)
+
         for {
             select {
                 case msg := <-arp_cache_update_chl:
@@ -691,28 +692,15 @@ func updateArpCache() {
                            ent.counter = msg.ent.counter
                            ent.timestamp = time.Now()
                            arp_cache.arpMap[msg.ip] = ent
-                           arp_msg_ent = arp_msg_slice[ent.sliceIdx]
-                           arp_msg_ent.timestamp = time.Now()
-                           arp_msg_slice[ent.sliceIdx] = arp_msg_ent
                            continue
                         }
+                        sliceIdx, exist := arpIPtoSliceIdxMap[msg.ip]
                         if !exist {
-                            ent.sliceIdx = len(arp_msg_slice)
-                            arp_msg_ent.ipAddr = msg.ip
-                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
-                            arp_msg_ent.vlan = int(msg.ent.vlanid)
-                            arp_msg_ent.intf = msg.ent.ifName
-                            arp_msg_ent.valid = msg.ent.valid
-                            arp_msg_ent.timestamp = time.Now()
-                            arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
+                            ent.sliceIdx = len(arpSlice)
+                            arpIPtoSliceIdxMap[msg.ip] = len(arpSlice)
+                            arpSlice = append(arpSlice, msg.ip)
                         } else {
-                            arp_msg_ent.ipAddr = msg.ip
-                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
-                            arp_msg_ent.vlan = int(msg.ent.vlanid)
-                            arp_msg_ent.intf = msg.ent.ifName
-                            arp_msg_ent.valid = msg.ent.valid
-                            arp_msg_ent.timestamp = time.Now()
-                            arp_msg_slice[ent.sliceIdx] = arp_msg_ent
+                            ent.sliceIdx =  sliceIdx
                         }
                         ent.macAddr = msg.ent.macAddr
                         ent.valid = msg.ent.valid
@@ -749,21 +737,13 @@ func updateArpCache() {
                         }
                     } else if msg.msg_type == 0 {
                         ent, exist := arp_cache.arpMap[msg.ip]
+                        sliceIdx, exist := arpIPtoSliceIdxMap[msg.ip]
                         if !exist {
-                            ent.sliceIdx = len(arp_msg_slice)
-                            arp_msg_ent.ipAddr = msg.ip
-                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
-                            arp_msg_ent.vlan = int(msg.ent.vlanid)
-                            arp_msg_ent.intf = msg.ent.ifName
-                            arp_msg_ent.valid = msg.ent.valid
-                            arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
+                            ent.sliceIdx = len(arpSlice)
+                            arpIPtoSliceIdxMap[msg.ip] = len(arpSlice)
+                            arpSlice = append(arpSlice, msg.ip)
                         } else {
-                            arp_msg_ent.ipAddr = msg.ip
-                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
-                            arp_msg_ent.vlan = int(msg.ent.vlanid)
-                            arp_msg_ent.intf = msg.ent.ifName
-                            arp_msg_ent.valid = msg.ent.valid
-                            arp_msg_slice[ent.sliceIdx] = arp_msg_ent
+                            ent.sliceIdx =  sliceIdx
                         }
                         ent.vlanid = msg.ent.vlanid
                         ent.valid = msg.ent.valid
@@ -796,10 +776,6 @@ func updateArpCache() {
                                 }
                                 //logger.Println("1. Deleting entry ", ip, " from Arp cache")
                                 logWriter.Info(fmt.Sprintln("1. Deleting entry ", ip, " from Arp cache"))
-                                ent := arp_cache.arpMap[ip]
-                                arp_msg_ent = arp_msg_slice[ent.sliceIdx]
-                                arp_msg_ent.valid = false
-                                arp_msg_slice[ent.sliceIdx] = arp_msg_ent
                                 delete(arp_cache.arpMap, ip)
                                 //logger.Println("Deleting an entry in asic for ", ip)
                                 logWriter.Info(fmt.Sprintln("Deleting an entry in asic for ", ip))
@@ -831,10 +807,6 @@ func updateArpCache() {
                                        arp.valid == false {
                                 //logger.Println("2. Deleting entry ", ip, " from Arp cache")
                                 logWriter.Info(fmt.Sprintln("2. Deleting entry ", ip, " from Arp cache"))
-                                ent := arp_cache.arpMap[ip]
-                                arp_msg_ent = arp_msg_slice[ent.sliceIdx]
-                                arp_msg_ent.valid = false
-                                arp_msg_slice[ent.sliceIdx] = arp_msg_ent
                                 delete(arp_cache.arpMap, ip)
                                 dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
                                 //logger.Println(dbCmd)
@@ -874,10 +846,6 @@ func updateArpCache() {
                                 }
                                 //logger.Println("3. Deleting entry ", ip, " from Arp cache")
                                 logWriter.Info(fmt.Sprintln("3. Deleting entry ", ip, " from Arp cache"))
-                                ent := arp_cache.arpMap[ip]
-                                arp_msg_ent = arp_msg_slice[ent.sliceIdx]
-                                arp_msg_ent.valid = false
-                                arp_msg_slice[ent.sliceIdx] = arp_msg_ent
                                 delete(arp_cache.arpMap, ip)
                             }
                         }
@@ -885,23 +853,13 @@ func updateArpCache() {
                         logger.Println("Received ARP response from neighbor...", msg.ip)
                         //logWriter.Info(fmt.Sprintln("Received ARP response from neighbor...", msg.ip))
                         ent, exist := arp_cache.arpMap[msg.ip]
+                        sliceIdx, exist := arpIPtoSliceIdxMap[msg.ip]
                         if !exist {
-                            ent.sliceIdx = len(arp_msg_slice)
-                            arp_msg_ent.ipAddr = msg.ip
-                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
-                            arp_msg_ent.vlan = int(msg.ent.vlanid)
-                            arp_msg_ent.intf = msg.ent.ifName
-                            arp_msg_ent.valid = msg.ent.valid
-                            arp_msg_ent.timestamp = time.Now()
-                            arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
+                            ent.sliceIdx = len(arpSlice)
+                            arpIPtoSliceIdxMap[msg.ip] = len(arpSlice)
+                            arpSlice = append(arpSlice, msg.ip)
                         } else {
-                            arp_msg_ent.ipAddr = msg.ip
-                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
-                            arp_msg_ent.vlan = int(msg.ent.vlanid)
-                            arp_msg_ent.intf = msg.ent.ifName
-                            arp_msg_ent.valid = msg.ent.valid
-                            arp_msg_ent.timestamp = time.Now()
-                            arp_msg_slice[ent.sliceIdx] = arp_msg_ent
+                            ent.sliceIdx =  sliceIdx
                         }
                         ent.macAddr = msg.ent.macAddr
                         ent.vlanid = msg.ent.vlanid
@@ -936,23 +894,13 @@ func updateArpCache() {
                         logger.Println("Received ARP Request from neighbor...", msg.ip)
                         //logWriter.Info(fmt.Sprintln("Received ARP Request from neighbor...", msg.ip))
                         ent, exist := arp_cache.arpMap[msg.ip]
+                        sliceIdx, exist := arpIPtoSliceIdxMap[msg.ip]
                         if !exist {
-                            ent.sliceIdx = len(arp_msg_slice)
-                            arp_msg_ent.ipAddr = msg.ip
-                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
-                            arp_msg_ent.vlan = int(msg.ent.vlanid)
-                            arp_msg_ent.intf = msg.ent.ifName
-                            arp_msg_ent.valid = msg.ent.valid
-                            arp_msg_ent.timestamp = time.Now()
-                            arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
+                            ent.sliceIdx = len(arpSlice)
+                            arpIPtoSliceIdxMap[msg.ip] = len(arpSlice)
+                            arpSlice = append(arpSlice, msg.ip)
                         } else {
-                            arp_msg_ent.ipAddr = msg.ip
-                            arp_msg_ent.macAddr = net.HardwareAddr(msg.ent.macAddr).String()
-                            arp_msg_ent.vlan = int(msg.ent.vlanid)
-                            arp_msg_ent.intf = msg.ent.ifName
-                            arp_msg_ent.valid = msg.ent.valid
-                            arp_msg_ent.timestamp = time.Now()
-                            arp_msg_slice[ent.sliceIdx] = arp_msg_ent
+                            ent.sliceIdx =  sliceIdx
                         }
                         ent.macAddr = msg.ent.macAddr
                         ent.vlanid = msg.ent.vlanid
@@ -998,23 +946,40 @@ func updateArpCache() {
                         continue
                     }
                 case arp_req_msg := <-arp_entry_req_chl:
+                    ip := arpSlice[arp_req_msg.idx]
+                    var arp_entry_msg arpMsgSlice
+                    ent, exist := arp_cache.arpMap[ip]
+                    if !exist {
+                        arp_entry_msg.ipAddr = ip
+                        arp_entry_msg.macAddr = "invalid"
+                        arp_entry_msg.vlan = -1
+                        arp_entry_msg.intf = "invalid"
+                        arp_entry_msg.valid = false
+                    } else {
+                        arp_entry_msg.ipAddr = ip
+                        if (ent.macAddr).String() == "" {
+                            arp_entry_msg.macAddr = "incomplete"
+                        } else {
+                            arp_entry_msg.macAddr = (ent.macAddr).String()
+                        }
+                        arp_entry_msg.vlan = int(ent.vlanid)
+                        arp_entry_msg.intf = ent.ifName
+                        arp_entry_msg.valid = ent.valid
+                        arp_entry_msg.timestamp = ent.timestamp
+                    }
                     arp_entry_res_chl<-arpEntryResponseMsg {
-                                            arp_msg: arp_msg_slice[arp_req_msg.idx],
+                                            arp_msg: arp_entry_msg,
                                         }
                 case arp_entry_refresh_start_msg := <-arp_entry_refresh_start_chl:
                     if arp_entry_refresh_start_msg == true {
-                        arp_msg_slice = []arpMsgSlice{}
+                        arpIPtoSliceIdxMap = make(map[string]int)
+                        arpSlice = []string{}
                         for ip, arp := range arp_cache.arpMap {
                             logWriter.Info("Refreshing ARP entry")
-                            arp.sliceIdx = len(arp_msg_slice)
+                            arpIPtoSliceIdxMap[ip] = len(arpSlice)
+                            arp.sliceIdx = len(arpSlice)
                             arp_cache.arpMap[ip] = arp
-                            arp_msg_ent.ipAddr = ip
-                            arp_msg_ent.macAddr = net.HardwareAddr(arp.macAddr).String()
-                            arp_msg_ent.vlan = int(arp.vlanid)
-                            arp_msg_ent.intf = arp.ifName
-                            arp_msg_ent.valid = arp.valid
-                            arp_msg_ent.timestamp = arp.timestamp
-                            arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
+                            arpSlice = append(arpSlice, ip)
                         }
                         arp_entry_refresh_done_chl<-true
                     } else {
@@ -1111,7 +1076,7 @@ func timeout_thread() {
             printArpEntries()
             //logger.Println("========================================================")
             logWriter.Info("========================================================")
-            logger.Println(arp_msg_slice)
+            logger.Println(arpSlice)
         }
         arp_cache_update_chl <- arpUpdateMsg {
                                     ip: "0",
