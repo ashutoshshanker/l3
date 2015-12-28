@@ -112,13 +112,14 @@ var (
 	snapshot_len            int32 = 65549  //packet capture length
 	promiscuous             bool = false  //mode
 	err                     error
-	timeout_pcap            time.Duration = 10 * time.Second
+	timeout_pcap            time.Duration = 5 * time.Second
         config_refresh_timeout  int = 600       // 600 Seconds
-        min_refresh_timeout     int = 420       // 420 Seconds
-        timer_granularity       int = 60        // 60 Seconds
+        min_refresh_timeout     int = 300       // 300 Seconds
+        timer_granularity       int = 10        // 10 Seconds
 	timeout                 time.Duration = time.Duration(timer_granularity) * time.Second
-        timeout_counter         int = 10
-        retry_cnt               int = 2
+        timeout_counter         int = 60
+        retry_cnt               int = 2         // Number of retries before entry in deleted
+        min_cnt                 int = 1         // Counter value at which entry will be deleted
 	handle                  *pcap.Handle    // handle for pcap connection
 	logWriter               *syslog.Writer
 	log_err                 error
@@ -778,7 +779,7 @@ func updateArpCache() {
                         }
                     } else if msg.msg_type == 2 {
                         for ip, arp := range arp_cache.arpMap {
-                            if arp.counter == 1 && arp.valid == true {
+                            if arp.counter == min_cnt && arp.valid == true {
                                 dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
                                 //logger.Println(dbCmd)
                                 logWriter.Info(dbCmd)
@@ -805,7 +806,9 @@ func updateArpCache() {
                                 rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(ip,
                                                      "00:00:00:00:00:00", 0, 0)
                                 logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
-                            } else if (arp.counter <= 4 && arp.counter >= 2) && arp.valid == true {
+                            } else if (arp.counter <= (min_cnt + retry_cnt + 1) &&
+                                         arp.counter >= (min_cnt + 1)) &&
+                                         arp.valid == true {
                                 ent := arp_cache.arpMap[ip]
                                 cnt = arp.counter
                                 cnt--
@@ -847,7 +850,7 @@ func updateArpCache() {
                                     //logger.Println("DB handler is nil");
                                     logWriter.Err("DB handler is nil");
                                 }
-                            } else if arp.counter > 4 {
+                            } else if (arp.counter > (min_cnt + retry_cnt + 1)) {
                                 ent := arp_cache.arpMap[ip]
                                 cnt = arp.counter
                                 cnt--

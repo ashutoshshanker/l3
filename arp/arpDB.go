@@ -30,7 +30,7 @@ func storeArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_i
 
 func updateArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_ip string, src_ip string, dest_mac string) error {
     var dbCmd string
-    dbCmd = fmt.Sprintf(`UPDATE ARPCache SET ifType='%s', vlanid='%d', ifName='%s', portid='%d', src_ip='%s', mac='%s' WHERE key='%s' ;`, ifType, vlanid, ifName, portid, src_ip, dest_mac, dest_ip)
+    dbCmd = fmt.Sprintf(`UPDATE ARPCache SET ifType='%d', vlanid='%d', ifName='%s', portid='%d', src_ip='%s', mac='%s' WHERE key='%s' ;`, ifType, vlanid, ifName, portid, src_ip, dest_mac, dest_ip)
     logger.Println(dbCmd)
     //logWriter.Info(dbCmd)
     if dbHdl != nil {
@@ -116,7 +116,7 @@ func updateARPCacheFromDB() {
             ent.ifName = ifName
             ent.port = portid
             ent.localIP = src_ip
-            ent.counter = 0
+            ent.counter = (min_cnt + retry_cnt + 1)
             ent.valid = true
             arp_cache.arpMap[ip] = ent
             port_prop_ent = port_property_map[portid]
