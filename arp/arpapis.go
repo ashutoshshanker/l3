@@ -53,6 +53,7 @@ type arpEntry struct {
         ifType      arpd.Int
         localIP     string
         sliceIdx    int
+        timestamp   time.Time
 }
 
 type arpCache struct {
@@ -84,6 +85,7 @@ type arpMsgSlice struct {
         vlan        int
         intf        string
         valid       bool
+        timestamp   time.Time
 }
 
 type pcapHandle struct {
@@ -112,7 +114,7 @@ var (
 	err                     error
 	timeout_pcap            time.Duration = 10 * time.Second
         config_refresh_timeout  int = 600       // 600 Seconds
-        min_refresh_timeout     int = 300       // 300 Seconds
+        min_refresh_timeout     int = 420       // 420 Seconds
         timer_granularity       int = 60        // 60 Seconds
 	timeout                 time.Duration = time.Duration(timer_granularity) * time.Second
         timeout_counter         int = 10
@@ -686,7 +688,11 @@ func updateArpCache() {
                            //logger.Println("Updating counter after retry after expiry")
                            logWriter.Info(fmt.Sprintln("Updating counter after retry after expiry"))
                            ent.counter = msg.ent.counter
+                           ent.timestamp = time.Now()
                            arp_cache.arpMap[msg.ip] = ent
+                           arp_msg_ent = arp_msg_slice[ent.sliceIdx]
+                           arp_msg_ent.timestamp = time.Now()
+                           arp_msg_slice[ent.sliceIdx] = arp_msg_ent
                            continue
                         }
                         if !exist {
@@ -696,6 +702,7 @@ func updateArpCache() {
                             arp_msg_ent.vlan = int(msg.ent.vlanid)
                             arp_msg_ent.intf = msg.ent.ifName
                             arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_ent.timestamp = time.Now()
                             arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
                         } else {
                             arp_msg_ent.ipAddr = msg.ip
@@ -703,6 +710,7 @@ func updateArpCache() {
                             arp_msg_ent.vlan = int(msg.ent.vlanid)
                             arp_msg_ent.intf = msg.ent.ifName
                             arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_ent.timestamp = time.Now()
                             arp_msg_slice[ent.sliceIdx] = arp_msg_ent
                         }
                         ent.macAddr = msg.ent.macAddr
@@ -710,6 +718,7 @@ func updateArpCache() {
                         ent.vlanid = msg.ent.vlanid
                         // Every entry will be expired after 10 mins
                         ent.counter = msg.ent.counter
+                        ent.timestamp = time.Now()
                         ent.port    = msg.ent.port
                         ent.ifName  = msg.ent.ifName
                         ent.ifType  = msg.ent.ifType
@@ -769,7 +778,7 @@ func updateArpCache() {
                         }
                     } else if msg.msg_type == 2 {
                         for ip, arp := range arp_cache.arpMap {
-                            if arp.counter == -2 && arp.valid == true {
+                            if arp.counter == 1 && arp.valid == true {
                                 dbCmd = fmt.Sprintf(`DELETE FROM ARPCache WHERE key='%s' ;`, ip)
                                 //logger.Println(dbCmd)
                                 logWriter.Info(dbCmd)
@@ -796,7 +805,7 @@ func updateArpCache() {
                                 rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(ip,
                                                      "00:00:00:00:00:00", 0, 0)
                                 logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
-                            } else if (arp.counter == 0 || arp.counter == -1) && arp.valid == true {
+                            } else if (arp.counter <= 4 && arp.counter >= 2) && arp.valid == true {
                                 ent := arp_cache.arpMap[ip]
                                 cnt = arp.counter
                                 cnt--
@@ -838,7 +847,7 @@ func updateArpCache() {
                                     //logger.Println("DB handler is nil");
                                     logWriter.Err("DB handler is nil");
                                 }
-                            } else if arp.counter != 0 {
+                            } else if arp.counter > 4 {
                                 ent := arp_cache.arpMap[ip]
                                 cnt = arp.counter
                                 cnt--
@@ -880,6 +889,7 @@ func updateArpCache() {
                             arp_msg_ent.vlan = int(msg.ent.vlanid)
                             arp_msg_ent.intf = msg.ent.ifName
                             arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_ent.timestamp = time.Now()
                             arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
                         } else {
                             arp_msg_ent.ipAddr = msg.ip
@@ -887,6 +897,7 @@ func updateArpCache() {
                             arp_msg_ent.vlan = int(msg.ent.vlanid)
                             arp_msg_ent.intf = msg.ent.ifName
                             arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_ent.timestamp = time.Now()
                             arp_msg_slice[ent.sliceIdx] = arp_msg_ent
                         }
                         ent.macAddr = msg.ent.macAddr
@@ -897,6 +908,7 @@ func updateArpCache() {
                         ent.ifName  = msg.ent.ifName
                         ent.ifType  = msg.ent.ifType
                         ent.localIP = msg.ent.localIP
+                        ent.timestamp = time.Now()
                         arp_cache.arpMap[msg.ip] = ent
                         //logger.Println("2. updateArpCache(): ", arp_cache.arpMap[msg.ip])
                         logWriter.Info(fmt.Sprintln("2. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
@@ -928,6 +940,7 @@ func updateArpCache() {
                             arp_msg_ent.vlan = int(msg.ent.vlanid)
                             arp_msg_ent.intf = msg.ent.ifName
                             arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_ent.timestamp = time.Now()
                             arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
                         } else {
                             arp_msg_ent.ipAddr = msg.ip
@@ -935,6 +948,7 @@ func updateArpCache() {
                             arp_msg_ent.vlan = int(msg.ent.vlanid)
                             arp_msg_ent.intf = msg.ent.ifName
                             arp_msg_ent.valid = msg.ent.valid
+                            arp_msg_ent.timestamp = time.Now()
                             arp_msg_slice[ent.sliceIdx] = arp_msg_ent
                         }
                         ent.macAddr = msg.ent.macAddr
@@ -945,6 +959,7 @@ func updateArpCache() {
                         ent.ifName  = msg.ent.ifName
                         ent.ifType  = msg.ent.ifType
                         ent.localIP = msg.ent.localIP
+                        ent.timestamp = time.Now()
                         arp_cache.arpMap[msg.ip] = ent
                         //logger.Println("3. updateArpCache(): ", arp_cache.arpMap[msg.ip])
                         logWriter.Info(fmt.Sprintln("3. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
@@ -995,6 +1010,7 @@ func updateArpCache() {
                             arp_msg_ent.vlan = int(arp.vlanid)
                             arp_msg_ent.intf = arp.ifName
                             arp_msg_ent.valid = arp.valid
+                            arp_msg_ent.timestamp = arp.timestamp
                             arp_msg_slice = append(arp_msg_slice, arp_msg_ent)
                         }
                         arp_entry_refresh_done_chl<-true
@@ -1077,7 +1093,7 @@ func printArpEntries() {
 	logWriter.Info("************")
 	for ip, arp := range arp_cache.arpMap {
 		//logger.Println("IP:", ip, " VLAN:", arp.vlanid, " MAC:", arp.macAddr, "CNT:", arp.counter, "PORT:", arp.port, "IfName:", arp.ifName, "IfType:", arp.ifType, "LocalIP:", arp.localIP, "Valid:", arp.valid)
-		logWriter.Info(fmt.Sprintln("IP:", ip, " VLAN:", arp.vlanid, " MAC:", arp.macAddr, "CNT:", arp.counter, "PORT:", arp.port, "IfName:", arp.ifName, "IfType:", arp.ifType, "LocalIP:", arp.localIP, "Valid:", arp.valid, "SliceIdx:", arp.sliceIdx))
+		logWriter.Info(fmt.Sprintln("IP:", ip, " VLAN:", arp.vlanid, " MAC:", arp.macAddr, "CNT:", arp.counter, "PORT:", arp.port, "IfName:", arp.ifName, "IfType:", arp.ifType, "LocalIP:", arp.localIP, "Valid:", arp.valid, "SliceIdx:", arp.sliceIdx, "Timestamp:", arp.timestamp))
 	}
 	logWriter.Info("************")
 	//logger.Println("************")

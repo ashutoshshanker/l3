@@ -5,7 +5,7 @@ import (
     "fmt"
     "github.com/google/gopacket/pcap"
     "errors"
-//    "time"
+    "time"
 )
 
 /***** Thrift APIs ******/
@@ -160,11 +160,17 @@ func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (
             nextArpEntry.MacAddr = arp_res_msg.arp_msg.macAddr
             nextArpEntry.Vlan = arpd.Int(arp_res_msg.arp_msg.vlan)
             nextArpEntry.Intf = arp_res_msg.arp_msg.intf
+            curTime := time.Now()
+            expiryTime := time.Duration(timer_granularity * timeout_counter) * time.Second
+            timeElapsed := curTime.Sub(arp_res_msg.arp_msg.timestamp)
+            timeLeft := expiryTime - timeElapsed
+            nextArpEntry.ExpiryTimeLeft = timeLeft.String()
         } else {
             nextArpEntry.IpAddr = arp_res_msg.arp_msg.ipAddr
             nextArpEntry.MacAddr = "incomplete"
             nextArpEntry.Vlan = -1
             nextArpEntry.Intf = "none"
+            nextArpEntry.ExpiryTimeLeft = "N/A"
         }
         if len(returnArpEntry) == 0 {
             returnArpEntry = make([]*arpd.ArpEntry, 0)

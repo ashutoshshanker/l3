@@ -6,6 +6,7 @@ struct ArpEntry {
         2: string MacAddr,
         3: int    Vlan,
         4: string Intf,
+        5: string ExpiryTimeLeft,
 }
 struct ArpEntryBulk {
         1: int StartIdx,
