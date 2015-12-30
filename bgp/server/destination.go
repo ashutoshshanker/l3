@@ -112,6 +112,11 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 				continue
 			}
 
+			if path.HasASLoop() {
+				d.logger.Info(fmt.Sprintf("This path has AS loop [%d], removing this path from the selection process", path.peer.Neighbor.Config.LocalAS))
+				continue
+			}
+
 			if path.routeType > routeType {
 				continue
 			} else if path.routeType < routeType {
@@ -293,12 +298,39 @@ func (d *Destination) getRoutesWithLowestBGPId(updatedPaths []*Path) []*Path {
 	idx := 0
 
 	for i := 0; i < n; i++ {
-		bgpId := updatedPaths[i].peer.BGPId
+		bgpId := updatedPaths[i].GetBGPId()
 		if bgpId < lowestBGPId {
 			lowestBGPId = bgpId
 			updatedPaths[0] = updatedPaths[i]
 			idx = 1
 		} else if bgpId == lowestBGPId {
+			updatedPaths[idx] = updatedPaths[i]
+			idx++
+		}
+	}
+
+	if idx > 0 {
+		for i := idx; i < n; i++ {
+			updatedPaths[i] = nil
+		}
+		return updatedPaths[:idx]
+	}
+
+	return updatedPaths
+}
+
+func (d *Destination) getRoutesWithShorterClusterLen(updatedPaths []*Path) []*Path {
+	minClusterLen := uint16(math.MaxUint16)
+	n := len(updatedPaths)
+	idx := 0
+
+	for i := 0; i < n; i++ {
+		clusterLen := updatedPaths[i].GetNumClusters()
+		if clusterLen < minClusterLen {
+			minClusterLen = clusterLen
+			updatedPaths[0] = updatedPaths[i]
+			idx = 1
+		} else if clusterLen == minClusterLen {
 			updatedPaths[idx] = updatedPaths[i]
 			idx++
 		}
@@ -376,6 +408,10 @@ func (d *Destination) calculateBestPath(updatedPaths []*Path) []*Path {
 
 	if len(updatedPaths) > 1 {
 		updatedPaths = d.getRoutesWithLowestBGPId(updatedPaths)
+	}
+
+	if len(updatedPaths) > 1 {
+		updatedPaths = d.getRoutesWithShorterClusterLen(updatedPaths)
 	}
 
 	if len(updatedPaths) > 1 {

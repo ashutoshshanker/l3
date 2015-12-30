@@ -81,6 +81,8 @@ func (h *BGPHandler) CreateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, err
 		AuthPassword:    bgpNeighbor.AuthPassword,
 		Description:     bgpNeighbor.Description,
 		NeighborAddress: ip,
+		RouteReflectorClusterId: uint32(bgpNeighbor.RouteReflectorClusterId),
+		RouteReflectorClient: bgpNeighbor.RouteReflectorClient,
 	}
 	h.server.AddPeerCh <- pConf
 	return true, nil
@@ -131,7 +133,7 @@ func (h *BGPHandler) BulkGetBGPNeighbors(index int64, count int64) (*bgpd.BGPNei
 	bgpNeighborStateBulk := bgpd.NewBGPNeighborStateBulk()
 	bgpNeighborStateBulk.NextIndex = int64(nextIdx)
 	bgpNeighborStateBulk.Count = int64(currCount)
-	bgpNeighborStateBulk.More = nextIdx == 0
+	bgpNeighborStateBulk.More = (nextIdx != 0)
 	bgpNeighborStateBulk.StateList = bgpNeighborsResponse
 
 	return bgpNeighborStateBulk, nil

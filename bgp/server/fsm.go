@@ -2,7 +2,6 @@
 package server
 
 import (
-	"encoding/binary"
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
@@ -1038,7 +1037,7 @@ func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 		fsm.peerType = config.PeerTypeExternal
 	}
 
-	fsm.Manager.SetBGPId(binary.LittleEndian.Uint32(body.BGPId.To4()))
+	fsm.Manager.SetBGPId(body.BGPId)
 }
 
 func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {
@@ -1061,7 +1060,7 @@ func (fsm *FSM) sendUpdateMessage(bgpMsg *packet.BGPMessage) {
 }
 
 func (fsm *FSM) sendOpenMessage() {
-	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.LocalAS, fsm.holdTime, IP)
+	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.LocalAS, fsm.holdTime, fsm.gConf.RouterId.To4().String())
 	packet, _ := bgpOpenMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {

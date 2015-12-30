@@ -2,6 +2,7 @@
 package server
 
 import (
+	"encoding/binary"
 	"fmt"
 	"l3/bgp/packet"
 	"log/syslog"
@@ -86,6 +87,27 @@ func (p *Path) calculatePref() uint32 {
 	return pref
 }
 
+func (p *Path) IsValid() bool {
+	for _, attr := range p.pathAttrs {
+		if attr.GetCode() == packet.BGPPathAttrTypeOriginatorId {
+			if p.peer.Global.RouterId.Equal(attr.(*packet.BGPPathAttrOriginatorId).Value) {
+				return false
+			}
+		}
+
+		if attr.GetCode() == packet.BGPPathAttrTypeClusterList {
+			clusters := attr.(*packet.BGPPathAttrClusterList).Value
+			for _, clusterId := range clusters {
+				if clusterId == p.peer.Neighbor.Config.RouteReflectorClusterId {
+					return false
+				}
+			}
+		}
+	}
+
+	return true
+}
+
 func (p *Path) SetWithdrawn(status bool) {
 	p.withdrawn = status
 }
@@ -112,6 +134,24 @@ func (p *Path) GetPreference() uint32 {
 	return p.Pref
 }
 
+func (p *Path) HasASLoop() bool {
+	for _, attr := range p.pathAttrs {
+		if attr.GetCode() == packet.BGPPathAttrTypeASPath {
+			asPaths := attr.(*packet.BGPPathAttrASPath).Value
+			for _, asSegment := range asPaths {
+				for _, as := range asSegment.AS {
+					if uint32(as) == p.peer.Neighbor.Config.LocalAS {
+						return true
+					}
+				}
+			}
+			break
+		}
+	}
+
+	return false
+}
+
 func (p *Path) IsLocal() bool {
 	return (p.routeType & RouteLocal) != 0
 }
@@ -128,6 +168,7 @@ func (p *Path) GetNumASes() uint32 {
 					total += uint32(asPath.Length)
 				}
 			}
+			break
 		}
 	}
 
@@ -152,6 +193,29 @@ func (p *Path) GetNextHop() net.IP {
 	}
 
 	return net.IPv4zero
+}
+
+func (p *Path) GetBGPId() uint32 {
+	for _, attr := range p.pathAttrs {
+		if attr.GetCode() == packet.BGPPathAttrTypeOriginatorId {
+			return binary.BigEndian.Uint32(attr.(*packet.BGPPathAttrOriginatorId).Value.To4())
+		}
+	}
+
+	return binary.BigEndian.Uint32(p.peer.BGPId.To4())
+}
+
+func (p *Path) GetNumClusters() uint16 {
+	var total uint16 = 0
+	for _, attr := range p.pathAttrs {
+		if attr.GetCode() == packet.BGPPathAttrTypeClusterList {
+			length := attr.(*packet.BGPPathAttrClusterList).Length
+			total = length/4
+			break
+		}
+	}
+
+	return total
 }
 
 func (p *Path) GetReachabilityInfo() {

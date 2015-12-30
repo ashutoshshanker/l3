@@ -17,7 +17,7 @@ type Peer struct {
 	Global     *config.GlobalConfig
 	Neighbor   *config.Neighbor
 	fsmManager *FSMManager
-	BGPId      uint32
+	BGPId      net.IP
 }
 
 func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.NeighborConfig) *Peer {
@@ -29,7 +29,7 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 			NeighborAddress: peerConf.NeighborAddress,
 			Config:          peerConf,
 		},
-		BGPId: 0,
+		BGPId: net.IP{},
 	}
 
 	peer.Neighbor.State = config.NeighborState{
@@ -74,6 +74,10 @@ func (p *Peer) IsExternal() bool {
 	return p.Neighbor.Config.LocalAS != p.Neighbor.Config.PeerAS
 }
 
+func (p *Peer) IsRouteReflectorClient() bool {
+	return p.Neighbor.Config.RouteReflectorClient
+}
+
 func (p *Peer) SendKeepAlives(conn *net.TCPConn) {
 	bgpKeepAliveMsg := packet.NewBGPKeepAliveMessage()
 	var num int
@@ -93,7 +97,7 @@ func (p *Peer) SendKeepAlives(conn *net.TCPConn) {
 	}
 }
 
-func (p *Peer) SetBGPId(bgpId uint32) {
+func (p *Peer) SetBGPId(bgpId net.IP) {
 	p.BGPId = bgpId
 }
 
@@ -110,8 +114,13 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 	}
 
 	if p.IsInternal() {
-		packet.SetNextHop(bgpMsg, p.Neighbor.Transport.Config.LocalAddress)
-		packet.SetLocalPref(bgpMsg, path.GetPreference())
+		if path.peer != nil && (path.peer.IsRouteReflectorClient() || p.IsRouteReflectorClient()) {
+			packet.AddOriginatorId(bgpMsg, path.peer.BGPId)
+			packet.AddClusterId(bgpMsg, path.peer.Neighbor.Config.RouteReflectorClusterId)
+		} else {
+			packet.SetNextHop(bgpMsg, p.Neighbor.Transport.Config.LocalAddress)
+			packet.SetLocalPref(bgpMsg, path.GetPreference())
+		}
 	} else {
 		// Do change these path attrs for local routes
 		if path.peer != nil {

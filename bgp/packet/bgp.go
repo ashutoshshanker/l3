@@ -834,7 +834,7 @@ func NewBGPPathAttrAggregator() *BGPPathAttrAggregator {
 }
 type BGPPathAttrOriginatorId struct {
 	BGPPathAttrBase
-	Value uint32
+	Value net.IP
 }
 
 func (o *BGPPathAttrOriginatorId) Clone() BGPPathAttr {
@@ -849,7 +849,7 @@ func (o *BGPPathAttrOriginatorId) Encode() ([]byte, error) {
 		return pkt, err
 	}
 
-	binary.BigEndian.PutUint32(pkt[o.BGPPathAttrBase.BGPPathAttrLen:], o.Value)
+	copy(pkt[o.BGPPathAttrBase.BGPPathAttrLen:], o.Value)
 	return pkt, nil
 }
 
@@ -859,11 +859,12 @@ func (o *BGPPathAttrOriginatorId) Decode(pkt []byte) error {
 		return err
 	}
 
-	o.Value = binary.BigEndian.Uint32(pkt[o.BGPPathAttrLen:o.BGPPathAttrLen+4])
+	o.Value = make(net.IP, o.BGPPathAttrBase.Length)
+	copy(o.Value, pkt[o.BGPPathAttrLen:o.BGPPathAttrLen+o.BGPPathAttrBase.Length])
 	return nil
 }
 
-func NewBGPPathAttrOriginatorId() *BGPPathAttrOriginatorId {
+func NewBGPPathAttrOriginatorId(id net.IP) *BGPPathAttrOriginatorId {
 	return &BGPPathAttrOriginatorId{
 		BGPPathAttrBase: BGPPathAttrBase{
 			Flags: BGPPathAttrFlagOptional,
@@ -871,6 +872,7 @@ func NewBGPPathAttrOriginatorId() *BGPPathAttrOriginatorId {
 			Length: 4,
 			BGPPathAttrLen: 3,
 		},
+		Value: id,
 	}
 }
 
@@ -916,12 +918,19 @@ func (c *BGPPathAttrClusterList) Decode(pkt []byte) error {
 	return nil
 }
 
+func (c *BGPPathAttrClusterList) PrependId(id uint32) {
+	c.Value = append(c.Value, id)
+	copy(c.Value[1:], c.Value[0:])
+	c.Value[0] = id
+	c.Length += 4
+}
+
 func NewBGPPathAttrClusterList() *BGPPathAttrClusterList {
 	return &BGPPathAttrClusterList{
 		BGPPathAttrBase: BGPPathAttrBase{
 			Flags: BGPPathAttrFlagOptional,
-			Code: BGPPathAttrTypeOriginatorId,
-			Length: 4,
+			Code: BGPPathAttrTypeClusterList,
+			Length: 0,
 			BGPPathAttrLen: 3,
 		},
 		Value: make([]uint32, 0),

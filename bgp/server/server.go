@@ -118,8 +118,9 @@ func (server *BGPServer) sendUpdateMsgToAllPeers(msg *packet.BGPMessage, path *P
 	for _, peer := range server.PeerMap {
 		// If we recieve the route from IBGP peer, don't send it to other IBGP peers
 		if path.peer != nil {
-			if peer.IsInternal() {
-				if path.peer.IsInternal() {
+			if path.peer.IsInternal() {
+
+				if peer.IsInternal() && !path.peer.IsRouteReflectorClient() && !peer.IsRouteReflectorClient() {
 					continue
 				}
 			}

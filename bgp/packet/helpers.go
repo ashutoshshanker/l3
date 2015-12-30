@@ -107,3 +107,68 @@ func ConstructIPPrefix(ipStr string, maskStr string) *IPPrefix {
 	ones, _ := mask.Size()
 	return NewIPPrefix(ip.Mask(mask), uint8(ones))
 }
+
+func AddOriginatorId(updateMsg *BGPMessage, id net.IP) bool {
+	body := updateMsg.Body.(*BGPUpdate)
+	var pa BGPPathAttr
+
+	for _, pa = range body.PathAttributes {
+		if pa.GetCode() == BGPPathAttrTypeOriginatorId {
+			return false
+		}
+	}
+
+	idx := -1
+	for idx, pa = range body.PathAttributes {
+		if pa.GetCode() > BGPPathAttrTypeOriginatorId {
+			break
+		} else if idx == len(body.PathAttributes)-1 {
+			idx += 1
+		}
+	}
+
+	if idx >= 0 {
+		paOriginatorId := NewBGPPathAttrOriginatorId(id)
+		body.PathAttributes = append(body.PathAttributes[:idx], paOriginatorId)
+		copy(body.PathAttributes[idx+1:], body.PathAttributes[idx:])
+		body.PathAttributes[idx] = paOriginatorId
+	}
+
+	return true
+}
+
+func AddClusterId(updateMsg *BGPMessage, id uint32) bool {
+	body := updateMsg.Body.(*BGPUpdate)
+	var pa BGPPathAttr
+	var i int
+	found := false
+	idx := -1
+
+	for i, pa = range body.PathAttributes {
+		if pa.GetCode() == BGPPathAttrTypeClusterList {
+			idx = i
+			found = true
+			break
+		} else if idx == -1 {
+			if pa.GetCode() > BGPPathAttrTypeClusterList {
+				idx = i
+			} else if i == len(body.PathAttributes)-1 {
+				idx = i + 1
+			}
+		}
+	}
+
+	if !found && idx >= 0 {
+		clusterList := NewBGPPathAttrClusterList()
+		body.PathAttributes = append(body.PathAttributes[:idx], clusterList)
+		copy(body.PathAttributes[idx+1:], body.PathAttributes[idx:])
+		body.PathAttributes[idx] = clusterList
+	}
+
+	if idx >= 0 {
+		body.PathAttributes[idx].(*BGPPathAttrClusterList).PrependId(id)
+		return true
+	}
+
+	return false
+}
