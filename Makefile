@@ -1,9 +1,11 @@
 COMPS=arp\
 		bgp\
+		ospf\
 		rib
 
 IPCS=arp\
 	  bgp\
+	  ospf\
 	  rib
 all: ipc exe install
 

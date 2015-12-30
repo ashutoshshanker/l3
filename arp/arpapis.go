@@ -731,6 +731,11 @@ func updateArpCache() {
                                 logWriter.Info(fmt.Sprintln("1. Updating an entry in asic for ", msg.ip))
                                 rv, error := asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.ip,
                                                      (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), (int32)(msg.ent.port))
+                                if rv < 0 {
+                                    ent, _ = arp_cache.arpMap[msg.ip]
+                                    ent.valid = false
+                                    arp_cache.arpMap[msg.ip] = ent
+                                }
                                 logWriter.Err(fmt.Sprintf("Asicd Update rv: ", rv, " error : ", error))
                         } else {
                                 logWriter.Err("1. Asicd client is not connected.")
@@ -886,6 +891,11 @@ func updateArpCache() {
                                 rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
                                                      (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid),
                                                      (int32)(msg.ent.port))
+                                if rv < 0 {
+                                    ent, _ = arp_cache.arpMap[msg.ip]
+                                    ent.valid = false
+                                    arp_cache.arpMap[msg.ip] = ent
+                                }
                                 logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
                         } else {
                                 logWriter.Err("2. Asicd client is not connected.")
@@ -929,6 +939,11 @@ func updateArpCache() {
                                 rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
                                                      (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid),
                                                      (int32)(msg.ent.port))
+                                if rv < 0 {
+                                    ent, _ = arp_cache.arpMap[msg.ip]
+                                    ent.valid = false
+                                    arp_cache.arpMap[msg.ip] = ent
+                                }
                                 logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
                         } else {
                                 logWriter.Err("2. Asicd client is not connected.")
