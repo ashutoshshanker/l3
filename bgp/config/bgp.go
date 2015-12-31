@@ -50,6 +50,8 @@ type NeighborConfig struct {
 	AuthPassword string
 	Description string
 	NeighborAddress net.IP
+	RouteReflectorClusterId uint32
+	RouteReflectorClient bool
 }
 
 type NeighborState struct {
@@ -62,6 +64,8 @@ type NeighborState struct {
 	SessionState uint32
 	Messages Messages
 	Queues Queues
+	RouteReflectorClusterId uint32
+	RouteReflectorClient bool
 }
 
 type TransportConfig struct {
@@ -86,21 +90,6 @@ type Transport struct {
 	State TransportState
 }
 
-type RouteReflectorConfig struct {
-	ClusterId uint32
-	Clinet bool
-}
-
-type RouteReflectorState struct {
-	ClusterId uint32
-	Clinet bool
-}
-
-type RouteReflector struct {
-	Config RouteReflectorConfig
-	State RouteReflectorState
-}
-
 type PeerCommand struct {
     IP net.IP
     Command int
@@ -111,7 +100,6 @@ type Neighbor struct {
 	Config NeighborConfig
 	State NeighborState
 	Transport Transport
-	RouteReflector RouteReflector
 }
 
 type Neighbors struct {

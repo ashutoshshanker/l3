@@ -144,7 +144,7 @@ func (fsmManager *FSMManager) PeerConnBroken() {
 	fsmManager.Peer.PeerConnBroken()
 }
 
-func (fsmManager *FSMManager) SetBGPId(bgpId uint32) {
+func (fsmManager *FSMManager) SetBGPId(bgpId net.IP) {
 	fsmManager.Peer.SetBGPId(bgpId)
 }
 
@@ -184,7 +184,7 @@ func (mgr *FSMManager) HandleAnotherConnection(connDir config.ConnDir, conn *net
 }
 
 func (mgr *FSMManager) ReceivedBGPOpenMessage(connDir config.ConnDir, bgpId uint32) {
-	localBGPId := binary.LittleEndian.Uint32(mgr.gConf.RouterId.To4())
+	localBGPId := binary.BigEndian.Uint32(mgr.gConf.RouterId.To4())
 	for i, fsm := range mgr.fsms {
 		if i != int(connDir) && fsm != nil && fsm.State.state() >= BGPFSMOpensent {
 			var closeConnDir config.ConnDir
