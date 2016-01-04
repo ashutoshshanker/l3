@@ -11,11 +11,11 @@ import (
 func storeArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_ip string, src_ip string, dest_mac string) error {
     var dbCmd string
     dbCmd = fmt.Sprintf(`INSERT INTO ARPCache (ifType, vlanid, ifName, portid, src_ip, mac, key) VALUES ('%d', '%d', '%s', '%d', '%s', '%s', '%s') ;`, ifType, vlanid, ifName, portid, src_ip, dest_mac, dest_ip)
-    logger.Println(dbCmd)
+//    logger.Println(dbCmd)
     //logWriter.Info(dbCmd)
     if dbHdl != nil {
-        logger.Println("Executing DB Command:", dbCmd)
-        logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
+//        logger.Println("Executing DB Command:", dbCmd)
+//        logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
         _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
         if err != nil {
             logWriter.Err(fmt.Sprintln("Failed to Insert entry for", dest_ip, "in DB"))
@@ -31,11 +31,11 @@ func storeArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_i
 func updateArpTableInDB(ifType int, vlanid int, ifName string, portid int, dest_ip string, src_ip string, dest_mac string) error {
     var dbCmd string
     dbCmd = fmt.Sprintf(`UPDATE ARPCache SET ifType='%d', vlanid='%d', ifName='%s', portid='%d', src_ip='%s', mac='%s' WHERE key='%s' ;`, ifType, vlanid, ifName, portid, src_ip, dest_mac, dest_ip)
-    logger.Println(dbCmd)
+//    logger.Println(dbCmd)
     //logWriter.Info(dbCmd)
     if dbHdl != nil {
-        logger.Println("Executing DB Command:", dbCmd)
-        logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
+//        logger.Println("Executing DB Command:", dbCmd)
+//        logWriter.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
         _, err = dbutils.ExecuteSQLStmt(dbCmd, dbHdl)
         if err != nil {
             logWriter.Err(fmt.Sprintln("Failed to Update entry for", dest_ip, "in DB"))
