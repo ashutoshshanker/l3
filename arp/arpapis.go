@@ -517,27 +517,53 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                     logWriter.Info(fmt.Sprintln("Received Arp response SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr, "DST_MAC:", dest_Mac))
                     ent, exist := arp_cache.arpMap[src_ip_addr]
                     if exist {
-                        arp_cache_update_chl <- arpUpdateMsg {
-                                                    ip: src_ip_addr,
-                                                    ent: arpEntry {
-                                                        macAddr: src_Mac,
-                                                        vlanid: ent.vlanid,
-                                                        valid: true,
-                                                        port: port_id,
-                                                        ifName: if_Name,
-                                                        ifType: ent.ifType,
-                                                        localIP: ent.localIP,
-                                                        counter: timeout_counter,
-                                                    },
-                                                    msg_type: 1,
-                                                }
+                        if ent.port == -2 {
+                            port_map_ent, exists := port_property_map[port_id]
+                            var vlan_id arpd.Int
+                            if exists {
+                                vlan_id = port_map_ent.untagged_vlanid
+                            } else {
+                                // vlan_id = 1
+                                continue
+                            }
+                            arp_cache_update_chl <- arpUpdateMsg {
+                                                        ip: src_ip_addr,
+                                                        ent: arpEntry {
+                                                            macAddr: src_Mac,
+                                                            vlanid: vlan_id,
+                                                            valid: true,
+                                                            port: port_id,
+                                                            ifName: if_Name,
+                                                            ifType: ent.ifType,
+                                                            localIP: ent.localIP,
+                                                            counter: timeout_counter,
+                                                        },
+                                                        msg_type: 6,
+                                                    }
+                        } else {
+                            arp_cache_update_chl <- arpUpdateMsg {
+                                                        ip: src_ip_addr,
+                                                        ent: arpEntry {
+                                                            macAddr: src_Mac,
+                                                            vlanid: ent.vlanid,
+                                                            valid: true,
+                                                            port: port_id,
+                                                            ifName: if_Name,
+                                                            ifType: ent.ifType,
+                                                            localIP: ent.localIP,
+                                                            counter: timeout_counter,
+                                                        },
+                                                        msg_type: 1,
+                                                    }
+                        }
                     } else {
                         port_map_ent, exists := port_property_map[port_id]
                         var vlan_id arpd.Int
                         if exists {
                             vlan_id = port_map_ent.untagged_vlanid
                         } else {
-                            vlan_id = 1
+                            // vlan_id = 1
+                            continue
                         }
                         arp_cache_update_chl <- arpUpdateMsg {
                                                     ip: src_ip_addr,
@@ -559,7 +585,7 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                     src_ip_addr := (net.IP(arp.SourceProtAddress)).String()
                     dest_ip_addr := (net.IP(arp.DstProtAddress)).String()
                     dstip := net.ParseIP(dest_ip_addr)
-                    logger.Println("Received Arp request SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr)
+                    //logger.Println("Received Arp request SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr)
                     logWriter.Info(fmt.Sprintln("Received Arp Request SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr))
                     _, exist := arp_cache.arpMap[src_ip_addr]
                     if !exist {
@@ -585,7 +611,8 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                         if exists {
                             vlan_id = port_map_ent.untagged_vlanid
                         } else {
-                            vlan_id = 1
+                            // vlan_id = 1
+                            continue
                         }
                         arp_cache_update_chl <- arpUpdateMsg {
                                                     ip: src_ip_addr,
@@ -661,6 +688,21 @@ func createAndSendArpReuqest(targetIP string, outgoingIfName string) {
     //logger.Println("MAC addr of ", outgoingIfName, ": ", mac_addr)
     logWriter.Info(fmt.Sprintln("MAC addr of ", outgoingIfName, ": ", mac_addr))
     sendArpReq(targetIP, handle, mac_addr, localIp)
+    arp_cache_update_chl <- arpUpdateMsg {
+                                ip: targetIP,
+                                ent: arpEntry {
+                                        macAddr: []byte{0,0,0,0,0,0},
+                                        vlanid: -1,
+                                        valid: false,
+                                        port: -2,
+                                        ifName: outgoingIfName,
+                                        ifType: 1,
+                                        localIP: localIp,
+                                        counter: timeout_counter,
+                                     },
+                                msg_type: 0,
+                             }
+
 }
 
 /*
@@ -960,6 +1002,48 @@ func updateArpCache() {
                             cnt = arp.counter
                             ent.counter = timeout_counter
                             arp_cache.arpMap[ip] = ent
+                        }
+                    } else if msg.msg_type == 6 {
+                        ent, exist := arp_cache.arpMap[msg.ip]
+                        sliceIdx, exist := arpIPtoSliceIdxMap[msg.ip]
+                        if !exist {
+                            ent.sliceIdx = len(arpSlice)
+                            arpIPtoSliceIdxMap[msg.ip] = len(arpSlice)
+                            arpSlice = append(arpSlice, msg.ip)
+                        } else {
+                            ent.sliceIdx =  sliceIdx
+                        }
+                        ent.macAddr = msg.ent.macAddr
+                        ent.valid = msg.ent.valid
+                        ent.vlanid = msg.ent.vlanid
+                        // Every entry will be expired after 10 mins
+                        ent.counter = msg.ent.counter
+                        ent.timestamp = time.Now()
+                        ent.port    = msg.ent.port
+                        ent.ifName  = msg.ent.ifName
+                        ent.ifType  = msg.ent.ifType
+                        ent.localIP = msg.ent.localIP
+                        arp_cache.arpMap[msg.ip] = ent
+                        //logger.Println("1 updateArpCache(): ", arp_cache.arpMap[msg.ip])
+                        logWriter.Info(fmt.Sprintln("6 updateArpCache(): ", arp_cache.arpMap[msg.ip]))
+                        err := updateArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
+                        if err != nil {
+                            logWriter.Err("Unable to cache ARP Table in DB")
+                        }
+                        //3) Update asicd.
+                        if asicdClient.IsConnected {
+                                logger.Println("6. Creating an entry in asic for ", msg.ip)
+                                logWriter.Info(fmt.Sprintln("6. Creating an entry in asic for ", msg.ip))
+                                rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
+                                                     (msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), (int32)(msg.ent.port))
+                                if rv < 0 {
+                                    ent, _ = arp_cache.arpMap[msg.ip]
+                                    ent.valid = false
+                                    arp_cache.arpMap[msg.ip] = ent
+                                }
+                                logWriter.Err(fmt.Sprintf("Asicd Update rv: ", rv, " error : ", error))
+                        } else {
+                                logWriter.Err("6. Asicd client is not connected.")
                         }
                     } else {
                         //logger.Println("Invalid Msg type.")
