@@ -307,6 +307,7 @@ func BuildAsicToLinuxMap(cfgFile string) {
 */
 func BuildAsicToLinuxMap() {
         pcap_handle_map = make(map[int]pcapHandle)
+        var filter string = "not ether proto 0x8809"
         var ifName string
 	for i := 1; i < 73; i++ {
                 ifName = fmt.Sprintf("fpPort-%d", i)
@@ -316,6 +317,10 @@ func BuildAsicToLinuxMap() {
 		if local_handle == nil {
 			logWriter.Err(fmt.Sprintln("Server: No device found.: ", ifName, err))
 		}
+                err = local_handle.SetBPFFilter(filter)
+                if err != nil {
+                    logWriter.Err(fmt.Sprintln("Unable to set filter on", ifName, err))
+                }
                 ent := pcap_handle_map[i]
                 ent.pcap_handle = local_handle
                 ent.ifName = ifName
@@ -599,6 +604,7 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                     }
                 }
             } else {
+                //logger.Println("Not an ARP Packet")
                 if nw := packet.NetworkLayer(); nw != nil {
                     src_ip, dst_ip := nw.NetworkFlow().Endpoints()
                     dst_ip_addr := dst_ip.String()
@@ -1001,7 +1007,7 @@ func updateArpCache() {
                         logWriter.Err("Invalid arp_entry_refresh_start_msg")
                         arp_entry_refresh_done_chl<-false
                     }
-                default:
+                //default:
             }
         }
 }
