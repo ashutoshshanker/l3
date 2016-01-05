@@ -316,10 +316,11 @@ func BuildAsicToLinuxMap() {
 		local_handle, err := pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout_pcap)
 		if local_handle == nil {
 			logWriter.Err(fmt.Sprintln("Server: No device found.: ", ifName, err))
-		}
-                err = local_handle.SetBPFFilter(filter)
-                if err != nil {
-                    logWriter.Err(fmt.Sprintln("Unable to set filter on", ifName, err))
+		} else {
+                    err = local_handle.SetBPFFilter(filter)
+                    if err != nil {
+                        logWriter.Err(fmt.Sprintln("Unable to set filter on", ifName, err))
+                    }
                 }
                 ent := pcap_handle_map[i]
                 ent.pcap_handle = local_handle
