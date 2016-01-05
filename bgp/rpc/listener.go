@@ -3,12 +3,16 @@ package rpc
 
 import (
 	"bgpd"
+	"database/sql"
 	"fmt"
+	_ "github.com/mattn/go-sqlite3"
 	"l3/bgp/config"
 	"l3/bgp/server"
 	"log/syslog"
 	"net"
 )
+
+const DBName string = "UsrConfDb.db"
 
 type PeerConfigCommands struct {
 	IP      net.IP
@@ -21,21 +25,111 @@ type BGPHandler struct {
 	logger        *syslog.Writer
 }
 
-func NewBGPHandler(server *server.BGPServer, logger *syslog.Writer) *BGPHandler {
+func NewBGPHandler(server *server.BGPServer, logger *syslog.Writer, filePath string) *BGPHandler {
 	h := new(BGPHandler)
 	h.PeerCommandCh = make(chan PeerConfigCommands)
 	h.server = server
 	h.logger = logger
+	h.readConfigFromDB(filePath)
 	return h
+}
+
+func (h *BGPHandler) handleGlobalConfig(dbHdl *sql.DB) error {
+	dbCmd := "select * from BGPGlobalConfig"
+	rows, err := dbHdl.Query(dbCmd)
+	if err != nil {
+		h.logger.Err(fmt.Sprintf("DB method Query failed for %s with error %s", dbCmd, err))
+		return err
+	}
+
+	defer rows.Close()
+
+	var gConf config.GlobalConfig
+	var routerIP string
+	for rows.Next() {
+		if err = rows.Scan(&gConf.AS, &routerIP); err != nil {
+			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPGlobalConfig rows with error %s", err))
+			return err
+		}
+
+		gConf.RouterId = h.convertStrIPToNetIP(routerIP)
+		if gConf.RouterId == nil {
+			h.logger.Err(fmt.Sprintln("handleGlobalConfig - IP is not valid:", routerIP))
+			return config.IPError{routerIP}
+		}
+
+		h.server.GlobalConfigCh <- gConf
+	}
+
+	return nil
+}
+
+func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
+	dbCmd := "select * from BGPNeighborConfig"
+	rows, err := dbHdl.Query(dbCmd)
+	if err != nil {
+		h.logger.Err(fmt.Sprintf("DB method Query failed for '%s' with error %s", dbCmd, err))
+		return err
+	}
+
+	defer rows.Close()
+
+	var nConf config.NeighborConfig
+	var neighborIP string
+	for rows.Next() {
+		if err = rows.Scan(&nConf.PeerAS, &nConf.LocalAS, &nConf.AuthPassword, &nConf.Description, &neighborIP,
+			&nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient); err != nil {
+			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighborConfig rows with error %s", err))
+			return err
+		}
+
+		nConf.NeighborAddress = net.ParseIP(neighborIP)
+		if nConf.NeighborAddress == nil {
+			h.logger.Info(fmt.Sprintf("Can't create BGP neighbor - IP[%s] not valid", neighborIP))
+			return config.IPError{neighborIP}
+		}
+
+		h.server.AddPeerCh <- nConf
+	}
+
+	return nil
+}
+
+func (h *BGPHandler) readConfigFromDB(filePath string) error {
+	var dbPath string = filePath + DBName
+
+	dbHdl, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		h.logger.Err(fmt.Sprintf("Failed to open the DB at %s with error %s", dbPath, err))
+		return err
+	}
+
+	defer dbHdl.Close()
+
+	if err = h.handleGlobalConfig(dbHdl); err != nil {
+		return err
+	}
+
+	if err = h.handleNeighborConfig(dbHdl); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (h *BGPHandler) convertStrIPToNetIP(ip string) net.IP {
+	if ip == "localhost" {
+		ip = "127.0.0.1"
+	}
+
+	netIP := net.ParseIP(ip)
+	return netIP
 }
 
 func (h *BGPHandler) CreateBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create global config attrs:", bgpGlobal))
-	if bgpGlobal.RouterId == "localhost" {
-		bgpGlobal.RouterId = "127.0.0.1"
-	}
 
-	ip := net.ParseIP(bgpGlobal.RouterId)
+	ip := h.convertStrIPToNetIP(bgpGlobal.RouterId)
 	if ip == nil {
 		h.logger.Info(fmt.Sprintln("CreateBGPGlobal - IP is not valid:", bgpGlobal.RouterId))
 		return false, nil
