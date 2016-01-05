@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+const ClientsFileName string = "clients.json"
+
 type ClientJson struct {
 	Name string `json:Name`
 	Port int    `json:Port`
@@ -38,7 +40,8 @@ func getClient(logger *syslog.Writer, fileName string, process string) (*ClientJ
 	return nil, nil
 }
 
-func StartServer(logger *syslog.Writer, handler *BGPHandler, fileName string) {
+func StartServer(logger *syslog.Writer, handler *BGPHandler, filePath string) {
+	fileName := filePath + ClientsFileName
 	clientJson, err := getClient(logger, fileName, "bgpd")
 	if err != nil || clientJson == nil {
 		return
@@ -81,7 +84,8 @@ func connectToClient(logger *syslog.Writer, clientTransport thrift.TTransport) e
 	return clientTransport.Open()
 }
 
-func StartClient(logger *syslog.Writer, fileName string, ribdClient chan *ribd.RouteServiceClient) {
+func StartClient(logger *syslog.Writer, filePath string, ribdClient chan *ribd.RouteServiceClient) {
+	fileName := filePath + ClientsFileName
 	clientJson, err := getClient(logger, fileName, "ribd")
 	if err != nil || clientJson == nil {
 		ribdClient <- nil

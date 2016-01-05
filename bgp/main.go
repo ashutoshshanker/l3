@@ -31,13 +31,11 @@ func main() {
 	if fileName[len(fileName)-1] != '/' {
 		fileName = fileName + "/"
 	}
-	fileName = fileName + "clients.json"
 
 	var ribdClient *ribd.RouteServiceClient = nil
 	ribdClientChan := make(chan *ribd.RouteServiceClient)
 
 	go rpc.StartClient(logger, fileName, ribdClientChan)
-
 	ribdClient = <-ribdClientChan
 	logger.Info("Connected to RIBd")
 	if ribdClient == nil {
@@ -50,6 +48,6 @@ func main() {
 	go bgpServer.StartServer()
 
 	logger.Info(fmt.Sprintln("Starting config listener..."))
-	confIface := rpc.NewBGPHandler(bgpServer, logger)
+	confIface := rpc.NewBGPHandler(bgpServer, logger, fileName)
 	rpc.StartServer(logger, confIface, fileName)
 }
