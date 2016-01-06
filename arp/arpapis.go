@@ -24,6 +24,7 @@ import (
         "os/signal"
         "database/sql"
         "utils/dbutils"
+        "utils/ipcutils"
 )
 
 type ARPClientBase struct {
@@ -174,7 +175,7 @@ func ConnectToClients(paramsFile string) {
 			//logger.Printf("found asicd at port %d", client.Port)
 			logWriter.Info(fmt.Sprintln("found asicd at port %d", client.Port))
 			asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			asicdClient.Transport, asicdClient.PtrProtocolFactory = CreateIPCHandles(asicdClient.Address)
+			asicdClient.Transport, asicdClient.PtrProtocolFactory = ipcutils.CreateIPCHandles(asicdClient.Address, asicdClient)
 			if asicdClient.Transport != nil && asicdClient.PtrProtocolFactory != nil {
 				logWriter.Info("connecting to asicd")
 				asicdClient.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdClient.Transport, asicdClient.PtrProtocolFactory)
@@ -186,7 +187,7 @@ func ConnectToClients(paramsFile string) {
 			//logger.Printf("found portd at port %d", client.Port)
 			logWriter.Info(fmt.Sprintln("found portd at port %d", client.Port))
 			portdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			portdClient.Transport, portdClient.PtrProtocolFactory = CreateIPCHandles(portdClient.Address)
+			portdClient.Transport, portdClient.PtrProtocolFactory = ipcutils.CreateIPCHandles(portdClient.Address, portdClient)
 			if portdClient.Transport != nil && portdClient.PtrProtocolFactory != nil {
 				logWriter.Info("connecting to asicd")
 				portdClient.ClientHdl = portdServices.NewPortServiceClientFactory(portdClient.Transport, portdClient.PtrProtocolFactory)

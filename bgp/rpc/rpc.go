@@ -61,12 +61,17 @@ func StartServer(logger *syslog.Writer, handler *BGPHandler, fileName string) {
 	return
 }
 
+func SocketCloseNotification(clnt interface{}) (err error) {
+	fmt.Println("### Socket closed for client ", clnt)
+	return nil
+}
+
 func createClientIPCHandles(logger *syslog.Writer, port string) (thrift.TTransport, thrift.TProtocolFactory, error) {
 	var clientTransport thrift.TTransport
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
-	clientTransport, err := thrift.NewTSocket("localhost:" + port)
+	clientTransport, err := thrift.NewTSocket("localhost:" + port, SocketCloseNotification, nil)
 	if err != nil {
 		logger.Err(fmt.Sprintln("NewTSocket failed with error:", err))
 		return nil, nil, err
