@@ -69,12 +69,12 @@ service BGPServer
 {
     bool CreateBGPGlobal(1: BGPGlobal bgpConf);
 	BGPGlobalState GetBGPGlobal();
-    bool UpdateBGPGlobal(1: BGPGlobal bgpConf);
+    bool UpdateBGPGlobal(1: BGPGlobal origGlobal, 2: BGPGlobal updatedGlobal, 3: list<bool> attrSet);
     //bool DeleteBGPGlobal(1: BGPGlobal bgpConf);
 
     bool CreateBGPNeighbor(1: BGPNeighbor neighbor);
 	BGPNeighborState GetBGPNeighbor(1: string ip);
 	BGPNeighborStateBulk BulkGetBGPNeighbors(1: i64 index, 2: i64 count);
-    bool UpdateBGPNeighbor(1: BGPNeighbor neighbor);
+    bool UpdateBGPNeighbor(1: BGPNeighbor origNeighbor, 2: BGPNeighbor updatedNeighbor, 3: list<bool> attrSet);
     bool DeleteBGPNeighbor(1: string neighborAddress);
 }
