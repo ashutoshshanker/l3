@@ -23,4 +23,5 @@ service ARPService
     int SetArpConfig(1:int Timeout);
     int UpdateUntaggedPortToVlanMap(1:int vlanid, 2:string untaggedMembers);
     ArpEntryBulk GetBulkArpEntry(1:int currMarker, 2:int count)
+    int ArpProbeV4Intf(1:string ipAddr, 2:int intf, 3:int ifType);
 }
