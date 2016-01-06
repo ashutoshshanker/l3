@@ -63,7 +63,20 @@ func getIPv4ForInterfaceName(ifname string) (iface_ip string, err error) {
     return "", err
 }
 
+func getInterfaceName(iftype arpd.Int, vlan_id arpd.Int) (ifName string, err error) {
+   var if_name string = ""
+
+    if iftype == 0 { //VLAN
+        if_name = fmt.Sprintf("SVI%d", vlan_id)
+    } else if iftype == 1 { //PHY
+        if_name = fmt.Sprintf("fpPort-", vlan_id)
+    }
+    return if_name, err
+
+}
+
 func getIPv4ForInterface(iftype arpd.Int, vlan_id arpd.Int) (ip_addr string, err error) {
+/*
     var if_name string
 
     if iftype == 0 { //VLAN
@@ -74,6 +87,11 @@ func getIPv4ForInterface(iftype arpd.Int, vlan_id arpd.Int) (ip_addr string, err
         return "", err
     }
 
+*/
+    if_name, _ := getInterfaceName(iftype, vlan_id)
+    if if_name == "" {
+        return "", err
+    }
     //logger.Println("Local Interface name =", if_name)
     logWriter.Info(fmt.Sprintln("Local Interface name =", if_name))
     return getIPv4ForInterfaceName(if_name)
