@@ -153,8 +153,8 @@ func (h *BGPHandler) GetBGPGlobal() (*bgpd.BGPGlobalState, error) {
 	return bgpGlobalResponse, nil
 }
 
-func (h *BGPHandler) UpdateBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Update global config attrs:", bgpGlobal))
+func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal, attrSet []bool) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Update global config attrs:", updatedG))
 	return true, nil
 }
 
@@ -233,8 +233,8 @@ func (h *BGPHandler) BulkGetBGPNeighbors(index int64, count int64) (*bgpd.BGPNei
 	return bgpNeighborStateBulk, nil
 }
 
-func (h *BGPHandler) UpdateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Update peer attrs:", bgpNeighbor))
+func (h *BGPHandler) UpdateBGPNeighbor(origN *bgpd.BGPNeighbor, updatedN *bgpd.BGPNeighbor, attrSet []bool) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Update peer attrs:", updatedN))
 	return true, nil
 }
 
