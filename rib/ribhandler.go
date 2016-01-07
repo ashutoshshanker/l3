@@ -87,10 +87,11 @@ type ClientJson struct {
 }
 
 type IPRoute struct {
-	DestinationNw     string
-	NetworkMask       string
+	DestinationNw     string 
+	NetworkMask       string 
 	Cost              int
 	NextHopIp         string
+	OutgoingIntfType  string
 	OutgoingInterface string
 	Protocol          string
 }
@@ -1100,10 +1101,12 @@ func InitPublisher()(pub *nanomsg.PubSocket) {
 func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
 	configFile := paramsDir + "/clients.json"
+	logger.Println("configfile = ", configFile)
 	ConnectToClients(configFile)
 	RIBD_PUB = InitPublisher()
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	go setupEventHandler(PortdSub, portdCommonDefs.PUB_SOCKET_ADDR, SUB_PORTD)
 	//CreateRoutes("RouteSetup.json")
+	UpdateRoutesFromDB(paramsDir)
 	return &RouteServiceHandler{}
 }
