@@ -8,6 +8,7 @@ import (
 	"log/syslog"
 	"net"
 	"time"
+	"sync"
 	"sync/atomic"
 )
 
@@ -714,7 +715,7 @@ func (st *EstablishedState) enter() {
 }
 
 func (st *EstablishedState) leave() {
-	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "State: OpenConfirm - leave"))
+	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "State: Established - leave"))
 	st.fsm.ConnBroken()
 }
 
@@ -752,7 +753,7 @@ type FSM struct {
 	outConnErrCh   chan error
 	stopConnCh     chan bool
 	inConnCh       chan net.Conn
-	closeCh        chan bool
+	closeCh        chan *sync.WaitGroup
 	connInProgress bool
 
 	event BGPFSMEvent
@@ -801,7 +802,7 @@ func NewFSM(fsmManager *FSMManager, connDir config.ConnDir, peer *Peer) *FSM {
 		outConnErrCh:     make(chan error),
 		stopConnCh:       make(chan bool),
 		inConnCh:         make(chan net.Conn),
-		closeCh:          make(chan bool),
+		closeCh:          make(chan *sync.WaitGroup),
 		connInProgress:   false,
 		autoStart:        true,
 		autoStop:         true,
@@ -846,8 +847,10 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 			in := PeerConnDir{config.ConnDirOut, &inConnCh}
 			fsm.ProcessEvent(BGPEventTcpConnConfirmed, in)
 
-		case <-fsm.closeCh:
+		case wg := <-fsm.closeCh:
 			fsm.ProcessEvent(BGPEventManualStop, nil)
+			fsm.logger.Info(fmt.Sprintf("FSM: calling Done() for FSM %s dir %s", fsm.pConf.NeighborAddress.String(), fsm.connDir))
+			(*wg).Done()
 			return
 
 		case val := <-fsm.passiveTcpEstCh:

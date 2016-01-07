@@ -77,10 +77,13 @@ func SetLocalPref(updateMsg *BGPMessage, pref uint32) {
 
 func SetNextHop(updateMsg *BGPMessage, nextHop net.IP) {
 	body := updateMsg.Body.(*BGPUpdate)
+	SetNextHopPathAttrs(body.PathAttributes, nextHop)
+}
 
-	for idx, pa := range body.PathAttributes {
+func SetNextHopPathAttrs(pathAttrs []BGPPathAttr, nextHopIP net.IP) {
+	for idx, pa := range pathAttrs {
 		if pa.GetCode() == BGPPathAttrTypeNextHop {
-			body.PathAttributes[idx].(*BGPPathAttrNextHop).Value = nextHop
+			pathAttrs[idx].(*BGPPathAttrNextHop).Value = nextHopIP
 		}
 	}
 }

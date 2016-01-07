@@ -8,6 +8,7 @@ import (
 	"l3/bgp/packet"
 	"log/syslog"
 	"net"
+	"sync"
 )
 
 type CONFIG int
@@ -34,7 +35,7 @@ type FSMManager struct {
 	connectErrCh chan error
 	acceptCh     chan net.Conn
 	acceptErrCh  chan error
-	closeCh      chan bool
+	closeCh      chan *sync.WaitGroup
 	acceptConn   bool
 	commandCh    chan int
 	activeFSM    config.ConnDir
@@ -54,7 +55,7 @@ func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config
 	fsmManager.acceptCh = make(chan net.Conn)
 	fsmManager.acceptErrCh = make(chan error)
 	fsmManager.acceptConn = false
-	fsmManager.closeCh = make(chan bool)
+	fsmManager.closeCh = make(chan *sync.WaitGroup)
 	fsmManager.commandCh = make(chan int)
 	fsmManager.activeFSM = config.ConnDirOut
 	fsmManager.pktRxCh = make(chan BgpPkt)
@@ -96,8 +97,8 @@ func (fsmManager *FSMManager) Init() {
 				fsmManager.conns[config.ConnDirIn] = nil
 			}
 
-		case <-fsmManager.closeCh:
-			fsmManager.Cleanup()
+		case wg := <-fsmManager.closeCh:
+			fsmManager.Cleanup(wg)
 			return
 
 		/*case outConn := <-fsmManager.connectCh:
@@ -152,14 +153,20 @@ func (mgr *FSMManager) SendUpdateMsg(bgpMsg *packet.BGPMessage) {
 	mgr.fsms[config.ConnDirOut].pktTxCh <- bgpMsg
 }
 
-func (mgr *FSMManager) Cleanup() {
+func (mgr *FSMManager) Cleanup(wg *sync.WaitGroup) {
+	var fsmWG sync.WaitGroup
 	for dir, fsm := range mgr.fsms {
 		if fsm != nil {
-			mgr.logger.Info(fmt.Sprintf("Cleanup FSM for peer:%s conn:%d", mgr.pConf.NeighborAddress, dir))
-			fsm.closeCh <- true
+			mgr.logger.Info(fmt.Sprintf("FSMManager: Cleanup FSM for peer:%s conn:%d", mgr.pConf.NeighborAddress, dir))
+			fsmWG.Add(1)
+			fsm.closeCh <- &fsmWG
 			fsm = nil
 		}
 	}
+	mgr.logger.Info(fmt.Sprintf("FSMManager: waiting for FSM to cleanup %s", mgr.pConf.NeighborAddress.String()))
+	fsmWG.Wait()
+	mgr.logger.Info(fmt.Sprintf("FSMManager: calling Done() for FSMManager %s", mgr.pConf.NeighborAddress.String()))
+	(*wg).Done()
 }
 
 func (mgr *FSMManager) HandleAnotherConnection(connDir config.ConnDir, conn *net.Conn) {
@@ -184,6 +191,7 @@ func (mgr *FSMManager) HandleAnotherConnection(connDir config.ConnDir, conn *net
 }
 
 func (mgr *FSMManager) ReceivedBGPOpenMessage(connDir config.ConnDir, bgpId uint32) {
+	var wg sync.WaitGroup
 	localBGPId := binary.BigEndian.Uint32(mgr.gConf.RouterId.To4())
 	for i, fsm := range mgr.fsms {
 		if i != int(connDir) && fsm != nil && fsm.State.state() >= BGPFSMOpensent {
@@ -195,8 +203,10 @@ func (mgr *FSMManager) ReceivedBGPOpenMessage(connDir config.ConnDir, bgpId uint
 			} else {
 				closeConnDir = config.ConnDirOut
 			}
-			mgr.fsms[closeConnDir].closeCh <- true
+			wg.Add(1)
+			mgr.fsms[closeConnDir].closeCh <- &wg
 			mgr.fsms[closeConnDir] = nil
 		}
 	}
+	wg.Wait()
 }
