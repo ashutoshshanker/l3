@@ -8,6 +8,7 @@ import (
 	"log/syslog"
 	"net"
 	"time"
+	"sync"
 	"sync/atomic"
 )
 
@@ -51,18 +52,37 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 }
 
 func (p *Peer) Init() {
+	if p.fsmManager == nil {
+		p.logger.Info(fmt.Sprintf("Instantiating new FSM Manager for neighbor %s", p.Neighbor.NeighborAddress))
+		p.fsmManager = NewFSMManager(p, &p.Server.BgpConfig.Global.Config, &p.Neighbor.Config)
+	}
+
 	go p.fsmManager.Init()
 }
 
-func (p *Peer) Cleanup() {
-	p.fsmManager.closeCh <- true
+func (p *Peer) Cleanup(wg *sync.WaitGroup) {
+	p.fsmManager.closeCh <- wg
+	p.fsmManager = nil
+}
+
+func (p *Peer) UpdateNeighborConf(nConf config.NeighborConfig) {
+	p.Neighbor.NeighborAddress = nConf.NeighborAddress
+	p.Neighbor.Config = nConf
 }
 
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
+	if p.fsmManager == nil {
+		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s", p.Neighbor.NeighborAddress))
+		return
+	}
 	p.fsmManager.acceptCh <- conn
 }
 
 func (p *Peer) Command(command int) {
+	if p.fsmManager == nil {
+		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s", p.Neighbor.NeighborAddress))
+		return
+	}
 	p.fsmManager.commandCh <- command
 }
 
@@ -102,15 +122,15 @@ func (p *Peer) SetBGPId(bgpId net.IP) {
 }
 
 func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
-	if bgpMsg == nil || bgpMsg.Body.(*packet.BGPUpdate).PathAttributes == nil {
-		p.logger.Err(fmt.Sprintf("Neighbor %s: Path attrs not found in BGP Update message", p.Neighbor.NeighborAddress))
-		return true
-	}
-
 	if p.Neighbor.Transport.Config.LocalAddress == nil {
 		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message, FSM is not in Established state",
 			p.Neighbor.NeighborAddress))
 		return false
+	}
+
+	if bgpMsg == nil || bgpMsg.Body.(*packet.BGPUpdate).PathAttributes == nil {
+		p.logger.Err(fmt.Sprintf("Neighbor %s: Path attrs not found in BGP Update message", p.Neighbor.NeighborAddress))
+		return true
 	}
 
 	if p.IsInternal() {
@@ -141,10 +161,14 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 		return
 	}
 	p.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
+	p.Server.PeerFSMEstCh <- PeerFSMEst{p.Neighbor.NeighborAddress.String(), true}
 }
 
-func (p *Peer) PeerConnBroken() {
+func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 	p.Neighbor.Transport.Config.LocalAddress = nil
+	if !fsmCleanup {
+		p.Server.PeerFSMEstCh <- PeerFSMEst{p.Neighbor.NeighborAddress.String(), false}
+	}
 }
 
 func (p *Peer) FSMStateChange(state BGPFSMState) {
