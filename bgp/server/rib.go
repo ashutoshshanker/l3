@@ -150,3 +150,14 @@ func (adjRib *AdjRib) RemoveUpdatesFromAllNeighbors() {
 		}
 	}
 }
+
+func (adjRib *AdjRib) GetLocRib() map[*Path][]packet.IPPrefix {
+	updated := make(map[*Path][]packet.IPPrefix)
+	for _, dest := range adjRib.destPathMap {
+		if dest.locRibPath != nil {
+			updated[dest.locRibPath] = append(updated[dest.locRibPath], dest.nlri)
+		}
+	}
+
+	return updated
+}

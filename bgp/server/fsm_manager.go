@@ -114,7 +114,7 @@ func (fsmManager *FSMManager) Init() {
 			if fsmState.isEstablished {
 				fsmManager.fsmEstablished(fsmState.id, fsmState.conn)
 			} else {
-				fsmManager.fsmBroken(fsmState.id)
+				fsmManager.fsmBroken(fsmState.id, false)
 			}
 
 		case fsmOpenMsg := <- fsmManager.fsmOpenMsgCh:
@@ -153,12 +153,12 @@ func (fsmManager *FSMManager) fsmEstablished(id uint8, conn *net.Conn) {
 	fsmManager.Peer.PeerConnEstablished(conn)
 }
 
-func (fsmManager *FSMManager) fsmBroken(id uint8) {
+func (fsmManager *FSMManager) fsmBroken(id uint8, fsmDelete bool) {
 	if fsmManager.activeFSM == id {
 		fsmManager.activeFSM = uint8(config.ConnDirInvalid)
 	}
 
-	fsmManager.Peer.PeerConnBroken()
+	fsmManager.Peer.PeerConnBroken(fsmDelete)
 }
 
 func (fsmManager *FSMManager) setBGPId(bgpId net.IP) {
@@ -181,7 +181,7 @@ func (mgr *FSMManager) Cleanup(wg *sync.WaitGroup) {
 			fsmWG.Add(1)
 			fsm.closeCh <- &fsmWG
 			fsm = nil
-			mgr.fsmBroken(id)
+			mgr.fsmBroken(id, true)
 			mgr.fsms[id] = nil
 			delete(mgr.fsms, id)
 		}
@@ -246,7 +246,7 @@ func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, 
 			if closeFSM, ok := mgr.fsms[closeFSMId]; ok {
 				wg.Add(1)
 				closeFSM.closeCh <- &wg
-				mgr.fsmBroken(closeFSMId)
+				mgr.fsmBroken(closeFSMId, false)
 				mgr.fsms[closeFSMId] = nil
 				delete(mgr.fsms, closeFSMId)
 			}
