@@ -161,10 +161,14 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 		return
 	}
 	p.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
+	p.Server.PeerFSMEstCh <- PeerFSMEst{p.Neighbor.NeighborAddress.String(), true}
 }
 
-func (p *Peer) PeerConnBroken() {
+func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 	p.Neighbor.Transport.Config.LocalAddress = nil
+	if !fsmCleanup {
+		p.Server.PeerFSMEstCh <- PeerFSMEst{p.Neighbor.NeighborAddress.String(), false}
+	}
 }
 
 func (p *Peer) FSMStateChange(state BGPFSMState) {

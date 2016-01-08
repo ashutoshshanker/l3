@@ -25,6 +25,11 @@ type PeerUpdate struct {
 	NewPeer config.NeighborConfig
 }
 
+type PeerFSMEst struct {
+	ip string
+	isEstablished bool
+}
+
 type BGPServer struct {
 	logger          *syslog.Writer
 	ribdClient      *ribd.RouteServiceClient
@@ -33,6 +38,7 @@ type BGPServer struct {
 	AddPeerCh       chan PeerUpdate
 	RemPeerCh       chan string
 	PeerCommandCh   chan config.PeerCommand
+	PeerFSMEstCh    chan PeerFSMEst
 	BGPPktSrc       chan *packet.BGPPktSrc
 	connRoutesTimer *time.Timer
 
@@ -55,6 +61,7 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.AddPeerCh = make(chan PeerUpdate)
 	bgpServer.RemPeerCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
+	bgpServer.PeerFSMEstCh = make(chan PeerFSMEst)
 	bgpServer.BGPPktSrc = make(chan *packet.BGPPktSrc)
 	bgpServer.NeighborMutex = sync.RWMutex{}
 	bgpServer.PeerMap = make(map[string]*Peer)
@@ -186,6 +193,11 @@ func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribd.Routes, 
 func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
 	updated, withdrawn, withdrawPath := server.adjRib.RemoveUpdatesFromNeighbor(peerIp, peer)
 	server.SendUpdate(updated, withdrawn, withdrawPath)
+}
+
+func (server *BGPServer) AdvertiseAllRoutes(peerIp string, peer *Peer) {
+	locRib := server.adjRib.GetLocRib()
+	server.SendUpdate(locRib, nil, nil)
 }
 
 func (server *BGPServer) RemoveRoutesFromAllNeighbor() {
@@ -326,8 +338,15 @@ func (server *BGPServer) StartServer() {
 				break
 			}
 			peer.AcceptConn(tcpConn)
-			//server.logger.Info(fmt.Sprintln("send keep alives to peer..."))
-			//go peer.SendKeepAlives(tcpConn)
+
+		case peerFSMEst := <- server.PeerFSMEstCh:
+			if peer, ok := server.PeerMap[peerFSMEst.ip]; ok {
+				if peerFSMEst.isEstablished {
+					server.AdvertiseAllRoutes(peerFSMEst.ip, peer)
+				} else {
+					server.ProcessRemoveNeighbor(peerFSMEst.ip, peer)
+				}
+			}
 
 		case peerCommand := <-server.PeerCommandCh:
 			server.logger.Info(fmt.Sprintln("Peer Command received", peerCommand))
