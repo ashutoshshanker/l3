@@ -36,7 +36,7 @@ type ARPClientBase struct {
 
 type AsicdClient struct {
 	ARPClientBase
-	ClientHdl *asicdServices.AsicdServiceClient
+	ClientHdl *asicdServices.ASICDServicesClient
 }
 
 type PortdClient struct {
@@ -182,7 +182,7 @@ func ConnectToClients(paramsFile string) {
 			asicdClient.Transport, asicdClient.PtrProtocolFactory = CreateIPCHandles(asicdClient.Address)
 			if asicdClient.Transport != nil && asicdClient.PtrProtocolFactory != nil {
 				logWriter.Info("connecting to asicd")
-				asicdClient.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdClient.Transport, asicdClient.PtrProtocolFactory)
+				asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdClient.Transport, asicdClient.PtrProtocolFactory)
 				asicdClient.IsConnected = true
 			}
 

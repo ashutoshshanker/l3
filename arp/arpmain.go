@@ -24,7 +24,7 @@ func main() {
 	paramsDir := flag.String("params", "", "Directory Location for config files")
 	flag.Parse()
 	handler := NewARPServiceHandler(*paramsDir)
-	processor := arpd.NewARPServiceProcessor(handler)
+	processor := arpd.NewARPDServicesProcessor(handler)
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
 	server := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)
