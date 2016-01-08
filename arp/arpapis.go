@@ -24,6 +24,7 @@ import (
         "os/signal"
         "database/sql"
         "utils/dbutils"
+        "math/rand"
 )
 
 type ARPClientBase struct {
@@ -128,6 +129,10 @@ var (
         dump_arp_table          bool = false
         arp_entry_timer         *time.Timer
         arp_entry_duration      time.Duration = 10 * time.Minute
+        probe_wait              int = 5 // 5 Seconds
+        probe_num               int = 5 // Number of ARP Probe
+        probe_max               int = 20 // 20 Seconds
+        probe_min               int = 10 // 10 Seconds
 )
 var arp_cache *arpCache
 var asicdClient AsicdClient //Thrift client to connect to asicd
@@ -479,6 +484,7 @@ func sendArpReq(targetIp string, handle *pcap.Handle, myMac string, localIp stri
 	return ARP_REQ_SUCCESS
 }
 
+//ToDo: This function need to cleaned up
 /*
  *@fn receiveArpResponse
  * Process ARP response from the interface for ARP
@@ -514,8 +520,13 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                     src_ip_addr := (net.IP(arp.SourceProtAddress)).String()
                     dest_Mac := net.HardwareAddr(arp.DstHwAddress)
                     dest_ip_addr := (net.IP(arp.DstProtAddress)).String()
-                    logger.Println("Received Arp response SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr, "DST_MAC:", dest_Mac)
+                    //logger.Println("Received Arp response SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr, "DST_MAC:", dest_Mac)
                     logWriter.Info(fmt.Sprintln("Received Arp response SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr, "DST_MAC:", dest_Mac))
+                    if dest_ip_addr == "0.0.0.0" {
+                        //logger.Println("Recevied reply from ARP Probe and there is a conflicting IP Address", src_ip_addr)
+                        logWriter.Err(fmt.Sprintln("Recevied reply for ARP Probe and there is a conflicting IP Address", src_ip_addr))
+                        continue
+                    }
                     ent, exist := arp_cache.arpMap[src_ip_addr]
                     if exist {
                         if ent.port == -2 {
@@ -590,23 +601,6 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                     logWriter.Info(fmt.Sprintln("Received Arp Request SRC_IP:", src_ip_addr, "SRC_MAC: ", src_Mac, "DST_IP:", dest_ip_addr))
                     _, exist := arp_cache.arpMap[src_ip_addr]
                     if !exist {
-
-                        route, err := netlink.RouteGet(dstip)
-                        var ifName string
-                        for _, rt := range route {
-                            if rt.LinkIndex > 0 {
-                                ifName, err = getInterfaceNameByIndex(rt.LinkIndex)
-                                if err != nil || ifName == "" {
-                                    //logger.Println("Unable to get the outgoing interface", err)
-                                    logWriter.Err(fmt.Sprintf("Unable to get the outgoing interface", err))
-                                    continue
-                                }
-                            }
-                        }
-                        //logger.Println("Outgoing interface:", ifName)
-                        if ifName != "lo" {
-                            continue
-                        }
                         port_map_ent, exists := port_property_map[port_id]
                         var vlan_id arpd.Int
                         if exists {
@@ -614,6 +608,35 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                         } else {
                             // vlan_id = 1
                             continue
+                        }
+                        if src_ip_addr == "0.0.0.0" { // ARP Probe Request
+                            local_ip_addr, _ := getIPv4ForInterface(arpd.Int(0), arpd.Int(vlan_id))
+                            if local_ip_addr == dest_ip_addr {
+                                // Send Arp Reply for ARP Probe
+                                logger.Println("Linux will Send Arp Reply for recevied ARP Probe because of conflicting address")
+                                continue
+                            }
+                        }
+
+                        if src_ip_addr == dest_ip_addr { // Gratuitous ARP Request
+                            logger.Println("Received a Gratuitous ARP from ", src_ip_addr)
+                        } else { // Any other ARP request which are not locally originated
+                            route, err := netlink.RouteGet(dstip)
+                            var ifName string
+                            for _, rt := range route {
+                                if rt.LinkIndex > 0 {
+                                    ifName, err = getInterfaceNameByIndex(rt.LinkIndex)
+                                    if err != nil || ifName == "" {
+                                        //logger.Println("Unable to get the outgoing interface", err)
+                                        logWriter.Err(fmt.Sprintf("Unable to get the outgoing interface", err))
+                                        continue
+                                    }
+                                }
+                            }
+                            //logger.Println("Outgoing interface:", ifName)
+                            if ifName != "lo" {
+                                continue
+                            }
                         }
                         arp_cache_update_chl <- arpUpdateMsg {
                                                     ip: src_ip_addr,
@@ -717,6 +740,7 @@ func initArpCache() bool {
 	return true
 }
 
+//ToDo: This function need to cleaned up
 /*
  * @fn UpdateArpCache
  *  Update IP to the ARP mapping for the hash table.
@@ -1217,4 +1241,21 @@ func updateCounterInArpCache() {
                                 msg_type: 5,
                              }
 
+}
+
+
+func sendArpProbe(ipAddr string, handle *pcap.Handle, mac_addr string) int {
+    s1 := rand.NewSource(time.Now().UnixNano())
+    r1 := rand.New(s1)
+    s2 := rand.NewSource(time.Now().UnixNano())
+    r2 := rand.New(s2)
+    wait := r1.Intn(probe_wait)
+    time.Sleep(time.Duration(wait) * time.Second)
+    for i := 0; i < probe_num; i++ {
+        sendArpReq(ipAddr, handle, mac_addr, "0.0.0.0")
+        diff := r2.Intn(probe_max - probe_min)
+        diff = diff + probe_min
+        time.Sleep(time.Duration(diff) * time.Second)
+    }
+    return 0
 }

@@ -192,3 +192,36 @@ func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (
 
     return arpEntry, err
 }
+
+func (m ARPServiceHandler) ArpProbeV4Intf(ipAddr string, vlan_id arpd.Int, iftype arpd.Int) (rc arpd.Int, err error) {
+    logger.Println("ArpProbeV4Intf() : ipAddr:", ipAddr, "vlan_id:", vlan_id, "iftype:", iftype)
+    if portdClient.IsConnected {
+        linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
+        //logger.Println("linux_device ", linux_device)
+        logWriter.Info(fmt.Sprintln("linux_device ", linux_device))
+        if err != nil {
+                logWriter.Err(fmt.Sprintf("Failed to get ifname for interface : ", vlan_id, "type : ", iftype))
+                return ARP_ERR_REQ_FAIL, err
+        }
+        logWriter.Info(fmt.Sprintln("Server:Connecting to device ", linux_device))
+        handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout_pcap)
+        if handle == nil {
+                logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
+                return 0, err
+        }
+
+        mac_addr, err := getMacAddrInterfaceName(linux_device)
+        if err != nil {
+            logWriter.Err(fmt.Sprintln("Unable to get the MAC addr of ", linux_device))
+        }
+        //logger.Println("MAC addr of ", linux_device, ": ", mac_addr)
+        logWriter.Info(fmt.Sprintln("MAC addr of ", linux_device, ": ", mac_addr))
+
+        go sendArpProbe(ipAddr, handle, mac_addr)
+    } else {
+            logWriter.Err("portd client is not connected.")
+            //logger.Println("Portd is not connected.")
+    }
+
+    return ARP_REQ_SUCCESS, err
+}
