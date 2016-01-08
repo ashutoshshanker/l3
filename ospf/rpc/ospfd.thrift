@@ -62,11 +62,6 @@ enum areaRangeEffect {
     doNotAdvertiseMatching
 }
 
-enum areaAggregateLsdbType {
-    summaryLink = 3,
-    nssaExternalLink = 7
-}
-
 enum ifType {
     broadcast = 1,
     nbma = 2,
@@ -87,7 +82,7 @@ enum restartStatus {
 }
 
 enum restartExitReason {
-    noneAttempt = 1,
+    noAttempt = 1,
     inProgress = 2,
     completed = 3,
     timedOut = 4,
@@ -100,7 +95,7 @@ enum nssaTranslatorState {
     disabled = 3,
 }
 
-enum lsdbType {
+enum lsaType {
     routerLink = 1,
     networkLink = 2,
     summaryLink = 3,
@@ -108,7 +103,9 @@ enum lsdbType {
     asExternalLink = 5,
     multicastLink = 6,
     nssaExternalLink = 7,
-    areaOpaqueLink = 10
+    localOpaqueLink = 9,
+    areaOpaqueLink = 10,
+    asOpaqueLink = 11
 }
 
 enum ifState {
@@ -119,6 +116,27 @@ enum ifState {
     designatedRouter = 5,
     backupDesignatedRouter = 6,
     otherDesignatedRouter = 7
+}
+
+enum nbrState {
+    down = 1,
+    attempt,
+    init,
+    twoWay,
+    exchangeStart,
+    exchange,
+    loading,
+    full
+}
+
+enum nbmaNbrPermanence {
+    dynamicNbr = 1,
+    permanentNbr
+}
+
+enum nbrRestartHelperStatus {
+    notHelping = 1,
+    helping
 }
 
 // Global Configuration Objects
@@ -222,7 +240,7 @@ struct OspfStubAreaState {
 // Indexed by LsdbAreaId, LsdbType, LsdbLsid, LsdbRouterId
 struct OspfLsdbState {
     1: string               LsdbAreaId,
-    2: lsdbType             LsdbType,
+    2: lsaType              LsdbType,
     3: string               LsdbLsid,
     4: string               LsdbRouterId,
     5: i32                  LsdbSequence,
@@ -373,9 +391,50 @@ struct OspfNbrConf {
     3: i32                      NbrPriority,
 }
 
-// Todo: Virtual Neighbor Table (Read Only)
+struct OspfNbrState {
+    1: string                   NbrIpAddress,
+    2: i32                      NbrAddressLessIndex,
+    3: string                   NbrRtrId,
+    4: i32                      NbrOptions,
+    5: i32                      NbrPriority,
+    6: nbrState                 NbrState,
+    7: i32                      NbrEvents,
+    8: i32                      NbrLsRetransQLen,
+    9: nbmaNbrPermanence        NbmaNbrPermanence,
+    10: bool                    NbrHelloSuppressed,
+    11: nbrRestartHelperStatus  NbrRestartHelperStatus,
+    12: i32                     NbrRestartHelperAge,
+    13: restartExitReason       NbrRestartHelperExitReason,
+}
+
+// Virtual Neighbor Table (Read Only)
 // OSPF Virtual Neighbor Entry
 // Indexed By VirtNbrArea, VirtNbrRtrId
+struct OspfVirtNbrState {
+    1: string                   VirtNbrArea,
+    2: string                   VirtNbrRtrId,
+    3: string                   VirtNbrIpAddress,
+    4: i32                      VirtNbrOptions,
+    5: nbrState                 VirtNbrState,
+    6: i32                      VirtNbrEvents,
+    7: i32                      VirtNbrLsRetransQLen,
+    8: bool                     VirtNbrHelloSuppressed,
+    9: nbrRestartHelperStatus   VirtNbrRestartHelperStatus,
+    10: i32                     VirtNbrRestartHelperAge,
+    11: restartExitReason       VirtNbrRestartHelperExitReason,
+}
+
+// External LSA link State - Deprecated
+// Indexed by ExtLsdbType, ExtLsdbLsid, ExtLsdbRouterId
+struct OspfExtLsdbState {
+    1: lsaType                  ExtLsdbType,
+    2: string                   ExtLsdbLsid,
+    3: string                   ExtLsdbRouterId,
+    4: i32                      ExtLsdbSequence,
+    5: i32                      ExtLsdbAge,
+    6: i32                      ExtLsdbChecksum,
+    7: string                   ExtLsdbAdvertisement,
+}
 
 // OSPF Area Aggregate Table
 // Replaces OSPF Area Summary Table
@@ -383,21 +442,71 @@ struct OspfNbrConf {
 // AreaAggregateNet, AreaAggregateMask
 struct OspfAreaAggregateConf {
     1: string                   AreaAggregateAreaId,
-    2: areaAggregateLsdbType    AreaAggregateLsdbType,
+    2: lsaType                  AreaAggregateLsdbType,
     3: string                   AreaAggregateNet,
     4: string                   AreaAggregateMask,
     5: areaRangeEffect          AreaAggregateEffect,
     6: i32                      AreaAggregateExtRouteTag,
 }
 
-/*
-struct OSPFAreaConf {
-    1: i32                      AreaId,
-    2: list<OSPFAddressRange>   AddressRange,
-    3: bool                     ExternalRoutingCapability,
-    4: i32                      StubDefaultCost,
+struct OspfAreaAggregateState {
+    1: string                   AreaAggregateAreaId,
+    2: lsaType                  AreaAggregateLsdbType,
+    3: string                   AreaAggregateNet,
+    4: string                   AreaAggregateMask,
+    5: areaRangeEffect          AreaAggregateEffect,
+    6: i32                      AreaAggregateExtRouteTag,
 }
-*/
+
+// Link local link state database for non-virtual links
+// Indexed by LocalLsdbIpAddress, LocalLsdbAddressLessIf,
+// LocalLsdbType, LocalLsdbLsid, LocalLsdbRouterId
+struct OspfLocalLsdbState {
+    1: string                   LocalLsdbIpAddress,
+    2: i32                      LocalLsdbAddressLessIf,
+    3: lsaType                  LocalLsdbType,
+    4: string                   LocalLsdbLsid,
+    5: string                   LocalLsdbRouterId,
+    6: i32                      LocalLsdbSequence,
+    7: i32                      LocalLsdbAge,
+    8: i32                      LocalLsdbChecksum,
+    9: string                   LocalLsdbAdvertisement,
+}
+
+// Link State Database, link-local for Virtual Links
+// Indexed By VirtLocalLsdbTransitArea, VirtLocalLsdbTransitArea,
+// VirtLocalLsdbType, VirtLocalLsdbLsid, VirtLocalLsdbRouterId
+struct OspfVirtLocalLsdbState {
+    1: string                   VirtLocalLsdbTransitArea,
+    2: string                   VirtLocalLsdbNeighbor,
+    3: lsaType                  VirtLocalLsdbType,
+    4: string                   VirtLocalLsdbLsid,
+    5: string                   VirtLocalLsdbRouterId,
+    6: i32                      VirtLocalLsdbSequence,
+    7: i32                      VirtLocalLsdbAge,
+    8: i32                      VirtLocalLsdbChecksum,
+    9: string                   VirtLocalLsdbAdvertisement,
+}
+
+// Link State Database, AS - scope
+// Indexed AsLsdbType, AsLsdbLsid, AsLsdbRouterId
+struct OspfAsLsdbState {
+    1: lsaType                  AsLsdbType,
+    2: string                   AsLsdbLsid,
+    3: string                   AsLsdbRouterId,
+    4: i32                      AsLsdbSequence,
+    5: i32                      AsLsdbAge,
+    6: i32                      AsLsdbChecksum,
+    7: string                   AsLsdbAdvertisement,
+}
+
+// Area LSA Counter Table
+// Indexed By AreaLsaCountAreaId, AreaLsaCountLsaType
+struct OspfAreaLsaCountState {
+    1: string                   AreaLsaCountAreaId,
+    2: lsaType                  AreaLsaCountLsaType,
+    3: i32                      AreaLsaCountNumber,
+}
 
 
 service OSPFServer {
@@ -423,6 +532,21 @@ service OSPFServer {
     bool DeleteOspfNbrConf(1: OspfNbrConf ospfNbrConf)
     bool DeleteOspfAreaAggregateConf(1: OspfAreaAggregateConf ospfAreaAggregateConf)
 
-//    bool CreateOSPFAreaConf(1: OSPFAreaConf ospfAreaConf)
-//    bool UpdateOSPFGlobalConf(1: OSPFGlobalConf ospfConf)
+    OspfGlobalState GetOspfGlobalState()
+    OspfAreaState GetOspfAreaState(1: string areaId)
+    OspfStubAreaState GetOspfStubAreaState(1: string stubAreaId, 2: i32 stubTOS)
+    OspfLsdbState GetOspfLsdbState(1: string lsdbAreaId, 2: string lsdbLsid, 3: string lsdbRouterId)
+    OspfAreaRangeState GetOspfAreaRangeState(1: string rangeAreaId, 2: string areaRangeNet)
+    OspfHostState GetOspfHostState(1: string hostIpAddress, 2: i32 hostTOS)
+    OspfIfState GetOspfIfState(1: string ifIpAddress, 2: i32 addressLessIf)
+    OspfIfMetricState GetOspfIfMetricState(1: string ifMetricIpAddress, 2: i32 ifMetricAddressLessIf, 3: i32 ifMetricTOS)
+    OspfVirtIfState GetOspfVirtIfState(1: string virtIfAreaId, 2: string virtIfNeighbor)
+    OspfNbrState GetOspfNbrState(1: string nbrIpAddress, 2: i32 nbrAddressLessIndex)
+    OspfVirtNbrState GetOspfVirtNbrState(1: string virtNbrArea, 2: string virtNbrRtrId)
+    OspfExtLsdbState GetOspfExtLsdbState(1: lsaType extLsdbType, 2: string extLsdbLsid, 3: string extLsdbRouterId)
+    OspfAreaAggregateState GetOspfAreaAggregateState(1: string areaAggregateAreaId, 2: lsaType areaAggregateLsdbType, 3: string areaAggregateNet, 4: string areaAggregateMask)
+    OspfLocalLsdbState GetOspfLocalLsdbState(1: string localLsdbIpAddress, 2: i32 localLsdbAddressLessIf, 3: lsaType localLsdbType, 4: string localLsdbLsid, 5: string localLsdbRouterId)
+    OspfVirtLocalLsdbState GetOspfVirtLocalLsdbState(1: string virtLocalLsdbTransitArea, 2: string virtLocalLsdbNeighbor, 3: lsaType virtLocalLsdbType, 4: string virtLocalLsdbLsid, 5: string virtLocalLsdbRouterId)
+    OspfAsLsdbState GetOspfAsLsdbState(1: lsaType asLsdbType, 2: string asLsdbLsid, 3: string asLsdbRouterId)
+    OspfAreaLsaCountState GetOspfAreaLsaCountState(1: string areaLsaCountAreaId, 2: lsaType areaLsaCountLsaType)
 }
