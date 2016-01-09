@@ -2,12 +2,12 @@
 package server
 
 import (
-	"encoding/binary"
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
 	"log/syslog"
 	"net"
+	"sync"
 )
 
 type CONFIG int
@@ -27,18 +27,16 @@ type FSMManager struct {
 	logger       *syslog.Writer
 	gConf        *config.GlobalConfig
 	pConf        *config.NeighborConfig
-	fsms         [config.ConnDirMax]*FSM
-	configCh     chan CONFIG
-	conns        [config.ConnDirMax]net.Conn
-	connectCh    chan net.Conn
-	connectErrCh chan error
+	fsms         map[uint8]*FSM
 	acceptCh     chan net.Conn
 	acceptErrCh  chan error
-	closeCh      chan bool
+	closeCh      chan *sync.WaitGroup
 	acceptConn   bool
 	commandCh    chan int
-	activeFSM    config.ConnDir
-	pktRxCh      chan BgpPkt
+	activeFSM    uint8
+	newConnCh    chan PeerFSMConnState
+	fsmStateCh   chan PeerFSMConnState
+	fsmOpenMsgCh chan PeerFSMOpenMsg
 }
 
 func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config.NeighborConfig) *FSMManager {
@@ -48,82 +46,96 @@ func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config
 		gConf: globalConf,
 		pConf: peerConf,
 	}
-	fsmManager.conns = [config.ConnDirMax]net.Conn{nil, nil}
-	fsmManager.connectCh = make(chan net.Conn)
-	fsmManager.connectErrCh = make(chan error)
+	fsmManager.fsms = make(map[uint8]*FSM)
 	fsmManager.acceptCh = make(chan net.Conn)
 	fsmManager.acceptErrCh = make(chan error)
 	fsmManager.acceptConn = false
-	fsmManager.closeCh = make(chan bool)
+	fsmManager.closeCh = make(chan *sync.WaitGroup)
 	fsmManager.commandCh = make(chan int)
-	fsmManager.activeFSM = config.ConnDirOut
-	fsmManager.pktRxCh = make(chan BgpPkt)
+	fsmManager.activeFSM = uint8(config.ConnDirInvalid)
+	fsmManager.newConnCh = make(chan PeerFSMConnState)
+	fsmManager.fsmStateCh = make(chan PeerFSMConnState)
+	fsmManager.fsmOpenMsgCh = make(chan PeerFSMOpenMsg)
 	return &fsmManager
 }
 
 func (fsmManager *FSMManager) Init() {
-	fsmManager.fsms[config.ConnDirOut] = NewFSM(fsmManager, config.ConnDirOut, fsmManager.Peer)
-	fsmManager.activeFSM = config.ConnDirOut
-	go fsmManager.fsms[config.ConnDirOut].StartFSM(NewIdleState(fsmManager.fsms[config.ConnDirOut]))
-	fsmManager.fsms[config.ConnDirOut].passiveTcpEstCh <- true
+	fsmId := uint8(config.ConnDirOut)
+	fsm := NewFSM(fsmManager, fsmId, fsmManager.Peer)
+	go fsm.StartFSM(NewIdleState(fsm))
+	fsmManager.fsms[fsmId] = fsm
+	fsm.passiveTcpEstCh <- true
 
 	for {
 		select {
 		case inConn := <-fsmManager.acceptCh:
+			fsmManager.logger.Info(fmt.Sprintf("Neighbor %s: Received a connection OPEN from far end",
+				fsmManager.pConf.NeighborAddress))
 			if !fsmManager.acceptConn {
 				fsmManager.logger.Info(fmt.Sprintln("Can't accept connection from ", fsmManager.pConf.NeighborAddress,
 					"yet."))
 				inConn.Close()
-			} else if fsmManager.fsms[config.ConnDirIn] != nil {
-				fsmManager.logger.Info(fmt.Sprintln("A FSM is already created for a incoming connection"))
 			} else {
-				fsmManager.conns[config.ConnDirIn] = inConn
-				//fsmManager.fsms[ConnDirOut] = NewFSM(fsmManager, ConnDirIn, fsmManager.gConf, fsmManager.pConf)
-				//fsmManager.fsms[ConnDirOut].SetConn(inConn)
-				//go fsmManager.fsms[ConnDirIn].StartFSM(NewActiveState(fsmManager.fsms[ConnDirIn]))
-				//fsmManager.fsms[ConnDirIn].eventRxCh <- BGPEventTcpConnConfirmed
-				//fsmManager.fsms[ConnDirIn].ProcessEvent(BGP_EVENT_TCP_CONN_CONFIRMED)
-				if fsmManager.fsms[config.ConnDirOut] != nil {
-					fsmManager.fsms[config.ConnDirOut].inConnCh <- inConn
+				foundInConn := false
+				for _, fsm = range fsmManager.fsms {
+					if fsm != nil && fsm.peerConn != nil && fsm.peerConn.dir == config.ConnDirIn {
+						fsmManager.logger.Info(fmt.Sprintln("A FSM is already created for a incoming connection"))
+						foundInConn = true
+						break
+					}
+				}
+				if !foundInConn {
+					for _, fsm = range fsmManager.fsms {
+						if fsm != nil {
+							fsm.inConnCh <- inConn
+						}
+					}
 				}
 			}
 
 		case <-fsmManager.acceptErrCh:
-			if fsmManager.fsms[config.ConnDirIn] != nil {
-				fsmManager.fsms[config.ConnDirIn].eventRxCh <- BGPEventTcpConnFails
-			//fsmManager.fsms[ConnDirIn].ProcessEvent(BGP_EVENT_TCP_CONN_FAILS)
-				//fsmManager.conns[config.ConnDirIn].Close()
-				fsmManager.conns[config.ConnDirIn] = nil
+			fsmManager.logger.Info(fmt.Sprintf("Neighbor %s: Received a connection CLOSE from far end",
+				fsmManager.pConf.NeighborAddress))
+			for _, fsm := range fsmManager.fsms {
+				if fsm != nil && fsm.peerConn != nil && fsm.peerConn.dir == config.ConnDirIn {
+					fsm.eventRxCh <- BGPEventTcpConnFails
+				}
 			}
 
-		case <-fsmManager.closeCh:
-			fsmManager.Cleanup()
+		case newConn := <-fsmManager.newConnCh:
+			fsmManager.logger.Info(fmt.Sprintf("Neighbor %s: Handle another connection",
+				fsmManager.pConf.NeighborAddress))
+			newId := fsmManager.getNewId(newConn.id)
+			fsmManager.handleAnotherConnection(newId, newConn.connDir, newConn.conn)
+
+		case fsmState := <-fsmManager.fsmStateCh:
+			fsmManager.logger.Info(fmt.Sprintf("Neighbor %s: FSM %d state changed",
+				fsmManager.pConf.NeighborAddress, fsmState.id))
+			if fsmState.isEstablished {
+				fsmManager.fsmEstablished(fsmState.id, fsmState.conn)
+			} else {
+				fsmManager.fsmBroken(fsmState.id, false)
+			}
+
+		case fsmOpenMsg := <- fsmManager.fsmOpenMsgCh:
+			fsmManager.logger.Info(fmt.Sprintf("Neighbor %s: FSM %d received OPEN message",
+				fsmManager.pConf.NeighborAddress, fsmOpenMsg.id))
+			fsmManager.receivedBGPOpenMessage(fsmOpenMsg.id, fsmOpenMsg.connDir, fsmOpenMsg.bgpId)
+
+		case wg := <-fsmManager.closeCh:
+			fsmManager.Cleanup(wg)
 			return
-
-		/*case outConn := <-fsmManager.connectCh:
-			fsmManager.conns[ConnDirOut] = outConn
-			fsmManager.fsms[ConnDirOut].SetConn(outConn)
-			fsmManager.fsms[ConnDirOut].eventRxCh <- BGP_EVENT_TCP_CR_ACKED
-			//fsmManager.fsms[ConnDirOut].ProcessEvent(BGP_EVENT_TCP_CR_ACKED)
-
-		case <-fsmManager.connectErrCh:
-			fsmManager.fsms[ConnDirOut].eventRxCh <- BGP_EVENT_TCP_CONN_FAILS
-			//fsmManager.fsms[ConnDirOut].ProcessEvent(BGP_EVENT_TCP_CONN_FAILS)
-			fsmManager.conns[ConnDirOut].Close()
-			fsmManager.conns[ConnDirOut] = nil*/
 
 		case command := <-fsmManager.commandCh:
 			event := BGPFSMEvent(command)
 			if (event == BGPEventManualStart) || (event == BGPEventManualStop) ||
 				(event == BGPEventManualStartPassTcpEst) {
-				fsmManager.fsms[fsmManager.activeFSM].eventRxCh <- event
-				//fsmManager.fsms[fsmManager.activeFSM].ProcessEvent(event)
+				for _, fsm := range fsmManager.fsms {
+					if fsm != nil {
+						fsm.eventRxCh <- event
+					}
+				}
 			}
-
-		case <-fsmManager.pktRxCh:
-			fsmManager.logger.Info(fmt.Sprintln("FSMManager:Init - Rx a BGP packets"))
-			//fsmManager.fsms[pktRx.id].pktRxCh <- pktRx.pkt
-			//fsmManager.fsms[pktRx.id].ProcessPacket(pktRx.pkt, nil)
 		}
 	}
 }
@@ -136,67 +148,112 @@ func (fsmManager *FSMManager) RejectPeerConn() {
 	fsmManager.acceptConn = false
 }
 
-func (fsmManager *FSMManager) PeerConnEstablished(conn *net.Conn) {
+func (fsmManager *FSMManager) fsmEstablished(id uint8, conn *net.Conn) {
+	fsmManager.activeFSM = id
 	fsmManager.Peer.PeerConnEstablished(conn)
 }
 
-func (fsmManager *FSMManager) PeerConnBroken() {
-	fsmManager.Peer.PeerConnBroken()
+func (fsmManager *FSMManager) fsmBroken(id uint8, fsmDelete bool) {
+	if fsmManager.activeFSM == id {
+		fsmManager.activeFSM = uint8(config.ConnDirInvalid)
+	}
+
+	fsmManager.Peer.PeerConnBroken(fsmDelete)
 }
 
-func (fsmManager *FSMManager) SetBGPId(bgpId net.IP) {
+func (fsmManager *FSMManager) setBGPId(bgpId net.IP) {
 	fsmManager.Peer.SetBGPId(bgpId)
 }
 
 func (mgr *FSMManager) SendUpdateMsg(bgpMsg *packet.BGPMessage) {
-	mgr.fsms[config.ConnDirOut].pktTxCh <- bgpMsg
+	if mgr.activeFSM == uint8(config.ConnDirInvalid) {
+		mgr.logger.Info(fmt.Sprintf("FSMManager: FSM for peer %s is not in ESTABLISHED state", mgr.pConf.NeighborAddress))
+		return
+	}
+	mgr.fsms[mgr.activeFSM].pktTxCh <- bgpMsg
 }
 
-func (mgr *FSMManager) Cleanup() {
-	for dir, fsm := range mgr.fsms {
+func (mgr *FSMManager) Cleanup(wg *sync.WaitGroup) {
+	var fsmWG sync.WaitGroup
+	for id, fsm := range mgr.fsms {
 		if fsm != nil {
-			mgr.logger.Info(fmt.Sprintf("Cleanup FSM for peer:%s conn:%d", mgr.pConf.NeighborAddress, dir))
-			fsm.closeCh <- true
+			mgr.logger.Info(fmt.Sprintf("FSMManager: Cleanup FSM for peer:%s conn:%d", mgr.pConf.NeighborAddress, id))
+			fsmWG.Add(1)
+			fsm.closeCh <- &fsmWG
 			fsm = nil
+			mgr.fsmBroken(id, true)
+			mgr.fsms[id] = nil
+			delete(mgr.fsms, id)
 		}
 	}
+	mgr.logger.Info(fmt.Sprintf("FSMManager: waiting for FSM to cleanup %s", mgr.pConf.NeighborAddress.String()))
+	fsmWG.Wait()
+	mgr.logger.Info(fmt.Sprintf("FSMManager: calling Done() for FSMManager %s", mgr.pConf.NeighborAddress.String()))
+	(*wg).Done()
 }
 
-func (mgr *FSMManager) HandleAnotherConnection(connDir config.ConnDir, conn *net.Conn) {
-	if mgr.fsms[connDir] != nil {
-		mgr.logger.Err(fmt.Sprintf("Neighbor %s: A FSM for this connection direction already exists",
-			mgr.pConf.NeighborAddress))
+func (mgr *FSMManager) getNewId(id uint8) uint8 {
+	return uint8((id + 1) % 2)
+}
+
+func (mgr *FSMManager) handleAnotherConnection(id uint8, connDir config.ConnDir, conn *net.Conn) {
+	if mgr.fsms[id] != nil {
+		mgr.logger.Err(fmt.Sprintf("Neighbor %s: A FSM with id %d already exists", mgr.pConf.NeighborAddress, id))
 		return
 	}
 
-	mgr.fsms[connDir] = NewFSM(mgr, connDir, mgr.Peer)
+	fsm := NewFSM(mgr, id, mgr.Peer)
 
 	var state BaseStateIface
-	state = NewActiveState(mgr.fsms[connDir])
-	connCh := mgr.fsms[connDir].inConnCh
+	state = NewActiveState(fsm)
+	connCh := fsm.inConnCh
 	if connDir == config.ConnDirOut {
-		state = NewConnectState(mgr.fsms[connDir])
-		connCh = mgr.fsms[connDir].outConnCh
+		state = NewConnectState(fsm)
+		connCh = fsm.outConnCh
 	}
-	go mgr.fsms[connDir].StartFSM(state)
+	mgr.fsms[id] = fsm
+	go fsm.StartFSM(state)
 	connCh <- *conn
-	mgr.fsms[connDir].passiveTcpEstCh <- true
+	fsm.passiveTcpEstCh <- true
 }
 
-func (mgr *FSMManager) ReceivedBGPOpenMessage(connDir config.ConnDir, bgpId uint32) {
-	localBGPId := binary.BigEndian.Uint32(mgr.gConf.RouterId.To4())
-	for i, fsm := range mgr.fsms {
-		if i != int(connDir) && fsm != nil && fsm.State.state() >= BGPFSMOpensent {
-			var closeConnDir config.ConnDir
+func (mgr *FSMManager) getFSMIdByDir(connDir config.ConnDir) uint8 {
+	for id, fsm := range mgr.fsms {
+		if fsm != nil && fsm.peerConn != nil && fsm.peerConn.dir == connDir {
+			return id
+		}
+	}
+
+	return uint8(config.ConnDirInvalid)
+}
+
+func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, bgpId net.IP) {
+	var wg sync.WaitGroup
+	var closeConnDir config.ConnDir = config.ConnDirInvalid
+
+	localBGPId := packet.ConvertIPBytesToUint(mgr.gConf.RouterId.To4())
+	bgpIdInt := packet.ConvertIPBytesToUint(bgpId.To4())
+	for fsmId, fsm := range mgr.fsms {
+		if fsmId != id && fsm != nil && fsm.State.state() >= BGPFSMOpensent {
 			if fsm.State.state() == BGPFSMEstablished {
 				closeConnDir = connDir
-			} else if localBGPId > bgpId {
+			} else if localBGPId > bgpIdInt {
 				closeConnDir = config.ConnDirIn
 			} else {
 				closeConnDir = config.ConnDirOut
 			}
-			mgr.fsms[closeConnDir].closeCh <- true
-			mgr.fsms[closeConnDir] = nil
+			closeFSMId := mgr.getFSMIdByDir(closeConnDir)
+			if closeFSM, ok := mgr.fsms[closeFSMId]; ok {
+				wg.Add(1)
+				closeFSM.closeCh <- &wg
+				mgr.fsmBroken(closeFSMId, false)
+				mgr.fsms[closeFSMId] = nil
+				delete(mgr.fsms, closeFSMId)
+			}
 		}
+	}
+	wg.Wait()
+	if closeConnDir == config.ConnDirInvalid || closeConnDir != connDir {
+		mgr.setBGPId(bgpId)
 	}
 }

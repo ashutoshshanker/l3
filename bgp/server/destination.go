@@ -43,6 +43,10 @@ func NewDestination(server *BGPServer, nlri packet.IPPrefix) *Destination {
 	return dest
 }
 
+func (d *Destination) IsEmpty() bool {
+	return len(d.peerPathMap) == 0
+}
+
 func (d *Destination) AddOrUpdatePath(peerIp string, path *Path) bool {
 	added := false
 	oldPath, ok := d.peerPathMap[peerIp]
@@ -71,7 +75,22 @@ func (d *Destination) RemovePath(peerIp string, path *Path) {
 		}
 		delete(d.peerPathMap, peerIp)
 	} else {
-		d.logger.Err(fmt.Sprintln("Can't remove path", d.nlri.Prefix.String(), "Destination not found in RIB"))
+		d.logger.Err(fmt.Sprintln("Can't remove path", d.nlri.Prefix.String(), "Path not found from peer", peerIp))
+	}
+}
+
+func (d *Destination) RemoveAllNeighborPaths() {
+	for peerIP, path := range d.peerPathMap {
+		if path.peer != nil {
+			delete(d.peerPathMap, peerIP)
+		}
+	}
+
+	if d.locRibPath != nil {
+		if d.locRibPath.peer != nil {
+			d.recalculate = true
+			d.locRibPath = nil
+		}
 	}
 }
 

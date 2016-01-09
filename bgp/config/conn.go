@@ -10,4 +10,5 @@ const (
     ConnDirOut ConnDir = iota
     ConnDirIn
     ConnDirMax
+	ConnDirInvalid = ConnDirMax
 )

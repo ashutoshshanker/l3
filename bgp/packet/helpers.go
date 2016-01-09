@@ -77,10 +77,13 @@ func SetLocalPref(updateMsg *BGPMessage, pref uint32) {
 
 func SetNextHop(updateMsg *BGPMessage, nextHop net.IP) {
 	body := updateMsg.Body.(*BGPUpdate)
+	SetNextHopPathAttrs(body.PathAttributes, nextHop)
+}
 
-	for idx, pa := range body.PathAttributes {
+func SetNextHopPathAttrs(pathAttrs []BGPPathAttr, nextHopIP net.IP) {
+	for idx, pa := range pathAttrs {
 		if pa.GetCode() == BGPPathAttrTypeNextHop {
-			body.PathAttributes[idx].(*BGPPathAttrNextHop).Value = nextHop
+			pathAttrs[idx].(*BGPPathAttrNextHop).Value = nextHopIP
 		}
 	}
 }
@@ -171,4 +174,8 @@ func AddClusterId(updateMsg *BGPMessage, id uint32) bool {
 	}
 
 	return false
+}
+
+func ConvertIPBytesToUint(bytes []byte) uint32 {
+	return uint32(bytes[0]) << 24 | uint32(bytes[1] << 16) | uint32(bytes[2] << 8) | uint32(bytes[3])
 }

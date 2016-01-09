@@ -20,14 +20,25 @@ import (
 const IP string = "12.1.12.202" //"192.168.1.1"
 const BGPPort string = "179"
 
+type PeerUpdate struct {
+	OldPeer config.NeighborConfig
+	NewPeer config.NeighborConfig
+}
+
+type PeerFSMEst struct {
+	ip string
+	isEstablished bool
+}
+
 type BGPServer struct {
 	logger          *syslog.Writer
 	ribdClient      *ribd.RouteServiceClient
 	BgpConfig       config.Bgp
 	GlobalConfigCh  chan config.GlobalConfig
-	AddPeerCh       chan config.NeighborConfig
+	AddPeerCh       chan PeerUpdate
 	RemPeerCh       chan string
 	PeerCommandCh   chan config.PeerCommand
+	PeerFSMEstCh    chan PeerFSMEst
 	BGPPktSrc       chan *packet.BGPPktSrc
 	connRoutesTimer *time.Timer
 
@@ -47,9 +58,10 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.logger = logger
 	bgpServer.ribdClient = ribdClient
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
-	bgpServer.AddPeerCh = make(chan config.NeighborConfig)
+	bgpServer.AddPeerCh = make(chan PeerUpdate)
 	bgpServer.RemPeerCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
+	bgpServer.PeerFSMEstCh = make(chan PeerFSMEst)
 	bgpServer.BGPPktSrc = make(chan *packet.BGPPktSrc)
 	bgpServer.NeighborMutex = sync.RWMutex{}
 	bgpServer.PeerMap = make(map[string]*Peer)
@@ -178,9 +190,18 @@ func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribd.Routes, 
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
-func (server *BGPServer) ProcessRemovePeer(peerIp string, peer *Peer) {
+func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
 	updated, withdrawn, withdrawPath := server.adjRib.RemoveUpdatesFromNeighbor(peerIp, peer)
 	server.SendUpdate(updated, withdrawn, withdrawPath)
+}
+
+func (server *BGPServer) AdvertiseAllRoutes(peerIp string, peer *Peer) {
+	locRib := server.adjRib.GetLocRib()
+	server.SendUpdate(locRib, nil, nil)
+}
+
+func (server *BGPServer) RemoveRoutesFromAllNeighbor() {
+	server.adjRib.RemoveUpdatesFromAllNeighbors()
 }
 
 func (server *BGPServer) addPeerToList(peer *Peer) {
@@ -196,6 +217,11 @@ func (server *BGPServer) removePeerFromList(peer *Peer) {
 			break
 		}
 	}
+}
+
+func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
+	server.BgpConfig.Global.Config.AS = gConf.AS
+	server.BgpConfig.Global.Config.RouterId = gConf.RouterId
 }
 
 func (server *BGPServer) StartServer() {
@@ -230,32 +256,76 @@ func (server *BGPServer) StartServer() {
 
 	for {
 		select {
-		case addPeer := <-server.AddPeerCh:
-			_, ok := server.PeerMap[addPeer.NeighborAddress.String()]
-			if ok {
-				server.logger.Info(fmt.Sprintln("Failed to add peer. Peer at that address already exists,",
-					addPeer.NeighborAddress.String()))
+		case gConf = <-server.GlobalConfigCh:
+			var peerWG sync.WaitGroup
+			for peerIP, peer := range server.PeerMap {
+				server.logger.Info(fmt.Sprintf("Cleanup peer %s", peerIP))
+				peerWG.Add(1)
+				peer.Cleanup(&peerWG)
 			}
-			server.logger.Info(fmt.Sprintln("Add Peer ip:", addPeer.NeighborAddress.String()))
-			peer := NewPeer(server, server.BgpConfig.Global.Config, addPeer)
-			server.PeerMap[addPeer.NeighborAddress.String()] = peer
-			server.NeighborMutex.Lock()
-			server.addPeerToList(peer)
-			server.NeighborMutex.Unlock()
+			server.logger.Info(fmt.Sprintf("Waiting for all peer FSMs to cleanup..."))
+			peerWG.Wait()
+			server.logger.Info(fmt.Sprintf("All peer FSMs cleaned up, start the FSMs again"))
+
+			packet.SetNextHopPathAttrs(server.connRoutesPath.pathAttrs, gConf.RouterId)
+			server.RemoveRoutesFromAllNeighbor()
+			server.copyGlobalConf(gConf)
+			for _, peer := range server.PeerMap {
+				peer.Init()
+			}
+
+		case peerUpdate := <-server.AddPeerCh:
+			oldPeer := peerUpdate.OldPeer
+			newPeer := peerUpdate.NewPeer
+			var peer *Peer
+			var ok bool
+			if oldPeer.NeighborAddress != nil {
+				if peer, ok = server.PeerMap[oldPeer.NeighborAddress.String()]; ok {
+					var wg sync.WaitGroup
+					server.logger.Info(fmt.Sprintln("Clean up peer", oldPeer.NeighborAddress.String()))
+					wg.Add(1)
+					peer.Cleanup(&wg)
+					wg.Wait()
+					server.ProcessRemoveNeighbor(oldPeer.NeighborAddress.String(), peer)
+					peer.UpdateNeighborConf(newPeer)
+				} else {
+					server.logger.Info(fmt.Sprintln("Can't find neighbor with old address",
+						oldPeer.NeighborAddress.String()))
+				}
+			}
+
+			if !ok {
+				_, ok = server.PeerMap[newPeer.NeighborAddress.String()]
+				if ok {
+					server.logger.Info(fmt.Sprintln("Failed to add neighbor. Neighbor at that address already exists,",
+						newPeer.NeighborAddress.String()))
+					break
+				}
+				server.logger.Info(fmt.Sprintln("Add neighbor, ip:", newPeer.NeighborAddress.String()))
+				peer = NewPeer(server, server.BgpConfig.Global.Config, newPeer)
+				server.PeerMap[newPeer.NeighborAddress.String()] = peer
+				server.NeighborMutex.Lock()
+				server.addPeerToList(peer)
+				server.NeighborMutex.Unlock()
+			}
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:
+			var wg sync.WaitGroup
 			server.logger.Info(fmt.Sprintln("Remove Peer:", remPeer))
 			peer, ok := server.PeerMap[remPeer]
 			if !ok {
 				server.logger.Info(fmt.Sprintln("Failed to remove peer. Peer at that address does not exist,", remPeer))
+				break
 			}
 			server.NeighborMutex.Lock()
 			server.removePeerFromList(peer)
 			server.NeighborMutex.Unlock()
 			delete(server.PeerMap, remPeer)
-			peer.Cleanup()
-			server.ProcessRemovePeer(remPeer, peer)
+			wg.Add(1)
+			peer.Cleanup(&wg)
+			wg.Wait()
+			server.ProcessRemoveNeighbor(remPeer, peer)
 
 		case tcpConn := <-acceptCh:
 			server.logger.Info(fmt.Sprintln("Connected to", tcpConn.RemoteAddr().String()))
@@ -268,8 +338,15 @@ func (server *BGPServer) StartServer() {
 				break
 			}
 			peer.AcceptConn(tcpConn)
-			//server.logger.Info(fmt.Sprintln("send keep alives to peer..."))
-			//go peer.SendKeepAlives(tcpConn)
+
+		case peerFSMEst := <- server.PeerFSMEstCh:
+			if peer, ok := server.PeerMap[peerFSMEst.ip]; ok {
+				if peerFSMEst.isEstablished {
+					server.AdvertiseAllRoutes(peerFSMEst.ip, peer)
+				} else {
+					server.ProcessRemoveNeighbor(peerFSMEst.ip, peer)
+				}
+			}
 
 		case peerCommand := <-server.PeerCommandCh:
 			server.logger.Info(fmt.Sprintln("Peer Command received", peerCommand))
