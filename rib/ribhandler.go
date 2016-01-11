@@ -838,26 +838,6 @@ func (m RouteServiceHandler) LinkUp(ifType ribd.Int, ifIndex ribd.Int) (err erro
 	return nil
 }
 
-//
-// This method gets Thrift related IPC handles.
-//
-/*func CreateIPCHandles(address string) (thrift.TTransport, *thrift.TBinaryProtocolFactory) {
-	var transportFactory thrift.TTransportFactory
-	var transport thrift.TTransport
-	var protocolFactory *thrift.TBinaryProtocolFactory
-	var err error
-
-	protocolFactory = thrift.NewTBinaryProtocolFactoryDefault()
-	transportFactory = thrift.NewTTransportFactory()
-	transport, err = thrift.NewTSocket(address)
-	transport = transportFactory.GetTransport(transport)
-	if err = transport.Open(); err != nil {
-	//	logger.Println("Failed to Open Transport", transport, protocolFactory)
-		return nil, nil
-	}
-	return transport, protocolFactory
-}*/
-
 func connectToClient(client ClientJson) {
 	var timer *time.Timer
 	logger.Printf("in go routine ConnectToClient for connecting to %s\n", client.Name)
@@ -867,7 +847,7 @@ func connectToClient(client ClientJson) {
 		if client.Name == "asicd" {
 			//logger.Printf("found asicd at port %d", client.Port)
 			asicdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			asicdclnt.Transport, asicdclnt.PtrProtocolFactory = ipcutils.CreateIPCHandles(asicdclnt.Address)
+			asicdclnt.Transport, asicdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
 				//logger.Println("connecting to asicd")
 				asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
@@ -882,7 +862,7 @@ func connectToClient(client ClientJson) {
 		if client.Name == "arpd" {
 			//logger.Printf("found arpd at port %d", client.Port)
 			arpdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			arpdclnt.Transport, arpdclnt.PtrProtocolFactory = ipcutils.CreateIPCHandles(arpdclnt.Address)
+			arpdclnt.Transport, arpdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
 				//logger.Println("connecting to arpd")
 				arpdclnt.ClientHdl = arpd.NewARPServiceClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
@@ -916,7 +896,7 @@ func ConnectToClients(paramsFile string) {
 		if client.Name == "asicd" {
 			logger.Printf("found asicd at port %d", client.Port)
 			asicdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			asicdclnt.Transport, asicdclnt.PtrProtocolFactory = ipcutils.CreateIPCHandles(asicdclnt.Address)
+			asicdclnt.Transport, asicdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
 				logger.Println("connecting to asicd")
 				asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
@@ -928,7 +908,7 @@ func ConnectToClients(paramsFile string) {
 		if client.Name == "arpd" {
 			logger.Printf("found arpd at port %d", client.Port)
 			arpdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			arpdclnt.Transport, arpdclnt.PtrProtocolFactory = ipcutils.CreateIPCHandles(arpdclnt.Address)
+			arpdclnt.Transport, arpdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
 				logger.Println("connecting to arpd")
 				arpdclnt.ClientHdl = arpd.NewARPServiceClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
