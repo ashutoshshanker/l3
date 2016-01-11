@@ -3,6 +3,7 @@ package main
 import (
 	"arpd"
 	"asicdServices"
+	"portdServices"
 	"encoding/json"
 	"l3/rib/ribdCommonDefs"
 	"ribd"
@@ -30,6 +31,11 @@ type RIBClientBase struct {
 	Transport          thrift.TTransport
 	PtrProtocolFactory *thrift.TBinaryProtocolFactory
 	IsConnected        bool
+}
+
+type PortdClient struct {
+	RIBClientBase
+	ClientHdl *portdServices.PortServiceClient
 }
 
 type AsicdClient struct {
@@ -105,6 +111,7 @@ var RouteInfoMap = patriciaDB.NewTrie()
 var DummyRouteInfoRecord RouteInfoRecord //{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
 var asicdclnt AsicdClient
 var arpdclnt ArpdClient
+var portdclnt PortdClient
 var count int
 var ConnectedRoutes []*ribd.Routes
 var destNetSlice []localDB
@@ -349,6 +356,24 @@ func IsRoutePresent(routeInfoRecordList RouteInfoRecordList,
 	logger.Printf("returning i = %d\n", i)
 	return found, i
 }
+
+func getConnectedRoutes() {
+   var IPIntfList []*portdServices.IPIntf
+   logger.Println("Getting ip intfs from portd")	
+   IPIntfList, err := portdclnt.ClientHdl.GetIPIntfsAll()
+   if(err != nil) {
+      logger.Println("Failed to get ip intfs with err ", err)
+	  return	
+   }
+   logger.Printf("Number of ip intfs  = %d\n", len(IPIntfList))
+   for i:=0;i<len(IPIntfList);i++ {
+      _, err := createV4Route(IPIntfList[i].IpAddr, IPIntfList[i].Mask, 0, "0.0.0.0", ribd.Int(IPIntfList[i].IntfType), ribd.Int(IPIntfList[i].IntfId), ribdCommonDefs.CONNECTED, FIBAndRIB,ribd.Int(len(destNetSlice)))	
+	if(err != nil) {
+		logger.Printf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", IPIntfList[i].IpAddr, IPIntfList[i].Mask, ribd.Int(IPIntfList[i].IntfType), ribd.Int(IPIntfList[i].IntfId))
+	}
+   }
+}
+
 //thrift API definitions
 
 func (m RouteServiceHandler) GetBulkRoutes( fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.RoutesGetInfo, err error){//(routes []*ribd.Routes, err error) {
@@ -852,7 +877,24 @@ func connectToClient(client ClientJson) {
 				//logger.Println("connecting to asicd")
 				asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
-				if(arpdclnt.IsConnected == true) {
+				if(arpdclnt.IsConnected == true && portdclnt.IsConnected == true) {
+					acceptConfig = true
+				}
+				timer.Stop()
+				return
+			}
+		}
+		if client.Name == "portd" {
+			//logger.Printf("found portd at port %d", client.Port)
+			portdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
+			portdclnt.Transport, portdclnt.PtrProtocolFactory = CreateIPCHandles(portdclnt.Address)
+			if portdclnt.Transport != nil && portdclnt.PtrProtocolFactory != nil {
+				//logger.Println("connecting to asicd")
+				portdclnt.ClientHdl = portdServices.NewPortServiceClientFactory(portdclnt.Transport, portdclnt.PtrProtocolFactory)
+				portdclnt.IsConnected = true
+				getConnectedRoutes()
+				portdclnt.ClientHdl.GetIPIntfsAll()
+				if(arpdclnt.IsConnected == true && asicdclnt.IsConnected == true) {
 					acceptConfig = true
 				}
 				timer.Stop()
@@ -867,7 +909,7 @@ func connectToClient(client ClientJson) {
 				//logger.Println("connecting to arpd")
 				arpdclnt.ClientHdl = arpd.NewARPServiceClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
-				if(asicdclnt.IsConnected == true) {
+				if(asicdclnt.IsConnected == true && portdclnt.IsConnected == true) {
 					acceptConfig = true
 				}
 				timer.Stop()
@@ -901,6 +943,19 @@ func ConnectToClients(paramsFile string) {
 				logger.Println("connecting to asicd")
 				asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
+			} else {
+				go connectToClient(client)
+			}
+		}
+		if client.Name == "portd" {
+			logger.Printf("found portd at port %d", client.Port)
+			portdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
+			portdclnt.Transport, portdclnt.PtrProtocolFactory = CreateIPCHandles(portdclnt.Address)
+			if portdclnt.Transport != nil && portdclnt.PtrProtocolFactory != nil {
+				logger.Println("connecting to port")
+				portdclnt.ClientHdl = portdServices.NewPortServiceClientFactory(portdclnt.Transport, portdclnt.PtrProtocolFactory)
+				portdclnt.IsConnected = true
+				getConnectedRoutes()
 			} else {
 				go connectToClient(client)
 			}
