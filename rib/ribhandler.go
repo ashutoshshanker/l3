@@ -632,11 +632,14 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	}
 	
 	//If this is not a connected route, then nothing more to do
-	if(routeType != ribdCommonDefs.CONNECTED) {
-	    logger.Println("This is not a connected route, nothing more to do")
+	if(routeType == ribdCommonDefs.CONNECTED) {
+	   logger.Println("This is a connected route, so send a route add event")
+	}else if(routeType == ribdCommonDefs.STATIC) {
+	   logger.Println("This is a static route, so send a route add event")
+	} else {
+		logger.Println(" This is neither a connected nor a static route, so nothing more to do")
 		return 0, err
 	}
-	logger.Println("This is a connected route, so send a route add event")
 
 	//Send a event
 	route := ribd.Routes { Ipaddr : destNetIp, Mask : networkMask,	NextHopIp : nextHopIp, NextHopIfType: nextHopIfType, IfIndex : nextHopIfIndex, Metric : metric}
