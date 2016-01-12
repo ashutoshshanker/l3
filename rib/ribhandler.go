@@ -887,7 +887,7 @@ func connectToClient(client ClientJson) {
 		if client.Name == "portd" {
 			//logger.Printf("found portd at port %d", client.Port)
 			portdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			portdclnt.Transport, portdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(portdclnt.Address)
+			portdclnt.Transport, portdclnt.PtrProtocolFactory,_ = ipcutils.CreateIPCHandles(portdclnt.Address)
 			if portdclnt.Transport != nil && portdclnt.PtrProtocolFactory != nil {
 				//logger.Println("connecting to asicd")
 				portdclnt.ClientHdl = portdServices.NewPortServiceClientFactory(portdclnt.Transport, portdclnt.PtrProtocolFactory)
@@ -950,7 +950,7 @@ func ConnectToClients(paramsFile string) {
 		if client.Name == "portd" {
 			logger.Printf("found portd at port %d", client.Port)
 			portdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			portdclnt.Transport, portdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(portdclnt.Address)
+			portdclnt.Transport, portdclnt.PtrProtocolFactory,_ = ipcutils.CreateIPCHandles(portdclnt.Address)
 			if portdclnt.Transport != nil && portdclnt.PtrProtocolFactory != nil {
 				logger.Println("connecting to port")
 				portdclnt.ClientHdl = portdServices.NewPortServiceClientFactory(portdclnt.Transport, portdclnt.PtrProtocolFactory)
