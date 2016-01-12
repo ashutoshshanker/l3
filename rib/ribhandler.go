@@ -40,12 +40,12 @@ type PortdClient struct {
 
 type AsicdClient struct {
 	RIBClientBase
-	ClientHdl *asicdServices.AsicdServiceClient
+	ClientHdl *asicdServices.ASICDServicesClient
 }
 
 type ArpdClient struct {
 	RIBClientBase
-	ClientHdl *arpd.ARPServiceClient
+	ClientHdl *arpd.ARPDServicesClient
 }
 
 const (
@@ -875,7 +875,7 @@ func connectToClient(client ClientJson) {
 			asicdclnt.Transport, asicdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
 				//logger.Println("connecting to asicd")
-				asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
+				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
 				if(arpdclnt.IsConnected == true && portdclnt.IsConnected == true) {
 					acceptConfig = true
@@ -907,7 +907,7 @@ func connectToClient(client ClientJson) {
 			arpdclnt.Transport, arpdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
 				//logger.Println("connecting to arpd")
-				arpdclnt.ClientHdl = arpd.NewARPServiceClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
+				arpdclnt.ClientHdl = arpd.NewARPDServicesClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
 				if(asicdclnt.IsConnected == true && portdclnt.IsConnected == true) {
 					acceptConfig = true
@@ -941,7 +941,7 @@ func ConnectToClients(paramsFile string) {
 			asicdclnt.Transport, asicdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
 				logger.Println("connecting to asicd")
-				asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
+				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
 			} else {
 				go connectToClient(client)
@@ -966,7 +966,7 @@ func ConnectToClients(paramsFile string) {
 			arpdclnt.Transport, arpdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
 				logger.Println("connecting to arpd")
-				arpdclnt.ClientHdl = arpd.NewARPServiceClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
+				arpdclnt.ClientHdl = arpd.NewARPDServicesClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
 			} else {
 				go connectToClient(client)
