@@ -896,7 +896,6 @@ func connectToClient(client ClientJson) {
 				portdclnt.ClientHdl = portdServices.NewPortServiceClientFactory(portdclnt.Transport, portdclnt.PtrProtocolFactory)
 				portdclnt.IsConnected = true
 				getConnectedRoutes()
-				portdclnt.ClientHdl.GetIPIntfsAll()
 				if(arpdclnt.IsConnected == true && asicdclnt.IsConnected == true) {
 					acceptConfig = true
 				}
