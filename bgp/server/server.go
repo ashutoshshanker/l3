@@ -42,7 +42,6 @@ type BGPServer struct {
 	PeerConnEstCh    chan string
 	PeerConnBrokenCh chan string
 	PeerCommandCh    chan config.PeerCommand
-	PeerFSMEstCh    chan PeerFSMEst
 	BGPPktSrc        chan *packet.BGPPktSrc
 	connRoutesTimer  *time.Timer
 
@@ -341,15 +340,6 @@ func (server *BGPServer) StartServer() {
 				break
 			}
 			peer.AcceptConn(tcpConn)
-
-		case peerFSMEst := <- server.PeerFSMEstCh:
-			if peer, ok := server.PeerMap[peerFSMEst.ip]; ok {
-				if peerFSMEst.isEstablished {
-					server.AdvertiseAllRoutes(peerFSMEst.ip, peer)
-				} else {
-					server.ProcessRemoveNeighbor(peerFSMEst.ip, peer)
-				}
-			}
 
 		case peerCommand := <-server.PeerCommandCh:
 			server.logger.Info(fmt.Sprintln("Peer Command received", peerCommand))
