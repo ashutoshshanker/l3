@@ -114,6 +114,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 	routeType := RouteTypeMax
 	action := RouteSelectionNone
 
+	d.logger.Info(fmt.Sprintf("Destination:SelectRouteForLocalRib - peer path map = %s", d.peerPathMap))
 	if !d.recalculate {
 		return action
 	}
@@ -124,10 +125,10 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 		updatedPaths = append(updatedPaths, d.locRibPath)
 	}
 
-	for _, path := range d.peerPathMap {
+	for peerIP, path := range d.peerPathMap {
 		if path.IsUpdated() || (d.locRibPath != nil && (d.locRibPath.IsWithdrawn() || d.locRibPath.IsUpdated())) {
 			if !path.IsLocal() && !path.IsReachable() {
-				d.logger.Info(fmt.Sprintf("NEXT_HOP[%s] is not reachable", path.GetNextHop()))
+				d.logger.Info(fmt.Sprintf("peer %s, NEXT_HOP[%s] is not reachable", peerIP, path.GetNextHop()))
 				continue
 			}
 

@@ -119,6 +119,17 @@ func (adjRib *AdjRib) ProcessConnectedRoutes(src string, path *Path, add []packe
 	return updated, withdrawn, removePath
 }
 
+func (adjRib *AdjRib) GetLocRib() map[*Path][]packet.IPPrefix {
+	withdrawn := make([]packet.IPPrefix, 0)
+	updated := make(map[*Path][]packet.IPPrefix)
+
+	for _, dest := range adjRib.destPathMap {
+		withdrawn, updated = updateRibOutInfo(RouteSelectionAdd, dest, withdrawn, updated)
+	}
+
+	return updated
+}
+
 func (adjRib *AdjRib) RemoveUpdatesFromNeighbor(peerIP string, peer *Peer) (map[*Path][]packet.IPPrefix, []packet.IPPrefix, *Path) {
 	remPath := NewPath(adjRib.server, peer, nil, true, false, RouteTypeEGP)
 	withdrawn := make([]packet.IPPrefix, 0)
