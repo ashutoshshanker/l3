@@ -13,12 +13,11 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/op/go-nanomsg"
 	"asicd/asicdConstDefs"
-	"infra/portd/portdCommonDefs"
 	"io/ioutil"
 	"net"
 	"strconv"
 	"time"
-	"encoding/binary"
+//	"encoding/binary"
 	"bytes"
 	"utils/ipcutils"
 )
@@ -1018,31 +1017,63 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 		 return	
 	  }
 	  logger.Println("After recv rcvdMsg buf", rcvdMsg)
-      buf := bytes.NewReader(rcvdMsg)
+	  Notif := asicdConstDefs.AsicdNotification {}
+	  err = json.Unmarshal(rcvdMsg, &Notif)
+	  if err != nil {
+		logger.Println("Error in Unmarshalling rcvdMsg Json")
+		return
+	  }
+/*      buf := bytes.NewReader(rcvdMsg)
       var MsgType asicdConstDefs.AsicdNotifyMsg
       err = binary.Read(buf, binary.LittleEndian, &MsgType)
       if err != nil {
 	     logger.Println("Error in reading msgtype ", err)
 		 return	
-      }
-      switch MsgType {
-        case asicdConstDefs.NOTIFY_LINK_STATE_CHANGE:
-           var msg asicdConstDefs.LinkStateInfo
-           err = binary.Read(buf, binary.LittleEndian, &msg)
+      }*/
+      switch Notif.MsgType {
+        case asicdConstDefs.NOTIFY_INTF_STATE_CHANGE:
+		   logger.Println("NOTIFY_INTF_STATE_CHANGE event")
+           var msg asicdConstDefs.IntfStateNotifyMsg
+	       err = json.Unmarshal(Notif.Msg, &msg)
            if err != nil {
     	     logger.Println("Error in reading msg ", err)
 		     return	
            }
-		    logger.Printf("Msg linkstatus = %d msg port = %d\n", msg.LinkStatus, msg.Port)
-		    if(msg.LinkStatus == asicdConstDefs.LINK_STATE_DOWN) {
-				processLinkDownEvent(portdCommonDefs.PHY, ribd.Int(msg.Port))		//asicd always sends out link state events for PHY ports
+		    logger.Printf("Msg linkstatus = %d msg ifType = %d ifId = %d\n", msg.IfState, msg.IfType, msg.IfId)
+		    if(msg.IfState == asicdConstDefs.INTF_STATE_DOWN) {
+				processLinkDownEvent(ribd.Int(msg.IfType), ribd.Int(msg.IfId))		
 			} else {
-				processLinkUpEvent(portdCommonDefs.PHY, ribd.Int(msg.Port))
+				processLinkUpEvent(ribd.Int(msg.IfType), ribd.Int(msg.IfId))
 			}
+			break
+		case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
+		   logger.Println("NOTIFY_IPV4INTF_CREATE event")
+		   var msg asicdConstDefs.IPv4IntfNotifyMsg
+	       err = json.Unmarshal(Notif.Msg, &msg)
+           if err != nil {
+    	     logger.Println("Error in reading msg ", err)
+		     return	
+           }
+		   logger.Printf("Received ipv4 intf create with ipAddr %s ifType %d ifId %d\n", msg.IpAddr, msg.IfType, msg.IfId)
+            var ipMask net.IP
+			ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
+		    if err != nil {
+			   return  
+		    }
+		    ipMask = make(net.IP, 4)
+		    copy(ipMask, ipNet.Mask)
+		    ipAddrStr := ip.String()
+		    ipMaskStr := net.IP(ipMask).String()
+			logger.Printf("Calling createv4Route with ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
+		   _,err = createV4Route(ipAddrStr,ipMaskStr, 0, "0.0.0.0", ribd.Int(msg.IfType), ribd.Int(msg.IfId), ribdCommonDefs.CONNECTED,  FIBAndRIB, ribd.Int(len(destNetSlice)))
+		   if(err != nil) {
+			  logger.Printf("Route create failed with err %s\n", err)
+			  return 
+		}
        }
 	}
 }
-
+/*
 func processPortdEvents(sub *nanomsg.SubSocket) {
 	
 	logger.Println("in process Port events")
@@ -1078,7 +1109,7 @@ func processPortdEvents(sub *nanomsg.SubSocket) {
 			}
       }
 	}
-}
+}*/
 func processEvents(sub *nanomsg.SubSocket, subType ribd.Int) {
 	logger.Println("in process events for sub ", subType)
 	if(subType == SUB_ASICD){
@@ -1086,7 +1117,7 @@ func processEvents(sub *nanomsg.SubSocket, subType ribd.Int) {
 		processAsicdEvents(sub)
 	} else if(subType == SUB_PORTD){
 		logger.Println("process portd events")
-		processPortdEvents(sub)
+		//processPortdEvents(sub)
 	}
 }
 func setupEventHandler(sub *nanomsg.SubSocket, address string, subtype ribd.Int) {
@@ -1143,7 +1174,7 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	ConnectToClients(configFile)
 	RIBD_PUB = InitPublisher()
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
-	go setupEventHandler(PortdSub, portdCommonDefs.PUB_SOCKET_ADDR, SUB_PORTD)
+//	go setupEventHandler(PortdSub, portdCommonDefs.PUB_SOCKET_ADDR, SUB_PORTD)
 	//CreateRoutes("RouteSetup.json")
 	UpdateRoutesFromDB(paramsDir)
 	return &RouteServiceHandler{}
