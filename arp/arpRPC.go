@@ -49,7 +49,7 @@ func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
         //logger.Println("Local IP address of is:", ip_addr)
         logWriter.Info(fmt.Sprintln("Local IP address of is:", ip_addr))
         //var linux_device string
-        if portdClient.IsConnected {
+        //if portdClient.IsConnected {
                 //linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
                 linux_device, err := getLinuxIfc(int(iftype), int(vlan_id))
 /*
@@ -88,10 +88,12 @@ func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
                 }
 */
 
+/*
         } else {
                 logWriter.Err("portd client is not connected.")
                 //logger.Println("Portd is not connected.")
         }
+*/
 
         return ARP_REQ_SUCCESS, err
 
@@ -196,7 +198,7 @@ func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (
 
 func (m ARPServiceHandler) ArpProbeV4Intf(ipAddr string, vlan_id arpd.Int, iftype arpd.Int) (rc arpd.Int, err error) {
     logger.Println("ArpProbeV4Intf() : ipAddr:", ipAddr, "vlan_id:", vlan_id, "iftype:", iftype)
-    if portdClient.IsConnected {
+    //if portdClient.IsConnected {
         //linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
         linux_device, err := getLinuxIfc(int(iftype), int(vlan_id))
         //logger.Println("linux_device ", linux_device)
@@ -220,10 +222,12 @@ func (m ARPServiceHandler) ArpProbeV4Intf(ipAddr string, vlan_id arpd.Int, iftyp
         logWriter.Info(fmt.Sprintln("MAC addr of ", linux_device, ": ", mac_addr))
 
         go sendArpProbe(ipAddr, handle, mac_addr)
+/*
     } else {
             logWriter.Err("portd client is not connected.")
             //logger.Println("Portd is not connected.")
     }
+*/
 
     return ARP_REQ_SUCCESS, err
 }

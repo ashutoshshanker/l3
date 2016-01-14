@@ -104,9 +104,19 @@ type portProperty struct {
 }
 
 type vlanProperty struct {
-    vlanName   string
+    vlanName        string
+    untaggedPorts   []int32
 }
 
+type ipv4IntfProperty struct {
+    ifIdx       int
+    ifType      int
+}
+
+type ipv4Address struct {
+    ipAddress       net.IP
+    ipNet           net.IPNet
+}
 
 type arpEntryResponseMsg struct {
     arp_msg     arpMsgSlice
@@ -131,6 +141,19 @@ type VlanNotifyMsg struct {
     VlanName string
     UntagPorts []int32
 }
+
+type IntfStateNotifyMsg struct {
+    IfId uint16
+    IfType uint8
+    IfState uint8
+}
+
+type IPv4IntfNotifyMsg struct {
+    IpAddr string
+    IfId uint16
+    IfType uint8
+}
+
 
 /*
  * connection params.
@@ -168,6 +191,7 @@ var pcap_handle_map map[int]pcapHandle
 var port_property_map map[int]portProperty
 var vlanPropertyMap map[int]vlanProperty
 var portConfigMap map[int]portConfig
+var ipv4IntfPropertyMap map[string]ipv4IntfProperty
 
 var asicdSubSocket *nanomsg.SubSocket
 
@@ -219,6 +243,7 @@ func ConnectToClients(paramsFile string) {
 			}
 
 		}
+/*
 		if client.Name == "portd" {
 			//logger.Printf("found portd at port %d", client.Port)
 			logWriter.Info(fmt.Sprintln("found portd at port %d", client.Port))
@@ -231,6 +256,7 @@ func ConnectToClients(paramsFile string) {
 			}
 
 		}
+*/
 	}
 }
 
@@ -306,6 +332,7 @@ func initARPhandlerParams() {
         port_property_map = make(map[int]portProperty)
         vlanPropertyMap = make(map[int]vlanProperty)
         portConfigMap = make(map[int]portConfig)
+        ipv4IntfPropertyMap = make(map[string]ipv4IntfProperty)
 	if success != true {
 		logWriter.Err("server: Failed to initialise ARP cache")
 		//logger.Println("Failed to initialise ARP cache")
@@ -790,7 +817,7 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                 if nw := packet.NetworkLayer(); nw != nil {
                     src_ip, dst_ip := nw.NetworkFlow().Endpoints()
                     dst_ip_addr := dst_ip.String()
-                    dstip := net.ParseIP(dst_ip_addr)
+                    //dstip := net.ParseIP(dst_ip_addr)
                     src_ip_addr := src_ip.String()
                     /*
                     if src_ip_addr == localIP || dst_ip_addr == localIP {
@@ -799,6 +826,11 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                     */
                     _, exist := arp_cache.arpMap[dst_ip_addr]
                     if !exist {
+                        ifName, ret := isInLocalSubnet(dst_ip_addr)
+                        if ret == false {
+                            continue
+                        }
+/*
                         //dst_ip_addr := src_ip.String()
                         route, err := netlink.RouteGet(dstip)
                         var ifName string
@@ -814,14 +846,68 @@ func receiveArpResponse(rec_handle *pcap.Handle,
                         if ifName == "" {
                             continue
                         }
-                        //logger.Println("Receive Some packet from src_ip:", src_ip_addr, "dst_ip:", dst_ip_addr, "Outgoing Interface:", ifName)
-                        logWriter.Info(fmt.Sprintln("Receive Some packet from src_ip:", src_ip_addr, "dst_ip:", dst_ip_addr, "Outgoing Interface:", ifName))
+*/
+                        logWriter.Info(fmt.Sprintln("Sending ARP for dst_ip:", dst_ip_addr, "Outgoing Interface:", ifName))
                         go createAndSendArpReuqest(dst_ip_addr, ifName)
+                    }
+                    _, exist = arp_cache.arpMap[src_ip_addr]
+                    if !exist {
+                        ifName, ret := isInLocalSubnet(src_ip_addr)
+                        if ret == false {
+                            continue
+                        }
+                        logWriter.Info(fmt.Sprintln("Sending ARP for src_ip:", src_ip_addr, "Outgoing Interface:", ifName))
+                        go createAndSendArpReuqest(src_ip_addr, ifName)
                     }
                 }
             }
         }
     }
+}
+
+func isInLocalSubnet(ipaddr string) (ifName string, ret bool) {
+    var flag bool = false
+    var ipv4IntfProp ipv4IntfProperty
+    var ipAddr string
+    ipIn := net.ParseIP(ipaddr)
+
+    for ipAddr, ipv4IntfProp = range ipv4IntfPropertyMap {
+        ip, ipNet, err := net.ParseCIDR(ipAddr)
+        if err != nil {
+            continue
+        }
+        if ip.Equal(ipIn) {
+            // IP Address of local interface
+            return "", false
+        }
+        net1 := ipIn.Mask(ipNet.Mask)
+        net2 := ip.Mask(ipNet.Mask)
+        if net1.Equal(net2) {
+            flag = true
+            break
+        }
+    }
+
+    if flag == false {
+        return "", false
+    }
+
+    if ipv4IntfProp.ifType == 0 { // VLAN
+        ent, exist := vlanPropertyMap[ipv4IntfProp.ifIdx]
+        if !exist {
+            return "", false
+        }
+        ifName = ent.vlanName
+    } else if ipv4IntfProp.ifType == 1 { //PHY
+        ent, exist := portConfigMap[ipv4IntfProp.ifIdx]
+        if !exist {
+            return "", false
+        }
+        ifName = ent.Name
+    } else {
+        return "", false
+    }
+    return ifName, true
 }
 
 func createAndSendArpReuqest(targetIP string, outgoingIfName string) {
@@ -1263,6 +1349,26 @@ func updateArpCache() {
                             continue
                         }
                         updatePortPropertyMap(vlanNotifyMsg, msg.MsgType)
+                    } else if msg.MsgType == 3 || msg.MsgType == 4 {
+                        //IPV4INTF_CREATE and IPV4INTF_DELETE
+                        // if create send ARPProbe
+                        // else delete
+                        var ipv4IntfNotifyMsg IPv4IntfNotifyMsg
+                        err = json.Unmarshal(msg.Msg, &ipv4IntfNotifyMsg)
+                        if err != nil {
+                            logWriter.Err(fmt.Sprintln("Unable to unmashal ipv4IntfNotifyMsg:", msg.Msg))
+                            continue
+                        }
+                        updateIpv4IntfPropertyMap(ipv4IntfNotifyMsg, msg.MsgType)
+                    } else if msg.MsgType == 5 {
+                        //INTF_STATE_CHANGE
+                        // if down invalidate the ARP entry
+                        var intfStateNotifyMsg IntfStateNotifyMsg
+                        err = json.Unmarshal(msg.Msg, &intfStateNotifyMsg)
+                        if err != nil {
+                            logWriter.Err(fmt.Sprintln("Unable to unmashal intfStateNotifyMsg:", msg.Msg))
+                            continue
+                        }
                     } else {
                         logger.Println("Unknown message from asicd")
                     }
@@ -1277,6 +1383,7 @@ func updatePortPropertyMap(vlanNotifyMsg VlanNotifyMsg, msgType uint8) {
     if msgType == 1 { // Create Vlan
         entry := vlanPropertyMap[int(vlanNotifyMsg.VlanId)]
         entry.vlanName = vlanNotifyMsg.VlanName
+        entry.untaggedPorts = vlanNotifyMsg.UntagPorts
         vlanPropertyMap[int(vlanNotifyMsg.VlanId)] = entry
         for _, portNum := range vlanNotifyMsg.UntagPorts {
             ent := port_property_map[int(portNum)]
@@ -1290,6 +1397,50 @@ func updatePortPropertyMap(vlanNotifyMsg VlanNotifyMsg, msgType uint8) {
             delete(port_property_map, int(portNum))
         }
     }
+}
+
+func updateIpv4IntfPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
+    if msgType == 3 {
+        entry := ipv4IntfPropertyMap[msg.IpAddr]
+        entry.ifIdx = int(msg.IfId)
+        entry.ifType = int(msg.IfType)
+        ipv4IntfPropertyMap[msg.IpAddr] = entry
+        // Send ARP Probe
+        ip, _ , err := net.ParseCIDR(msg.IpAddr)
+        if err != nil {
+            logWriter.Err(fmt.Sprintln("Error parsing ip address:", err))
+            return
+        }
+        arpProbe(ip.String(), int(msg.IfType), int(msg.IfId))
+    } else {
+        delete(ipv4IntfPropertyMap, msg.IpAddr)
+    }
+}
+
+func arpProbe(ipAddr string, ifType int, ifIdx int) {
+    logWriter.Info(fmt.Sprintln("Sending arp probe for: ", ipAddr))
+    linux_device, err := getLinuxIfc(ifType, ifIdx)
+    logWriter.Info(fmt.Sprintln("linux_device ", linux_device))
+    if err != nil {
+        logWriter.Err(fmt.Sprintf("Failed to get ifname for interface : ", ifIdx, "type : ", ifType))
+        return
+    }
+
+    logWriter.Info(fmt.Sprintln("Server:Connecting to device ", linux_device))
+    handle, err = pcap.OpenLive(linux_device, snapshot_len, promiscuous, timeout_pcap)
+    if handle == nil {
+        logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", linux_device, err))
+        return
+    }
+
+    mac_addr, err := getMacAddrInterfaceName(linux_device)
+    if err != nil {
+        logWriter.Err(fmt.Sprintln("Unable to get the MAC addr of ", linux_device))
+    }
+    //logger.Println("MAC addr of ", linux_device, ": ", mac_addr)
+    logWriter.Info(fmt.Sprintln("MAC addr of ", linux_device, ": ", mac_addr))
+    go sendArpProbe(ipAddr, handle, mac_addr)
+    return
 }
 
 func refresh_arp_entry(ip string, ifName string, localIP string) {
@@ -1326,7 +1477,7 @@ func getLinuxIfc(ifType int, idx int) (ifName string, err error){
 func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int, localIP string) {
         //logger.Println("Calling ResolveArpIPv4...", ip, " ", int32(ifType), " ", int32(vlanid))
 //        var linux_device string
-        if portdClient.IsConnected {
+//        if portdClient.IsConnected {
 		//linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(ifType), int32(vlanid))
 		linux_device, err := getLinuxIfc(int(ifType), int(vlanid))
 /*
@@ -1365,10 +1516,12 @@ func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int, localIP string) 
                 }
 */
 
+/*
 	} else {
 		logWriter.Err("portd client is not connected.")
 		//logger.Println("Portd is not connected.")
 	}
+*/
 }
 
 func printArpEntries() {
