@@ -7,7 +7,6 @@ import (
 	"l3/bgp/packet"
 	"log/syslog"
 	"net"
-	"sync"
 )
 
 type CONFIG int
@@ -18,8 +17,8 @@ const (
 )
 
 type BgpPkt struct {
-	connDir  config.ConnDir
-	pkt *packet.BGPMessage
+	connDir config.ConnDir
+	pkt     *packet.BGPMessage
 }
 
 type FSMManager struct {
@@ -30,7 +29,7 @@ type FSMManager struct {
 	fsms         map[uint8]*FSM
 	acceptCh     chan net.Conn
 	acceptErrCh  chan error
-	closeCh      chan *sync.WaitGroup
+	closeCh      chan bool
 	acceptConn   bool
 	commandCh    chan int
 	activeFSM    uint8
@@ -41,16 +40,16 @@ type FSMManager struct {
 
 func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config.NeighborConfig) *FSMManager {
 	fsmManager := FSMManager{
-		Peer: peer,
+		Peer:   peer,
 		logger: peer.logger,
-		gConf: globalConf,
-		pConf: peerConf,
+		gConf:  globalConf,
+		pConf:  peerConf,
 	}
 	fsmManager.fsms = make(map[uint8]*FSM)
 	fsmManager.acceptCh = make(chan net.Conn)
 	fsmManager.acceptErrCh = make(chan error)
 	fsmManager.acceptConn = false
-	fsmManager.closeCh = make(chan *sync.WaitGroup)
+	fsmManager.closeCh = make(chan bool)
 	fsmManager.commandCh = make(chan int)
 	fsmManager.activeFSM = uint8(config.ConnDirInvalid)
 	fsmManager.newConnCh = make(chan PeerFSMConnState)
@@ -117,13 +116,13 @@ func (fsmManager *FSMManager) Init() {
 				fsmManager.fsmBroken(fsmState.id, false)
 			}
 
-		case fsmOpenMsg := <- fsmManager.fsmOpenMsgCh:
+		case fsmOpenMsg := <-fsmManager.fsmOpenMsgCh:
 			fsmManager.logger.Info(fmt.Sprintf("Neighbor %s: FSM %d received OPEN message",
 				fsmManager.pConf.NeighborAddress, fsmOpenMsg.id))
 			fsmManager.receivedBGPOpenMessage(fsmOpenMsg.id, fsmOpenMsg.connDir, fsmOpenMsg.bgpId)
 
-		case wg := <-fsmManager.closeCh:
-			fsmManager.Cleanup(wg)
+		case <-fsmManager.closeCh:
+			fsmManager.Cleanup()
 			return
 
 		case command := <-fsmManager.commandCh:
@@ -173,13 +172,11 @@ func (mgr *FSMManager) SendUpdateMsg(bgpMsg *packet.BGPMessage) {
 	mgr.fsms[mgr.activeFSM].pktTxCh <- bgpMsg
 }
 
-func (mgr *FSMManager) Cleanup(wg *sync.WaitGroup) {
-	var fsmWG sync.WaitGroup
+func (mgr *FSMManager) Cleanup() {
 	for id, fsm := range mgr.fsms {
 		if fsm != nil {
 			mgr.logger.Info(fmt.Sprintf("FSMManager: Cleanup FSM for peer:%s conn:%d", mgr.pConf.NeighborAddress, id))
-			fsmWG.Add(1)
-			fsm.closeCh <- &fsmWG
+			fsm.closeCh <- true
 			fsm = nil
 			mgr.fsmBroken(id, true)
 			mgr.fsms[id] = nil
@@ -187,9 +184,7 @@ func (mgr *FSMManager) Cleanup(wg *sync.WaitGroup) {
 		}
 	}
 	mgr.logger.Info(fmt.Sprintf("FSMManager: waiting for FSM to cleanup %s", mgr.pConf.NeighborAddress.String()))
-	fsmWG.Wait()
 	mgr.logger.Info(fmt.Sprintf("FSMManager: calling Done() for FSMManager %s", mgr.pConf.NeighborAddress.String()))
-	(*wg).Done()
 }
 
 func (mgr *FSMManager) getNewId(id uint8) uint8 {
@@ -228,7 +223,6 @@ func (mgr *FSMManager) getFSMIdByDir(connDir config.ConnDir) uint8 {
 }
 
 func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, bgpId net.IP) {
-	var wg sync.WaitGroup
 	var closeConnDir config.ConnDir = config.ConnDirInvalid
 
 	localBGPId := packet.ConvertIPBytesToUint(mgr.gConf.RouterId.To4())
@@ -244,15 +238,13 @@ func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, 
 			}
 			closeFSMId := mgr.getFSMIdByDir(closeConnDir)
 			if closeFSM, ok := mgr.fsms[closeFSMId]; ok {
-				wg.Add(1)
-				closeFSM.closeCh <- &wg
+				closeFSM.closeCh <- true
 				mgr.fsmBroken(closeFSMId, false)
 				mgr.fsms[closeFSMId] = nil
 				delete(mgr.fsms, closeFSMId)
 			}
 		}
 	}
-	wg.Wait()
 	if closeConnDir == config.ConnDirInvalid || closeConnDir != connDir {
 		mgr.setBGPId(bgpId)
 	}

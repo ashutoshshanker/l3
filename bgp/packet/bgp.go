@@ -614,7 +614,7 @@ func (as *BGPPathAttrASPath) Decode(pkt []byte) error {
 		return err
 	}
 
-	//as.Value = make([]BGPASPathSegment, 1)
+	as.Value = make([]BGPASPathSegment, 0)
 	ptr := uint32(as.BGPPathAttrLen)
 	for ptr < (uint32(as.Length) + uint32(as.BGPPathAttrLen)) {
 		asPathSegment := BGPASPathSegment{}
@@ -823,15 +823,16 @@ func (a *BGPPathAttrAggregator) Decode(pkt []byte) error {
 func NewBGPPathAttrAggregator() *BGPPathAttrAggregator {
 	return &BGPPathAttrAggregator{
 		BGPPathAttrBase: BGPPathAttrBase{
-			Flags: BGPPathAttrFlagTransitive | BGPPathAttrFlagOptional,
-			Code: BGPPathAttrTypeAggregator,
-			Length: 6,
+			Flags:          BGPPathAttrFlagTransitive | BGPPathAttrFlagOptional,
+			Code:           BGPPathAttrTypeAggregator,
+			Length:         6,
 			BGPPathAttrLen: 3,
 		},
 		AS: 0,
 		IP: net.IP{},
 	}
 }
+
 type BGPPathAttrOriginatorId struct {
 	BGPPathAttrBase
 	Value net.IP
@@ -867,9 +868,9 @@ func (o *BGPPathAttrOriginatorId) Decode(pkt []byte) error {
 func NewBGPPathAttrOriginatorId(id net.IP) *BGPPathAttrOriginatorId {
 	return &BGPPathAttrOriginatorId{
 		BGPPathAttrBase: BGPPathAttrBase{
-			Flags: BGPPathAttrFlagOptional,
-			Code: BGPPathAttrTypeOriginatorId,
-			Length: 4,
+			Flags:          BGPPathAttrFlagOptional,
+			Code:           BGPPathAttrTypeOriginatorId,
+			Length:         4,
 			BGPPathAttrLen: 3,
 		},
 		Value: id,
@@ -912,8 +913,8 @@ func (c *BGPPathAttrClusterList) Decode(pkt []byte) error {
 
 	var i uint16
 	c.Value = make([]uint32, c.Length/4)
-	for i = 0;i < uint16(c.Length/4); i++ {
-		c.Value[i] = binary.BigEndian.Uint32(pkt[c.BGPPathAttrLen+(4*i):c.BGPPathAttrLen+(4*i)+4])
+	for i = 0; i < uint16(c.Length/4); i++ {
+		c.Value[i] = binary.BigEndian.Uint32(pkt[c.BGPPathAttrLen+(4*i) : c.BGPPathAttrLen+(4*i)+4])
 	}
 	return nil
 }
@@ -928,9 +929,9 @@ func (c *BGPPathAttrClusterList) PrependId(id uint32) {
 func NewBGPPathAttrClusterList() *BGPPathAttrClusterList {
 	return &BGPPathAttrClusterList{
 		BGPPathAttrBase: BGPPathAttrBase{
-			Flags: BGPPathAttrFlagOptional,
-			Code: BGPPathAttrTypeClusterList,
-			Length: 0,
+			Flags:          BGPPathAttrFlagOptional,
+			Code:           BGPPathAttrTypeClusterList,
+			Length:         0,
 			BGPPathAttrLen: 3,
 		},
 		Value: make([]uint32, 0),

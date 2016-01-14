@@ -7,9 +7,8 @@ import (
 	"l3/bgp/packet"
 	"log/syslog"
 	"net"
-	"time"
-	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Peer struct {
@@ -34,10 +33,10 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 	}
 
 	peer.Neighbor.State = config.NeighborState{
-		PeerAS: peerConf.PeerAS,
-		LocalAS: peerConf.LocalAS,
-		AuthPassword: peerConf.AuthPassword,
-		Description: peerConf.Description,
+		PeerAS:          peerConf.PeerAS,
+		LocalAS:         peerConf.LocalAS,
+		AuthPassword:    peerConf.AuthPassword,
+		Description:     peerConf.Description,
 		NeighborAddress: peerConf.NeighborAddress,
 	}
 
@@ -60,8 +59,8 @@ func (p *Peer) Init() {
 	go p.fsmManager.Init()
 }
 
-func (p *Peer) Cleanup(wg *sync.WaitGroup) {
-	p.fsmManager.closeCh <- wg
+func (p *Peer) Cleanup() {
+	p.fsmManager.closeCh <- true
 	p.fsmManager = nil
 }
 
@@ -161,14 +160,12 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 		return
 	}
 	p.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
-	p.Server.PeerFSMEstCh <- PeerFSMEst{p.Neighbor.NeighborAddress.String(), true}
+	p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
 }
 
 func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 	p.Neighbor.Transport.Config.LocalAddress = nil
-	if !fsmCleanup {
-		p.Server.PeerFSMEstCh <- PeerFSMEst{p.Neighbor.NeighborAddress.String(), false}
-	}
+	p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
 }
 
 func (p *Peer) FSMStateChange(state BGPFSMState) {

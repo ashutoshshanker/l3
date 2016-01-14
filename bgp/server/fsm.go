@@ -7,9 +7,8 @@ import (
 	"l3/bgp/packet"
 	"log/syslog"
 	"net"
-	"time"
-	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type BGPFSMState int
@@ -151,7 +150,7 @@ type IdleState struct {
 func NewIdleState(fsm *FSM) *IdleState {
 	state := IdleState{
 		BaseState: NewBaseState(fsm),
-		passive: false,
+		passive:   false,
 	}
 	return &state
 }
@@ -739,16 +738,16 @@ type PeerConnDir struct {
 }
 
 type PeerFSMOpenMsg struct {
-	id uint8
+	id      uint8
 	connDir config.ConnDir
-	bgpId net.IP
+	bgpId   net.IP
 }
 
 type PeerFSMConnState struct {
 	isEstablished bool
-	id uint8
-	connDir config.ConnDir
-	conn *net.Conn
+	id            uint8
+	connDir       config.ConnDir
+	conn          *net.Conn
 }
 
 type FSM struct {
@@ -758,7 +757,7 @@ type FSM struct {
 	pConf    *config.NeighborConfig
 	Manager  *FSMManager
 	State    BaseStateIface
-	id  uint8
+	id       uint8
 	peerType config.PeerType
 	peerConn *PeerConn
 
@@ -766,7 +765,7 @@ type FSM struct {
 	outConnErrCh   chan error
 	stopConnCh     chan bool
 	inConnCh       chan net.Conn
-	closeCh        chan *sync.WaitGroup
+	closeCh        chan bool
 	connInProgress bool
 
 	event BGPFSMEvent
@@ -781,13 +780,13 @@ type FSM struct {
 	keepAliveTime  uint16
 	keepAliveTimer *time.Timer
 
-	autoStart     bool
-	autoStop      bool
-	passiveTcpEst bool
+	autoStart       bool
+	autoStop        bool
+	passiveTcpEst   bool
 	passiveTcpEstCh chan bool
-	dampPeerOscl  bool
-	idleHoldTime  uint16
-	idleHoldTimer *time.Timer
+	dampPeerOscl    bool
+	idleHoldTime    uint16
+	idleHoldTimer   *time.Timer
 
 	delayOpen      bool
 	delayOpenTime  uint16
@@ -808,7 +807,7 @@ func NewFSM(fsmManager *FSMManager, id uint8, peer *Peer) *FSM {
 		gConf:            peer.Global,
 		pConf:            &peer.Neighbor.Config,
 		Manager:          fsmManager,
-		id:          id,
+		id:               id,
 		connectRetryTime: BGPConnectRetryTime,      // seconds
 		holdTime:         BGPHoldTimeDefault,       // seconds
 		keepAliveTime:    (BGPHoldTimeDefault / 3), // seconds
@@ -817,7 +816,7 @@ func NewFSM(fsmManager *FSMManager, id uint8, peer *Peer) *FSM {
 		outConnErrCh:     make(chan error),
 		stopConnCh:       make(chan bool),
 		inConnCh:         make(chan net.Conn),
-		closeCh:          make(chan *sync.WaitGroup),
+		closeCh:          make(chan bool),
 		connInProgress:   false,
 		autoStart:        true,
 		autoStop:         true,
@@ -866,11 +865,10 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 			in := PeerConnDir{config.ConnDirIn, &inConnCh}
 			fsm.ProcessEvent(BGPEventTcpConnConfirmed, in)
 
-		case wg := <-fsm.closeCh:
+		case <-fsm.closeCh:
 			fsm.cleanup = true
 			fsm.ProcessEvent(BGPEventManualStop, nil)
 			fsm.logger.Info(fmt.Sprintf("FSM: calling Done() for FSM %s dir %s", fsm.pConf.NeighborAddress.String(), fsm.id))
-			(*wg).Done()
 			return
 
 		case val := <-fsm.passiveTcpEstCh:
