@@ -26,6 +26,7 @@ import (
         "database/sql"
         "utils/dbutils"
         "utils/ipcutils"
+        "utils/commonDefs"
         "math/rand"
         "asicd/asicdConstDefs"
         "errors"
@@ -1340,7 +1341,7 @@ func updateArpCache() {
                         logWriter.Err(fmt.Sprintln("Unable to unmashal Asicd Msg:", msg.Msg))
                         continue
                     }
-                    if msg.MsgType == 1 || msg.MsgType == 2 {
+                    if msg.MsgType == asicdConstDefs.NOTIFY_VLAN_CREATE || msg.MsgType == asicdConstDefs.NOTIFY_VLAN_DELETE {
                         //Vlan Create Msg
                         var vlanNotifyMsg VlanNotifyMsg
                         err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
@@ -1349,7 +1350,7 @@ func updateArpCache() {
                             continue
                         }
                         updatePortPropertyMap(vlanNotifyMsg, msg.MsgType)
-                    } else if msg.MsgType == 3 || msg.MsgType == 4 {
+                    } else if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE || msg.MsgType ==  asicdConstDefs.NOTIFY_IPV4INTF_DELETE {
                         //IPV4INTF_CREATE and IPV4INTF_DELETE
                         // if create send ARPProbe
                         // else delete
@@ -1380,7 +1381,7 @@ func updateArpCache() {
 }
 
 func updatePortPropertyMap(vlanNotifyMsg VlanNotifyMsg, msgType uint8) {
-    if msgType == 1 { // Create Vlan
+    if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
         entry := vlanPropertyMap[int(vlanNotifyMsg.VlanId)]
         entry.vlanName = vlanNotifyMsg.VlanName
         entry.untaggedPorts = vlanNotifyMsg.UntagPorts
@@ -1400,7 +1401,7 @@ func updatePortPropertyMap(vlanNotifyMsg VlanNotifyMsg, msgType uint8) {
 }
 
 func updateIpv4IntfPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
-    if msgType == 3 {
+    if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
         entry := ipv4IntfPropertyMap[msg.IpAddr]
         entry.ifIdx = int(msg.IfId)
         entry.ifType = int(msg.IfType)
@@ -1463,9 +1464,9 @@ func refresh_arp_entry(ip string, ifName string, localIP string) {
 
 func getLinuxIfc(ifType int, idx int) (ifName string, err error){
     err = nil
-    if ifType == 0 { // Vlan
+    if ifType == commonDefs.L2RefTypeVlan { // Vlan
         ifName = vlanPropertyMap[idx].vlanName
-    } else if ifType == 1 { // PHY
+    } else if ifType == commonDefs.L2RefTypePort { // PHY
         ifName = portConfigMap[idx].Name
     } else {
         ifName = ""
