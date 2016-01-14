@@ -11,6 +11,7 @@ import (
 	"ribd"
 	"strconv"
 	"time"
+	"utils/ipcutils"
 )
 
 const ClientsFileName string = "clients.json"
@@ -64,7 +65,7 @@ func StartServer(logger *syslog.Writer, handler *BGPHandler, filePath string) {
 	return
 }
 
-func createClientIPCHandles(logger *syslog.Writer, port string) (thrift.TTransport, thrift.TProtocolFactory, error) {
+/*func createClientIPCHandles(logger *syslog.Writer, port string) (thrift.TTransport, thrift.TProtocolFactory, error) {
 	var clientTransport thrift.TTransport
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
@@ -78,7 +79,7 @@ func createClientIPCHandles(logger *syslog.Writer, port string) (thrift.TTranspo
 	clientTransport = transportFactory.GetTransport(clientTransport)
 	err = clientTransport.Open()
 	return clientTransport, protocolFactory, err
-}
+}*/
 
 func connectToClient(logger *syslog.Writer, clientTransport thrift.TTransport) error {
 	return clientTransport.Open()
@@ -92,7 +93,7 @@ func StartClient(logger *syslog.Writer, filePath string, ribdClient chan *ribd.R
 		return
 	}
 
-	clientTransport, protocolFactory, err := createClientIPCHandles(logger, strconv.Itoa(clientJson.Port))
+	clientTransport, protocolFactory, err := ipcutils.CreateIPCHandles("localhost:"+strconv.Itoa(clientJson.Port))
 	if err != nil {
 		logger.Info(fmt.Sprintf("Failed to connect to RIBd, retrying until connection is successful"))
 		ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)

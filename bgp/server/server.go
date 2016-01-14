@@ -27,6 +27,11 @@ type PeerUpdate struct {
 	NewPeer config.NeighborConfig
 }
 
+type PeerFSMEst struct {
+	ip string
+	isEstablished bool
+}
+
 type BGPServer struct {
 	logger           *syslog.Writer
 	ribdClient       *ribd.RouteServiceClient
@@ -37,6 +42,7 @@ type BGPServer struct {
 	PeerConnEstCh    chan string
 	PeerConnBrokenCh chan string
 	PeerCommandCh    chan config.PeerCommand
+	PeerFSMEstCh    chan PeerFSMEst
 	BGPPktSrc        chan *packet.BGPPktSrc
 	connRoutesTimer  *time.Timer
 
@@ -61,6 +67,7 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.PeerConnEstCh = make(chan string)
 	bgpServer.PeerConnBrokenCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
+	bgpServer.PeerFSMEstCh = make(chan PeerFSMEst)
 	bgpServer.BGPPktSrc = make(chan *packet.BGPPktSrc)
 	bgpServer.NeighborMutex = sync.RWMutex{}
 	bgpServer.PeerMap = make(map[string]*Peer)
@@ -334,8 +341,15 @@ func (server *BGPServer) StartServer() {
 				break
 			}
 			peer.AcceptConn(tcpConn)
-			//server.logger.Info(fmt.Sprintln("send keep alives to peer..."))
-			//go peer.SendKeepAlives(tcpConn)
+
+		case peerFSMEst := <- server.PeerFSMEstCh:
+			if peer, ok := server.PeerMap[peerFSMEst.ip]; ok {
+				if peerFSMEst.isEstablished {
+					server.AdvertiseAllRoutes(peerFSMEst.ip, peer)
+				} else {
+					server.ProcessRemoveNeighbor(peerFSMEst.ip, peer)
+				}
+			}
 
 		case peerCommand := <-server.PeerCommandCh:
 			server.logger.Info(fmt.Sprintln("Peer Command received", peerCommand))

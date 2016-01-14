@@ -3,6 +3,7 @@ package main
 import (
 	"arpd"
 	"asicdServices"
+	"portdServices"
 	"encoding/json"
 	"l3/rib/ribdCommonDefs"
 	"ribd"
@@ -19,6 +20,7 @@ import (
 	"time"
 	"encoding/binary"
 	"bytes"
+	"utils/ipcutils"
 )
 
 type RouteServiceHandler struct {
@@ -31,14 +33,19 @@ type RIBClientBase struct {
 	IsConnected        bool
 }
 
+type PortdClient struct {
+	RIBClientBase
+	ClientHdl *portdServices.PortServiceClient
+}
+
 type AsicdClient struct {
 	RIBClientBase
-	ClientHdl *asicdServices.AsicdServiceClient
+	ClientHdl *asicdServices.ASICDServicesClient
 }
 
 type ArpdClient struct {
 	RIBClientBase
-	ClientHdl *arpd.ARPServiceClient
+	ClientHdl *arpd.ARPDServicesClient
 }
 
 const (
@@ -104,6 +111,7 @@ var RouteInfoMap = patriciaDB.NewTrie()
 var DummyRouteInfoRecord RouteInfoRecord //{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
 var asicdclnt AsicdClient
 var arpdclnt ArpdClient
+var portdclnt PortdClient
 var count int
 var ConnectedRoutes []*ribd.Routes
 var destNetSlice []localDB
@@ -348,6 +356,24 @@ func IsRoutePresent(routeInfoRecordList RouteInfoRecordList,
 	logger.Printf("returning i = %d\n", i)
 	return found, i
 }
+
+func getConnectedRoutes() {
+   var IPIntfList []*portdServices.IPIntf
+   logger.Println("Getting ip intfs from portd")	
+   IPIntfList, err := portdclnt.ClientHdl.GetIPIntfsAll()
+   if(err != nil) {
+      logger.Println("Failed to get ip intfs with err ", err)
+	  return	
+   }
+   logger.Printf("Number of ip intfs  = %d\n", len(IPIntfList))
+   for i:=0;i<len(IPIntfList);i++ {
+      _, err := createV4Route(IPIntfList[i].IpAddr, IPIntfList[i].Mask, 0, "0.0.0.0", ribd.Int(IPIntfList[i].IntfType), ribd.Int(IPIntfList[i].IntfId), ribdCommonDefs.CONNECTED, FIBAndRIB,ribd.Int(len(destNetSlice)))	
+	if(err != nil) {
+		logger.Printf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", IPIntfList[i].IpAddr, IPIntfList[i].Mask, ribd.Int(IPIntfList[i].IntfType), ribd.Int(IPIntfList[i].IntfId))
+	}
+   }
+}
+
 //thrift API definitions
 
 func (m RouteServiceHandler) GetBulkRoutes( fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.RoutesGetInfo, err error){//(routes []*ribd.Routes, err error) {
@@ -606,11 +632,14 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	}
 	
 	//If this is not a connected route, then nothing more to do
-	if(routeType != ribdCommonDefs.CONNECTED) {
-	    logger.Println("This is not a connected route, nothing more to do")
+	if(routeType == ribdCommonDefs.CONNECTED) {
+	   logger.Println("This is a connected route, so send a route add event")
+	}else if(routeType == ribdCommonDefs.STATIC) {
+	   logger.Println("This is a static route, so send a route add event")
+	} else {
+		logger.Println(" This is neither a connected nor a static route, so nothing more to do")
 		return 0, err
 	}
-	logger.Println("This is a connected route, so send a route add event")
 
 	//Send a event
 	route := ribd.Routes { Ipaddr : destNetIp, Mask : networkMask,	NextHopIp : nextHopIp, NextHopIfType: nextHopIfType, IfIndex : nextHopIfIndex, Metric : metric}
@@ -837,26 +866,6 @@ func (m RouteServiceHandler) LinkUp(ifType ribd.Int, ifIndex ribd.Int) (err erro
 	return nil
 }
 
-//
-// This method gets Thrift related IPC handles.
-//
-func CreateIPCHandles(address string) (thrift.TTransport, *thrift.TBinaryProtocolFactory) {
-	var transportFactory thrift.TTransportFactory
-	var transport thrift.TTransport
-	var protocolFactory *thrift.TBinaryProtocolFactory
-	var err error
-
-	protocolFactory = thrift.NewTBinaryProtocolFactoryDefault()
-	transportFactory = thrift.NewTTransportFactory()
-	transport, err = thrift.NewTSocket(address)
-	transport = transportFactory.GetTransport(transport)
-	if err = transport.Open(); err != nil {
-	//	logger.Println("Failed to Open Transport", transport, protocolFactory)
-		return nil, nil
-	}
-	return transport, protocolFactory
-}
-
 func connectToClient(client ClientJson) {
 	var timer *time.Timer
 	logger.Printf("in go routine ConnectToClient for connecting to %s\n", client.Name)
@@ -866,12 +875,28 @@ func connectToClient(client ClientJson) {
 		if client.Name == "asicd" {
 			//logger.Printf("found asicd at port %d", client.Port)
 			asicdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			asicdclnt.Transport, asicdclnt.PtrProtocolFactory = CreateIPCHandles(asicdclnt.Address)
+			asicdclnt.Transport, asicdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
 				//logger.Println("connecting to asicd")
-				asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
+				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
-				if(arpdclnt.IsConnected == true) {
+				if(arpdclnt.IsConnected == true && portdclnt.IsConnected == true) {
+					acceptConfig = true
+				}
+				timer.Stop()
+				return
+			}
+		}
+		if client.Name == "portd" {
+			//logger.Printf("found portd at port %d", client.Port)
+			portdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
+			portdclnt.Transport, portdclnt.PtrProtocolFactory,_ = ipcutils.CreateIPCHandles(portdclnt.Address)
+			if portdclnt.Transport != nil && portdclnt.PtrProtocolFactory != nil {
+				//logger.Println("connecting to asicd")
+				portdclnt.ClientHdl = portdServices.NewPortServiceClientFactory(portdclnt.Transport, portdclnt.PtrProtocolFactory)
+				portdclnt.IsConnected = true
+				getConnectedRoutes()
+				if(arpdclnt.IsConnected == true && asicdclnt.IsConnected == true) {
 					acceptConfig = true
 				}
 				timer.Stop()
@@ -881,12 +906,12 @@ func connectToClient(client ClientJson) {
 		if client.Name == "arpd" {
 			//logger.Printf("found arpd at port %d", client.Port)
 			arpdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			arpdclnt.Transport, arpdclnt.PtrProtocolFactory = CreateIPCHandles(arpdclnt.Address)
+			arpdclnt.Transport, arpdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
 				//logger.Println("connecting to arpd")
-				arpdclnt.ClientHdl = arpd.NewARPServiceClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
+				arpdclnt.ClientHdl = arpd.NewARPDServicesClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
-				if(asicdclnt.IsConnected == true) {
+				if(asicdclnt.IsConnected == true && portdclnt.IsConnected == true) {
 					acceptConfig = true
 				}
 				timer.Stop()
@@ -915,11 +940,24 @@ func ConnectToClients(paramsFile string) {
 		if client.Name == "asicd" {
 			logger.Printf("found asicd at port %d", client.Port)
 			asicdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			asicdclnt.Transport, asicdclnt.PtrProtocolFactory = CreateIPCHandles(asicdclnt.Address)
+			asicdclnt.Transport, asicdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
 				logger.Println("connecting to asicd")
-				asicdclnt.ClientHdl = asicdServices.NewAsicdServiceClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
+				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
+			} else {
+				go connectToClient(client)
+			}
+		}
+		if client.Name == "portd" {
+			logger.Printf("found portd at port %d", client.Port)
+			portdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
+			portdclnt.Transport, portdclnt.PtrProtocolFactory,_ = ipcutils.CreateIPCHandles(portdclnt.Address)
+			if portdclnt.Transport != nil && portdclnt.PtrProtocolFactory != nil {
+				logger.Println("connecting to port")
+				portdclnt.ClientHdl = portdServices.NewPortServiceClientFactory(portdclnt.Transport, portdclnt.PtrProtocolFactory)
+				portdclnt.IsConnected = true
+				getConnectedRoutes()
 			} else {
 				go connectToClient(client)
 			}
@@ -927,10 +965,10 @@ func ConnectToClients(paramsFile string) {
 		if client.Name == "arpd" {
 			logger.Printf("found arpd at port %d", client.Port)
 			arpdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			arpdclnt.Transport, arpdclnt.PtrProtocolFactory = CreateIPCHandles(arpdclnt.Address)
+			arpdclnt.Transport, arpdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
 				logger.Println("connecting to arpd")
-				arpdclnt.ClientHdl = arpd.NewARPServiceClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
+				arpdclnt.ClientHdl = arpd.NewARPDServicesClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
 			} else {
 				go connectToClient(client)
