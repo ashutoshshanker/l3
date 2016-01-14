@@ -23,7 +23,7 @@ func (m ARPServiceHandler) UpdateUntaggedPortToVlanMap(vlanid arpd.Int,
     for i := 0; i < len(portTagStr); i++ {
         if (portTagStr[i] - '0') == 1 {
             ent := port_property_map[i]
-            ent.untagged_vlanid = vlanid
+            ent.untagged_vlanid = int(vlanid)
             port_property_map[i] = ent
         }
     }
@@ -50,7 +50,8 @@ func (m ARPServiceHandler) ResolveArpIPV4(targetIp string,
         logWriter.Info(fmt.Sprintln("Local IP address of is:", ip_addr))
         //var linux_device string
         if portdClient.IsConnected {
-                linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
+                //linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
+                linux_device, err := getLinuxIfc(int(iftype), int(vlan_id))
 /*
                 for _, port_cfg := range portCfgList {
                     linux_device = port_cfg.Ifname
@@ -196,7 +197,8 @@ func (m ARPServiceHandler) GetBulkArpEntry(fromIndex arpd.Int, count arpd.Int) (
 func (m ARPServiceHandler) ArpProbeV4Intf(ipAddr string, vlan_id arpd.Int, iftype arpd.Int) (rc arpd.Int, err error) {
     logger.Println("ArpProbeV4Intf() : ipAddr:", ipAddr, "vlan_id:", vlan_id, "iftype:", iftype)
     if portdClient.IsConnected {
-        linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
+        //linux_device, err := portdClient.ClientHdl.GetLinuxIfc(int32(iftype), int32(vlan_id))
+        linux_device, err := getLinuxIfc(int(iftype), int(vlan_id))
         //logger.Println("linux_device ", linux_device)
         logWriter.Info(fmt.Sprintln("linux_device ", linux_device))
         if err != nil {
