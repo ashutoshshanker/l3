@@ -114,7 +114,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 	routeType := RouteTypeMax
 	action := RouteSelectionNone
 
-	d.logger.Info(fmt.Sprintf("Destination:SelectRouteForLocalRib - peer path map = %s", d.peerPathMap))
+	d.logger.Info(fmt.Sprintf("Destination:SelectRouteForLocalRib - peer path map = %v", d.peerPathMap))
 	if !d.recalculate {
 		return action
 	}

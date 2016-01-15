@@ -87,11 +87,12 @@ func (server *BGPServer) listenForPeers(acceptCh chan *net.TCPConn) {
 	}
 
 	for {
-		tcpConn, err := listener.AcceptTCP()
 		server.logger.Info(fmt.Sprintln("Waiting for peer connections..."))
+		tcpConn, err := listener.AcceptTCP()
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("AcceptTCP failed with", err))
 		}
+		server.logger.Info(fmt.Sprintln("Got a peer connection from %s", tcpConn.RemoteAddr()))
 		acceptCh <- tcpConn
 	}
 }
@@ -340,30 +341,30 @@ func (server *BGPServer) StartServer() {
 			peer, ok := server.PeerMap[peerCommand.IP.String()]
 			if !ok {
 				server.logger.Info(fmt.Sprintf("Failed to apply command %s. Peer at that address does not exist, %v\n",
-					peerCommand.Command, peerCommand.IP.String()))
+					peerCommand.Command, peerCommand.IP))
 			}
 			peer.Command(peerCommand.Command)
 
 		case peerIP := <-server.PeerConnEstCh:
-			server.logger.Info(fmt.Sprintln("Server: Peer %s FSM connection established", peerIP))
+			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection established", peerIP))
 			peer, ok := server.PeerMap[peerIP]
 			if !ok {
 				server.logger.Info(fmt.Sprintf("Failed to process FSM connection success, Peer %s does not exist", peerIP))
-				continue
+				break
 			}
 			server.SendAllRoutesToPeer(peer)
 
 		case peerIP := <-server.PeerConnBrokenCh:
-			server.logger.Info(fmt.Sprintln("Server: Peer %s FSM connection broken", peerIP))
+			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection broken", peerIP))
 			peer, ok := server.PeerMap[peerIP]
 			if !ok {
 				server.logger.Info(fmt.Sprintf("Failed to process FSM connection failure, Peer %s does not exist", peerIP))
-				continue
+				break
 			}
 			server.ProcessRemoveNeighbor(peerIP, peer)
 
 		case pktInfo := <-server.BGPPktSrc:
-			server.logger.Info(fmt.Sprintln("Received BGP message", pktInfo.Msg))
+			server.logger.Info(fmt.Sprintln("Received BGP message from peer %s", pktInfo.Src))
 			server.ProcessUpdate(pktInfo)
 
 		case <-server.connRoutesTimer.C:
@@ -387,8 +388,8 @@ func (server *BGPServer) StartServer() {
 			}
 			server.ProcessConnectedRoutes(make([]*ribd.Routes, 0), routes)
 
-		case <-server.ribSubSocketErrCh:
-
+		case err := <-server.ribSubSocketErrCh:
+			server.logger.Info(fmt.Sprintf("Server: RIB subscriber socker returned err:%s", err))
 		}
 	}
 

@@ -4,7 +4,7 @@ package main
 import (
 	"ribd"
 	"strconv"
-	"asicd/portd/portdCommonDefs"
+	"utils/commonDefs"
 //    "utils/dbutils"
 	_ "github.com/mattn/go-sqlite3"
     "database/sql"
@@ -39,9 +39,9 @@ func UpdateRoutesFromDB(paramsDir string) (err error) {
 		outIntf, _ := strconv.Atoi(ipRoute.OutgoingInterface)
 		var outIntfType ribd.Int
 		if ipRoute.OutgoingIntfType == "VLAN" {
-			outIntfType = portdCommonDefs.VLAN
+			outIntfType = commonDefs.L2RefTypeVlan
 		} else {
-			outIntfType = portdCommonDefs.PHY
+			outIntfType = commonDefs.L2RefTypePort
 		}
 		proto, _ := strconv.Atoi(ipRoute.Protocol)
 		_,err = createV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto),  FIBAndRIB,ribd.Int(len(destNetSlice)))

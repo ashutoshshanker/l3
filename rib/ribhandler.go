@@ -3,7 +3,7 @@ package main
 import (
 	"arpd"
 	"asicdServices"
-	"portdServices"
+//	"portdServices"
 	"encoding/json"
 	"l3/rib/ribdCommonDefs"
 	"ribd"
@@ -13,12 +13,11 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/op/go-nanomsg"
 	"asicd/asicdConstDefs"
-	"infra/portd/portdCommonDefs"
 	"io/ioutil"
 	"net"
 	"strconv"
 	"time"
-	"encoding/binary"
+//	"encoding/binary"
 	"bytes"
 	"utils/ipcutils"
 )
@@ -31,11 +30,6 @@ type RIBClientBase struct {
 	Transport          thrift.TTransport
 	PtrProtocolFactory *thrift.TBinaryProtocolFactory
 	IsConnected        bool
-}
-
-type PortdClient struct {
-	RIBClientBase
-	ClientHdl *portdServices.PortServiceClient
 }
 
 type AsicdClient struct {
@@ -111,13 +105,11 @@ var RouteInfoMap = patriciaDB.NewTrie()
 var DummyRouteInfoRecord RouteInfoRecord //{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
 var asicdclnt AsicdClient
 var arpdclnt ArpdClient
-var portdclnt PortdClient
 var count int
 var ConnectedRoutes []*ribd.Routes
 var destNetSlice []localDB
 var acceptConfig bool
 var AsicdSub *nanomsg.SubSocket
-var PortdSub *nanomsg.SubSocket
 var RIBD_PUB  *nanomsg.PubSocket
 /*
 func setProtocol(routeType ribd.Int) (proto int8, err error) {
@@ -358,20 +350,44 @@ func IsRoutePresent(routeInfoRecordList RouteInfoRecordList,
 }
 
 func getConnectedRoutes() {
-   var IPIntfList []*portdServices.IPIntf
-   logger.Println("Getting ip intfs from portd")	
-   IPIntfList, err := portdclnt.ClientHdl.GetIPIntfsAll()
+   logger.Println("Getting ip intfs from portd")
+   var currMarker int64
+   var count int64
+   count = 100
+ for {	
+   logger.Printf("Getting %d objects from currMarker %d\n", count, currMarker)
+   IPIntfBulk, err := asicdclnt.ClientHdl.GetBulkIPv4Intf(currMarker, count)
    if(err != nil) {
-      logger.Println("Failed to get ip intfs with err ", err)
+      logger.Println("GetBulkIPv4Intf with err ", err)
 	  return	
    }
-   logger.Printf("Number of ip intfs  = %d\n", len(IPIntfList))
-   for i:=0;i<len(IPIntfList);i++ {
-      _, err := createV4Route(IPIntfList[i].IpAddr, IPIntfList[i].Mask, 0, "0.0.0.0", ribd.Int(IPIntfList[i].IntfType), ribd.Int(IPIntfList[i].IntfId), ribdCommonDefs.CONNECTED, FIBAndRIB,ribd.Int(len(destNetSlice)))	
-	if(err != nil) {
-		logger.Printf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", IPIntfList[i].IpAddr, IPIntfList[i].Mask, ribd.Int(IPIntfList[i].IntfType), ribd.Int(IPIntfList[i].IntfId))
-	}
+   if(IPIntfBulk.ObjCount == 0) {
+      logger.Println("0 objects returned from GetBulkIPv4Intf")
+	  return	
    }
+   logger.Printf("len(IPIntfBulk.IPv4IntfList)  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfList), IPIntfBulk.ObjCount)
+   for i:=0;i<int(IPIntfBulk.ObjCount);i++ {
+      var ipMask net.IP
+      ip, ipNet, err := net.ParseCIDR(IPIntfBulk.IPv4IntfList[i].IpAddr)
+      if err != nil {
+         return  
+      }
+      ipMask = make(net.IP, 4)
+      copy(ipMask, ipNet.Mask)
+      ipAddrStr := ip.String()
+      ipMaskStr := net.IP(ipMask).String()
+      logger.Printf("Calling createv4Route with ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
+      _, err = createV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(IPIntfBulk.IPv4IntfList[i].L2RefType), ribd.Int(IPIntfBulk.IPv4IntfList[i].L2Ref), ribdCommonDefs.CONNECTED, FIBAndRIB,ribd.Int(len(destNetSlice)))	
+	  if(err != nil) {
+		logger.Printf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(IPIntfBulk.IPv4IntfList[i].L2RefType), ribd.Int(IPIntfBulk.IPv4IntfList[i].L2Ref))
+	  }
+   }
+   if IPIntfBulk.More == false {
+      logger.Println("more returned as false, so no more get bulks")	
+	  return
+   }
+   currMarker = IPIntfBulk.NextMarker
+ }
 }
 
 //thrift API definitions
@@ -805,10 +821,81 @@ func (m RouteServiceHandler) PrintV4Routes() (err error) {
 	return nil
 }
 
-func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int){
-	logger.Println("processLinkDown")
+func processL3IntfDownEvent(ipAddr string){
+	logger.Println("processL3IntfDownEvent")
+    var ipMask net.IP
+	ip, ipNet, err := net.ParseCIDR(ipAddr)
+	if err != nil {
+		return  
+	}
+	ipMask = make(net.IP, 4)
+	copy(ipMask, ipNet.Mask)
+	ipAddrStr := ip.String()
+	ipMaskStr := net.IP(ipMask).String()
+	logger.Printf(" processL3IntfDownEvent for  ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
    for i:=0;i<len(ConnectedRoutes);i++ {
-      if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){		
+	  if ConnectedRoutes[i].Ipaddr == ipAddrStr && ConnectedRoutes[i].Mask == ipMaskStr {
+//      if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){		
+	     logger.Printf("Delete this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)	
+
+		 //Send a event
+	     msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : *ConnectedRoutes[i]}
+	     msgbufbytes, err := json.Marshal( msgBuf)
+         msg := ribdCommonDefs.RibdNotifyMsg {MsgType:ribdCommonDefs.NOTIFY_ROUTE_DELETED, MsgBuf: msgbufbytes}
+	     buf, err := json.Marshal( msg)
+	     if err != nil {
+		   logger.Println("Error in marshalling Json")
+		   return
+	     }
+	     logger.Println("buf", buf)
+   	     RIBD_PUB.Send(buf, nanomsg.DontWait)
+		
+         //Delete this route
+		 deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, 0, FIBOnly)
+	  }	
+   }
+}
+
+func processL3IntfUpEvent(ipAddr string){
+	logger.Println("processL3IntfUpEvent")
+    var ipMask net.IP
+	ip, ipNet, err := net.ParseCIDR(ipAddr)
+	if err != nil {
+		return  
+	}
+	ipMask = make(net.IP, 4)
+	copy(ipMask, ipNet.Mask)
+	ipAddrStr := ip.String()
+	ipMaskStr := net.IP(ipMask).String()
+	logger.Printf(" processL3IntfUpEvent for  ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
+   for i:=0;i<len(ConnectedRoutes);i++ {
+	  if ConnectedRoutes[i].Ipaddr == ipAddrStr && ConnectedRoutes[i].Mask == ipMaskStr {
+//      if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){		
+	     logger.Printf("Add this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)	
+
+         ConnectedRoutes[i].IsValid = true
+		 //Send a event
+	     msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : *ConnectedRoutes[i]}
+	     msgbufbytes, err := json.Marshal( msgBuf)
+         msg := ribdCommonDefs.RibdNotifyMsg {MsgType:ribdCommonDefs.NOTIFY_ROUTE_CREATED, MsgBuf: msgbufbytes}
+	     buf, err := json.Marshal( msg)
+	     if err != nil {
+		   logger.Println("Error in marshalling Json")
+		   return
+	     }
+	     logger.Println("buf", buf)
+   	     RIBD_PUB.Send(buf, nanomsg.DontWait)
+		
+         //Add this route
+		 createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ConnectedRoutes[i].Metric,ConnectedRoutes[i].NextHopIp, ConnectedRoutes[i].NextHopIfType,ConnectedRoutes[i].IfIndex, ConnectedRoutes[i].Prototype,FIBOnly, ConnectedRoutes[i].SliceIdx)
+	  }	
+   }
+}
+
+func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int){
+	logger.Println("processLinkDownEvent")
+   for i:=0;i<len(ConnectedRoutes);i++ {
+	     if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){		
 	     logger.Printf("Delete this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)	
 
 		 //Send a event
@@ -880,23 +967,8 @@ func connectToClient(client ClientJson) {
 				//logger.Println("connecting to asicd")
 				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
-				if(arpdclnt.IsConnected == true && portdclnt.IsConnected == true) {
-					acceptConfig = true
-				}
-				timer.Stop()
-				return
-			}
-		}
-		if client.Name == "portd" {
-			//logger.Printf("found portd at port %d", client.Port)
-			portdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			portdclnt.Transport, portdclnt.PtrProtocolFactory,_ = ipcutils.CreateIPCHandles(portdclnt.Address)
-			if portdclnt.Transport != nil && portdclnt.PtrProtocolFactory != nil {
-				//logger.Println("connecting to asicd")
-				portdclnt.ClientHdl = portdServices.NewPortServiceClientFactory(portdclnt.Transport, portdclnt.PtrProtocolFactory)
-				portdclnt.IsConnected = true
 				getConnectedRoutes()
-				if(arpdclnt.IsConnected == true && asicdclnt.IsConnected == true) {
+				if(arpdclnt.IsConnected == true) {
 					acceptConfig = true
 				}
 				timer.Stop()
@@ -911,7 +983,7 @@ func connectToClient(client ClientJson) {
 				//logger.Println("connecting to arpd")
 				arpdclnt.ClientHdl = arpd.NewARPDServicesClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
-				if(asicdclnt.IsConnected == true && portdclnt.IsConnected == true) {
+				if(asicdclnt.IsConnected == true) {
 					acceptConfig = true
 				}
 				timer.Stop()
@@ -945,18 +1017,6 @@ func ConnectToClients(paramsFile string) {
 				logger.Println("connecting to asicd")
 				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
-			} else {
-				go connectToClient(client)
-			}
-		}
-		if client.Name == "portd" {
-			logger.Printf("found portd at port %d", client.Port)
-			portdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
-			portdclnt.Transport, portdclnt.PtrProtocolFactory,_ = ipcutils.CreateIPCHandles(portdclnt.Address)
-			if portdclnt.Transport != nil && portdclnt.PtrProtocolFactory != nil {
-				logger.Println("connecting to port")
-				portdclnt.ClientHdl = portdServices.NewPortServiceClientFactory(portdclnt.Transport, portdclnt.PtrProtocolFactory)
-				portdclnt.IsConnected = true
 				getConnectedRoutes()
 			} else {
 				go connectToClient(client)
@@ -1018,65 +1078,55 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 		 return	
 	  }
 	  logger.Println("After recv rcvdMsg buf", rcvdMsg)
-      buf := bytes.NewReader(rcvdMsg)
-      var MsgType asicdConstDefs.AsicdNotifyMsg
-      err = binary.Read(buf, binary.LittleEndian, &MsgType)
-      if err != nil {
-	     logger.Println("Error in reading msgtype ", err)
-		 return	
-      }
-      switch MsgType {
-        case asicdConstDefs.NOTIFY_LINK_STATE_CHANGE:
-           var msg asicdConstDefs.LinkStateInfo
-           err = binary.Read(buf, binary.LittleEndian, &msg)
-           if err != nil {
-    	     logger.Println("Error in reading msg ", err)
-		     return	
-           }
-		    logger.Printf("Msg linkstatus = %d msg port = %d\n", msg.LinkStatus, msg.Port)
-		    if(msg.LinkStatus == asicdConstDefs.LINK_STATE_DOWN) {
-				processLinkDownEvent(portdCommonDefs.PHY, ribd.Int(msg.Port))		//asicd always sends out link state events for PHY ports
-			} else {
-				processLinkUpEvent(portdCommonDefs.PHY, ribd.Int(msg.Port))
-			}
-       }
-	}
-}
-
-func processPortdEvents(sub *nanomsg.SubSocket) {
-	
-	logger.Println("in process Port events")
-    for {
-	  logger.Println("In for loop")
-      rcvdMsg,err := sub.Recv(0)
-	  if(err != nil) {
-	     logger.Println("Error in receiving")
-		 return	
-	  }
-	  logger.Println("After recv rcvdMsg buf", rcvdMsg)
-	  MsgType := portdCommonDefs.PortdNotifyMsg {}
-	  err = json.Unmarshal(rcvdMsg, &MsgType)
+	  Notif := asicdConstDefs.AsicdNotification {}
+	  err = json.Unmarshal(rcvdMsg, &Notif)
 	  if err != nil {
 		logger.Println("Error in Unmarshalling rcvdMsg Json")
 		return
 	  }
-	  logger.Printf(" MsgTYpe=%v\n", MsgType)
-      switch MsgType.MsgType {
-        case portdCommonDefs.NOTIFY_LINK_STATE_CHANGE:
-		   logger.Println("received link state change event")
-           msg := portdCommonDefs.LinkStateInfo {}
-	       err = json.Unmarshal(MsgType.MsgBuf, &msg)
-	       if err != nil {
-		      logger.Println("Error in Unmarshalling msgType Json")
-		      return
-	        }
-		    logger.Printf("Msg linkstatus = %d msg linktype = %d linkId = %d\n", msg.LinkStatus, msg.LinkType, msg.LinkId)
-		    if(msg.LinkStatus == portdCommonDefs.LINK_STATE_DOWN) {
-				processLinkDownEvent(ribd.Int(msg.LinkType), ribd.Int(msg.LinkId))
+      switch Notif.MsgType {
+        case asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE:
+		   logger.Println("NOTIFY_L3INTF_STATE_CHANGE event")
+           var msg asicdConstDefs.L3IntfStateNotifyMsg
+	       err = json.Unmarshal(Notif.Msg, &msg)
+           if err != nil {
+    	     logger.Println("Error in reading msg ", err)
+		     return	
+           }
+		    logger.Printf("Msg linkstatus = %d msg ifType = %d ifId = %d\n", msg.IfState,msg.IfId)
+		    if(msg.IfState == asicdConstDefs.INTF_STATE_DOWN) {
+				//processLinkDownEvent(ribd.Int(msg.IfType), ribd.Int(msg.IfId))		
+				processL3IntfDownEvent(msg.IpAddr)
 			} else {
-				processLinkUpEvent(ribd.Int(msg.LinkType), ribd.Int(msg.LinkId))
+				//processLinkUpEvent(ribd.Int(msg.IfType), ribd.Int(msg.IfId))
+				processL3IntfUpEvent(msg.IpAddr)
 			}
-      }
+			break
+		case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
+		   logger.Println("NOTIFY_IPV4INTF_CREATE event")
+		   var msg asicdConstDefs.IPv4IntfNotifyMsg
+	       err = json.Unmarshal(Notif.Msg, &msg)
+           if err != nil {
+    	     logger.Println("Error in reading msg ", err)
+		     return	
+           }
+		   logger.Printf("Received ipv4 intf create with ipAddr %s ifType %d ifId %d\n", msg.IpAddr, msg.IfType, msg.IfId)
+            var ipMask net.IP
+			ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
+		    if err != nil {
+			   return  
+		    }
+		    ipMask = make(net.IP, 4)
+		    copy(ipMask, ipNet.Mask)
+		    ipAddrStr := ip.String()
+		    ipMaskStr := net.IP(ipMask).String()
+			logger.Printf("Calling createv4Route with ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
+		   _,err = createV4Route(ipAddrStr,ipMaskStr, 0, "0.0.0.0", ribd.Int(msg.IfType), ribd.Int(msg.IfId), ribdCommonDefs.CONNECTED,  FIBAndRIB, ribd.Int(len(destNetSlice)))
+		   if(err != nil) {
+			  logger.Printf("Route create failed with err %s\n", err)
+			  return 
+		}
+       }
 	}
 }
 func processEvents(sub *nanomsg.SubSocket, subType ribd.Int) {
@@ -1084,9 +1134,6 @@ func processEvents(sub *nanomsg.SubSocket, subType ribd.Int) {
 	if(subType == SUB_ASICD){
 		logger.Println("process Asicd events")
 		processAsicdEvents(sub)
-	} else if(subType == SUB_PORTD){
-		logger.Println("process portd events")
-		processPortdEvents(sub)
 	}
 }
 func setupEventHandler(sub *nanomsg.SubSocket, address string, subtype ribd.Int) {
@@ -1143,7 +1190,6 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	ConnectToClients(configFile)
 	RIBD_PUB = InitPublisher()
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
-	go setupEventHandler(PortdSub, portdCommonDefs.PUB_SOCKET_ADDR, SUB_PORTD)
 	//CreateRoutes("RouteSetup.json")
 	UpdateRoutesFromDB(paramsDir)
 	return &RouteServiceHandler{}
