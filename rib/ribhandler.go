@@ -821,10 +821,81 @@ func (m RouteServiceHandler) PrintV4Routes() (err error) {
 	return nil
 }
 
-func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int){
-	logger.Println("processLinkDown")
+func processL3IntfDownEvent(ipAddr string){
+	logger.Println("processL3IntfDownEvent")
+    var ipMask net.IP
+	ip, ipNet, err := net.ParseCIDR(ipAddr)
+	if err != nil {
+		return  
+	}
+	ipMask = make(net.IP, 4)
+	copy(ipMask, ipNet.Mask)
+	ipAddrStr := ip.String()
+	ipMaskStr := net.IP(ipMask).String()
+	logger.Printf(" processL3IntfDownEvent for  ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
    for i:=0;i<len(ConnectedRoutes);i++ {
-      if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){		
+	  if ConnectedRoutes[i].Ipaddr == ipAddrStr && ConnectedRoutes[i].Mask == ipMaskStr {
+//      if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){		
+	     logger.Printf("Delete this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)	
+
+		 //Send a event
+	     msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : *ConnectedRoutes[i]}
+	     msgbufbytes, err := json.Marshal( msgBuf)
+         msg := ribdCommonDefs.RibdNotifyMsg {MsgType:ribdCommonDefs.NOTIFY_ROUTE_DELETED, MsgBuf: msgbufbytes}
+	     buf, err := json.Marshal( msg)
+	     if err != nil {
+		   logger.Println("Error in marshalling Json")
+		   return
+	     }
+	     logger.Println("buf", buf)
+   	     RIBD_PUB.Send(buf, nanomsg.DontWait)
+		
+         //Delete this route
+		 deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, 0, FIBOnly)
+	  }	
+   }
+}
+
+func processL3IntfUpEvent(ipAddr string){
+	logger.Println("processL3IntfUpEvent")
+    var ipMask net.IP
+	ip, ipNet, err := net.ParseCIDR(ipAddr)
+	if err != nil {
+		return  
+	}
+	ipMask = make(net.IP, 4)
+	copy(ipMask, ipNet.Mask)
+	ipAddrStr := ip.String()
+	ipMaskStr := net.IP(ipMask).String()
+	logger.Printf(" processL3IntfUpEvent for  ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
+   for i:=0;i<len(ConnectedRoutes);i++ {
+	  if ConnectedRoutes[i].Ipaddr == ipAddrStr && ConnectedRoutes[i].Mask == ipMaskStr {
+//      if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){		
+	     logger.Printf("Add this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)	
+
+         ConnectedRoutes[i].IsValid = true
+		 //Send a event
+	     msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : *ConnectedRoutes[i]}
+	     msgbufbytes, err := json.Marshal( msgBuf)
+         msg := ribdCommonDefs.RibdNotifyMsg {MsgType:ribdCommonDefs.NOTIFY_ROUTE_CREATED, MsgBuf: msgbufbytes}
+	     buf, err := json.Marshal( msg)
+	     if err != nil {
+		   logger.Println("Error in marshalling Json")
+		   return
+	     }
+	     logger.Println("buf", buf)
+   	     RIBD_PUB.Send(buf, nanomsg.DontWait)
+		
+         //Add this route
+		 createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ConnectedRoutes[i].Metric,ConnectedRoutes[i].NextHopIp, ConnectedRoutes[i].NextHopIfType,ConnectedRoutes[i].IfIndex, ConnectedRoutes[i].Prototype,FIBOnly, ConnectedRoutes[i].SliceIdx)
+	  }	
+   }
+}
+
+func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int){
+	logger.Println("processLinkDownEvent")
+   for i:=0;i<len(ConnectedRoutes);i++ {
+	     if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){		
 	     logger.Printf("Delete this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)	
 
 		 //Send a event
@@ -1014,19 +1085,21 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 		return
 	  }
       switch Notif.MsgType {
-        case asicdConstDefs.NOTIFY_INTF_STATE_CHANGE:
-		   logger.Println("NOTIFY_INTF_STATE_CHANGE event")
-           var msg asicdConstDefs.IntfStateNotifyMsg
+        case asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE:
+		   logger.Println("NOTIFY_L3INTF_STATE_CHANGE event")
+           var msg asicdConstDefs.L3IntfStateNotifyMsg
 	       err = json.Unmarshal(Notif.Msg, &msg)
            if err != nil {
     	     logger.Println("Error in reading msg ", err)
 		     return	
            }
-		    logger.Printf("Msg linkstatus = %d msg ifType = %d ifId = %d\n", msg.IfState, msg.IfType, msg.IfId)
+		    logger.Printf("Msg linkstatus = %d msg ifType = %d ifId = %d\n", msg.IfState,msg.IfId)
 		    if(msg.IfState == asicdConstDefs.INTF_STATE_DOWN) {
-				processLinkDownEvent(ribd.Int(msg.IfType), ribd.Int(msg.IfId))		
+				//processLinkDownEvent(ribd.Int(msg.IfType), ribd.Int(msg.IfId))		
+				processL3IntfDownEvent(msg.IpAddr)
 			} else {
-				processLinkUpEvent(ribd.Int(msg.IfType), ribd.Int(msg.IfId))
+				//processLinkUpEvent(ribd.Int(msg.IfType), ribd.Int(msg.IfId))
+				processL3IntfUpEvent(msg.IpAddr)
 			}
 			break
 		case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
