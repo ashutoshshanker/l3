@@ -7,7 +7,6 @@ import (
     "l3/ospf/rpc"
     "l3/ospf/server"
     "log/syslog"
-    "ribd"
 )
 
 func main() {
@@ -28,21 +27,9 @@ func main() {
     }
     fileName = fileName + "clients.json"
 
-    var ribdClient *ribd.RouteServiceClient = nil
-    ribdClientChan := make(chan *ribd.RouteServiceClient)
-
-    go rpc.StartClient(logger, fileName, ribdClientChan)
-
-    ribdClient = <-ribdClientChan
-    logger.Info("Connected to RIBd")
-    if ribdClient == nil {
-        logger.Err("Failed to connect to RIBd")
-        return
-    }
-
     logger.Info(fmt.Sprintln("Starting OSPF Server..."))
-    ospfServer := server.NewOSPFServer(logger, ribdClient)
-    go ospfServer.StartServer()
+    ospfServer := server.NewOSPFServer(logger)
+    go ospfServer.StartServer(fileName)
 
     logger.Info(fmt.Sprintln("Starting Config listener..."))
     confIface := rpc.NewOSPFHandler(ospfServer, logger)
