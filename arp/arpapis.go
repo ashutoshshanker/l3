@@ -893,13 +893,13 @@ func isInLocalSubnet(ipaddr string) (ifName string, ret bool) {
         return "", false
     }
 
-    if ipv4IntfProp.ifType == 0 { // VLAN
+    if ipv4IntfProp.ifType == commonDefs.L2RefTypeVlan { // VLAN
         ent, exist := vlanPropertyMap[ipv4IntfProp.ifIdx]
         if !exist {
             return "", false
         }
         ifName = ent.vlanName
-    } else if ipv4IntfProp.ifType == 1 { //PHY
+    } else if ipv4IntfProp.ifType == commonDefs.L2RefTypePort { //PHY
         ent, exist := portConfigMap[ipv4IntfProp.ifIdx]
         if !exist {
             return "", false
