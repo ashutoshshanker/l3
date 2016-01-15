@@ -304,9 +304,9 @@ struct OspfIfConf {
     10: i32                     IfRtrDeadInterval,
     11: i32                     IfPollInterval,
     12: string                  IfAuthKey,
-    14: multicastForwarding     IfMulticastForwarding,
-    15: bool                    IfDemand,
-    16: authType                IfAuthType,
+    13: multicastForwarding     IfMulticastForwarding,
+    14: bool                    IfDemand,
+    15: authType                IfAuthType,
 }
 
 struct OspfIfState {
