@@ -120,7 +120,7 @@ func updateARPCacheFromDB() {
             ent.valid = true
             arp_cache.arpMap[ip] = ent
             port_prop_ent = port_property_map[portid]
-            port_prop_ent.untagged_vlanid = arpd.Int(vlanid)
+            port_prop_ent.untagged_vlanid = vlanid
             port_property_map[portid] = port_prop_ent
         }
 
