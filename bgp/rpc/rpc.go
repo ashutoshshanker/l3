@@ -5,13 +5,14 @@ import (
 	"bgpd"
 	"encoding/json"
 	"fmt"
-	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
 	"log/syslog"
 	"ribd"
 	"strconv"
 	"time"
 	"utils/ipcutils"
+
+	"git.apache.org/thrift.git/lib/go/thrift"
 )
 
 const ClientsFileName string = "clients.json"
@@ -93,15 +94,20 @@ func StartClient(logger *syslog.Writer, filePath string, ribdClient chan *ribd.R
 		return
 	}
 
-	clientTransport, protocolFactory, err := ipcutils.CreateIPCHandles("localhost:"+strconv.Itoa(clientJson.Port))
+	clientTransport, protocolFactory, err := ipcutils.CreateIPCHandles("localhost:" + strconv.Itoa(clientJson.Port))
 	if err != nil {
 		logger.Info(fmt.Sprintf("Failed to connect to RIBd, retrying until connection is successful"))
+		count := 0
 		ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
 		for _ = range ticker.C {
-			err = connectToClient(logger, clientTransport)
+			clientTransport, protocolFactory, err = ipcutils.CreateIPCHandles("localhost:" + strconv.Itoa(clientJson.Port))
 			if err == nil {
 				ticker.Stop()
 				break
+			}
+			count++
+			if (count % 10) == 0 {
+				logger.Info(fmt.Sprintf("Still can't connect to RIBd, retrying..."))
 			}
 		}
 	}
