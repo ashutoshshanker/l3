@@ -88,7 +88,8 @@ func getIPv4ForInterface(iftype arpd.Int, vlan_id arpd.Int) (ip_addr string, err
     }
 
 */
-    if_name, _ := getInterfaceName(iftype, vlan_id)
+    //if_name, _ := getInterfaceName(iftype, vlan_id)
+    if_name, _ := getLinuxIfc(int(iftype), int(vlan_id))
     if if_name == "" {
         return "", err
     }

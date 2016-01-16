@@ -6,12 +6,13 @@ IPC_GEN_CMD=thrift
 SRCS=arphandler.go  arpmain.go arpapis.go arpConstDefs.go arpUtils.go arpRPC.go arpDB.go
 IPC_SRCS=arpd.thrift
 COMP_NAME=arpd
+GOLDFLAGS=-r /opt/flexswitch/sharedlib
 all:ipc exe
 ipc:
 	 $(IPC_GEN_CMD) --gen go -out $(GENERATED_IPC) $(IPC_SRCS)
 
 exe: $(SRCS)
-	 go build -o $(DESTDIR)/$(COMP_NAME) $(SRCS)
+	 go build -o $(DESTDIR)/$(COMP_NAME) -ldflags="$(GOLDFLAGS)" $(SRCS)
 
 guard:
 ifndef SR_CODE_BASE

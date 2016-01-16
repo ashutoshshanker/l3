@@ -129,7 +129,7 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 
 	if bgpMsg == nil || bgpMsg.Body.(*packet.BGPUpdate).PathAttributes == nil {
 		p.logger.Err(fmt.Sprintf("Neighbor %s: Path attrs not found in BGP Update message", p.Neighbor.NeighborAddress))
-		return true
+		return false
 	}
 
 	if p.IsInternal() {
@@ -164,8 +164,10 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 }
 
 func (p *Peer) PeerConnBroken(fsmCleanup bool) {
-	p.Neighbor.Transport.Config.LocalAddress = nil
-	p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
+	if p.Neighbor.Transport.Config.LocalAddress != nil {
+		p.Neighbor.Transport.Config.LocalAddress = nil
+		p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
+	}
 }
 
 func (p *Peer) FSMStateChange(state BGPFSMState) {
@@ -173,7 +175,7 @@ func (p *Peer) FSMStateChange(state BGPFSMState) {
 }
 
 func (p *Peer) SendUpdate(bgpMsg packet.BGPMessage, path *Path) {
-	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%s, withdraw routes:%s", p.Neighbor.NeighborAddress, bgpMsg.Body.(*packet.BGPUpdate).NLRI, bgpMsg.Body.(*packet.BGPUpdate).WithdrawnRoutes))
+	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%v, withdraw routes:%v", p.Neighbor.NeighborAddress, bgpMsg.Body.(*packet.BGPUpdate).NLRI, bgpMsg.Body.(*packet.BGPUpdate).WithdrawnRoutes))
 	bgpMsgRef := &bgpMsg
 	if p.updatePathAttrs(bgpMsgRef, path) {
 		atomic.AddUint32(&p.Neighbor.State.Queues.Output, 1)

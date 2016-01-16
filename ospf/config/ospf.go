@@ -4,186 +4,186 @@ import (
     //"net"
 )
 
-type areaId string
-type routerId string
-type metric int // 0x0 to 0xffff
-type bigMetric int // 0x0 to 0xffffff
-type positiveInteger int // 0x0 to 0x7fffffff
-type helloRange int // 0x1 to 0xffff
-type upToMaxAge int // 0x0 to 3600
-type designatedRouterPriority int // 0x0 to 0xff
-type tosType int // 0x0 to 30
-type ipAddress string
-type interfaceIndexOrZero int
+type AreaId string
+type RouterId string
+type Metric int // 0x0 to 0xffff
+type BigMetric int // 0x0 to 0xffffff
+type PositiveInteger int32 // 0x0 to 0x7fffffff
+type HelloRange int // 0x1 to 0xffff
+type UpToMaxAge int // 0x0 to 3600
+type DesignatedRouterPriority int // 0x0 to 0xff
+type TosType int // 0x0 to 30
+type IpAddress string
+type InterfaceIndexOrZero int
 
-type status int
+type Status int
 const (
-    enabled status = 1
-    disabled status = 2
+    Enabled Status = 1
+    Disabled Status = 2
 )
 
-type authType int
+type AuthType int
 const (
-    noAuth authType = 0
-    simplePassword authType = 1
-    md5 authType = 2
-    reserved authType = 3
+    NoAuth AuthType = 0
+    SimplePassword AuthType = 1
+    Md5 AuthType = 2
+    Reserved AuthType = 3
 )
 
-type restartSupport int
+type RestartSupport int
 const (
-    none restartSupport = 1
-    plannedOnly restartSupport = 2
-    plannedAndUnplanned restartSupport = 3
+    None RestartSupport = 1
+    PlannedOnly RestartSupport = 2
+    PlannedAndUnplanned RestartSupport = 3
 )
 
-type advertiseAction int
+type AdvertiseAction int
 const (
-    doNotAdvertise advertiseAction = 1
-    advertise advertiseAction = 2
+    DoNotAdvertise AdvertiseAction = 1
+    Advertise AdvertiseAction = 2
 )
 
-type importAsExtern int
+type ImportAsExtern int
 const (
-    importExternal importAsExtern = 1
-    importNoExternal importAsExtern = 2
-    importNssa importAsExtern = 3
+    ImportExternal ImportAsExtern = 1
+    ImportNoExternal ImportAsExtern = 2
+    ImportNssa ImportAsExtern = 3
 )
 
-type areaSummary int
+type AreaSummary int
 const (
-    noAreaSummary areaSummary = 1
-    sendAreaSummary areaSummary = 2
+    NoAreaSummary AreaSummary = 1
+    SendAreaSummary AreaSummary = 2
 )
 
-type nssaTranslatorRole int
+type NssaTranslatorRole int
 const (
-    always nssaTranslatorRole = 1
-    cadidate nssaTranslatorRole = 2
+    Always NssaTranslatorRole = 1
+    Candidate NssaTranslatorRole = 2
 )
 
 
-type metricType int
+type MetricType int
 const (
-    ospfMetric metricType = 1
-    comparableCost metricType = 2
-    nonComparable metricType = 3
+    OspfMetric MetricType = 1
+    ComparableCost MetricType = 2
+    NonComparable MetricType = 3
 )
 
-type areaRangeEffect int
+type AreaRangeEffect int
 const (
-    advertiseMatching areaRangeEffect = 1
-    doNotAdvertiseMatching areaRangeEffect = 2
+    AdvertiseMatching AreaRangeEffect = 1
+    DoNotAdvertiseMatching AreaRangeEffect = 2
 )
 
-type ifType int
+type IfType int
 const (
-    broadcast = 1
-    nbma = 2
-    pointToPoint = 3
-    pointToMultipoint = 4
+    Broadcast IfType = 1
+    Nbma IfType = 2
+    PointToPoint IfType = 3
+    PointToMultipoint IfType = 4
 )
 
-type multicastForwarding int
+type MulticastForwarding int
 const (
-    blocked = 1
-    multicast = 2
-    unicast = 3
+    Blocked MulticastForwarding = 1
+    Multicast MulticastForwarding = 2
+    Unicast MulticastForwarding = 3
 )
 
-type restartStatus int
+type RestartStatus int
 const (
-    notRestarting restartStatus = 1
-    plannedRestart restartStatus = 2
-    unplannedRestart restartStatus = 3
+    NotRestarting RestartStatus = 1
+    PlannedRestart RestartStatus = 2
+    UnplannedRestart RestartStatus = 3
 )
 
-type restartExitReason int
+type RestartExitReason int
 const (
-    noAttempt restartExitReason = 1
-    inProgress restartExitReason = 2
-    completed restartExitReaason = 3
-    timeedOut restartExitReason = 4
-    topologyChanged restartExitReason = 5
+    NoAttempt RestartExitReason = 1
+    InProgress RestartExitReason = 2
+    Completed RestartExitReason = 3
+    TimeedOut RestartExitReason = 4
+    TopologyChanged RestartExitReason = 5
 )
 
-type nssaTranslatorState int
+type NssaTranslatorState int
 const (
-    enabled nssaTranslatorState = 1
-    elected nssaTranslatorState = 2
-    disabled nssaTranslatorState = 3
+    NssaTranslatorEnabled NssaTranslatorState = 1
+    NssaTranslatorElected NssaTranslatorState = 2
+    NssaTranslatorDisabled NssaTranslatorState = 3
 )
 
-type lsaType int
+type LsaType int
 const (
-    routerLink lsaType = 1
-    networkLink lsaType = 2
-    summaryLink lsaType = 3
-    asSummaryLink lsaType = 4
-    asExternalLink lsaType = 5
-    multicastLink lsaType = 6
-    nssaExternalLink lsaType = 7
-    localOpaqueLink lsaType = 9
-    areaOpaqueLink lsaType = 10
-    asOpaqueLink lsaType = 11
+    RouterLink LsaType = 1
+    NetworkLink LsaType = 2
+    SummaryLink LsaType = 3
+    AsSummaryLink LsaType = 4
+    AsExternalLink LsaType = 5
+    MulticastLink LsaType = 6
+    NssaExternalLink LsaType = 7
+    LocalOpaqueLink LsaType = 9
+    AreaOpaqueLink LsaType = 10
+    AsOpaqueLink LsaType = 11
 )
 
-type ifState int
+type IfState int
 const (
-    down ifState = 1
-    loopback ifState = 2
-    waiting ifState = 3
-    piontToPoint ifState = 4
-    designatedRouter ifState = 5
-    backupDesignatedRouter ifState = 6
-    otherDesignatedRouter ifState = 7
+    Down IfState = 1
+    Loopback IfState = 2
+    Waiting IfState = 3
+    PiontToPoint IfState = 4
+    DesignatedRouter IfState = 5
+    BackupDesignatedRouter IfState = 6
+    OtherDesignatedRouter IfState = 7
 )
 
-type nbrState int
+type NbrState int
 const (
-    down nbrState = 1
-    attempt nbrState = 2
-    init nbrState = 3
-    twoWay nbrState = 4
-    exchangeStart nbrState = 5
-    exchange nbrState = 6
-    loading nbrState = 7
-    full nbrState = 8
+    NbrDown NbrState = 1
+    NbrAttempt NbrState = 2
+    NbrInit NbrState = 3
+    NbrTwoWay NbrState = 4
+    NbrExchangeStart NbrState = 5
+    NbrExchange NbrState = 6
+    NbrLoading NbrState = 7
+    NbrFull NbrState = 8
 )
 
-type nbmaNbrPermanence int
+type NbmaNbrPermanence int
 const (
-    dynamicNbr nbmaNbrPermanence = 1
-    permanentNbr nbmaNbrPermanence = 2
+    DynamicNbr NbmaNbrPermanence = 1
+    PermanentNbr NbmaNbrPermanence = 2
 )
 
-type nbrRestartHelperStatus int
+type NbrRestartHelperStatus int
 const (
-    notHelping nbrRestartHelperStatus = 1
-    helping nbrRestartHelperStatus = 2
+    NotHelping NbrRestartHelperStatus = 1
+    Helping NbrRestartHelperStatus = 2
 )
 
 
 type GlobalConf struct {
-    RouterId                    routerId
-    AdminStat                   status
+    RouterId                    RouterId
+    AdminStat                   Status
     ASBdrRtrStatus              bool
     TOSSupport                  bool
-    ExtLsdbLimit                int
-    MulticastExtension          int
-    ExitOverflowInterval        positiveInteger
+    ExtLsdbLimit                int32
+    MulticastExtensions         int32
+    ExitOverflowInterval        PositiveInteger
     DemandExtensions            bool
     RFC1583Compatibility        bool
-    ReferenceBandwidth          int
-    RestartSupport              restartSupport
-    RestartInterval             int
+    ReferenceBandwidth          int32
+    RestartSupport              RestartSupport
+    RestartInterval             int32
     RestartStrictLsaChecking    bool
-    StubRouterAdvertisement     advertiseAction
+    StubRouterAdvertisement     AdvertiseAction
 }
 
 type GlobalState struct {
-    RouterId                    routerId
-    AdminStat                   status
+    RouterId                    RouterId
+    AdminStat                   Status
     VersionNumber               int
     AreaBdrRtrStatus            bool
     ASBdrRtrStatus              bool
@@ -194,71 +194,71 @@ type GlobalState struct {
     RxNewLsas                   int
     ExtLsdbLimit                int
     MulticastExtension          int
-    ExitOverflowInterval        positiveInteger
+    ExitOverflowInterval        PositiveInteger
     DemandExtensions            bool
     RFC1583Compatibility        bool
     OpaqueLsaSupport            bool
-    ReferenceBandwidth          int
-    RestartSupport              restartSupport
-    RestartInterval             int
+    ReferenceBandwidth          int32
+    RestartSupport              RestartSupport
+    RestartInterval             int32
     RestartStrictLsaChecking    bool
-    RestartStatus               restartStatus
+    RestartStatus               RestartStatus
     RestartAge                  int
-    RestartExitReason           restartExitReason
+    RestartExitReason           RestartExitReason
     AsLsaCount                  int
     AsLsaCksumSum               int
     StubRouterSupport           bool
-    StubRouterAdvertisement     advertiseAction
+    StubRouterAdvertisement     AdvertiseAction
     DiscontinuityTime           string
 }
 
 // Indexed By AreaId
 type AreaConf struct {
-    AreaId                                  areaId
-    AuthType                                authType
-    ImportAsExtern                          importAsExtern
-    AreaSummary                             areaSummary
-    AreaNssaTranslatorRole                  nssaTranslatorRole
-    AreaNssaTranslatorStabilityInterval     positiveInteger
+    AreaId                                  AreaId
+    AuthType                                AuthType
+    ImportAsExtern                          ImportAsExtern
+    AreaSummary                             AreaSummary
+    AreaNssaTranslatorRole                  NssaTranslatorRole
+    AreaNssaTranslatorStabilityInterval     PositiveInteger
 }
 
 type AreaState struct {
-    AreaId                                  areaId
-    AuthType                                authType
-    ImportAsExtern                          importAsExtern
+    AreaId                                  AreaId
+    AuthType                                AuthType
+    ImportAsExtern                          ImportAsExtern
     SpfRuns                                 int
     AreaBdrRtrCount                         int
     AsBdrRtrCount                           int
     AreaLsaCount                            int
     AreaLsaCksumSum                         int
-    AreaSummary                             areaSummary
-    AreaNssaTranslatorRole                  nssaTranslatorRole
-    AreaNssaTranslatorState                 nssaTranslatorState
-    AreaNssaTranslatorStabilityInterval     positiveInteger
+    AreaSummary                             AreaSummary
+    AreaNssaTranslatorRole                  NssaTranslatorRole
+    AreaNssaTranslatorState                 NssaTranslatorState
+    AreaNssaTranslatorStabilityInterval     PositiveInteger
     AreaNssaTranslatorEvents                int
 }
 
 // Indexed by StubAreaId and StubTOS
 type StubAreaConf struct {
-    StubAreaId              areaId
-    StubTOS                 tosType
-    StubMetric              bigMetric
-    StubMetricType          metricType
+    StubAreaId              AreaId
+    StubTOS                 TosType
+    StubMetric              BigMetric
+    StubMetricType          MetricType
 }
 
 type StubAreaState struct {
-    StubAreaId              areaId
-    StubTOS                 tosType
-    StubMetric              bigMetric
-    StubMetricType          metricType
+    StubAreaId              AreaId
+    StubTOS                 TosType
+    StubMetric              BigMetric
+    StubMetricType          MetricType
 }
 
 // Indexed by LsdbAreaId, LsdbType, LsdbLsid, LsdbRouterId
 type LsdbState struct {
-    LsdbAreaId              areaId
-    LsdbType                lsaType
-    LsdbLsid                ipAddress
-    LsdbRouterId            routerId
+    LsdbAreaId              AreaId
+    LsdbType                LsaType
+    LsdbLsid                IpAddress
+    LsdbRouterId            RouterId
     LsdbSequence            int
     LsdbAge                 int
     LsdbCheckSum            int
@@ -267,167 +267,168 @@ type LsdbState struct {
 
 // Indexed By RangeAreaId, RangeNet
 type AreaRangeConf struct {
-    RangeAreaId             areaId
-    AreaRangeNet            ipAddress
-    ArearangeMask           ipAddress
-    AreaRangeEffect         areaRangeEffect
+    RangeAreaId             AreaId
+    AreaRangeNet            IpAddress
+    ArearangeMask           IpAddress
+    AreaRangeEffect         AreaRangeEffect
 }
 
 type AreaRangeState struct {
-    RangeAreaId             areaId
-    AreaRangeNet            ipAddress
-    ArearangeMask           ipAddress
-    AreaRangeEffect         areaRangeEffect
+    RangeAreaId             AreaId
+    AreaRangeNet            IpAddress
+    ArearangeMask           IpAddress
+    AreaRangeEffect         AreaRangeEffect
 }
 
 // Indexed By HostIpAddress, HostTOS
 type HostConf struct {
-    HostIpAddress           ipAddress
-    HostTOS                 tosType
-    HostMetric              metric
-    HostCfgAreaID           areaId
+    HostIpAddress           IpAddress
+    HostTOS                 TosType
+    HostMetric              Metric
+    HostCfgAreaID           AreaId
 }
 
 type HostState struct {
-    HostIpAddress           ipAddress
-    HostTOS                 tosType
-    HostMetric              metric
-    HostCfgAreaID           areaId
+    HostIpAddress           IpAddress
+    HostTOS                 TosType
+    HostMetric              Metric
+    HostCfgAreaID           AreaId
 }
 
 // Indexed By IfIpAddress, AddressLessIf
-type IfConf struct {
-    IfIpAddress             ipAddress
-    AddressLessIf           interfaceIndexOrZero
-    IfAreaId                areaId
-    IfType                  ifType
-    IfAdminStat             status
-    IfRtrPriority           designatedRouterPriority
-    IfTransitDelay          upToMaxAge
-    IfRetransInterval       upToMaxAge
-    IfHelloInterval         helloRange
-    IfRtrDeadInterval       positiveInteger
-    IfPollInterval          positiveInteger
+
+type InterfaceConf struct {
+    IfIpAddress             IpAddress
+    AddressLessIf           InterfaceIndexOrZero
+    IfAreaId                AreaId
+    IfType                  IfType
+    IfAdminStat             Status
+    IfRtrPriority           DesignatedRouterPriority
+    IfTransitDelay          UpToMaxAge
+    IfRetransInterval       UpToMaxAge
+    IfHelloInterval         HelloRange
+    IfRtrDeadInterval       PositiveInteger
+    IfPollInterval          PositiveInteger
     IfAuthKey               string
-    IfMulticastForwarding   multicastForwarding
+    IfMulticastForwarding   MulticastForwarding
     IfDemand                bool
-    IfAuthType              authType
+    IfAuthType              AuthType
 }
 
-type IfState struct {
-    IfIpAddress                 ipAddress
-    AddressLessIf               interfaceIndexOrZero
-    IfAreaId                    areaId
-    IfType                      ifType
-    IfAdminStat                 status
-    IfRtrPriority               designatedRouterPriority
-    IfTransitDelay              upToMaxAge
-    IfRetransInterval           upToMaxAge
-    IfHelloInterval             helloRange
-    IfRtrDeadInterval           positiveInteger
-    IfPollInterval              positiveInteger
-    IfState                     ifState
-    IfDesignatedRouter          ipAddress
-    IfBackupDesignatedRouter    ipAddress
+type InterfaceState struct {
+    IfIpAddress                 IpAddress
+    AddressLessIf               InterfaceIndexOrZero
+    IfAreaId                    AreaId
+    IfType                      IfType
+    IfAdminStat                 Status
+    IfRtrPriority               DesignatedRouterPriority
+    IfTransitDelay              UpToMaxAge
+    IfRetransInterval           UpToMaxAge
+    IfHelloInterval             HelloRange
+    IfRtrDeadInterval           PositiveInteger
+    IfPollInterval              PositiveInteger
+    IfState                     IfState
+    IfDesignatedRouter          IpAddress
+    IfBackupDesignatedRouter    IpAddress
     IfEvents                    int
     IfAuthKey                   string
-    IfMulticastForwarding       multicastForwarding
+    IfMulticastForwarding       MulticastForwarding
     IfDemand                    bool
-    IfAuthType                  authType
+    IfAuthType                  AuthType
     IfLsaCount                  int
     IfLsaCksumSum               uint32
-    IfDesignatedRouterId        routerId
-    IfBackupDesignatedRouterId  routerId
+    IfDesignatedRouterId        RouterId
+    IfBackupDesignatedRouterId  RouterId
 }
 
 // Indexed By  IfMetricIpAddress, IfMetricAddressLessIf, IfMetricTOS
 type IfMetricConf struct {
-    IfMetricIpAddress       ipAddress
-    IfMetricAddressLessIf   interfaceIndexOrZero
-    IfMetricTOS             tosType
-    IfMetricValue           metric
+    IfMetricIpAddress       IpAddress
+    IfMetricAddressLessIf   InterfaceIndexOrZero
+    IfMetricTOS             TosType
+    IfMetricValue           Metric
 }
 
 type IfMetricState struct {
-    IfMetricIpAddress       ipAddress
-    IfMetricAddressLessIf   interfaceIndexOrZero
-    IfMetricTOS             tosType
-    IfMetricValue           metric
+    IfMetricIpAddress       IpAddress
+    IfMetricAddressLessIf   InterfaceIndexOrZero
+    IfMetricTOS             TosType
+    IfMetricValue           Metric
 }
 
 // Indexed By VirtIfAreaId, VirtIfNeighbor
 type VirtIfConf struct {
-    VirtIfAreaId            areaId
-    VirtIfNeighbor          routerId
-    VirtIfTransitDelay      upToMaxAge
-    VirtIfRetransInterval   upToMaxAge
-    VirtIfHelloInterval     helloRange
-    VirtIfRtrDeadInterval   positiveInteger
+    VirtIfAreaId            AreaId
+    VirtIfNeighbor          RouterId
+    VirtIfTransitDelay      UpToMaxAge
+    VirtIfRetransInterval   UpToMaxAge
+    VirtIfHelloInterval     HelloRange
+    VirtIfRtrDeadInterval   PositiveInteger
     VirtIfAuthKey           string
-    VirtIfAuthType          authType
+    VirtIfAuthType          AuthType
 }
 
 type VirtIfState struct {
-    VirtIfAreaId            areaId
-    VirtIfNeighbor          routerId
-    VirtIfTransitDelay      upToMaxAge
-    VirtIfRetransInterval   upToMaxAge
-    VirtIfHelloInterval     helloRange
-    VirtIfRtrDeadInterval   positiveInteger
-    VirtIfState             ifState
+    VirtIfAreaId            AreaId
+    VirtIfNeighbor          RouterId
+    VirtIfTransitDelay      UpToMaxAge
+    VirtIfRetransInterval   UpToMaxAge
+    VirtIfHelloInterval     HelloRange
+    VirtIfRtrDeadInterval   PositiveInteger
+    VirtIfState             IfState
     VirtIfEvents            int
     VirtIfAuthKey           string
-    VirtIfAuthType          authType
+    VirtIfAuthType          AuthType
     VirtIfLsaCount          int
     VirtIfLsaCksumSum       int
 }
 
 // Indexed by NbrIpAddress, NbrAddressLessIndex
 type NbrConf struct {
-    NbrIpAddress                ipAddress
-    NbrAddressLessIndex         interfaceIndexOrZero
-    NbrPriority                 designatedRouterPriority
+    NbrIpAddress                IpAddress
+    NbrAddressLessIndex         InterfaceIndexOrZero
+    NbrPriority                 DesignatedRouterPriority
 }
 
-type NbrState struct {
-    NbrIpAddress                ipAddress
-    NbrAddressLessIndex         interfaceIndexOrZero
-    NbrRtrId                    routerId
+type NeighborState struct {
+    NbrIpAddress                IpAddress
+    NbrAddressLessIndex         InterfaceIndexOrZero
+    NbrRtrId                    RouterId
     NbrOptions                  int
-    NbrPriority                 designatedRouterPriority
-    NbrState                    nbrState
+    NbrPriority                 DesignatedRouterPriority
+    NbrState                    NbrState
     NbrEvents                   int
     NbrLsRetransQLen            int
-    NbmaNbrPermanence           nbmaNbrPermanence
+    NbmaNbrPermanence           NbmaNbrPermanence
     NbrHelloSuppressed          bool
-    NbrRestartHelperStatus      nbrRestartHelperStatus
+    NbrRestartHelperStatus      NbrRestartHelperStatus
     NbrRestartHelperAge         uint32
-    NbrRestartHelperExitReason  restartExitReason
+    NbrRestartHelperExitReason  RestartExitReason
 }
 
 // Virtual Neighbor Table (Read Only)
 // OSPF Virtual Neighbor Entry
 // Indexed By VirtNbrArea, VirtNbrRtrId
 type VirtNbrState struct {
-    VirtNbrArea                     areaId
-    VirtNbrRtrId                    routerId
-    VirtNbrIpAddress                ipAddress
+    VirtNbrArea                     AreaId
+    VirtNbrRtrId                    RouterId
+    VirtNbrIpAddress                IpAddress
     VirtNbrOptions                  int
-    VirtNbrState                    nbrState
+    VirtNbrState                    NbrState
     VirtNbrEvents                   int
     VirtNbrLsRetransQLen            int
     VirtNbrHelloSuppressed          bool
-    VirtNbrRestartHelperStatus      nbrRestartHelperStatus
+    VirtNbrRestartHelperStatus      NbrRestartHelperStatus
     VirtNbrRestartHelperAge         uint32
-    VirtNbrRestartHelperExitReason  restartExitReason
+    VirtNbrRestartHelperExitReason  RestartExitReason
 }
 
 // External LSA link State - Deprecated
 // Indexed by ExtLsdbType, ExtLsdbLsid, ExtLsdbRouterId
 type ExtLsdbState struct {
-    ExtLsdbType                     lsaType
-    ExtLsdbLsid                     ipAddress
-    ExtLsdbRouterId                 routerId
+    ExtLsdbType                     LsaType
+    ExtLsdbLsid                     IpAddress
+    ExtLsdbRouterId                 RouterId
     ExtLsdbSequence                 int
     ExtLsdbAge                      int
     ExtLsdbChecksum                 int
@@ -439,20 +440,20 @@ type ExtLsdbState struct {
 // Indexed By AreaAggregateAreaId, AreaAggregateLsdbType,
 // AreaAggregateNet, AreaAggregateMask
 type AreaAggregateConf struct {
-    AreaAggregateAreaId         areaId
-    AreaAggregateLsdbType       areaAggregateLsdbType
-    AreaAggregateNet            ipAddress
-    AreaAggregateMask           ipAddress
-    AreaAggregateEffect         areaRangeEffect
+    AreaAggregateAreaId         AreaId
+    AreaAggregateLsdbType       LsaType
+    AreaAggregateNet            IpAddress
+    AreaAggregateMask           IpAddress
+    AreaAggregateEffect         AreaRangeEffect
     AreaAggregateExtRouteTag    int
 }
 
 type AreaAggregateState struct {
-    AreaAggregateAreaId         areaId
-    AreaAggregateLsdbType       areaAggregateLsdbType
-    AreaAggregateNet            ipAddress
-    AreaAggregateMask           ipAddress
-    AreaAggregateEffect         areaRangeEffect
+    AreaAggregateAreaId         AreaId
+    AreaAggregateLsdbType       LsaType
+    AreaAggregateNet            IpAddress
+    AreaAggregateMask           IpAddress
+    AreaAggregateEffect         AreaRangeEffect
     AreaAggregateExtRouteTag    uint32
 }
 
@@ -460,11 +461,11 @@ type AreaAggregateState struct {
 // Indexed by LocalLsdbIpAddress, LocalLsdbAddressLessIf,
 // LocalLsdbType, LocalLsdbLsid, LocalLsdbRouterId
 type LocalLsdbState struct {
-    LocalLsdbIpAddress          ipAddress
-    LocalLsdbAddressLessIf      interfaceIndexOrZero
-    LocalLsdbType               lsaType
-    LocalLsdbLsid               ipAddress
-    LocalLsdbRouterId           routerId
+    LocalLsdbIpAddress          IpAddress
+    LocalLsdbAddressLessIf      InterfaceIndexOrZero
+    LocalLsdbType               LsaType
+    LocalLsdbLsid               IpAddress
+    LocalLsdbRouterId           RouterId
     LocalLsdbSequence           int
     LocalLsdbAge                int
     LocalLsdbChecksum           int
@@ -475,11 +476,11 @@ type LocalLsdbState struct {
 // Indexed By VirtLocalLsdbTransitArea, VirtLocalLsdbTransitArea,
 // VirtLocalLsdbType, VirtLocalLsdbLsid, VirtLocalLsdbRouterId
 type VirtLocalLsdbState struct {
-    VirtLocalLsdbTransitArea    areaId
-    VirtLocalLsdbNeighbor       routerId
-    VirtLocalLsdbType           lsaType
-    VirtLocalLsdbLsid           ipAddress
-    VirtLocalLsdbRouterId       routerId
+    VirtLocalLsdbTransitArea    AreaId
+    VirtLocalLsdbNeighbor       RouterId
+    VirtLocalLsdbType           LsaType
+    VirtLocalLsdbLsid           IpAddress
+    VirtLocalLsdbRouterId       RouterId
     VirtLocalLsdbSequence       int
     VirtLocalLsdbAge            int
     VirtLocalLsdbChecksum       int
@@ -489,9 +490,9 @@ type VirtLocalLsdbState struct {
 // Link State Database, AS - scope
 // Indexed AsLsdbType, AsLsdbLsid, AsLsdbRouterId
 type AsLsdbState struct {
-    AsLsdbType                  lsaType
-    AsLsdbLsid                  ipAddress
-    AsLsdbRouterId              routerId
+    AsLsdbType                  LsaType
+    AsLsdbLsid                  IpAddress
+    AsLsdbRouterId              RouterId
     AsLsdbSequence              int
     AsLsdbAge                   int
     AsLsdbChecksum              int
@@ -500,8 +501,8 @@ type AsLsdbState struct {
 
 // Area LSA Counter Table
 // Indexed By AreaLsaCountAreaId, AreaLsaCountLsaType
-struct OspfAreaLsaCountState {
-    AreaLsaCountAreaId          areaId
-    AreaLsaCountLsaType         lsaType
+type OspfAreaLsaCountState struct {
+    AreaLsaCountAreaId          AreaId
+    AreaLsaCountLsaType         LsaType
     AreaLsaCountNumber          int
 }
