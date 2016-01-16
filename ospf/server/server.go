@@ -2,7 +2,7 @@ package server
 
 import (
     "fmt"
-    "bytes"
+//    "bytes"
     "git.apache.org/thrift.git/lib/go/thrift"
     nanomsg "github.com/op/go-nanomsg"
     "encoding/json"
@@ -17,14 +17,12 @@ import (
 //    "l3/rib/ribdCommonDefs"
     "asicdServices"
     "asicd/asicdConstDefs"
-/*
     "asicd/pluginManager/pluginCommon"
-*/
     "net"
-    "golang.org/x/net/ipv4"
+    //"golang.org/x/net/ipv4"
    // "github.com/x/net/ipv4"
-    "encoding/gob"
-    "runtime"
+    "encoding/binary"
+    //"runtime"
 )
 
 const (
@@ -120,8 +118,10 @@ type OSPFHeader struct {
 type OSPFHelloData struct {
     netMask             []byte
     helloInterval       uint16
+    options             uint8
+    rtrPrio             uint8
     rtrDeadInterval     uint32
-    deginatedRtr        []byte
+    designatedRtr        []byte
     backupDesignatedRtr []byte
     neighbor            []byte
 }
@@ -390,7 +390,6 @@ func (server *OSPFServer)initDefaultIntfConf(key IntfConfKey) {
     }
 }
 
-/*
 func (server *OSPFServer)createIPIntfConfMap(msg pluginCommon.IPv4IntfNotifyMsg) {
     ip, _, err := net.ParseCIDR(msg.IpAddr)
     if err != nil {
@@ -422,7 +421,6 @@ func (server *OSPFServer)deleteIPIntfConfMap(msg pluginCommon.IPv4IntfNotifyMsg)
     }
     delete(server.IntfConfMap, intfConfKey)
 }
-*/
 
 func (server *OSPFServer)updateIPIntfConfMap(ifConf config.InterfaceConf) {
     intfConfKey := IntfConfKey {
@@ -469,16 +467,34 @@ func (server *OSPFServer)RecvHelloPkt(ifName string) {
 }
 
 func encodeOspfHdr(ospfHdr OSPFHeader) ([]byte) {
-    encBuf := new(bytes.Buffer)
-    err := gob.NewEncoder(encBuf).Encode(ospfHdr)
-    if err != nil {
-        return nil
-    }
+    pkt := make([]byte, OSPF_HEADER_SIZE)
+    pkt[0] = ospfHdr.ver
+    pkt[1] = ospfHdr.pktType
+    binary.BigEndian.PutUint16(pkt[2:4], ospfHdr.pktlen)
+    copy(pkt[4:8], ospfHdr.routerId)
+    copy(pkt[8:12], ospfHdr.areaId)
+    binary.BigEndian.PutUint16(pkt[12:14], ospfHdr.chksum)
+    binary.BigEndian.PutUint16(pkt[14:16], ospfHdr.authType)
+    copy(pkt[16:24], ospfHdr.authKey)
 
-    return encBuf.Bytes()
+    return pkt
 }
 
+func encodeOspfHelloData(helloData OSPFHelloData) ([]byte) {
+    pkt := make([]byte, OSPF_HELLO_MIN_SIZE)
+    copy(pkt[0:4], helloData.netMask)
+    binary.BigEndian.PutUint16(pkt[4:6], helloData.helloInterval)
+    pkt[6] = helloData.options
+    pkt[7] = helloData.rtrPrio
+    binary.BigEndian.PutUint32(pkt[8:12], helloData.rtrDeadInterval)
+    copy(pkt[12:16], helloData.designatedRtr)
+    copy(pkt[16:20], helloData.backupDesignatedRtr)
+    copy(pkt[20:24], helloData.neighbor)
 
+    return pkt
+}
+
+/*
 func (server *OSPFServer)SendHelloPkt(ifName string, intfConfKey IntfConfKey) {
     c, err := net.ListenPacket("ip4:89", "0.0.0.0") // OSPF for IPv4
     if err != nil {
@@ -504,7 +520,7 @@ func (server *OSPFServer)SendHelloPkt(ifName string, intfConfKey IntfConfKey) {
     }
     defer r.LeaveGroup(iface, &allSPFRouters)
 
-    hello := make([]byte, 24) // fake hello data, you need to implement this
+    //helloData := make([]byte, 24) // fake hello data, you need to implement this
    // ospf := make([]byte, 24)  // fake ospf header, you need to implement this
     ent := server.IntfConfMap[intfConfKey]
     ospfHdr := OSPFHeader {
@@ -519,18 +535,26 @@ func (server *OSPFServer)SendHelloPkt(ifName string, intfConfKey IntfConfKey) {
     }
     //ospf[0] = 2               // version 2
    // ospf[1] = 1               // hello packet
+    helloData := OSPFHelloData {
+        netmask:                ent.IfNetmask,
+        helloInterval:          ent.IfHelloInterval,
+        options:                0,
+        rtrPrio:                ent.IfRtrPriority,
+        rtrDeadInterval:        ent.IfRtrDeadInterval,
+        designatedRtr:          []byte {0, 0, 0, 0},
+        backupDesignatedRtr:    []byte {0, 0, 0, 0},
+        neighbor:               []byte {1, 1, 1, 1},
+    }
+
     pktlen := OSPF_HEADER_SIZE
-    pktlen = pktlen + OSPF_HELLO_MIN_SIZE
+    pktlen = pktlen + OSPF_HELLO_MIN_SIZE + 4
 
     ospfHdr.pktlen = uint16(pktlen)
 
     ospfEncHdr := encodeOspfHdr(ospfHdr)
-    if ospfEncHdr == nil {
-        server.logger.Err("Unable to encode ospfHdr")
-        return
-    }
+    helloDataEnc := encodeOspfHelloData(helloData)
 
-    ospf := append(ospfEncHdr, hello...)
+    ospf := append(ospfEncHdr, helloDataEnc...)
     iph := &ipv4.Header{
         Version:  ipv4.Version,
         Len:      ipv4.HeaderLen,
@@ -551,11 +575,15 @@ func (server *OSPFServer)SendHelloPkt(ifName string, intfConfKey IntfConfKey) {
             return
         }
     }
-    if err := r.WriteTo(iph, ospf, cm); err != nil {
-        server.logger.Err(fmt.Sprintln("Unable to WriteTo:", err))
-        return
+    for {
+        if err := r.WriteTo(iph, ospf, cm); err != nil {
+            server.logger.Err(fmt.Sprintln("Unable to WriteTo:", err))
+            return
+        }
+        time.Sleep(time.Duration(ent.IfHelloInterval) * time.Second)
     }
 }
+*/
 
 func (server *OSPFServer)StopSendRecvHelloPkts(intfConfKey IntfConfKey) {
     ent, _ := server.IntfConfMap[intfConfKey]
@@ -601,11 +629,11 @@ func (server *OSPFServer) StartServer(paramFile string) {
 */
 
 
-/*
+
     server.logger.Info("Listen for ASICd updates")
     server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
     go server.createASICdSubscriber()
-*/
+
 
     for {
         select {
@@ -647,8 +675,8 @@ func (server *OSPFServer) StartServer(paramFile string) {
                 server.StopSendRecvHelloPkts(intfConfKey)
                 server.updateIPIntfConfMap(ifConf)
                 // Hack to Start SEND AND RECV HELLO PKT on SVI4 interface
-                server.SendHelloPkt("SVI4", intfConfKey)
-                server.RecvHelloPkt("SVI4")
+                //server.SendHelloPkt("SVI4", intfConfKey)
+                //server.RecvHelloPkt("SVI4")
 
                 server.logger.Info(fmt.Sprintln("InterfaceConf:", server.IntfConfMap))
                 if ifConf.IfAdminStat == config.Enabled &&
@@ -662,7 +690,7 @@ func (server *OSPFServer) StartServer(paramFile string) {
                     // Second argument=false
                     server.StopSendRecvHelloPkts(intfConfKey)
                 }
-/*
+
             case asicdrxBuf := <-server.asicdSubSocketCh:
                 var msg pluginCommon.AsicdNotification
                 err := json.Unmarshal(asicdrxBuf, &msg)
@@ -686,7 +714,6 @@ func (server *OSPFServer) StartServer(paramFile string) {
                 }
             case <-server.asicdSubSocketErrCh:
                 ;
-*/
 /*
             case ribrxBuf := <-server.ribSubSocketCh:
                 var route ribdCommonDefs.RoutelistInfo
