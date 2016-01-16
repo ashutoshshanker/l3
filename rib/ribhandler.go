@@ -198,24 +198,38 @@ func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 		}
         destNetSlice[routeInfoRecord.sliceIdx].isValid = false   //invalidate this entry in the local db
 		if int8(index) == routeInfoRecordList.selectedRouteIdx {
+                        logger.Println("Deleting the selected route")
+                        var dummyRouteInfoRecord RouteInfoRecord
+                        dummyRouteInfoRecord.protocol = PROTOCOL_NONE
                         deleteRoute = true
 		        routeInfoRecord.protocol = PROTOCOL_NONE
 			for i = 0; i < int8(len(routeInfoRecordList.routeInfoList)); i++ {
 				routeInfoRecordTemp = routeInfoRecordList.routeInfoList[i]
-				if i == int8(index) { //if(ok != true || i==routeInfoRecord.protocol) {
+				/*if i == int8(index) { //if(ok != true || i==routeInfoRecord.protocol) {
 					continue
-				}
+				}*/
 				logger.Printf("temp protocol=%d", routeInfoRecordTemp.protocol)
 				if routeInfoRecordTemp.protocol != PROTOCOL_NONE {
 					logger.Printf(" selceting protocol %d", routeInfoRecordTemp.protocol)
 					routeInfoRecordList.routeInfoList[i] = routeInfoRecordTemp
 					routeInfoRecordNew = routeInfoRecordTemp
 					routeInfoRecordList.selectedRouteIdx = i
+                                        logger.Println("routeRecordInfo.sliceIdx = ", routeInfoRecord.sliceIdx)
+                                        logger.Println("routeRecordInfoNew.sliceIdx = ", routeInfoRecordNew.sliceIdx)
+                                        routeInfoRecordNew.sliceIdx = routeInfoRecord.sliceIdx
 					destNetSlice[routeInfoRecordNew.sliceIdx].isValid = true
 					break
 				}
 			}
-		}
+		} else {
+                   logger.Println("Deleted route was not the selected route")
+                   if routeInfoRecordList.selectedRouteIdx < int8(index) {
+                      logger.Println("Selected route index less than the deleted route index, no adjustments needed")
+                   } else {
+                      logger.Println("Selected route index greater than deleted route index, adjust the selected route index")
+                      routeInfoRecordList.selectedRouteIdx--
+                   }
+                }
 	}
 	//update the patriciaDB trie with the updated route info record list
 	RouteInfoMap.Set(patriciaDB.Prefix(destNetPrefix), routeInfoRecordList)
@@ -233,6 +247,7 @@ func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 		}
 	}
 	if routeInfoRecordNew.protocol != PROTOCOL_NONE {
+                logger.Println("New route selected, call asicd to install a new route")
 		//call asicd to add
 		if asicdclnt.IsConnected {
 			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String())
