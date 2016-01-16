@@ -200,7 +200,7 @@ func (server *BGPServer) SendAllRoutesToPeer(peer *Peer) {
 	updated := server.adjRib.GetLocRib()
 	for path, dest := range updated {
 		updateMsg := packet.NewBGPUpdateMessage(withdrawn, path.pathAttrs, dest)
-		peer.SendUpdate(*updateMsg, path)
+		peer.SendUpdate(*updateMsg.Clone(), path)
 	}
 }
 
