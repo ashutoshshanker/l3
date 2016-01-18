@@ -1,12 +1,15 @@
 COMPS=arp\
 		bgp\
 		ospf\
-		rib
+		rib\
+		dhcp_relay
 
 IPCS=arp\
 	  bgp\
 	  ospf\
-	  rib
+	  rib\
+	  dhcp_relay
+
 all: ipc exe install
 
 exe: $(COMPS)
