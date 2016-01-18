@@ -30,7 +30,7 @@ func main() {
 	client := ospfd.NewOSPFServerClientFactory(clientTransport, protocolFactory)
 
 	globalConfigArgs := ospfd.NewOspfGlobalConf()
-        globalConfigArgs.RouterId = "10.10.10.10"
+        globalConfigArgs.RouterId = "40.1.1.2"
         globalConfigArgs.AdminStat = 1
         globalConfigArgs.ASBdrRtrStatus = true
         globalConfigArgs.TOSSupport = true
