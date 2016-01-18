@@ -30,21 +30,21 @@ func main() {
 	client := ospfd.NewOSPFServerClientFactory(clientTransport, protocolFactory)
 
 	ifConfigArgs := ospfd.NewOspfIfConf()
-        ifConfigArgs.IfIpAddress = "10.10.10.10"
-        ifConfigArgs.AddressLessIf = 1
+        ifConfigArgs.IfIpAddress = "40.1.1.1"
+        ifConfigArgs.AddressLessIf = 0
         ifConfigArgs.IfAreaId = "0.0.0.1"
         ifConfigArgs.IfType = 1
         ifConfigArgs.IfAdminStat = 1
-        ifConfigArgs.IfRtrPriority = 2
-        ifConfigArgs.IfTransitDelay = 110
-        ifConfigArgs.IfRetransInterval = 15
-        ifConfigArgs.IfHelloInterval = 35
+        ifConfigArgs.IfRtrPriority = 1
+        ifConfigArgs.IfTransitDelay = 1
+        ifConfigArgs.IfRetransInterval = 5
+        ifConfigArgs.IfHelloInterval = 20
         ifConfigArgs.IfRtrDeadInterval = 60
         ifConfigArgs.IfPollInterval = 150
-        ifConfigArgs.IfAuthKey = "1.1.1.1.1.1.1.1"
+        ifConfigArgs.IfAuthKey = "0.0.0.0.0.0.0.1"
         ifConfigArgs.IfMulticastForwarding = 2
         ifConfigArgs.IfDemand = false
-        ifConfigArgs.IfAuthType = 1
+        ifConfigArgs.IfAuthType = 0
 
 	fmt.Println("calling CreateOspfIf with attr:", ifConfigArgs)
 	ret, err := client.CreateOspfIfConf(ifConfigArgs)
