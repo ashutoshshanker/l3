@@ -5,16 +5,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	nanomsg "github.com/op/go-nanomsg"
 	"l3/bgp/config"
 	"l3/bgp/packet"
 	"l3/rib/ribdCommonDefs"
 	"log/syslog"
 	"net"
 	"ribd"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	nanomsg "github.com/op/go-nanomsg"
 )
 
 const IP string = "12.1.12.202" //"192.168.1.1"
@@ -25,26 +27,22 @@ type PeerUpdate struct {
 	NewPeer config.NeighborConfig
 }
 
-type PeerFSMEst struct {
-	ip string
-	isEstablished bool
-}
-
 type BGPServer struct {
-	logger          *syslog.Writer
-	ribdClient      *ribd.RouteServiceClient
-	BgpConfig       config.Bgp
-	GlobalConfigCh  chan config.GlobalConfig
-	AddPeerCh       chan PeerUpdate
-	RemPeerCh       chan string
-	PeerCommandCh   chan config.PeerCommand
-	PeerFSMEstCh    chan PeerFSMEst
-	BGPPktSrc       chan *packet.BGPPktSrc
-	connRoutesTimer *time.Timer
+	logger           *syslog.Writer
+	ribdClient       *ribd.RouteServiceClient
+	BgpConfig        config.Bgp
+	GlobalConfigCh   chan config.GlobalConfig
+	AddPeerCh        chan PeerUpdate
+	RemPeerCh        chan string
+	PeerConnEstCh    chan string
+	PeerConnBrokenCh chan string
+	PeerCommandCh    chan config.PeerCommand
+	BGPPktSrc        chan *packet.BGPPktSrc
+	connRoutesTimer  *time.Timer
 
-	ribSubSocket    *nanomsg.SubSocket
-	ribSubSocketCh   chan []byte
-	ribSubSocketErrCh  chan error
+	ribSubSocket      *nanomsg.SubSocket
+	ribSubSocketCh    chan []byte
+	ribSubSocketErrCh chan error
 
 	NeighborMutex  sync.RWMutex
 	PeerMap        map[string]*Peer
@@ -60,8 +58,9 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
 	bgpServer.AddPeerCh = make(chan PeerUpdate)
 	bgpServer.RemPeerCh = make(chan string)
+	bgpServer.PeerConnEstCh = make(chan string)
+	bgpServer.PeerConnBrokenCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
-	bgpServer.PeerFSMEstCh = make(chan PeerFSMEst)
 	bgpServer.BGPPktSrc = make(chan *packet.BGPPktSrc)
 	bgpServer.NeighborMutex = sync.RWMutex{}
 	bgpServer.PeerMap = make(map[string]*Peer)
@@ -88,11 +87,12 @@ func (server *BGPServer) listenForPeers(acceptCh chan *net.TCPConn) {
 	}
 
 	for {
-		tcpConn, err := listener.AcceptTCP()
 		server.logger.Info(fmt.Sprintln("Waiting for peer connections..."))
+		tcpConn, err := listener.AcceptTCP()
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("AcceptTCP failed with", err))
 		}
+		server.logger.Info(fmt.Sprintln("Got a peer connection from %s", tcpConn.RemoteAddr()))
 		acceptCh <- tcpConn
 	}
 }
@@ -195,9 +195,13 @@ func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
-func (server *BGPServer) AdvertiseAllRoutes(peerIp string, peer *Peer) {
-	locRib := server.adjRib.GetLocRib()
-	server.SendUpdate(locRib, nil, nil)
+func (server *BGPServer) SendAllRoutesToPeer(peer *Peer) {
+	withdrawn := make([]packet.IPPrefix, 0)
+	updated := server.adjRib.GetLocRib()
+	for path, dest := range updated {
+		updateMsg := packet.NewBGPUpdateMessage(withdrawn, path.pathAttrs, dest)
+		peer.SendUpdate(*updateMsg.Clone(), path)
+	}
 }
 
 func (server *BGPServer) RemoveRoutesFromAllNeighbor() {
@@ -257,15 +261,12 @@ func (server *BGPServer) StartServer() {
 	for {
 		select {
 		case gConf = <-server.GlobalConfigCh:
-			var peerWG sync.WaitGroup
 			for peerIP, peer := range server.PeerMap {
 				server.logger.Info(fmt.Sprintf("Cleanup peer %s", peerIP))
-				peerWG.Add(1)
-				peer.Cleanup(&peerWG)
+				peer.Cleanup()
 			}
-			server.logger.Info(fmt.Sprintf("Waiting for all peer FSMs to cleanup..."))
-			peerWG.Wait()
-			server.logger.Info(fmt.Sprintf("All peer FSMs cleaned up, start the FSMs again"))
+			server.logger.Info(fmt.Sprintf("Giving up CPU so that all peer FSMs will get cleaned up"))
+			runtime.Gosched()
 
 			packet.SetNextHopPathAttrs(server.connRoutesPath.pathAttrs, gConf.RouterId)
 			server.RemoveRoutesFromAllNeighbor()
@@ -281,13 +282,12 @@ func (server *BGPServer) StartServer() {
 			var ok bool
 			if oldPeer.NeighborAddress != nil {
 				if peer, ok = server.PeerMap[oldPeer.NeighborAddress.String()]; ok {
-					var wg sync.WaitGroup
 					server.logger.Info(fmt.Sprintln("Clean up peer", oldPeer.NeighborAddress.String()))
-					wg.Add(1)
-					peer.Cleanup(&wg)
-					wg.Wait()
+					peer.Cleanup()
 					server.ProcessRemoveNeighbor(oldPeer.NeighborAddress.String(), peer)
 					peer.UpdateNeighborConf(newPeer)
+
+					runtime.Gosched()
 				} else {
 					server.logger.Info(fmt.Sprintln("Can't find neighbor with old address",
 						oldPeer.NeighborAddress.String()))
@@ -311,7 +311,6 @@ func (server *BGPServer) StartServer() {
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:
-			var wg sync.WaitGroup
 			server.logger.Info(fmt.Sprintln("Remove Peer:", remPeer))
 			peer, ok := server.PeerMap[remPeer]
 			if !ok {
@@ -322,9 +321,7 @@ func (server *BGPServer) StartServer() {
 			server.removePeerFromList(peer)
 			server.NeighborMutex.Unlock()
 			delete(server.PeerMap, remPeer)
-			wg.Add(1)
-			peer.Cleanup(&wg)
-			wg.Wait()
+			peer.Cleanup()
 			server.ProcessRemoveNeighbor(remPeer, peer)
 
 		case tcpConn := <-acceptCh:
@@ -339,26 +336,35 @@ func (server *BGPServer) StartServer() {
 			}
 			peer.AcceptConn(tcpConn)
 
-		case peerFSMEst := <- server.PeerFSMEstCh:
-			if peer, ok := server.PeerMap[peerFSMEst.ip]; ok {
-				if peerFSMEst.isEstablished {
-					server.AdvertiseAllRoutes(peerFSMEst.ip, peer)
-				} else {
-					server.ProcessRemoveNeighbor(peerFSMEst.ip, peer)
-				}
-			}
-
 		case peerCommand := <-server.PeerCommandCh:
 			server.logger.Info(fmt.Sprintln("Peer Command received", peerCommand))
 			peer, ok := server.PeerMap[peerCommand.IP.String()]
 			if !ok {
 				server.logger.Info(fmt.Sprintf("Failed to apply command %s. Peer at that address does not exist, %v\n",
-					peerCommand.Command, peerCommand.IP.String()))
+					peerCommand.Command, peerCommand.IP))
 			}
 			peer.Command(peerCommand.Command)
 
+		case peerIP := <-server.PeerConnEstCh:
+			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection established", peerIP))
+			peer, ok := server.PeerMap[peerIP]
+			if !ok {
+				server.logger.Info(fmt.Sprintf("Failed to process FSM connection success, Peer %s does not exist", peerIP))
+				break
+			}
+			server.SendAllRoutesToPeer(peer)
+
+		case peerIP := <-server.PeerConnBrokenCh:
+			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection broken", peerIP))
+			peer, ok := server.PeerMap[peerIP]
+			if !ok {
+				server.logger.Info(fmt.Sprintf("Failed to process FSM connection failure, Peer %s does not exist", peerIP))
+				break
+			}
+			server.ProcessRemoveNeighbor(peerIP, peer)
+
 		case pktInfo := <-server.BGPPktSrc:
-			server.logger.Info(fmt.Sprintln("Received BGP message", pktInfo.Msg))
+			server.logger.Info(fmt.Sprintln("Received BGP message from peer %s", pktInfo.Src))
 			server.ProcessUpdate(pktInfo)
 
 		case <-server.connRoutesTimer.C:
@@ -382,8 +388,8 @@ func (server *BGPServer) StartServer() {
 			}
 			server.ProcessConnectedRoutes(make([]*ribd.Routes, 0), routes)
 
-		case <-server.ribSubSocketErrCh:
-			;
+		case err := <-server.ribSubSocketErrCh:
+			server.logger.Info(fmt.Sprintf("Server: RIB subscriber socker returned err:%s", err))
 		}
 	}
 
@@ -406,13 +412,13 @@ func (s *BGPServer) BulkGetBGPNeighbors(index int, count int) (int, int, []*conf
 	defer s.NeighborMutex.RUnlock()
 
 	s.NeighborMutex.RLock()
-	if index + count > len(s.Neighbors) {
+	if index+count > len(s.Neighbors) {
 		count = len(s.Neighbors) - index
 	}
 
 	result := make([]*config.NeighborState, count)
 	for i := 0; i < count; i++ {
-		result[i] = &s.Neighbors[i + index].Neighbor.State
+		result[i] = &s.Neighbors[i+index].Neighbor.State
 	}
 
 	index += count

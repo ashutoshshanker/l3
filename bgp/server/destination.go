@@ -51,11 +51,13 @@ func (d *Destination) AddOrUpdatePath(peerIp string, path *Path) bool {
 	added := false
 	oldPath, ok := d.peerPathMap[peerIp]
 	if ok {
+		d.logger.Info(fmt.Sprintf("Update path for %s from %s", d.nlri.Prefix.String(), peerIp))
 		if d.locRibPath == oldPath {
 			d.locRibPath = path
 			d.recalculate = true
 		}
 	} else {
+		d.logger.Info(fmt.Sprintf("Add new path for %s from %s", d.nlri.Prefix.String(), peerIp))
 		added = true
 	}
 
@@ -114,20 +116,27 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 	routeType := RouteTypeMax
 	action := RouteSelectionNone
 
+	d.logger.Info(fmt.Sprintf("Destination:SelectRouteForLocalRib - peer path map = %v", d.peerPathMap))
 	if !d.recalculate {
 		return action
 	}
 	d.recalculate = false
 
 	if d.locRibPath != nil && !d.locRibPath.IsWithdrawn() && !d.locRibPath.IsUpdated() {
+		peerIP := d.server.BgpConfig.Global.Config.RouterId.String()
+		if d.locRibPath.peer != nil {
+			peerIP = d.locRibPath.peer.Neighbor.NeighborAddress.String()
+		}
+		routeType = d.locRibPath.routeType
 		maxPref = d.locRibPath.GetPreference()
 		updatedPaths = append(updatedPaths, d.locRibPath)
+		d.logger.Info(fmt.Sprintf("Add loc rib path from %s to the list of selected paths, pref=%d", peerIP, maxPref))
 	}
 
-	for _, path := range d.peerPathMap {
+	for peerIP, path := range d.peerPathMap {
 		if path.IsUpdated() || (d.locRibPath != nil && (d.locRibPath.IsWithdrawn() || d.locRibPath.IsUpdated())) {
 			if !path.IsLocal() && !path.IsReachable() {
-				d.logger.Info(fmt.Sprintf("NEXT_HOP[%s] is not reachable", path.GetNextHop()))
+				d.logger.Info(fmt.Sprintf("peer %s, NEXT_HOP[%s] is not reachable", peerIP, path.GetNextHop()))
 				continue
 			}
 
@@ -141,10 +150,16 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 			} else if path.routeType < routeType {
 				if len(updatedPaths) > 0 {
 					updatedPaths[0] = path
+					// For garbage collection
+					for i := 1; i < len(updatedPaths); i++ {
+						updatedPaths[i] = nil
+					}
 					updatedPaths = updatedPaths[:1]
 				} else {
 					updatedPaths = append(updatedPaths, path)
 				}
+				d.logger.Info(fmt.Sprintf("route from %s is from a better source type, old type=%d, new type=%d, pref=%d",
+					peerIP, routeType, path.routeType, path.GetPreference()))
 				routeType = path.routeType
 				maxPref = path.GetPreference()
 				continue
@@ -154,24 +169,28 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 			if currPref > maxPref {
 				if len(updatedPaths) > 0 {
 					updatedPaths[0] = path
+					// For garbage collection
+					for i := 1; i < len(updatedPaths); i++ {
+						updatedPaths[i] = nil
+					}
 					updatedPaths = updatedPaths[:1]
 				} else {
 					updatedPaths = append(updatedPaths, path)
 				}
+				d.logger.Info(fmt.Sprintf("route from %s has more preference, old pref=%d, new pref=%d",
+					peerIP, maxPref, currPref))
 				maxPref = currPref
 			} else if currPref == maxPref {
+				d.logger.Info(fmt.Sprintf("route from %s has same preference, add to the list, pref=%d",
+					peerIP, maxPref))
 				updatedPaths = append(updatedPaths, path)
 			}
 		}
 	}
 
-	// For garbage collection
-	for i := len(updatedPaths); i < cap(updatedPaths); i++ {
-		updatedPaths[i] = nil
-	}
-
 	if len(updatedPaths) > 0 {
 		if len(updatedPaths) > 1 {
+			d.logger.Info(fmt.Sprintf("Found multiple paths with same pref, run path selection algorithm"))
 			updatedPaths = d.calculateBestPath(updatedPaths)
 		}
 
@@ -199,13 +218,16 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 			// Update path
 			if !d.locRibPath.IsLocal() {
 				d.logger.Info(fmt.Sprintf("Update route for ip=%s", d.nlri.Prefix.String()))
-				err := d.server.ribdClient.UpdateV4Route(d.nlri.Prefix.String(),
-					constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8,
-					selectedPath.NextHop, selectedPath.NextHopIfIdx,
-					selectedPath.Metric)
-				if err != nil {
-					d.logger.Err(fmt.Sprintf("UpdateV4Route failed with error: %s", err))
-				}
+				d.updateRoute(selectedPath)
+				/*
+					err := d.server.ribdClient.UpdateV4Route(d.nlri.Prefix.String(),
+						constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8,
+						selectedPath.NextHop, selectedPath.NextHopIfIdx,
+						selectedPath.Metric)
+					if err != nil {
+						d.logger.Err(fmt.Sprintf("UpdateV4Route failed with error: %s", err))
+					}
+				*/
 			}
 			action = RouteSelectionReplace
 		}
@@ -228,6 +250,28 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 	}
 
 	return action
+}
+
+func (d *Destination) updateRoute(path *Path) {
+	d.logger.Info(fmt.Sprintf("Remove route for ip=%s, mask=%s", d.nlri.Prefix.String(),
+		constructNetmaskFromLen(int(d.nlri.Length), 32).String()))
+	ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
+		constructNetmaskFromLen(int(d.nlri.Length), 32).String(), 8)
+	if err != nil {
+		d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
+	}
+
+	if !path.IsLocal() {
+		d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.nlri.Prefix.String(),
+			constructNetmaskFromLen(int(d.nlri.Length), 32).String(), path.NextHop))
+		ret, err = d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(),
+			constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
+			path.Metric, path.NextHop, path.NextHopIfType,
+			path.NextHopIfIdx, 8)
+		if err != nil {
+			d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
+		}
+	}
 }
 
 func (d *Destination) getRoutesWithSmallestAS(updatedPaths []*Path) []*Path {
@@ -414,26 +458,32 @@ func (d *Destination) getRoutesWithLowestPeerAddress(updatedPaths []*Path) []*Pa
 
 func (d *Destination) calculateBestPath(updatedPaths []*Path) []*Path {
 	if len(updatedPaths) > 1 {
+		d.logger.Info("calling getRoutesWithSmallestAS")
 		updatedPaths = d.getRoutesWithSmallestAS(updatedPaths)
 	}
 
 	if len(updatedPaths) > 1 {
+		d.logger.Info("calling getRoutesWithLowestOrigin")
 		updatedPaths = d.getRoutesWithLowestOrigin(updatedPaths)
 	}
 
 	if len(updatedPaths) > 1 {
+		d.logger.Info("calling removeIBGPRoutesIfEBGPExist")
 		updatedPaths = d.removeIBGPRoutesIfEBGPExist(updatedPaths)
 	}
 
 	if len(updatedPaths) > 1 {
+		d.logger.Info("calling getRoutesWithLowestBGPId")
 		updatedPaths = d.getRoutesWithLowestBGPId(updatedPaths)
 	}
 
 	if len(updatedPaths) > 1 {
+		d.logger.Info("calling getRoutesWithShorterClusterLen")
 		updatedPaths = d.getRoutesWithShorterClusterLen(updatedPaths)
 	}
 
 	if len(updatedPaths) > 1 {
+		d.logger.Info("calling getRoutesWithLowestPeerAddress")
 		updatedPaths = d.getRoutesWithLowestPeerAddress(updatedPaths)
 	}
 

@@ -7,9 +7,8 @@ import (
 	"l3/bgp/packet"
 	"log/syslog"
 	"net"
-	"time"
-	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Peer struct {
@@ -34,10 +33,10 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 	}
 
 	peer.Neighbor.State = config.NeighborState{
-		PeerAS: peerConf.PeerAS,
-		LocalAS: peerConf.LocalAS,
-		AuthPassword: peerConf.AuthPassword,
-		Description: peerConf.Description,
+		PeerAS:          peerConf.PeerAS,
+		LocalAS:         peerConf.LocalAS,
+		AuthPassword:    peerConf.AuthPassword,
+		Description:     peerConf.Description,
 		NeighborAddress: peerConf.NeighborAddress,
 	}
 
@@ -60,8 +59,8 @@ func (p *Peer) Init() {
 	go p.fsmManager.Init()
 }
 
-func (p *Peer) Cleanup(wg *sync.WaitGroup) {
-	p.fsmManager.closeCh <- wg
+func (p *Peer) Cleanup() {
+	p.fsmManager.closeCh <- true
 	p.fsmManager = nil
 }
 
@@ -130,7 +129,7 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 
 	if bgpMsg == nil || bgpMsg.Body.(*packet.BGPUpdate).PathAttributes == nil {
 		p.logger.Err(fmt.Sprintf("Neighbor %s: Path attrs not found in BGP Update message", p.Neighbor.NeighborAddress))
-		return true
+		return false
 	}
 
 	if p.IsInternal() {
@@ -161,13 +160,13 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 		return
 	}
 	p.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
-	p.Server.PeerFSMEstCh <- PeerFSMEst{p.Neighbor.NeighborAddress.String(), true}
+	p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
 }
 
 func (p *Peer) PeerConnBroken(fsmCleanup bool) {
-	p.Neighbor.Transport.Config.LocalAddress = nil
-	if !fsmCleanup {
-		p.Server.PeerFSMEstCh <- PeerFSMEst{p.Neighbor.NeighborAddress.String(), false}
+	if p.Neighbor.Transport.Config.LocalAddress != nil {
+		p.Neighbor.Transport.Config.LocalAddress = nil
+		p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
 	}
 }
 
@@ -176,7 +175,7 @@ func (p *Peer) FSMStateChange(state BGPFSMState) {
 }
 
 func (p *Peer) SendUpdate(bgpMsg packet.BGPMessage, path *Path) {
-	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%s, withdraw routes:%s", p.Neighbor.NeighborAddress, bgpMsg.Body.(*packet.BGPUpdate).NLRI, bgpMsg.Body.(*packet.BGPUpdate).WithdrawnRoutes))
+	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%v, withdraw routes:%v", p.Neighbor.NeighborAddress, bgpMsg.Body.(*packet.BGPUpdate).NLRI, bgpMsg.Body.(*packet.BGPUpdate).WithdrawnRoutes))
 	bgpMsgRef := &bgpMsg
 	if p.updatePathAttrs(bgpMsgRef, path) {
 		atomic.AddUint32(&p.Neighbor.State.Queues.Output, 1)

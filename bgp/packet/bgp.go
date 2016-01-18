@@ -58,13 +58,14 @@ const (
 )
 
 const (
-	_ uint8 = iota
+	BGPUnspecific uint8 = iota
 	BGPUnsupportedVersionNumber
 	BGPBadPeerAS
 	BGPBadBGPIdentifier
 	BGPUnsupportedOptionalParam
 	_
 	BGPUnacceptableHoldTime
+	BGPUnsupportedCapability
 )
 
 const (
@@ -81,6 +82,29 @@ const (
 	BGPInvalidNetworkField
 	BGPMalformedASPath
 )
+
+type BGPOptParamType uint8
+
+const (
+	_ BGPOptParamType = iota
+	_
+	BGPOptParamTypeCapability
+)
+
+var BGPOptParamTypeToStruct = map[BGPOptParamType]BGPOptParam{
+	BGPOptParamTypeCapability: &BGPOptParamCapability{},
+}
+
+type BGPCapabilityType uint8
+
+const (
+	_                     BGPCapabilityType = iota
+	BGPCapType4ByteASPath                   = 65
+)
+
+var BGPCapTypeToStruct = map[BGPCapabilityType]BGPCapability{
+	BGPCapType4ByteASPath: &BGPCap4ByteASPath{},
+}
 
 type BGPPathAttrFlag uint8
 
@@ -208,8 +232,244 @@ type BGPBody interface {
 	Decode(*BGPHeader, []byte) error
 }
 
-type OptionParameterInterface struct {
-	bytes []byte
+type BGPCapability interface {
+	Encode() ([]byte, error)
+	Decode(pkt []byte) error
+	TotalLen() uint8
+	GetCode() BGPCapabilityType
+}
+
+type BGPCapabilityBase struct {
+	Type BGPCapabilityType
+	Len  uint8
+}
+
+func (msg *BGPCapabilityBase) Encode() ([]byte, error) {
+	pkt := make([]byte, msg.TotalLen())
+	pkt[0] = uint8(msg.Type)
+	pkt[1] = msg.Len
+	return pkt, nil
+}
+
+func (msg *BGPCapabilityBase) Decode(pkt []byte) error {
+	if len(pkt) < 2 {
+		return BGPMessageError{BGPOpenMsgError, BGPUnspecific, nil, "Not enough data to decode capability type and length"}
+	}
+
+	msg.Type = BGPCapabilityType(pkt[0])
+	msg.Len = pkt[1]
+
+	if len(pkt) < int(msg.TotalLen()) {
+		return BGPMessageError{BGPUpdateMsgError, BGPUnspecific, nil, "Not enough data to decode capability data"}
+	}
+	return nil
+}
+
+func (msg *BGPCapabilityBase) TotalLen() uint8 {
+	return msg.Len + 2
+}
+
+func (msg *BGPCapabilityBase) GetCode() BGPCapabilityType {
+	return msg.Type
+}
+
+type BGPCap4ByteASPath struct {
+	BGPCapabilityBase
+	Value uint32
+}
+
+func (msg *BGPCap4ByteASPath) Encode() ([]byte, error) {
+	pkt, err := msg.BGPCapabilityBase.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	binary.BigEndian.PutUint32(pkt[2:], msg.Value)
+	return pkt, nil
+}
+
+func (msg *BGPCap4ByteASPath) Decode(pkt []byte) error {
+	err := msg.BGPCapabilityBase.Decode(pkt)
+	if err != nil {
+		return err
+	}
+
+	msg.Value = binary.BigEndian.Uint32(pkt[2:])
+	return nil
+}
+
+func NewBGPCap4ByteASPath(as uint32) *BGPCap4ByteASPath {
+	return &BGPCap4ByteASPath{
+		BGPCapabilityBase: BGPCapabilityBase{
+			Type: BGPCapType4ByteASPath,
+			Len:  4,
+		},
+		Value: as,
+	}
+}
+
+type BGPCapUnknown struct {
+	BGPCapabilityBase
+	Value []byte
+}
+
+func (msg *BGPCapUnknown) Encode() ([]byte, error) {
+	pkt, err := msg.BGPCapabilityBase.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	copy(pkt[2:], msg.Value)
+	return pkt, nil
+}
+
+func (msg *BGPCapUnknown) Decode(pkt []byte) error {
+	err := msg.BGPCapabilityBase.Decode(pkt)
+	if err != nil {
+		return err
+	}
+
+	copy(msg.Value, pkt[2:])
+	return nil
+}
+
+type BGPOptParam interface {
+	Encode() ([]byte, error)
+	Decode(pkt []byte) error
+	TotalLen() uint8
+	GetCode() BGPOptParamType
+}
+
+type BGPOptParamBase struct {
+	Type BGPOptParamType
+	Len  uint8
+}
+
+func (msg *BGPOptParamBase) Encode() ([]byte, error) {
+	pkt := make([]byte, msg.TotalLen())
+	pkt[0] = uint8(msg.Type)
+	pkt[1] = msg.Len
+	return pkt, nil
+}
+
+func (msg *BGPOptParamBase) Decode(pkt []byte) error {
+	if len(pkt) < 2 {
+		return BGPMessageError{BGPOpenMsgError, BGPUnspecific, nil, "Not enough data to decode Opt params type and length"}
+	}
+
+	msg.Type = BGPOptParamType(pkt[0])
+	msg.Len = pkt[1]
+
+	if len(pkt) < int(msg.TotalLen()) {
+		return BGPMessageError{BGPUpdateMsgError, BGPUnspecific, nil, "Not enough data to decode Opt params data"}
+	}
+	return nil
+}
+
+func (msg *BGPOptParamBase) TotalLen() uint8 {
+	return msg.Len + 2
+}
+
+func (msg *BGPOptParamBase) GetCode() BGPOptParamType {
+	return msg.Type
+}
+
+type BGPOptParamCapability struct {
+	BGPOptParamBase
+	Value []BGPCapability
+}
+
+func (msg *BGPOptParamCapability) Encode() ([]byte, error) {
+	pkt, err := msg.BGPOptParamBase.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, capability := range msg.Value {
+		bytes, err := capability.Encode()
+		if err != nil {
+			return nil, err
+		}
+
+		pkt = append(pkt, bytes...)
+	}
+	return pkt, nil
+}
+
+func (msg *BGPOptParamCapability) GetCapParam(pkt []byte) BGPCapability {
+	capParamType := BGPCapabilityType(pkt[0])
+	if capParam, ok := BGPCapTypeToStruct[capParamType]; ok {
+		return capParam
+	} else {
+		return &BGPCapUnknown{}
+	}
+}
+
+func (msg *BGPOptParamCapability) Decode(pkt []byte) error {
+	err := msg.BGPOptParamBase.Decode(pkt)
+	if err != nil {
+		return err
+	}
+
+	paramsLen := msg.Len
+	msg.Value = make([]BGPCapability, 0)
+	offset := uint8(2)
+	for paramsLen > 0 {
+		capParam := msg.GetCapParam(pkt[offset:])
+		if err != nil {
+			return err
+		}
+
+		err = capParam.Decode(pkt[offset:])
+		if err != nil {
+			return err
+		}
+		msg.Value = append(msg.Value, capParam)
+		offset += capParam.TotalLen()
+		paramsLen -= capParam.TotalLen()
+	}
+	return nil
+}
+
+func NewBGPOptParamCapability(capabilities []BGPCapability) *BGPOptParamCapability {
+	paramsLen := uint8(0)
+	for _, capability := range capabilities {
+		paramsLen = capability.TotalLen()
+	}
+
+	return &BGPOptParamCapability{
+		BGPOptParamBase: BGPOptParamBase{
+			Type: BGPOptParamTypeCapability,
+			Len:  paramsLen,
+		},
+		Value: capabilities,
+	}
+}
+
+type BGPOptParamUnknown struct {
+	BGPOptParamBase
+	Value []byte
+}
+
+func (msg *BGPOptParamUnknown) Encode() ([]byte, error) {
+	pkt, err := msg.BGPOptParamBase.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	copy(pkt[2:], msg.Value)
+	return pkt, nil
+}
+
+func (msg *BGPOptParamUnknown) Decode(pkt []byte) error {
+	err := msg.BGPOptParamBase.Decode(pkt)
+	if err != nil {
+		return err
+	}
+
+	msg.Value = make([]byte, msg.Len)
+	copy(msg.Value, pkt[2:])
+	return nil
 }
 
 type BGPOpen struct {
@@ -218,7 +478,7 @@ type BGPOpen struct {
 	HoldTime    uint16
 	BGPId       net.IP
 	OptParamLen uint8
-	//OptParams []OptionParameterInterface
+	OptParams   []BGPOptParam
 }
 
 func (msg *BGPOpen) Clone() BGPBody {
@@ -234,8 +494,28 @@ func (msg *BGPOpen) Encode() ([]byte, error) {
 	binary.BigEndian.PutUint16(pkt[1:3], uint16(msg.MyAS))
 	binary.BigEndian.PutUint16(pkt[3:5], msg.HoldTime)
 	copy(pkt[5:9], msg.BGPId.To4())
-	pkt[9] = 0
+	paramsLen := uint8(0)
+	for _, param := range msg.OptParams {
+		bytes, err := param.Encode()
+		if err != nil {
+			return nil, err
+		}
+
+		pkt = append(pkt, bytes...)
+		paramsLen += param.TotalLen()
+	}
+	pkt[9] = paramsLen
 	return pkt, nil
+}
+
+func (msg *BGPOpen) GetOptParam(pkt []byte) (BGPOptParam, error) {
+	optParamType := BGPOptParamType(pkt[0])
+	if optParam, ok := BGPOptParamTypeToStruct[optParamType]; ok {
+		return optParam, nil
+	} else {
+		return &BGPOptParamUnknown{}, BGPMessageError{BGPOpenMsgError, BGPUnsupportedOptionalParam, nil,
+			fmt.Sprintf("Unknown optional parameter %d", optParamType)}
+	}
 }
 
 func (msg *BGPOpen) Decode(header *BGPHeader, pkt []byte) error {
@@ -244,13 +524,35 @@ func (msg *BGPOpen) Decode(header *BGPHeader, pkt []byte) error {
 	msg.HoldTime = binary.BigEndian.Uint16(pkt[3:5])
 	msg.BGPId = net.IP(pkt[5:9]).To4()
 	msg.OptParamLen = pkt[9]
+
+	msg.OptParams = make([]BGPOptParam, 0)
+	paramsLen := msg.OptParamLen
+	offset := uint8(10)
+	for paramsLen > 0 {
+		optParam, err := msg.GetOptParam(pkt[offset:])
+		if err != nil {
+			return err
+		}
+		err = optParam.Decode(pkt[offset:])
+		if err != nil {
+			return err
+		}
+		msg.OptParams = append(msg.OptParams, optParam)
+		offset += optParam.TotalLen()
+		paramsLen -= optParam.TotalLen()
+	}
 	return nil
 }
 
-func NewBGPOpenMessage(myAS uint32, holdTime uint16, bgpId string) *BGPMessage {
+func NewBGPOpenMessage(myAS uint32, holdTime uint16, bgpId string, optParams []BGPOptParam) *BGPMessage {
+	optParamsLen := uint8(0)
+	for _, param := range optParams {
+		optParamsLen += param.TotalLen()
+	}
+
 	return &BGPMessage{
 		Header: BGPHeader{Type: BGPMsgTypeOpen},
-		Body:   &BGPOpen{4, myAS, holdTime, net.ParseIP(bgpId), 0},
+		Body:   &BGPOpen{4, myAS, holdTime, net.ParseIP(bgpId), optParamsLen, optParams},
 	}
 }
 
@@ -403,7 +705,7 @@ func (pa *BGPPathAttrBase) checkFlags(pkt []byte) error {
 
 func (pa *BGPPathAttrBase) Decode(pkt []byte) error {
 	if len(pkt) < 3 {
-		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enought data to decode"}
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enough data to decode"}
 	}
 
 	pa.Flags = BGPPathAttrFlag(pkt[0])
@@ -411,7 +713,7 @@ func (pa *BGPPathAttrBase) Decode(pkt []byte) error {
 
 	if pa.Flags&BGPPathAttrFlagExtendedLen != 0 {
 		if len(pkt) < 4 {
-			return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enought data to decode"}
+			return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enough data to decode"}
 		}
 		pa.Length = binary.BigEndian.Uint16(pkt[2:4])
 		pa.BGPPathAttrLen = 4
@@ -614,7 +916,7 @@ func (as *BGPPathAttrASPath) Decode(pkt []byte) error {
 		return err
 	}
 
-	//as.Value = make([]BGPASPathSegment, 1)
+	as.Value = make([]BGPASPathSegment, 0)
 	ptr := uint32(as.BGPPathAttrLen)
 	for ptr < (uint32(as.Length) + uint32(as.BGPPathAttrLen)) {
 		asPathSegment := BGPASPathSegment{}
@@ -823,15 +1125,16 @@ func (a *BGPPathAttrAggregator) Decode(pkt []byte) error {
 func NewBGPPathAttrAggregator() *BGPPathAttrAggregator {
 	return &BGPPathAttrAggregator{
 		BGPPathAttrBase: BGPPathAttrBase{
-			Flags: BGPPathAttrFlagTransitive | BGPPathAttrFlagOptional,
-			Code: BGPPathAttrTypeAggregator,
-			Length: 6,
+			Flags:          BGPPathAttrFlagTransitive | BGPPathAttrFlagOptional,
+			Code:           BGPPathAttrTypeAggregator,
+			Length:         6,
 			BGPPathAttrLen: 3,
 		},
 		AS: 0,
 		IP: net.IP{},
 	}
 }
+
 type BGPPathAttrOriginatorId struct {
 	BGPPathAttrBase
 	Value net.IP
@@ -867,9 +1170,9 @@ func (o *BGPPathAttrOriginatorId) Decode(pkt []byte) error {
 func NewBGPPathAttrOriginatorId(id net.IP) *BGPPathAttrOriginatorId {
 	return &BGPPathAttrOriginatorId{
 		BGPPathAttrBase: BGPPathAttrBase{
-			Flags: BGPPathAttrFlagOptional,
-			Code: BGPPathAttrTypeOriginatorId,
-			Length: 4,
+			Flags:          BGPPathAttrFlagOptional,
+			Code:           BGPPathAttrTypeOriginatorId,
+			Length:         4,
 			BGPPathAttrLen: 3,
 		},
 		Value: id,
@@ -912,8 +1215,8 @@ func (c *BGPPathAttrClusterList) Decode(pkt []byte) error {
 
 	var i uint16
 	c.Value = make([]uint32, c.Length/4)
-	for i = 0;i < uint16(c.Length/4); i++ {
-		c.Value[i] = binary.BigEndian.Uint32(pkt[c.BGPPathAttrLen+(4*i):c.BGPPathAttrLen+(4*i)+4])
+	for i = 0; i < uint16(c.Length/4); i++ {
+		c.Value[i] = binary.BigEndian.Uint32(pkt[c.BGPPathAttrLen+(4*i) : c.BGPPathAttrLen+(4*i)+4])
 	}
 	return nil
 }
@@ -928,9 +1231,9 @@ func (c *BGPPathAttrClusterList) PrependId(id uint32) {
 func NewBGPPathAttrClusterList() *BGPPathAttrClusterList {
 	return &BGPPathAttrClusterList{
 		BGPPathAttrBase: BGPPathAttrBase{
-			Flags: BGPPathAttrFlagOptional,
-			Code: BGPPathAttrTypeClusterList,
-			Length: 0,
+			Flags:          BGPPathAttrFlagOptional,
+			Code:           BGPPathAttrTypeClusterList,
+			Length:         0,
 			BGPPathAttrLen: 3,
 		},
 		Value: make([]uint32, 0),

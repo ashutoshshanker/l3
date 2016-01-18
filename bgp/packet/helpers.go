@@ -177,5 +177,18 @@ func AddClusterId(updateMsg *BGPMessage, id uint32) bool {
 }
 
 func ConvertIPBytesToUint(bytes []byte) uint32 {
-	return uint32(bytes[0]) << 24 | uint32(bytes[1] << 16) | uint32(bytes[2] << 8) | uint32(bytes[3])
+	return uint32(bytes[0])<<24 | uint32(bytes[1]<<16) | uint32(bytes[2]<<8) | uint32(bytes[3])
+}
+
+func ConstructOptParams(as uint32) []BGPOptParam {
+	optParams := make([]BGPOptParam, 0)
+	capParams := make([]BGPCapability, 0)
+
+	cap4ByteASPath := NewBGPCap4ByteASPath(as)
+	capParams = append(capParams, cap4ByteASPath)
+
+	optCapability := NewBGPOptParamCapability(capParams)
+	optParams = append(optParams, optCapability)
+
+	return optParams
 }
