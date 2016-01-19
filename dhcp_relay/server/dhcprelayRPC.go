@@ -33,37 +33,37 @@ type DhcpRelayIntfConfig struct {
  * Add a relay agent
  */
 
-func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobal(
+func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobalConfig(
 	config *dhcprelayd.DhcpRelayGlobalConfig) (bool, error) {
 	fmt.Println("Dhcp Relay %d", config.Enable)
 	return true, nil
 }
 
-func (h *DhcpRelayServiceHandler) UpdateDhcpRelayGlobal(
+func (h *DhcpRelayServiceHandler) UpdateDhcpRelayGlobalConfig(
 	origconfig *dhcprelayd.DhcpRelayGlobalConfig,
 	newconfig *dhcprelayd.DhcpRelayGlobalConfig,
 	attrset []bool) (bool, error) {
 	return true, nil
 }
 
-func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobal(
+func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobalConfig(
 	config *dhcprelayd.DhcpRelayGlobalConfig) (bool, error) {
 	return true, nil
 }
 
-func (h *DhcpRelayServiceHandler) CreateDhcpRelayConf(
+func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
 	return true, nil
 }
 
-func (h *DhcpRelayServiceHandler) UpdateDhcpRelayConf(
+func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntfConfig(
 	origconfig *dhcprelayd.DhcpRelayIntfConfig,
 	newconfig *dhcprelayd.DhcpRelayIntfConfig,
 	attrset []bool) (bool, error) {
 	return true, nil
 }
 
-func (h *DhcpRelayServiceHandler) DeleteDhcpRelayConf(
+func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
 	return true, nil
 }
