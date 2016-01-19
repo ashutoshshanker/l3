@@ -63,32 +63,7 @@ func getIPv4ForInterfaceName(ifname string) (iface_ip string, err error) {
     return "", err
 }
 
-func getInterfaceName(iftype arpd.Int, vlan_id arpd.Int) (ifName string, err error) {
-   var if_name string = ""
-
-    if iftype == 0 { //VLAN
-        if_name = fmt.Sprintf("SVI%d", vlan_id)
-    } else if iftype == 1 { //PHY
-        if_name = fmt.Sprintf("fpPort-", vlan_id)
-    }
-    return if_name, err
-
-}
-
 func getIPv4ForInterface(iftype arpd.Int, vlan_id arpd.Int) (ip_addr string, err error) {
-/*
-    var if_name string
-
-    if iftype == 0 { //VLAN
-        if_name = fmt.Sprintf("SVI%d", vlan_id)
-    } else if iftype == 1 { //PHY
-        if_name = fmt.Sprintf("fpPort-", vlan_id)
-    } else {
-        return "", err
-    }
-
-*/
-    //if_name, _ := getInterfaceName(iftype, vlan_id)
     if_name, _ := getLinuxIfc(int(iftype), int(vlan_id))
     if if_name == "" {
         return "", err
@@ -110,76 +85,6 @@ func parsePortRange(portStr string) (int, int, error) {
                 return 0, 0, err
         }
         return startPort, endPort, nil
-}
-
-
-/*
- * Utility function to parse from a user specified port string to a port bitmap.
- * Supported formats for port string shown below:
- * - 1,2,3,10 (comma separate list of ports)
- * - 1-10,24,30-31 (hypen separated port ranges)
- * - 00011 (direct port bitmap)
- */
-func parseUsrPortStrToPbm(usrPortStr string) (string, error) {
-        //FIXME: Assuming max of 256 ports, create common def (another instance in main.go)
-        var portList [256]int
-        var pbmStr string = ""
-        //Handle ',' separated strings
-        if strings.Contains(usrPortStr, ",") {
-                commaSepList := strings.Split(usrPortStr, ",")
-                for _, subStr := range commaSepList {
-                        //Substr contains '-' separated range
-                        if strings.Contains(subStr, "-") {
-                                startPort, endPort, err := parsePortRange(subStr)
-                                if err != nil {
-                                        return pbmStr, err
-                                }
-                                for port := startPort; port <= endPort; port++ {
-                                        portList[port] = 1
-                                }
-                        } else {
-                                //Substr is a port number
-                                port, err := strconv.Atoi(subStr)
-                                if err != nil {
-                                        return pbmStr, err
-                                }
-                                portList[port] = 1
-                        }
-                }
-        } else if strings.Contains(usrPortStr, "-") {
-                //Handle '-' separated range
-                startPort, endPort, err := parsePortRange(usrPortStr)
-                if err != nil {
-                        return pbmStr, err
-                }
-                for port := startPort; port <= endPort; port++ {
-                        portList[port] = 1
-                }
-        } else {
-        if len(usrPortStr) > 1 {
-            //Port bitmap directly specified
-            return usrPortStr, nil
-        } else {
-            //Handle single port number
-            port, err := strconv.Atoi(usrPortStr)
-            if err != nil {
-                return pbmStr, err
-            }
-            portList[port] = 1
-        }
-        }
-        //Convert portList to port bitmap string
-        var zeroStr string = ""
-        for _, port := range portList {
-                if port == 1 {
-                        pbmStr += zeroStr
-                        pbmStr += "1"
-                        zeroStr = ""
-                } else {
-                        zeroStr += "0"
-                }
-        }
-        return pbmStr, nil
 }
 
 func getInterfaceNameByIndex(index int) (ifName string, err error) {
