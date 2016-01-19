@@ -1,14 +1,15 @@
 package rpc
 
 import (
-    "ospfd"
-    "fmt"
+//    "ospfd"
+//    "fmt"
 //    "l3/ospf/config"
 //    "l3/ospf/server"
 //    "log/syslog"
 //    "net"
 )
 
+/*
 func (h *OSPFHandler) GetOspfGlobalState() (*ospfd.OspfGlobalState, error) {
     h.logger.Info(fmt.Sprintln("Get global attrs"))
     ospfGlobalResponse := ospfd.NewOspfGlobalState()
@@ -111,4 +112,4 @@ func (h *OSPFHandler) GetOspfAreaLsaCountState(areaLsaCountAreaId string, areaLs
     return ospfAreaLsaCountResponse, nil
 }
 
-
+*/

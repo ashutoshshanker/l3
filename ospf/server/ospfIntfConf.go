@@ -116,7 +116,7 @@ func (server *OSPFServer)createIPIntfConfMap(msg pluginCommon.IPv4IntfNotifyMsg)
         return
     }
     ipIntfProp := IPIntfProperty {
-        IfName:       ifName,
+        IfName:     ifName,
         IpAddr:     ip,
         MacAddr:    macAddr,
         NetMask:    ipNet.Mask,
