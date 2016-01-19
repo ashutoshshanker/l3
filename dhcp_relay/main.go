@@ -10,7 +10,7 @@ import (
 )
 
 const IP string = "localhost"
-const DHCP_RELAY_PORT string = "7001"
+const DHCP_RELAY_PORT string = "9000"
 
 func main() {
 	fmt.Printf("Start the logger\n")
