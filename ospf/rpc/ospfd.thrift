@@ -1,537 +1,342 @@
 namespace go ospfd
 typedef i32 int
-//typedef areaId string
-//typedef routerId string
-//typedef metric int // 0x0 to 0xffff
-//typedef bigMetric int // 0x0 to 0xffffff
-//typedef positiveInteger int // 0x0 to 0x7fffffff
-//typedef helloRange int // 0x1 to 0xffff
-//typedef upToMaxAge int // 0x0 to 3600
-//typedef designatedRouterPriority int // 0x0 to 0xff
-//typedef tosType int // 0x0 to 30
-//typedef ipAddress string
-//typedef interfaceIndexOrZero int
+typedef i16 uint16
 
-enum status {
-    enabled = 1,
-    disabled = 2
+struct OspfAreaEntryConfig{
+    2 : string  AreaIdKey
+    3 : i32     AuthType
+    4 : i32     ImportAsExtern
+    5 : i32     AreaSummary
+    6 : i32     AreaNssaTranslatorRole
+    7 : i32     AreaNssaTranslatorStabilityInterval
 }
-
-enum authType {
-    none = 0,
-    simplePassword = 1,
-    md5 = 2,
-    reserved
+struct OspfAreaEntryState{
+    2 : string  AreaIdKey
+    3 : i32     SpfRuns
+    4 : i32     AreaBdrRtrCount
+    5 : i32     AsBdrRtrCount
+    6 : i32     AreaLsaCount
+    7 : i32     AreaLsaCksumSum
+    8 : i32     AreaNssaTranslatorState
+    9 : i32     AreaNssaTranslatorEvents
 }
-
-enum restartSupport {
-    none = 1,
-    plannedOnly = 2,
-    plannedAndUnplanned = 3
+struct OspfAreaEntryStateGetInfo {
+    1: int StartIdx
+    2: int EndIdx
+    3: int Count
+    4: bool More
+    5: list<OspfAreaEntryState> OspfAreaEntryStateList
 }
-
-enum advertiseAction {
-    doNotAdvertise = 1,
-    advertise
+struct OspfStubAreaEntryConfig{
+    1 : i32     StubTOSKey
+    2 : string  StubAreaIdKey
+    4 : i32     StubTOS
+    5 : i32     StubMetric
+    6 : i32     StubMetricType
 }
-
-enum importAsExtern {
-    importExternal = 1,
-    importNoExternal = 2,
-    importNssa = 3
+struct OspfLsdbEntryState{
+    1 : i32     LsdbTypeKey
+    2 : string  LsdbLsidKey
+    3 : string  LsdbAreaIdKey
+    4 : string  LsdbRouterIdKey
+    9 : i32     LsdbSequence
+    10 : i32    LsdbAge
+    11 : i32    LsdbChecksum
+    12 : string     LsdbAdvertisement
 }
-
-enum areaSummary {
-    noAreaSummary = 1,
-    sendAreaSummary = 2
+struct OspfLsdbEntryStateGetInfo {
+    1: int StartIdx
+    2: int EndIdx
+    3: int Count
+    4: bool More
+    5: list<OspfLsdbEntryState> OspfLsdbEntryStateList
 }
-
-enum nssaTranslatorRole {
-    always = 1,
-    cadidate = 2
+struct OspfAreaRangeEntryConfig{
+    1 : string  AreaRangeAreaIdKey
+    2 : string  AreaRangeNetKey
+    5 : string  AreaRangeMask
+    6 : i32     AreaRangeEffect
 }
-
-enum metricType {
-    ospfMetric = 1,
-    comparableCost = 2,
-    nonComparable = 3
+struct OspfHostEntryConfig{
+    1 : i32     HostTOSKey
+    2 : string  HostIpAddressKey
+    5 : i32     HostMetric
+    6 : string  HostCfgAreaID
 }
-
-enum areaRangeEffect {
-    advertiseMatching = 1,
-    doNotAdvertiseMatching
+struct OspfIfEntryConfig{
+    1 : string  IfIpAddressKey
+    2 : i32     AddressLessIfKey
+    5 : string  IfAreaId
+    6 : i32     IfType
+    7 : i32     IfAdminStat
+    8 : i32     IfRtrPriority
+    9 : i32     IfTransitDelay
+    10 : i32    IfRetransInterval
+    11 : i32    IfHelloInterval
+    12 : i32    IfRtrDeadInterval
+    13 : i32    IfPollInterval
+    14 : string     IfAuthKey
+    15 : i32    IfMulticastForwarding
+    16 : bool   IfDemand
+    17 : i32    IfAuthType
 }
-
-enum ifType {
-    broadcast = 1,
-    nbma = 2,
-    pointToPoint = 3,
-    pointToMultipoint = 5
+struct OspfIfEntryState{
+    1 : string  IfIpAddressKey
+    2 : i32     AddressLessIfKey
+    5 : i32     IfState
+    6 : string  IfDesignatedRouter
+    7 : string  IfBackupDesignatedRouter
+    8 : i32     IfEvents
+    9 : i32     IfLsaCount
+    10 : i32    IfLsaCksumSum
+    11 : string     IfDesignatedRouterId
+    12 : string     IfBackupDesignatedRouterId
 }
-
-enum multicastForwarding {
-    blocked = 1,
-    multicast = 2,
-    unicast = 3
+struct OspfIfEntryStateGetInfo {
+    1: int StartIdx
+    2: int EndIdx
+    3: int Count
+    4: bool More
+    5: list<OspfIfEntryState> OspfIfEntryStateList
 }
-
-enum restartStatus {
-    notRestarting = 1,
-    plannedRestart = 2,
-    unplannedRestart = 3
+struct OspfIfMetricEntryConfig{
+    1 : i32     IfMetricAddressLessIfKey
+    2 : i32     IfMetricTOSKey
+    3 : string  IfMetricIpAddressKey
+    6 : i32     IfMetricTOS
+    7 : i32     IfMetricValue
 }
-
-enum restartExitReason {
-    noAttempt = 1,
-    inProgress = 2,
-    completed = 3,
-    timedOut = 4,
-    topologyChanged = 5
+struct OspfVirtIfEntryConfig{
+    1 : string  VirtIfNeighborKey
+    2 : string  VirtIfAreaIdKey
+    5 : i32     VirtIfTransitDelay
+    6 : i32     VirtIfRetransInterval
+    7 : i32     VirtIfHelloInterval
+    8 : i32     VirtIfRtrDeadInterval
+    9 : string  VirtIfAuthKey
+    10 : i32    VirtIfAuthType
 }
-
-enum nssaTranslatorState {
-    enabled = 1,
-    elected = 2,
-    disabled = 3,
+struct OspfNbrEntryConfig{
+    1 : string  NbrIpAddrKey
+    2 : i32     NbrAddressLessIndexKey
+    5 : i32     NbrPriority
 }
-
-enum lsaType {
-    routerLink = 1,
-    networkLink = 2,
-    summaryLink = 3,
-    asSummaryLink = 4,
-    asExternalLink = 5,
-    multicastLink = 6,
-    nssaExternalLink = 7,
-    localOpaqueLink = 9,
-    areaOpaqueLink = 10,
-    asOpaqueLink = 11
+struct OspfNbrEntryState{
+    1 : string  NbrIpAddrKey
+    2 : i32     NbrAddressLessIndexKey
+    5 : string  NbrRtrId
+    6 : i32     NbrOptions
+    7 : i32     NbrState
+    8 : i32     NbrEvents
+    9 : i32     NbrLsRetransQLen
+    10 : i32    NbmaNbrPermanence
+    11 : bool   NbrHelloSuppressed
+    12 : i32    NbrRestartHelperStatus
+    13 : i32    NbrRestartHelperAge
+    14 : i32    NbrRestartHelperExitReason
 }
-
-enum ifState {
-    down = 1,
-    loopback = 2,
-    waiting = 3,
-    pointToPoint = 4,
-    designatedRouter = 5,
-    backupDesignatedRouter = 6,
-    otherDesignatedRouter = 7
+struct OspfNbrEntryStateGetInfo {
+    1: int StartIdx
+    2: int EndIdx
+    3: int Count
+    4: bool More
+    5: list<OspfNbrEntryState> OspfNbrEntryStateList
 }
-
-enum nbrState {
-    down = 1,
-    attempt,
-    init,
-    twoWay,
-    exchangeStart,
-    exchange,
-    loading,
-    full
+struct OspfVirtNbrEntryState{
+    1 : string  VirtNbrRtrIdKey
+    2 : string  VirtNbrAreaKey
+    4 : string  VirtNbrRtrId
+    5 : string  VirtNbrIpAddr
+    6 : i32     VirtNbrOptions
+    7 : i32     VirtNbrState
+    8 : i32     VirtNbrEvents
+    9 : i32     VirtNbrLsRetransQLen
+    10 : bool   VirtNbrHelloSuppressed
+    11 : i32    VirtNbrRestartHelperStatus
+    12 : i32    VirtNbrRestartHelperAge
+    13 : i32    VirtNbrRestartHelperExitReason
 }
-
-enum nbmaNbrPermanence {
-    dynamicNbr = 1,
-    permanentNbr
+struct OspfVirtNbrEntryStateGetInfo {
+    1: int StartIdx
+    2: int EndIdx
+    3: int Count
+    4: bool More
+    5: list<OspfVirtNbrEntryState> OspfVirtNbrEntryStateList
 }
-
-enum nbrRestartHelperStatus {
-    notHelping = 1,
-    helping
+struct OspfExtLsdbEntryState{
+    1 : i32     ExtLsdbTypeKey
+    2 : string  ExtLsdbLsidKey
+    3 : string  ExtLsdbRouterIdKey
+    5 : string  ExtLsdbLsid
+    6 : string  ExtLsdbRouterId
+    7 : i32     ExtLsdbSequence
+    8 : i32     ExtLsdbAge
+    9 : i32     ExtLsdbChecksum
+    10 : string     ExtLsdbAdvertisement
 }
-
-// Global Configuration Objects
-// General Variables
-struct OspfGlobalConf {
-    1: string               RouterId,
-    2: status               AdminStat,
-    3: bool                 ASBdrRtrStatus,
-    4: bool                 TOSSupport,
-    5: i32                  ExtLsdbLimit,
-    6: i32                  MulticastExtensions,
-    7: i32                  ExitOverflowInterval,
-    8: bool                 DemandExtensions,
-    9: bool                 RFC1583Compatibility,
-    10: i32                 ReferenceBandwidth,
-    11: restartSupport      RestartSupport,
-    12: i32                 RestartInterval,
-    13: bool                RestartStrictLsaChecking,
-    14: advertiseAction     StubRouterAdvertisement,
+struct OspfExtLsdbEntryStateGetInfo {
+    1: int StartIdx
+    2: int EndIdx
+    3: int Count
+    4: bool More
+    5: list<OspfExtLsdbEntryState> OspfExtLsdbEntryStateList
 }
-
-struct OspfGlobalState {
-    1: string               RouterId,
-    2: status               AdminStat,
-    3: i32                  VersionNumber,
-    4: bool                 AreaBdrRtrStatus,
-    5: bool                 ASBdrRtrStatus,
-    6: i32                  ExternLsaCount,
-    7: i32                  ExternLsaCksumSum,
-    8: bool                 TOSSupport,
-    9: i32                  OriginateNewLsas,
-    10: i32                 RxNewLsas,
-    11: i32                 ExtLsdbLimit,
-    12: i32                 MulticastExtensions,
-    13: i32                 ExitOverflowInterval,
-    14: bool                DemandExtensions,
-    15: bool                RFC1583Compatibility,
-    16: bool                OpaqueLsaSupport,
-    17: i32                 ReferenceBandwidth,
-    18: restartSupport      RestartSupport,
-    19: i32                 RestartInterval,
-    20: bool                RestartStrictLsaChecking,
-    21: restartStatus       RestartStatus,
-    22: i32                 RestartAge,
-    23: restartExitReason   RestartExitReason,
-    24: i32                 AsLsaCount,
-    25: i32                 AsLsaCksumSum,
-    26: bool                StubRouterSupport,
-    27: advertiseAction     StubRouterAdvertisement,
-    28: string              DiscontinuityTime,
+struct OspfAreaAggregateEntryConfig{
+    1 : i32     AreaAggregateLsdbTypeKey
+    2 : string  AreaAggregateAreaIDKey
+    3 : string  AreaAggregateNetKey
+    4 : string  AreaAggregateMaskKey
+    7 : string  AreaAggregateNet
+    8 : string  AreaAggregateMask
+    9 : i32     AreaAggregateEffect
+    10 : i32    AreaAggregateExtRouteTag
 }
-
-// Configuration Parameter for Router's Attached Area
-// Area Data Structure
-// Indexed By AreaId
-struct OspfAreaConf {
-    1: string               AreaId,
-    2: authType             AuthType,
-    3: importAsExtern       ImportAsExtern,
-    4: areaSummary          AreaSummary,
-    5: nssaTranslatorRole   AreaNssaTranslatorRole,
-    6: i32                  AreaNssaTranslatorStabilityInterval,
+struct OspfLocalLsdbEntryState{
+    1 : i32     LocalLsdbAddressLessIfKey
+    2 : i32     LocalLsdbTypeKey
+    3 : string  LocalLsdbIpAddressKey
+    4 : string  LocalLsdbRouterIdKey
+    5 : string  LocalLsdbLsidKey
+    9 : string  LocalLsdbLsid
+    10 : string     LocalLsdbRouterId
+    11 : i32    LocalLsdbSequence
+    12 : i32    LocalLsdbAge
+    13 : i32    LocalLsdbChecksum
+    14 : string     LocalLsdbAdvertisement
 }
-
-struct OspfAreaState {
-    1: string               AreaId,
-    2: authType             AuthType,
-    3: importAsExtern       ImportAsExtern,
-    4: i32                  SpfRuns,
-    5: i32                  AreaBdrRtrCount,
-    6: i32                  AsBdrRtrCount,
-    7: i32                  AreaLsaCount,
-    8: i32                  AreaLsaCksumSum,
-    9: areaSummary          AreaSummary,
-    10: nssaTranslatorRole  AreaNssaTranslatorRole,
-    11: nssaTranslatorState AreaNssaTranslatorState,
-    12: i32                 AreaNssaTranslatorStabilityInterval,
-    13: i32                 AreaNssaTranslatorEvents,
+struct OspfLocalLsdbEntryStateGetInfo {
+    1: int StartIdx
+    2: int EndIdx
+    3: int Count
+    4: bool More
+    5: list<OspfLocalLsdbEntryState> OspfLocalLsdbEntryStateList
 }
-
-// Area Stub Metric Table
-// The Metric for a given TOS that will be advertised by default
-// Area Border Router into a stub area
-// Indexed by StubAreaId and StubTOS
-
-struct OspfStubAreaConf {
-    1: string               StubAreaId,
-    2: i32                  StubTOS,
-    3: i32                  StubMetric,
-    4: metricType           StubMetricType,
+struct OspfVirtLocalLsdbEntryState{
+    1 : i32     VirtLocalLsdbTypeKey
+    2 : string  VirtLocalLsdbNeighborKey
+    3 : string  VirtLocalLsdbLsidKey
+    4 : string  VirtLocalLsdbTransitAreaKey
+    5 : string  VirtLocalLsdbRouterIdKey
+    7 : string  VirtLocalLsdbNeighbor
+    11 : i32    VirtLocalLsdbSequence
+    12 : i32    VirtLocalLsdbAge
+    13 : i32    VirtLocalLsdbChecksum
+    14 : string     VirtLocalLsdbAdvertisement
 }
-
-struct OspfStubAreaState {
-    1: string               StubAreaId,
-    2: i32                  StubTOS,
-    3: i32                  StubMetric,
-    4: metricType           StubMetricType,
+struct OspfVirtLocalLsdbEntryStateGetInfo {
+    1: int StartIdx
+    2: int EndIdx
+    3: int Count
+    4: bool More
+    5: list<OspfVirtLocalLsdbEntryState> OspfVirtLocalLsdbEntryStateList
 }
-
-// Link State Advertisement Database
-// Indexed by LsdbAreaId, LsdbType, LsdbLsid, LsdbRouterId
-struct OspfLsdbState {
-    1: string               LsdbAreaId,
-    2: lsaType              LsdbType,
-    3: string               LsdbLsid,
-    4: string               LsdbRouterId,
-    5: i32                  LsdbSequence,
-    6: i32                  LsdbAge,
-    7: i32                  LsdbChecksum,
-    8: string               LsdbAdvertisement,
+struct OspfAsLsdbEntryState{
+    1 : i32     AsLsdbTypeKey
+    2 : string  AsLsdbRouterIdKey
+    3 : string  AsLsdbLsidKey
+    7 : i32     AsLsdbSequence
+    8 : i32     AsLsdbAge
+    9 : i32     AsLsdbChecksum
+    10 : string     AsLsdbAdvertisement
 }
-
-// Address Range Table
-// A single area address range
-// Indexed By RangeAreaId, RangeNet
-
-struct OspfAreaRangeConf {
-    1: string                   RangeAreaId,
-    2: string                   AreaRangeNet,
-    3: string                   AreaRangeMask,
-    4: areaRangeEffect          AreaRangeEffect,
+struct OspfAsLsdbEntryStateGetInfo {
+    1: int StartIdx
+    2: int EndIdx
+    3: int Count
+    4: bool More
+    5: list<OspfAsLsdbEntryState> OspfAsLsdbEntryStateList
 }
-
-struct OspfAreaRangeState {
-    1: string                   RangeAreaId,
-    2: string                   AreaRangeNet,
-    3: string                   AreaRangeMask,
-    4: areaRangeEffect          AreaRangeEffect,
+struct OspfAreaLsaCountEntryState{
+    1 : string  AreaLsaCountAreaIdKey
+    2 : i32     AreaLsaCountLsaTypeKey
+    5 : i32     AreaLsaCountNumber
 }
-
-// Host Table
-// Metric to be advertised for a given TOS when
-// given host is reachable
-// Indexed By HostIpAddress, HostTOS
-
-struct OspfHostConf {
-    1: string       HostIpAddress,
-    2: i32          HostTOS,
-    3: i32          HostMetric,
-    4: string       HostCfgAreaID,
+struct OspfAreaLsaCountEntryStateGetInfo {
+    1: int StartIdx
+    2: int EndIdx
+    3: int Count
+    4: bool More
+    5: list<OspfAreaLsaCountEntryState> OspfAreaLsaCountEntryStateList
 }
-
-struct OspfHostState {
-    1: string       HostIpAddress,
-    2: i32          HostTOS,
-    3: i32          HostMetric,
-    4: string       HostCfgAreaID,
+struct OspfGlobalConfig{
+    1 : string  RouterIdKey
+    3 : i32     AdminStat
+    4 : i32     VersionNumber
+    5 : bool    AreaBdrRtrStatus
+    6 : bool    ASBdrRtrStatus
+    7 : i32     ExternLsaCount
+    8 : i32     ExternLsaCksumSum
+    9 : bool    TOSSupport
+    10 : i32    OriginateNewLsas
+    11 : i32    RxNewLsas
+    12 : i32    ExtLsdbLimit
+    13 : i32    MulticastExtensions
+    14 : i32    ExitOverflowInterval
+    15 : bool   DemandExtensions
+    16 : bool   RFC1583Compatibility
+    17 : bool   OpaqueLsaSupport
+    18 : i32    ReferenceBandwidth
+    19 : i32    RestartSupport
+    20 : i32    RestartInterval
+    21 : bool   RestartStrictLsaChecking
+    22 : i32    RestartStatus
+    23 : i32    RestartAge
+    24 : i32    RestartExitReason
+    25 : i32    AsLsaCount
+    26 : i32    AsLsaCksumSum
+    27 : bool   StubRouterSupport
+    28 : i32    StubRouterAdvertisement
+    29 : i32    DiscontinuityTime
 }
-
-// Interface Table
-// Ospf Interface Entry describes one interface
-// from the viewpoint of OSPF
-// Indexed By IfIpAddress, AddressLessIf
-
-struct OspfIfConf {
-    1: string                   IfIpAddress,
-    2: i32                      AddressLessIf,
-    3: string                   IfAreaId,
-    4: ifType                   IfType,
-    5: status                   IfAdminStat,
-    6: i32                      IfRtrPriority,
-    7: i32                      IfTransitDelay,
-    8: i32                      IfRetransInterval,
-    9: i32                      IfHelloInterval,
-    10: i32                     IfRtrDeadInterval,
-    11: i32                     IfPollInterval,
-    12: string                  IfAuthKey,
-    13: multicastForwarding     IfMulticastForwarding,
-    14: bool                    IfDemand,
-    15: authType                IfAuthType,
-}
-
-struct OspfIfState {
-    1: string                   IfIpAddress,
-    2: i32                      AddressLessIf,
-    3: string                   IfAreaId,
-    4: ifType                   IfType,
-    5: status                   IfAdminStat,
-    6: i32                      IfRtrPriority,
-    7: i32                      IfTransitDelay,
-    8: i32                      IfRetransInterval,
-    9: i32                      IfHelloInterval,
-    10: i32                     IfRtrDeadInterval,
-    11: i32                     IfPollInterval,
-    12: ifState                 IfState,
-    13: string                  IfDesignatedRouter,
-    14: string                  IfBackupDesignatedRouter,
-    15: i32                     IfEvents,
-    16: string                  IfAuthKey,
-    17: multicastForwarding     IfMulticastForwarding,
-    18: bool                    IfDemand,
-    19: authType                IfAuthType,
-    20: i32                     IfLsaCount,
-    21: i32                     IfLsaCksumSum,
-    22: string                  IfDesignatedRouterId,
-    23: string                  IfBackupDesignatedRouterId,
-}
-
-// Interface Metric Table
-// Particular TOS Metric for a non virtual interface
-// Indexed By  IfMetricIpAddress, IfMetricAddressLessIf, IfMetricTOS
-
-struct OspfIfMetricConf {
-    1: string                   IfMetricIpAddress,
-    2: i32                      IfMetricAddressLessIf,
-    3: i32                      IfMetricTOS,
-    4: i32                      IfMetricValue,
-}
-
-struct OspfIfMetricState {
-    1: string                   IfMetricIpAddress,
-    2: i32                      IfMetricAddressLessIf,
-    3: i32                      IfMetricTOS,
-    4: i32                      IfMetricValue,
-}
-
-// Virtual Interface Table
-// OSPF Virtual Interface Entry
-// Indexed By VirtIfAreaId, VirtIfNeighbor
-struct OspfVirtIfConf {
-    1: string                   VirtIfAreaId,
-    2: string                   VirtIfNeighbor,
-    3: i32                      VirtIfTransitDelay,
-    4: i32                      VirtIfRetransInterval,
-    5: i32                      VirtIfHelloInterval,
-    6: i32                      VirtIfRtrDeadInterval,
-    7: string                   VirtIfAuthKey,
-    8: authType                 VirtIfAuthType,
-}
-
-struct OspfVirtIfState {
-    1: string                   VirtIfAreaId,
-    2: string                   VirtIfNeighbor,
-    3: i32                      VirtIfTransitDelay,
-    4: i32                      VirtIfRetransInterval,
-    5: i32                      VirtIfHelloInterval,
-    6: i32                      VirtIfRtrDeadInterval,
-    7: ifState                  VirtIfState,
-    8: i32                      VirtIfEvents,
-    9: string                   VirtIfAuthKey,
-    10: authType                VirtIfAuthType,
-    11: i32                     VirtIfLsaCount,
-    12: i32                     VirtIfLsaCksumSum,
-}
-
-// Neighbor Table
-// OSPF Neighbor Entry
-// Indexed by NbrIpAddress, NbrAddressLessIndex
-struct OspfNbrConf {
-    1: string                   NbrIpAddress,
-    2: i32                      NbrAddressLessIndex,
-    3: i32                      NbrPriority,
-}
-
-struct OspfNbrState {
-    1: string                   NbrIpAddress,
-    2: i32                      NbrAddressLessIndex,
-    3: string                   NbrRtrId,
-    4: i32                      NbrOptions,
-    5: i32                      NbrPriority,
-    6: nbrState                 NbrState,
-    7: i32                      NbrEvents,
-    8: i32                      NbrLsRetransQLen,
-    9: nbmaNbrPermanence        NbmaNbrPermanence,
-    10: bool                    NbrHelloSuppressed,
-    11: nbrRestartHelperStatus  NbrRestartHelperStatus,
-    12: i32                     NbrRestartHelperAge,
-    13: restartExitReason       NbrRestartHelperExitReason,
-}
-
-// Virtual Neighbor Table (Read Only)
-// OSPF Virtual Neighbor Entry
-// Indexed By VirtNbrArea, VirtNbrRtrId
-struct OspfVirtNbrState {
-    1: string                   VirtNbrArea,
-    2: string                   VirtNbrRtrId,
-    3: string                   VirtNbrIpAddress,
-    4: i32                      VirtNbrOptions,
-    5: nbrState                 VirtNbrState,
-    6: i32                      VirtNbrEvents,
-    7: i32                      VirtNbrLsRetransQLen,
-    8: bool                     VirtNbrHelloSuppressed,
-    9: nbrRestartHelperStatus   VirtNbrRestartHelperStatus,
-    10: i32                     VirtNbrRestartHelperAge,
-    11: restartExitReason       VirtNbrRestartHelperExitReason,
-}
-
-// External LSA link State - Deprecated
-// Indexed by ExtLsdbType, ExtLsdbLsid, ExtLsdbRouterId
-struct OspfExtLsdbState {
-    1: lsaType                  ExtLsdbType,
-    2: string                   ExtLsdbLsid,
-    3: string                   ExtLsdbRouterId,
-    4: i32                      ExtLsdbSequence,
-    5: i32                      ExtLsdbAge,
-    6: i32                      ExtLsdbChecksum,
-    7: string                   ExtLsdbAdvertisement,
-}
-
-// OSPF Area Aggregate Table
-// Replaces OSPF Area Summary Table
-// Indexed By AreaAggregateAreaId, AreaAggregateLsdbType,
-// AreaAggregateNet, AreaAggregateMask
-struct OspfAreaAggregateConf {
-    1: string                   AreaAggregateAreaId,
-    2: lsaType                  AreaAggregateLsdbType,
-    3: string                   AreaAggregateNet,
-    4: string                   AreaAggregateMask,
-    5: areaRangeEffect          AreaAggregateEffect,
-    6: i32                      AreaAggregateExtRouteTag,
-}
-
-struct OspfAreaAggregateState {
-    1: string                   AreaAggregateAreaId,
-    2: lsaType                  AreaAggregateLsdbType,
-    3: string                   AreaAggregateNet,
-    4: string                   AreaAggregateMask,
-    5: areaRangeEffect          AreaAggregateEffect,
-    6: i32                      AreaAggregateExtRouteTag,
-}
-
-// Link local link state database for non-virtual links
-// Indexed by LocalLsdbIpAddress, LocalLsdbAddressLessIf,
-// LocalLsdbType, LocalLsdbLsid, LocalLsdbRouterId
-struct OspfLocalLsdbState {
-    1: string                   LocalLsdbIpAddress,
-    2: i32                      LocalLsdbAddressLessIf,
-    3: lsaType                  LocalLsdbType,
-    4: string                   LocalLsdbLsid,
-    5: string                   LocalLsdbRouterId,
-    6: i32                      LocalLsdbSequence,
-    7: i32                      LocalLsdbAge,
-    8: i32                      LocalLsdbChecksum,
-    9: string                   LocalLsdbAdvertisement,
-}
-
-// Link State Database, link-local for Virtual Links
-// Indexed By VirtLocalLsdbTransitArea, VirtLocalLsdbTransitArea,
-// VirtLocalLsdbType, VirtLocalLsdbLsid, VirtLocalLsdbRouterId
-struct OspfVirtLocalLsdbState {
-    1: string                   VirtLocalLsdbTransitArea,
-    2: string                   VirtLocalLsdbNeighbor,
-    3: lsaType                  VirtLocalLsdbType,
-    4: string                   VirtLocalLsdbLsid,
-    5: string                   VirtLocalLsdbRouterId,
-    6: i32                      VirtLocalLsdbSequence,
-    7: i32                      VirtLocalLsdbAge,
-    8: i32                      VirtLocalLsdbChecksum,
-    9: string                   VirtLocalLsdbAdvertisement,
-}
-
-// Link State Database, AS - scope
-// Indexed AsLsdbType, AsLsdbLsid, AsLsdbRouterId
-struct OspfAsLsdbState {
-    1: lsaType                  AsLsdbType,
-    2: string                   AsLsdbLsid,
-    3: string                   AsLsdbRouterId,
-    4: i32                      AsLsdbSequence,
-    5: i32                      AsLsdbAge,
-    6: i32                      AsLsdbChecksum,
-    7: string                   AsLsdbAdvertisement,
-}
-
-// Area LSA Counter Table
-// Indexed By AreaLsaCountAreaId, AreaLsaCountLsaType
-struct OspfAreaLsaCountState {
-    1: string                   AreaLsaCountAreaId,
-    2: lsaType                  AreaLsaCountLsaType,
-    3: i32                      AreaLsaCountNumber,
-}
-
 
 service OSPFServer {
-    bool CreateOspfGlobalConf(1: OspfGlobalConf ospfGlobalConf)
-    bool CreateOspfAreaConf(1: OspfAreaConf ospfAreaConf)
-    bool CreateOspfStubAreaConf(1: OspfStubAreaConf ospfStubAreaConf)
-    bool CreateOspfAreaRangeConf(1: OspfAreaRangeConf ospfAreaRangeConf)
-    bool CreateOspfHostConf(1: OspfHostConf ospfHostConf)
-    bool CreateOspfIfConf(1: OspfIfConf ospfIfConf)
-    bool CreateOspfIfMetricConf(1: OspfIfMetricConf ospfIfMetricConf)
-    bool CreateOspfVirtIfConf(1: OspfVirtIfConf ospfVirtIfConf)
-    bool CreateOspfNbrConf(1: OspfNbrConf ospfNbrConf)
-    bool CreateOspfAreaAggregateConf(1: OspfAreaAggregateConf ospfAreaAggregateConf)
+    bool CreateOspfGlobalConfig(1: OspfGlobalConfig config);
+    bool CreateOspfAreaEntryConfig(1: OspfAreaEntryConfig config);
+    bool CreateOspfStubAreaEntryConfig(1: OspfStubAreaEntryConfig config);
+    bool CreateOspfAreaRangeEntryConfig(1: OspfAreaRangeEntryConfig config);
+    bool CreateOspfHostEntryConfig(1: OspfHostEntryConfig config);
+    bool CreateOspfIfEntryConfig(1: OspfIfEntryConfig config);
+    bool CreateOspfIfMetricEntryConfig(1: OspfIfMetricEntryConfig config);
+    bool CreateOspfVirtIfEntryConfig(1: OspfVirtIfEntryConfig config);
+    bool CreateOspfNbrEntryConfig(1: OspfNbrEntryConfig config);
+    bool CreateOspfAreaAggregateEntryConfig(1: OspfAreaAggregateEntryConfig config);
 
-    bool DeleteOspfGlobalConf(1: OspfGlobalConf ospfGlobalConf)
-    bool DeleteOspfAreaConf(1: OspfAreaConf ospfAreaConf)
-    bool DeleteOspfStubAreaConf(1: OspfStubAreaConf ospfStubAreaConf)
-    bool DeleteOspfAreaRangeConf(1: OspfAreaRangeConf ospfAreaRangeConf)
-    bool DeleteOspfHostConf(1: OspfHostConf ospfHostConf)
-    bool DeleteOspfIfConf(1: OspfIfConf ospfIfConf)
-    bool DeleteOspfIfMetricConf(1: OspfIfMetricConf ospfIfMetricConf)
-    bool DeleteOspfVirtIfConf(1: OspfVirtIfConf ospfVirtIfConf)
-    bool DeleteOspfNbrConf(1: OspfNbrConf ospfNbrConf)
-    bool DeleteOspfAreaAggregateConf(1: OspfAreaAggregateConf ospfAreaAggregateConf)
+    bool UpdateOspfGlobalConfig(1: OspfGlobalConfig origconfig, 2: OspfGlobalConfig newconfig, 3: list<bool> attrset);
+    bool UpdateOspfAreaEntryConfig(1: OspfAreaEntryConfig origconfig, 2: OspfAreaEntryConfig newconfig, 3: list<bool> attrset);
+    bool UpdateOspfStubAreaEntryConfig(1: OspfStubAreaEntryConfig origconfig, 2: OspfStubAreaEntryConfig newconfig, 3: list<bool> attrset);
+    bool UpdateOspfAreaRangeEntryConfig(1: OspfAreaRangeEntryConfig origconfig, 2: OspfAreaRangeEntryConfig newconfig, 3: list<bool> attrset);
+    bool UpdateOspfHostEntryConfig(1: OspfHostEntryConfig origconfig, 2: OspfHostEntryConfig newconfig, 3: list<bool> attrset);
+    bool UpdateOspfIfEntryConfig(1: OspfIfEntryConfig origconfig, 2: OspfIfEntryConfig newconfig, 3: list<bool> attrset);
+    bool UpdateOspfIfMetricEntryConfig(1: OspfIfMetricEntryConfig origconfig, 2: OspfIfMetricEntryConfig newconfig, 3: list<bool> attrset);
+    bool UpdateOspfVirtIfEntryConfig(1: OspfVirtIfEntryConfig origconfig, 2: OspfVirtIfEntryConfig newconfig, 3: list<bool> attrset);
+    bool UpdateOspfNbrEntryConfig(1: OspfNbrEntryConfig origconfig, 2: OspfNbrEntryConfig newconfig, 3: list<bool> attrset);
+    bool UpdateOspfAreaAggregateEntryConfig(1: OspfAreaAggregateEntryConfig origconfig, 2: OspfAreaAggregateEntryConfig newconfig, 3: list<bool> attrset);
 
+
+    bool DeleteOspfGlobalConfig(1: OspfGlobalConfig config);
+    bool DeleteOspfAreaEntryConfig(1: OspfAreaEntryConfig config);
+    bool DeleteOspfStubAreaEntryConfig(1: OspfStubAreaEntryConfig config);
+    bool DeleteOspfAreaRangeEntryConfig(1: OspfAreaRangeEntryConfig config);
+    bool DeleteOspfHostEntryConfig(1: OspfHostEntryConfig config);
+    bool DeleteOspfIfEntryConfig(1: OspfIfEntryConfig config);
+    bool DeleteOspfIfMetricEntryConfig(1: OspfIfMetricEntryConfig config);
+    bool DeleteOspfVirtIfEntryConfig(1: OspfVirtIfEntryConfig config);
+    bool DeleteOspfNbrEntryConfig(1: OspfNbrEntryConfig config);
+    bool DeleteOspfAreaAggregateEntryConfig(1: OspfAreaAggregateEntryConfig config);
+
+
+    OspfAreaEntryStateGetInfo GetBulkOspfAreaEntryState(1: int fromIndex, 2: int count);
+    OspfLsdbEntryStateGetInfo GetBulkOspfLsdbEntryState(1: int fromIndex, 2: int count);
+    OspfIfEntryStateGetInfo GetBulkOspfIfEntryState(1: int fromIndex, 2: int count);
+    OspfNbrEntryStateGetInfo GetBulkOspfNbrEntryState(1: int fromIndex, 2: int count);
+    OspfVirtNbrEntryStateGetInfo GetBulkOspfVirtNbrEntryState(1: int fromIndex, 2: int count);
+    OspfExtLsdbEntryStateGetInfo GetBulkOspfExtLsdbEntryState(1: int fromIndex, 2: int count);
+    OspfLocalLsdbEntryStateGetInfo GetBulkOspfLocalLsdbEntryState(1: int fromIndex, 2: int count);
+    OspfVirtLocalLsdbEntryStateGetInfo GetBulkOspfVirtLocalLsdbEntryState(1: int fromIndex, 2: int count);
+    OspfAsLsdbEntryStateGetInfo GetBulkOspfAsLsdbEntryState(1: int fromIndex, 2: int count);
+    OspfAreaLsaCountEntryStateGetInfo GetBulkOspfAreaLsaCountEntryState(1: int fromIndex, 2: int count);
+
+/*
     OspfGlobalState GetOspfGlobalState()
     OspfAreaState GetOspfAreaState(1: string areaId)
     OspfStubAreaState GetOspfStubAreaState(1: string stubAreaId, 2: i32 stubTOS)
@@ -549,4 +354,5 @@ service OSPFServer {
     OspfVirtLocalLsdbState GetOspfVirtLocalLsdbState(1: string virtLocalLsdbTransitArea, 2: string virtLocalLsdbNeighbor, 3: lsaType virtLocalLsdbType, 4: string virtLocalLsdbLsid, 5: string virtLocalLsdbRouterId)
     OspfAsLsdbState GetOspfAsLsdbState(1: lsaType asLsdbType, 2: string asLsdbLsid, 3: string asLsdbRouterId)
     OspfAreaLsaCountState GetOspfAreaLsaCountState(1: string areaLsaCountAreaId, 2: lsaType areaLsaCountLsaType)
+*/
 }
