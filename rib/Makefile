@@ -3,7 +3,7 @@ RMFORCE=rm -rf
 DESTDIR=$(SR_CODE_BASE)/snaproute/src/out/bin
 GENERATED_IPC=$(SR_CODE_BASE)/generated/src
 IPC_GEN_CMD=thrift 
-SRCS=ribhandler.go  ribmain.go ribDB.go
+SRCS=ribhandler.go  ribmain.go ribDB.go ribdUtils.go ribdRouteApis.go ribdPolicyApis.go 
 IPC_SRCS=ribd.thrift
 COMP_NAME=ribd
 all:ipc exe
