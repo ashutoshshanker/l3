@@ -6,7 +6,6 @@ import (
 	"arpd"
 	"asicdServices"
 	"bytes"
-        "reflect"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
@@ -139,15 +138,15 @@ var (
 	snapshot_len            int32 = 65549  //packet capture length
 	promiscuous             bool = false  //mode
 	err                     error
-	timeout_pcap            time.Duration = 5 * time.Second
-        config_refresh_timeout  int = 600       // 600 Seconds
-        min_refresh_timeout     int = 300       // 300 Seconds
-        timer_granularity       int = 10        // 10 Seconds
+	timeout_pcap            time.Duration = 1 * time.Second
+        config_refresh_timeout  int = 600     // 600 Seconds
+        min_refresh_timeout     int = 300     // 300 Seconds
+        timer_granularity       int = 1       // 1 Seconds
 	timeout                 time.Duration = time.Duration(timer_granularity) * time.Second
-        timeout_counter         int = 60
-        retry_cnt               int = 2         // Number of retries before entry in deleted
-        min_cnt                 int = 1         // Counter value at which entry will be deleted
-	handle                  *pcap.Handle    // handle for pcap connection
+        timeout_counter         int = 600     // The value of timeout_counter = (config_refresh_timeout/timer_granularity)
+        retry_cnt               int = 5       // Number of retries before entry in deleted
+        min_cnt                 int = 1       // Counter value at which entry will be deleted
+	handle                  *pcap.Handle  // handle for pcap connection
 	logWriter               *syslog.Writer
 	log_err                 error
         dbHdl                   *sql.DB
@@ -840,9 +839,8 @@ func updateArpCache() {
             select {
                 case msg := <-arp_cache_update_chl:
                     if msg.msg_type == 1 {
-                    //if msg.ent.vlanid == 0 {
                         ent, exist := arp_cache.arpMap[msg.ip]
-                        if reflect.DeepEqual(ent.macAddr, msg.ent.macAddr) &&
+                        if ent.macAddr.String() == msg.ent.macAddr.String() &&
                            ent.valid == msg.ent.valid && ent.port == msg.ent.port &&
                            ent.ifName == msg.ent.ifName && ent.vlanid == msg.ent.vlanid &&
                            ent.ifType == msg.ent.ifType && exist {
@@ -911,9 +909,11 @@ func updateArpCache() {
                         ent.ifType  = msg.ent.ifType
                         ent.localIP = msg.ent.localIP
                         arp_cache.arpMap[msg.ip] = ent
-                        err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, "incomplete")
-                        if err != nil {
-                            logWriter.Err("Unable to cache ARP Table in DB")
+                        if !exist {
+                            err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, "incomplete")
+                            if err != nil {
+                                logWriter.Err("Unable to cache ARP Table in DB")
+                            }
                         }
                     } else if msg.msg_type == 2 {
                         for ip, arp := range arp_cache.arpMap {
@@ -1031,9 +1031,11 @@ func updateArpCache() {
                         arp_cache.arpMap[msg.ip] = ent
                         //logger.Println("2. updateArpCache(): ", arp_cache.arpMap[msg.ip])
                         logWriter.Info(fmt.Sprintln("2. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
-                        err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
-                        if err != nil {
-                            logWriter.Err("Unable to cache ARP Table in DB")
+                        if !exist {
+                            err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
+                            if err != nil {
+                                logWriter.Err("Unable to cache ARP Table in DB")
+                            }
                         }
                         //3) Update asicd.
                         if asicdClient.IsConnected {
@@ -1077,9 +1079,11 @@ func updateArpCache() {
                         arp_cache.arpMap[msg.ip] = ent
                         //logger.Println("3. updateArpCache(): ", arp_cache.arpMap[msg.ip])
                         logWriter.Info(fmt.Sprintln("3. updateArpCache(): ", arp_cache.arpMap[msg.ip]))
-                        err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
-                        if err != nil {
-                            logWriter.Err("Unable to cache ARP Table in DB")
+                        if !exist {
+                            err := storeArpTableInDB(int(ent.ifType), int(ent.vlanid), ent.ifName, int(ent.port), msg.ip, ent.localIP, (net.HardwareAddr(ent.macAddr).String()))
+                            if err != nil {
+                                logWriter.Err("Unable to cache ARP Table in DB")
+                            }
                         }
                         //3) Update asicd.
                         if asicdClient.IsConnected {

@@ -8,6 +8,9 @@ import (
 	"log/syslog"
 )
 
+type DhcpRelayServiceHandler struct {
+}
+
 func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 	return &DhcpRelayServiceHandler{}
 }
@@ -21,17 +24,19 @@ func StartServer(logger *syslog.Writer, handler *DhcpRelayServiceHandler, addr s
 		logger.Info(fmt.Sprintln("StartServer: NewTServerSocket failed with error:", err))
 		return err
 	}
-
-	processor := dhcprelayd.NewDhcpRelayServerProcessor(handler)
+	fmt.Println("%T", transport)
+	processor := dhcprelayd.NewDHCPRELAYDServicesProcessor(handler)
 	fmt.Printf("%T\n", transportFactory)
 	fmt.Printf("%T\n", protocolFactory)
 	fmt.Printf("Starting DHCP-RELAY daemon at %s\n", addr)
-	server := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)
+	server := thrift.NewTSimpleServer4(processor, transport,
+		transportFactory, protocolFactory)
 	err = server.Serve()
 	if err != nil {
 		logger.Info(fmt.Sprintln("Failed to start the listener, err:", err))
 		return err
 	}
+
 	logger.Info(fmt.Sprintln("Start the Server successfully"))
 	return nil
 }
