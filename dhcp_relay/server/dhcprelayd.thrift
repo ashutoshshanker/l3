@@ -1,35 +1,38 @@
 namespace go dhcprelayd
-
 typedef i32 int
-
-enum RelayAgentSubOptType {
-    ClientIdSubOpt = 0,
-    RemoteIdSubOpt
+typedef i16 uint16
+struct DhcpRelayGlobal{
+	1 : bool 	Enable
 }
-
-struct RelayAgentInfoField {
-    1: RelayAgentSubOptType agentType,
-    2: i32 len,
-    3: i32 value, // this should be in octets
+struct DhcpRelayGlobalGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<DhcpRelayGlobal> DhcpRelayGlobalList
 }
-
-struct RelayAgentInfo {
-    1: i32 code,
-    2: i32 len,
-    3: RelayAgentInfoField raif,
+struct DhcpRelayConf{
+	1 : string 	IpSubnet
+	2 : string 	Netmask
+	3 : string 	IfIndex
+	4 : i32 	AgentSubType
+	5 : bool 	Enable
+	6 : set<string> 	ServerIp
 }
-
-/*
- * This DS will be used while adding/deleting Relay Agent.
- * It will take Ip Subnet, If_Index and ... as it fields
- */
-struct DhcpRelayConf {
-    1: string IpSubnet,
-    2: string IfIndex, // @TODO: Need to check if_index type 
+struct DhcpRelayConfGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<DhcpRelayConf> DhcpRelayConfList
 }
+service DHCPRELAYDServices {
+	bool CreateDhcpRelayGlobal(1: DhcpRelayGlobal config);
+	bool UpdateDhcpRelayGlobal(1: DhcpRelayGlobal origconfig, 2: DhcpRelayGlobal newconfig, 3: list<bool> attrset);
+	bool DeleteDhcpRelayGlobal(1: DhcpRelayGlobal config);
 
-service DhcpRelayServer {
-    void AddRelayAgent(1: DhcpRelayConf dhcprelayConf);
-    void DelRelayAgent();
-    void UpdRelayAgent();
+	bool CreateDhcpRelayConf(1: DhcpRelayConf config);
+	bool UpdateDhcpRelayConf(1: DhcpRelayConf origconfig, 2: DhcpRelayConf newconfig, 3: list<bool> attrset);
+	bool DeleteDhcpRelayConf(1: DhcpRelayConf config);
+
 }

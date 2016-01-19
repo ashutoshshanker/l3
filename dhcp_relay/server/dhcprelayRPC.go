@@ -2,30 +2,71 @@ package relayServer
 
 import (
 	"dhcprelayd"
-	"fmt"
-	//"log/syslog"
+	_ "fmt"
 )
 
-type DhcpRelayServiceHandler struct {
+/*
+ * Global DataStructure for DHCP RELAY
+ */
+/*
+ type DhcpRelayGlobal struct {
+	BaseObj
+	// This will tell whether DHCP RELAY is enabled/disabled
+	// on the box right now or not.
+	Enable bool `SNAPROUTE: "KEY"`
 }
-
+*/
+/*
+ * This DS will be used while adding/deleting Relay Agent.
+ */
+/*
+type DhcpRelayConf struct {
+	BaseObj
+	IpSubnet string `SNAPROUTE: "KEY"`
+	Netmask  string `SNAPROUTE: "KEY"`
+	//@TODO: Need to check if_index type
+	IfIndex string
+	// Use below field for agent sub-type
+	AgentSubType int32
+	Enable       bool
+	ServerIp     []string
+}
+*/
 /******** Trift APIs *******/
 /*
  * Add a relay agent
  */
-func (h *DhcpRelayServiceHandler) AddRelayAgent(dhcprelayGlobal *dhcprelayd.DhcpRelayConf) error {
-	fmt.Println("Add Relay Agent")
-	fmt.Println("Ip address is", dhcprelayGlobal.IpSubnet)
-	fmt.Println("if_index is %s", dhcprelayGlobal.IfIndex)
-	return nil
+
+func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobal(
+	config *dhcprelayd.DhcpRelayGlobal) (bool, error) {
+	return true, nil
 }
 
-func (h *DhcpRelayServiceHandler) DelRelayAgent() error {
-	fmt.Println("Del Relay Agent")
-	return nil
+func (h *DhcpRelayServiceHandler) UpdateDhcpRelayGlobal(
+	origconfig *dhcprelayd.DhcpRelayGlobal,
+	newconfig *dhcprelayd.DhcpRelayGlobal,
+	attrset []bool) (bool, error) {
+	return true, nil
 }
 
-func (h *DhcpRelayServiceHandler) UpdRelayAgent() error {
-	fmt.Println("Update Relay Agent")
-	return nil
+func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobal(
+	config *dhcprelayd.DhcpRelayGlobal) (bool, error) {
+	return true, nil
+}
+
+func (h *DhcpRelayServiceHandler) CreateDhcpRelayConf(
+	config *dhcprelayd.DhcpRelayConf) (bool, error) {
+	return true, nil
+}
+
+func (h *DhcpRelayServiceHandler) UpdateDhcpRelayConf(
+	origconfig *dhcprelayd.DhcpRelayConf,
+	newconfig *dhcprelayd.DhcpRelayConf,
+	attrset []bool) (bool, error) {
+	return true, nil
+}
+
+func (h *DhcpRelayServiceHandler) DeleteDhcpRelayConf(
+	config *dhcprelayd.DhcpRelayConf) (bool, error) {
+	return true, nil
 }
