@@ -2,7 +2,7 @@ package server
 
 import (
     "fmt"
-//    "bytes"
+    "time"
     "l3/ospf/config"
     //"l3/ospf/rpc"
 //    "l3/rib/ribdCommonDefs"
@@ -35,6 +35,7 @@ type IntfConf struct {
     HelloPktRecvCh          chan bool
     SendPcapHdl             *pcap.Handle
     RecvPcapHdl             *pcap.Handle
+    SendHelloPktTimer       *time.Timer
     IfName                  string
     IfIpAddr                  net.IP
     IfMacAddr               net.HardwareAddr
@@ -116,7 +117,7 @@ func (server *OSPFServer)createIPIntfConfMap(msg pluginCommon.IPv4IntfNotifyMsg)
         return
     }
     ipIntfProp := IPIntfProperty {
-        IfName:       ifName,
+        IfName:     ifName,
         IpAddr:     ip,
         MacAddr:    macAddr,
         NetMask:    ipNet.Mask,

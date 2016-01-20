@@ -10,7 +10,7 @@ import (
 )
 
 const IP string = "localhost"
-const DHCP_RELAY_PORT string = "7000"
+const DHCP_RELAY_PORT string = "9000"
 
 func main() {
 	fmt.Printf("Start the logger\n")
@@ -27,6 +27,7 @@ func main() {
 	handler := relayServer.NewDhcpRelayServer()
 	err = relayServer.StartServer(logger, handler, addr)
 	if err != nil {
+		fmt.Println("Cannot start server")
 		panic(err)
 	}
 	fmt.Printf("done\n")
