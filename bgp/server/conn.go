@@ -11,10 +11,11 @@ import (
 )
 
 type PeerConn struct {
-	fsm    *FSM
-	logger *syslog.Writer
-	dir    config.ConnDir
-	conn   *net.Conn
+	fsm       *FSM
+	logger    *syslog.Writer
+	dir       config.ConnDir
+	conn      *net.Conn
+	peerAttrs packet.BGPPeerAttrs
 
 	readCh chan bool
 	stopCh chan bool
@@ -26,6 +27,9 @@ func NewPeerConn(fsm *FSM, dir config.ConnDir, conn *net.Conn) *PeerConn {
 		logger: fsm.logger,
 		dir:    dir,
 		conn:   conn,
+		peerAttrs: packet.BGPPeerAttrs{
+			ASSize: 2,
+		},
 		readCh: make(chan bool),
 		stopCh: make(chan bool),
 	}
@@ -114,7 +118,7 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 			}
 
 			msg := &packet.BGPMessage{}
-			err = msg.Decode(&header, buf)
+			err = msg.Decode(&header, buf, p.peerAttrs)
 			bgpPktInfo := packet.NewBGPPktInfo(msg, nil)
 			msgOk := true
 			if err != nil {
@@ -123,6 +127,9 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 				msgOk = false
 			}
 
+			if header.Type == packet.BGPMsgTypeOpen {
+				p.peerAttrs.ASSize = packet.GetASSize(msg.Body.(*packet.BGPOpen))
+			}
 			p.fsm.pktRxCh <- bgpPktInfo
 			doneCh <- msgOk
 
