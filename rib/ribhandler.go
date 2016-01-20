@@ -499,6 +499,7 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	configFile := paramsDir + "/clients.json"
 	logger.Println("configfile = ", configFile)
 	ConnectToClients(configFile)
+	BuildRouteProtocolTypeMapDB()
 	RIBD_PUB = InitPublisher()
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	//CreateRoutes("RouteSetup.json")

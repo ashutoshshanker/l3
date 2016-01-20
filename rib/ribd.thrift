@@ -89,7 +89,7 @@ struct PolicyDefinitionStatementIgpActionsGetInfo {
 struct PolicyDefinitionStatement{
     1 : string   Name
 	2 : PolicyDefinitionStatementMatchPrefixSet MatchPrefixSetInfo
-	3 : int 	InstallProtocolEq
+	3 : string 	InstallProtocolEq
 	4 : string   RouteDisposition
 	//5 : 
 }
