@@ -929,6 +929,9 @@ func (fsm *FSM) ProcessPacket(msg *packet.BGPMessage, msgErr *packet.BGPMessageE
 		case packet.BGPMsgTypeNotification:
 			fsm.peer.Neighbor.State.Messages.Received.Notification++
 			event = BGPEventNotifMsg
+			notifyMsg := msg.Body.(*packet.BGPNotification)
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "Received notification message:",
+				notifyMsg.ErrorCode, notifyMsg.ErrorSubcode, notifyMsg.Data))
 
 		case packet.BGPMsgTypeKeepAlive:
 			event = BGPEventKeepAliveMsg
@@ -1055,7 +1058,7 @@ func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 		fsm.peerType = config.PeerTypeExternal
 	}
 
-	fsm.Manager.receivedBGPOpenMessage(fsm.id, fsm.peerConn.dir, body.BGPId)
+	fsm.Manager.receivedBGPOpenMessage(fsm.id, fsm.peerConn.dir, body)
 }
 
 func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {

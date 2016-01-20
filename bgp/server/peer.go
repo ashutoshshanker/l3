@@ -18,6 +18,7 @@ type Peer struct {
 	Neighbor   *config.Neighbor
 	fsmManager *FSMManager
 	BGPId      net.IP
+	ASSize     uint8
 }
 
 func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.NeighborConfig) *Peer {
@@ -116,8 +117,9 @@ func (p *Peer) SendKeepAlives(conn *net.TCPConn) {
 	}
 }
 
-func (p *Peer) SetBGPId(bgpId net.IP) {
+func (p *Peer) SetPeerAttrs(bgpId net.IP, asSize uint8) {
 	p.BGPId = bgpId
+	p.ASSize = asSize
 }
 
 func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
@@ -130,6 +132,10 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 	if bgpMsg == nil || bgpMsg.Body.(*packet.BGPUpdate).PathAttributes == nil {
 		p.logger.Err(fmt.Sprintf("Neighbor %s: Path attrs not found in BGP Update message", p.Neighbor.NeighborAddress))
 		return false
+	}
+
+	if p.ASSize == 2 {
+		packet.Convert4ByteTo2ByteASPath(bgpMsg)
 	}
 
 	if p.IsInternal() {
@@ -145,7 +151,7 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 		if path.peer != nil {
 			packet.RemoveMultiExitDisc(bgpMsg)
 		}
-		packet.PrependAS(bgpMsg, p.Neighbor.Config.LocalAS)
+		packet.PrependAS(bgpMsg, p.Neighbor.Config.LocalAS, p.ASSize)
 		packet.SetNextHop(bgpMsg, p.Neighbor.Transport.Config.LocalAddress)
 		packet.RemoveLocalPref(bgpMsg)
 	}
