@@ -54,9 +54,8 @@ func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntryConfig) bool {
 }
 
 func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntryConfig) bool {
-/*
     areaConf := config.AreaConf {
-        AreaId:                                 config.AreaId(ospfAreaConf.AreaId),
+        AreaId:                                 config.AreaId(ospfAreaConf.AreaIdKey),
         AuthType:                               config.AuthType(ospfAreaConf.AuthType),
         ImportAsExtern:                         config.ImportAsExtern(ospfAreaConf.ImportAsExtern),
         AreaSummary:                            config.AreaSummary(ospfAreaConf.AreaSummary),
@@ -65,7 +64,6 @@ func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntryConfig) 
     }
 
     h.server.AreaConfigCh <- areaConf
-*/
     return true
 
 }
