@@ -109,7 +109,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 	}
 }
 
-func (server *OSPFServer) createIPIntfConfMap(msg pluginCommon.IPv4IntfNotifyMsg) {
+func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 	ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to parse IP address", msg.IpAddr))
@@ -150,7 +150,7 @@ func (server *OSPFServer) createIPIntfConfMap(msg pluginCommon.IPv4IntfNotifyMsg
 	}
 }
 
-func (server *OSPFServer) deleteIPIntfConfMap(msg pluginCommon.IPv4IntfNotifyMsg) {
+func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 	ip, _, err := net.ParseCIDR(msg.IpAddr)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to parse IP address", msg.IpAddr))
