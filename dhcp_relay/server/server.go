@@ -166,7 +166,7 @@ func DhcpRelayInitPortParams() error {
 		more := bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.NextMarker)
 		for i := 0; i < objCount; i++ {
-			portNum := int(bulkInfo.PortConfigList[i].PortNum)
+			portNum := int(bulkInfo.PortConfigList[i].IfIndex)
 			entry := portInfoMap[portNum]
 			entry.Name = bulkInfo.PortConfigList[i].Name
 			portInfoMap[portNum] = entry
