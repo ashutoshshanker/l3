@@ -974,19 +974,21 @@ func (ps *BGPAS4PathSegment) CloneAsAS4PathSegment() *BGPAS4PathSegment {
 	return &x
 }
 
-func (ps *BGPAS4PathSegment) CloneAsAS2PathSegment() *BGPAS2PathSegment {
+func (ps *BGPAS4PathSegment) CloneAsAS2PathSegment() (*BGPAS2PathSegment, bool) {
 	x := NewBGPAS2PathSegment(ps.Type)
 	x.AS = make([]uint16, len(ps.AS), cap(ps.AS))
 	x.Length = ps.Length
 	x.BGPASPathSegmentLen += uint16(x.Length * 2)
+	mappable := true
 	for i, as := range ps.AS {
 		if as > math.MaxUint16 {
 			x.AS[i] = BGPASTrans
+			mappable = false
 		} else {
 			x.AS[i] = uint16(as)
 		}
 	}
-	return x
+	return x, mappable
 }
 
 func (ps *BGPAS4PathSegment) Encode(pkt []byte) error {
@@ -1070,8 +1072,10 @@ func (as *BGPPathAttrASPath) Clone() BGPPathAttr {
 
 func (as *BGPPathAttrASPath) CloneAsAS4Path() *BGPPathAttrAS4Path {
 	x := NewBGPPathAttrAS4Path()
-	x.BGPPathAttrBase = as.BGPPathAttrBase.Clone()
+	//x.BGPPathAttrBase = as.BGPPathAttrBase.Clone()
+	x.BGPPathAttrBase.Length = as.BGPPathAttrBase.Length
 	x.Value = make([]*BGPAS4PathSegment, 0, len(as.Value))
+	x.BGPPathAttrBase.BGPPathAttrLen += uint16(len(as.Value) * 4)
 	for _, item := range as.Value {
 		x.Value = append(x.Value, item.(*BGPAS4PathSegment).CloneAsAS4PathSegment())
 	}
