@@ -53,7 +53,7 @@ var (
  *	    API to handle initialization of port parameter
  */
 func DhcpRelayInitPortParams() error {
-	logger.Info("DRA initializing Port Parameters")
+	logger.Info("DRA initializing Port Parameters & Global Init")
 	// constructing port configs...
 	currMarker := int64(asicdConstDefs.MIN_SYS_PORTS)
 	if !asicdClient.IsConnected {
@@ -61,6 +61,7 @@ func DhcpRelayInitPortParams() error {
 	}
 	logger.Info("DRA calling asicd for port config")
 	count := 10
+	dhcprelayGblInfo = make(map[int]DhcpRelayAgentGlobalInfo)
 	for {
 		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortConfig(
 			int64(currMarker), int64(count))
@@ -79,11 +80,17 @@ func DhcpRelayInitPortParams() error {
 			entry := portInfoMap[portNum]
 			entry.Name = bulkInfo.PortConfigList[i].Name
 			portInfoMap[portNum] = entry
+			// Init DRA Global Handling for all interfaces....
+			DhcpRelayAgentInitGblHandling(entry.Name, portNum)
 		}
 		if more == false {
 			return nil
 		}
 	}
-	logger.Info("DRA initialized Port Parameters successfully")
+	logger.Info("DRA initialized Port Parameters & Global Info successfully")
 	return nil
+}
+
+func dhcpRelayAgentProcessAsicdNotification(rxBuf []byte) {
+
 }
