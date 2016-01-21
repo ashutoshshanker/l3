@@ -5,11 +5,12 @@ import (
 	"bgpd"
 	"database/sql"
 	"fmt"
-	_ "github.com/mattn/go-sqlite3"
 	"l3/bgp/config"
 	"l3/bgp/server"
 	"log/syslog"
 	"net"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const DBName string = "UsrConfDb.db"
@@ -78,7 +79,8 @@ func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
 	var neighborIP string
 	for rows.Next() {
 		if err = rows.Scan(&nConf.PeerAS, &nConf.LocalAS, &nConf.AuthPassword, &nConf.Description, &neighborIP,
-			&nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient); err != nil {
+			&nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable,
+			&nConf.MultiHopTTL); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighborConfig rows with error %s", err))
 			return err
 		}
@@ -126,7 +128,7 @@ func (h *BGPHandler) convertStrIPToNetIP(ip string) net.IP {
 	return netIP
 }
 
-func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) bool {
+func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobalConfig) bool {
 	ip := h.convertStrIPToNetIP(bgpGlobal.RouterId)
 	if ip == nil {
 		h.logger.Info(fmt.Sprintln("SendBGPGlobal: IP", bgpGlobal.RouterId, "is not valid"))
@@ -134,14 +136,14 @@ func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) bool {
 	}
 
 	gConf := config.GlobalConfig{
-		AS:       uint32(bgpGlobal.AS),
+		AS:       uint32(bgpGlobal.ASNum),
 		RouterId: ip,
 	}
 	h.server.GlobalConfigCh <- gConf
 	return true
 }
 
-func (h *BGPHandler) CreateBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
+func (h *BGPHandler) CreateBGPGlobal(bgpGlobal *bgpd.BGPGlobalConfig) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create global config attrs:", bgpGlobal))
 	return h.SendBGPGlobal(bgpGlobal), nil
 }
@@ -156,17 +158,17 @@ func (h *BGPHandler) GetBGPGlobal() (*bgpd.BGPGlobalState, error) {
 	return bgpGlobalResponse, nil
 }
 
-func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal, attrSet []bool) (bool, error) {
+func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobalConfig, updatedG *bgpd.BGPGlobalConfig, attrSet []bool) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update global config attrs:", updatedG, "old config:", origG))
 	return h.SendBGPGlobal(updatedG), nil
 }
 
-func (h *BGPHandler) DeleteBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
+func (h *BGPHandler) DeleteBGPGlobal(bgpGlobal *bgpd.BGPGlobalConfig) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Delete global config attrs:", bgpGlobal))
 	return true, nil
 }
 
-func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (config.NeighborConfig, bool) {
+func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (config.NeighborConfig, bool) {
 	if bgpNeighbor == nil {
 		return config.NeighborConfig{}, true
 	}
@@ -178,18 +180,20 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (config.
 	}
 
 	pConf := config.NeighborConfig{
-		PeerAS:          uint32(bgpNeighbor.PeerAS),
-		LocalAS:         uint32(bgpNeighbor.LocalAS),
-		AuthPassword:    bgpNeighbor.AuthPassword,
-		Description:     bgpNeighbor.Description,
-		NeighborAddress: ip,
+		PeerAS:                  uint32(bgpNeighbor.PeerAS),
+		LocalAS:                 uint32(bgpNeighbor.LocalAS),
+		AuthPassword:            bgpNeighbor.AuthPassword,
+		Description:             bgpNeighbor.Description,
+		NeighborAddress:         ip,
 		RouteReflectorClusterId: uint32(bgpNeighbor.RouteReflectorClusterId),
-		RouteReflectorClient: bgpNeighbor.RouteReflectorClient,
+		RouteReflectorClient:    bgpNeighbor.RouteReflectorClient,
+		MultiHopEnable:          bgpNeighbor.MultiHopEnable,
+		MultiHopTTL:             uint8(bgpNeighbor.MultiHopTTL),
 	}
 	return pConf, true
 }
 
-func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighbor, newNeighbor *bgpd.BGPNeighbor) bool {
+func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighborConfig, newNeighbor *bgpd.BGPNeighborConfig) bool {
 	oldNeighConf, err := h.ValidateBGPNeighbor(oldNeighbor)
 	if !err {
 		return false
@@ -204,7 +208,7 @@ func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighbor, newNeighbor 
 	return true
 }
 
-func (h *BGPHandler) CreateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, error) {
+func (h *BGPHandler) CreateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create BGP neighbor attrs:", bgpNeighbor))
 	return h.SendBGPNeighbor(nil, bgpNeighbor), nil
 }
@@ -218,6 +222,10 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.Description = neighborState.Description
 	bgpNeighborResponse.NeighborAddress = neighborState.NeighborAddress.String()
 	bgpNeighborResponse.SessionState = int32(neighborState.SessionState)
+	bgpNeighborResponse.RouteReflectorClusterId = int32(neighborState.RouteReflectorClusterId)
+	bgpNeighborResponse.RouteReflectorClient = neighborState.RouteReflectorClient
+	bgpNeighborResponse.MultiHopEnable = neighborState.MultiHopEnable
+	bgpNeighborResponse.MultiHopTTL = int8(neighborState.MultiHopTTL)
 
 	received := bgpd.NewBgpCounters()
 	received.Notification = int64(neighborState.Messages.Received.Notification)
@@ -260,7 +268,7 @@ func (h *BGPHandler) BulkGetBGPNeighbors(index int64, count int64) (*bgpd.BGPNei
 	return bgpNeighborStateBulk, nil
 }
 
-func (h *BGPHandler) UpdateBGPNeighbor(origN *bgpd.BGPNeighbor, updatedN *bgpd.BGPNeighbor, attrSet []bool) (bool, error) {
+func (h *BGPHandler) UpdateBGPNeighbor(origN *bgpd.BGPNeighborConfig, updatedN *bgpd.BGPNeighborConfig, attrSet []bool) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update peer attrs:", updatedN))
 	return h.SendBGPNeighbor(origN, updatedN), nil
 }

@@ -12,7 +12,11 @@ type OSPFHeader struct {
     areaId      []byte
     chksum      uint16
     authType    uint16
-    authKey     []uint8
+    authKey     []byte
+}
+
+func NewOSPFHeader() *OSPFHeader {
+    return &OSPFHeader{}
 }
 
 func encodeOspfHdr(ospfHdr OSPFHeader) ([]byte) {
@@ -27,4 +31,15 @@ func encodeOspfHdr(ospfHdr OSPFHeader) ([]byte) {
     //copy(pkt[16:24], ospfHdr.authKey)
 
     return pkt
+}
+
+func decodeOspfHdr(ospfPkt []byte, ospfHdr *OSPFHeader) {
+    ospfHdr.ver = uint8(ospfPkt[0])
+    ospfHdr.pktType = uint8(ospfPkt[1])
+    ospfHdr.pktlen = binary.BigEndian.Uint16(ospfPkt[2:4])
+    ospfHdr.routerId = ospfPkt[4:8]
+    ospfHdr.areaId = ospfPkt[8:12]
+    ospfHdr.chksum = binary.BigEndian.Uint16(ospfPkt[12:14])
+    ospfHdr.authType = binary.BigEndian.Uint16(ospfPkt[14:16])
+    ospfHdr.authKey = ospfPkt[16:24]
 }

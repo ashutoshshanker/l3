@@ -7,6 +7,8 @@ import (
     "github.com/google/gopacket"
     "github.com/google/gopacket/layers"
     "encoding/binary"
+//    "time"
+    "errors"
 )
 
 type OSPFHelloData struct {
@@ -20,11 +22,8 @@ type OSPFHelloData struct {
     neighbor            []byte
 }
 
-func (server *OSPFServer)RecvHelloPkt(ifName string) {
-/*
-    var filter string = "not ether proto 0x8809"
-    local_handle, err := pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout_pcap)
-*/
+func NewOSPFHelloData() *OSPFHelloData {
+    return &OSPFHelloData{}
 }
 
 func encodeOspfHelloData(helloData OSPFHelloData) ([]byte) {
@@ -41,10 +40,20 @@ func encodeOspfHelloData(helloData OSPFHelloData) ([]byte) {
     return pkt
 }
 
+func decodeOspfHelloData(data []byte, ospfHelloData *OSPFHelloData) {
+    ospfHelloData.netmask = data[0:4]
+    ospfHelloData.helloInterval = binary.BigEndian.Uint16(data[4:6])
+    ospfHelloData.options = data[6]
+    ospfHelloData.rtrPrio = data[7]
+    ospfHelloData.rtrDeadInterval = binary.BigEndian.Uint32(data[8:12])
+    ospfHelloData.designatedRtr = data[12:16]
+    ospfHelloData.backupDesignatedRtr = data[16:20]
+}
+
 func (server *OSPFServer)BuildHelloPkt(ent IntfConf) ([]byte) {
     ospfHdr := OSPFHeader {
-        ver:            2,
-        pktType:        1,
+        ver:            OSPF_VERSION_2,
+        pktType:        uint8(HelloType),
         pktlen:         0,
         routerId:       server.ospfGlobalConf.RouterId,
         areaId:         ent.IfAreaId,
@@ -75,7 +84,7 @@ func (server *OSPFServer)BuildHelloPkt(ent IntfConf) ([]byte) {
 
     ospf := append(ospfEncHdr, helloDataEnc...)
     server.logger.Info(fmt.Sprintln("ospf:", ospf))
-    csum := computeOspfCheckSum(ospf)
+    csum := computeCheckSum(ospf)
     binary.BigEndian.PutUint16(ospf[12:14], csum)
     copy(ospf[16:24], ent.IfAuthKey)
 
@@ -109,4 +118,28 @@ func (server *OSPFServer)BuildHelloPkt(ent IntfConf) ([]byte) {
     return ospfPkt
 }
 
+func (server *OSPFServer)processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetadata, ipHdrMd *IpHdrMetadata, key IntfConfKey) error {
+    ent, _ := server.IntfConfMap[key]
+    ospfHelloData := NewOSPFHelloData()
+    if len(data) < OSPF_HELLO_MIN_SIZE {
+        err := errors.New("Invalid Hello Pkt data length")
+        return err
+    }
+    decodeOspfHelloData(data, ospfHelloData)
+    if bytesEqual(ent.IfNetmask, ospfHelloData.netmask) == false {
+        err := errors.New("Netmask mismatch")
+        return err
+    }
+
+    if ent.IfHelloInterval != ospfHelloData.helloInterval {
+        err := errors.New("Hello Interval mismatch")
+        return err
+    }
+
+    if ent.IfRtrDeadInterval != ospfHelloData.rtrDeadInterval {
+        err := errors.New("Router Dead Interval mismatch")
+        return err
+    }
+    return nil
+}
 
