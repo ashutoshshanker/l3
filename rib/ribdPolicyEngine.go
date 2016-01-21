@@ -63,9 +63,14 @@ func policyEngineApplyPolicy(route ribd.Routes, name string) {
 		switch policyStmt.actions[i].actionType {
 		   case ribdCommonDefs.PolicyActionTypeRouteDisposition:
 		      logger.Println("PolicyActionTypeRouteDisposition action to be applied")
+			  logger.Println("RouteDisposition action = ", policyStmt.actions[i].actionInfo)
 			  break
 		   case ribdCommonDefs.PolicyActionTypeRouteRedistribute:
 		      logger.Println("PolicyActionTypeRouteRedistribute action to be applied")
+			  logger.Println("Redistribute target protocol = %d %s ", policyStmt.actions[i].actionInfo, ReverseRouteProtoTypeMapDB[policyStmt.actions[i].actionInfo.(int)])
+	
+	          //Send a event
+	          RouteNotificationSend(route)
 			  break
 		   default:
 		      logger.Println("Unknown type of action")

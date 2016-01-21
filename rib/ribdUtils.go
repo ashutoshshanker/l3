@@ -2,10 +2,28 @@
 package main
 
 import (
+	"ribd"
+	"encoding/json"
+	"github.com/op/go-nanomsg"
 	"net"
 	"errors"
 	"utils/patriciaDB"
+	"l3/rib/ribdCommonDefs"
 )
+
+func RouteNotificationSend(route ribd.Routes) {
+	logger.Println("RouteNotificationSend") 
+	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : route}
+	msgbufbytes, err := json.Marshal( msgBuf)
+    msg := ribdCommonDefs.RibdNotifyMsg {MsgType:ribdCommonDefs.NOTIFY_ROUTE_CREATED, MsgBuf: msgbufbytes}
+	buf, err := json.Marshal( msg)
+	if err != nil {
+	   logger.Println("Error in marshalling Json")
+	   return
+	}
+   	logger.Println("buf", buf)
+   	RIBD_PUB.Send(buf, nanomsg.DontWait)
+}
 
 func getIPInt(ip net.IP) (ipInt int, err error) {
 	if ip == nil {

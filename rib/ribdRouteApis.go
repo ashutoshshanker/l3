@@ -2,7 +2,7 @@ package main
 
 import (
 	"arpd"
-	"encoding/json"
+//	"encoding/json"
 	"l3/rib/ribdCommonDefs"
 	"ribd"
 	"utils/patriciaDB"
@@ -10,7 +10,7 @@ import (
 	"asicd/asicdConstDefs"
 	"bytes"
 	"errors"
-	"github.com/op/go-nanomsg"
+//	"github.com/op/go-nanomsg"
 	"net"
 	"time"
 )
@@ -524,6 +524,7 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	//pass through policy engine
 	policyRoute := ribd.Routes{Ipaddr: destNetIp, Mask: networkMask, NextHopIp: nextHopIp, NextHopIfType: nextHopIfType, IfIndex: nextHopIfIndex, Metric: metric, Prototype: routeType}
 	PolicyEngineFilter(policyRoute)
+	/*
 	//If this is not a connected route, then nothing more to do
 	if routeType == ribdCommonDefs.CONNECTED {
 		logger.Println("This is a connected route, so send a route add event")
@@ -547,6 +548,7 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	}
 	logger.Println("buf", buf)
 	RIBD_PUB.Send(buf, nanomsg.DontWait)
+	*/
 	return 0, err
 }
 
