@@ -9,6 +9,9 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 type BGPFSMState int
@@ -1198,6 +1201,15 @@ func Connect(fsm *FSM, seconds uint16, addr string, connCh chan net.Conn, errCh 
 	if err != nil {
 		errCh <- err
 	} else {
+		packetConn := ipv4.NewConn(conn)
+		ttl := 1
+		if fsm.pConf.MultiHopEnable {
+			ttl = fsm.pConf.MultiHopTTL
+		}
+		if err = packetConn.SetTTL(ttl); err != nil {
+			errCh <- err
+			return
+		}
 		connCh <- conn
 	}
 }
