@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 )
 
 type BGPFSMState int
@@ -1204,7 +1203,7 @@ func Connect(fsm *FSM, seconds uint16, addr string, connCh chan net.Conn, errCh 
 		packetConn := ipv4.NewConn(conn)
 		ttl := 1
 		if fsm.pConf.MultiHopEnable {
-			ttl = fsm.pConf.MultiHopTTL
+			ttl = int(fsm.pConf.MultiHopTTL)
 		}
 		if err = packetConn.SetTTL(ttl); err != nil {
 			errCh <- err
