@@ -20,6 +20,7 @@ type GlobalConf struct {
     RestartInterval             int32
     RestartStrictLsaChecking    bool
     StubRouterAdvertisement     config.AdvertiseAction
+    Version                     uint8
 }
 
 func (server *OSPFServer) updateGlobalConf(gConf config.GlobalConf) {
@@ -51,7 +52,6 @@ func (server *OSPFServer) initOspfGlobalConfDefault() {
         return
     }
     server.ospfGlobalConf.RouterId = routerId
-    //server.ospfGlobalConf.AdminStat = config.Status(2) // disabled
     server.ospfGlobalConf.AdminStat = config.Disabled
     server.ospfGlobalConf.ASBdrRtrStatus = false
     server.ospfGlobalConf.TOSSupport = false
@@ -64,6 +64,7 @@ func (server *OSPFServer) initOspfGlobalConfDefault() {
     server.ospfGlobalConf.RestartInterval= 0
     server.ospfGlobalConf.RestartStrictLsaChecking = false
     server.ospfGlobalConf.StubRouterAdvertisement = config.DoNotAdvertise
+    server.ospfGlobalConf.Version = uint8(OSPF_VERSION_2)
     server.logger.Err("Global configuration initialized")
 }
 
@@ -73,7 +74,7 @@ func (server *OSPFServer)processGlobalConfig(gConf config.GlobalConf) {
         localIntfStateMap[key] = ent.IfAdminStat
         if ent.IfAdminStat == config.Enabled &&
             server.ospfGlobalConf.AdminStat == config.Enabled {
-            server.StopSendRecvHelloPkts(key)
+            server.StopSendRecvPkts(key)
         }
     }
 
@@ -83,7 +84,7 @@ func (server *OSPFServer)processGlobalConfig(gConf config.GlobalConf) {
     for key, ent := range localIntfStateMap {
         if ent == config.Enabled &&
             server.ospfGlobalConf.AdminStat == config.Enabled {
-            server.StartSendRecvHelloPkts(key)
+            server.StartSendRecvPkts(key)
         }
     }
 }

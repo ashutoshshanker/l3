@@ -30,14 +30,17 @@ type IntfConf struct {
     IfMulticastForwarding   config.MulticastForwarding
     IfDemand                bool
     IfAuthType              uint16
-    HelloPktSendCh          chan bool
-    HelloPktSendStatusCh    chan string
-    HelloPktRecvCh          chan bool
+    PktSendCh               chan bool
+    PktSendStatusCh         chan bool
+    PktRecvCh               chan bool
+    PktRecvStatusCh         chan bool
     SendPcapHdl             *pcap.Handle
     RecvPcapHdl             *pcap.Handle
-    SendHelloPktTimer       *time.Timer
+    HelloIntervalTicker     *time.Ticker
+    //RtrDeadIntervalTimer    *time.Timer
+    WaitTimer               *time.Timer
     IfName                  string
-    IfIpAddr                  net.IP
+    IfIpAddr                net.IP
     IfMacAddr               net.HardwareAddr
     IfNetmask               []byte
 }
@@ -66,9 +69,14 @@ func (server *OSPFServer)initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfP
         ent.IfMulticastForwarding = config.Blocked
         ent.IfDemand = false
         ent.IfAuthType = uint16(config.NoAuth)
-        ent.HelloPktSendCh = make(chan bool)
-        ent.HelloPktSendStatusCh = make(chan string)
-        ent.HelloPktRecvCh = make(chan bool)
+        ent.PktSendCh = make(chan bool)
+        ent.PktSendStatusCh = make(chan bool)
+        ent.PktRecvCh = make(chan bool)
+        ent.PktRecvStatusCh = make(chan bool)
+        //ent.WaitTimerExpired = make(chan bool)
+        ent.WaitTimer = nil
+        ent.HelloIntervalTicker = nil
+        //ent.RtrDeadIntervalTimer = nil
         ent.IfNetmask = ipIntfProp.NetMask
         ent.IfName = ipIntfProp.IfName
         ent.IfIpAddr = ipIntfProp.IpAddr
@@ -84,6 +92,16 @@ func (server *OSPFServer)initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfP
             server.logger.Err(fmt.Sprintln("RecvHdl: No device found.", ent.IfName, err))
             return
         }
+
+        filter := fmt.Sprintln("proto ospf and not src host", ipIntfProp.IpAddr.String())
+        server.logger.Info(fmt.Sprintln("Filter is : ", filter))
+        // Setting Pcap filter for Ospf Pkt
+        err = recvHdl.SetBPFFilter(filter)
+        if err != nil {
+            server.logger.Err(fmt.Sprintln("Unable to set filter on", ent.IfName))
+            return
+        }
+
         ent.RecvPcapHdl = recvHdl
         server.IntfConfMap[key] = ent
         server.logger.Info(fmt.Sprintln("Intf Conf initialized", key))
@@ -123,6 +141,14 @@ func (server *OSPFServer)createIPIntfConfMap(msg pluginCommon.IPv4IntfNotifyMsg)
         NetMask:    ipNet.Mask,
     }
     server.initDefaultIntfConf(intfConfKey, ipIntfProp)
+    _, exist := server.IntfConfMap[intfConfKey]
+    if !exist {
+        server.logger.Err("No such inteface exists")
+        return
+    }
+    if server.ospfGlobalConf.AdminStat == config.Enabled {
+        server.StartSendRecvPkts(intfConfKey)
+    }
 }
 
 func (server *OSPFServer)deleteIPIntfConfMap(msg pluginCommon.IPv4IntfNotifyMsg) {
@@ -139,6 +165,15 @@ func (server *OSPFServer)deleteIPIntfConfMap(msg pluginCommon.IPv4IntfNotifyMsg)
         IPAddr:     config.IpAddress(ip.String()),
         //IntfIdx:    int(msg.IfIdx),
         IntfIdx:    config.InterfaceIndexOrZero(0),
+    }
+    ent, exist := server.IntfConfMap[intfConfKey]
+    if !exist {
+        server.logger.Err("No such inteface exists")
+        return
+    }
+    if server.ospfGlobalConf.AdminStat == config.Enabled &&
+        ent.IfAdminStat == config.Enabled {
+        server.StopSendRecvPkts(intfConfKey)
     }
     server.logger.Info(fmt.Sprintln("1:delete IPIntfConfMap for ", intfConfKey))
     delete(server.IntfConfMap, intfConfKey)
@@ -193,7 +228,7 @@ func (server *OSPFServer)processIntfConfig(ifConf config.InterfaceConf) {
     }
     if ent.IfAdminStat == config.Enabled &&
         server.ospfGlobalConf.AdminStat == config.Enabled {
-        server.StopSendRecvHelloPkts(intfConfKey)
+        server.StopSendRecvPkts(intfConfKey)
     }
 
     server.updateIPIntfConfMap(ifConf)
@@ -202,8 +237,28 @@ func (server *OSPFServer)processIntfConfig(ifConf config.InterfaceConf) {
     ent, _ = server.IntfConfMap[intfConfKey]
     if ent.IfAdminStat == config.Enabled &&
         server.ospfGlobalConf.AdminStat == config.Enabled {
-        server.StartSendRecvHelloPkts(intfConfKey)
+        server.StartSendRecvPkts(intfConfKey)
     }
 }
 
+func (server *OSPFServer)StopSendRecvPkts(intfConfKey IntfConfKey) {
+    server.logger.Info("Stop Sending Hello Pkt")
+    server.StopOspfTransPkts(intfConfKey)
+    server.logger.Info("Stop Receiving Hello Pkt")
+    server.StopOspfRecvPkts(intfConfKey)
+}
 
+func (server *OSPFServer)StartSendRecvPkts(intfConfKey IntfConfKey) {
+    ent, _ := server.IntfConfMap[intfConfKey]
+    helloInterval := time.Duration(ent.IfHelloInterval) * time.Second
+    waitTime := time.Duration(ent.IfRtrDeadInterval) * time.Second
+   // rtrDeadInterval := time.Duration(ent.IfRtrDeadInterval * time.Second)
+    ent.HelloIntervalTicker = time.NewTicker(helloInterval)
+    ent.WaitTimer = time.NewTimer(waitTime)
+    //ent.RtrDeadIntervalTimer := time.NewTicker(rtrDeadInterval)
+    server.logger.Info("Start Sending Hello Pkt")
+    server.IntfConfMap[intfConfKey] = ent
+    go server.StartOspfTransPkts(intfConfKey)
+    server.logger.Info("Start Receiving Hello Pkt")
+    go server.StartOspfRecvPkts(intfConfKey)
+}
