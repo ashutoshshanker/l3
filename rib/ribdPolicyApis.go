@@ -8,7 +8,22 @@ import (
 	"utils/patriciaDB"
 )
 var PolicyDB = patriciaDB.NewTrie()
-type PolicyStmtInfo struct {
+var PolicyConfigDB = patriciaDB.NewTrie()
+
+type PolicyConditions struct {
+	conditionType int
+	conditionInfo interface {}
+}
+type PolicyActions struct {
+	actionType int
+	actionInfo interface {}
+}
+type PolicyStmt struct {				//policy engine uses this
+	name               string
+	conditions         []PolicyConditions
+	actions            []PolicyActions
+}
+type PolicyStmtInfo struct {			//config
 	name                   string
 	//conditions
 	prefixSetMatchInfo     ribd.PolicyDefinitionStatementMatchPrefixSet
@@ -16,7 +31,8 @@ type PolicyStmtInfo struct {
     //action
 	routeDisposition       string
 	//setTag
-	//redistribute
+	redistribute           bool
+	redistributeTargetProtocol int
 	localDBSliceIdx        int8       
 }
 var RouteProtocolTypeMapDB = make(map[string]int)
@@ -40,6 +56,59 @@ func updateProtocolPolicyTable(protoType int, name string, op int) {
 	ProtocolPolicyListDB[protoType] = policyList
 }
 
+func updatePolicyDB(cfg PolicyStmtInfo) {
+	logger.Println("updatePolicyDB")
+	policyStmtInfo := PolicyDB.Get(patriciaDB.Prefix(cfg.name))
+	var tempCondition PolicyConditions
+	var tempAction PolicyActions
+	if(policyStmtInfo == nil) {
+	   var	newPolicyStmt PolicyStmt
+	   logger.Println("Defining a new policy statement with name in the policy engine DB", cfg.name)
+        newPolicyStmt.name = cfg.name
+		
+       //check what conditions need to be installed
+	   if len(cfg.prefixSetMatchInfo.PrefixSet) != 0 {
+         logger.Println("Add Prefix match condition")
+		 if newPolicyStmt.conditions == nil {
+			newPolicyStmt.conditions = make([] PolicyConditions, 0)
+		}
+		tempCondition.conditionType = ribdCommonDefs.PolicyConditionTypePrefixMatch
+		tempCondition.conditionInfo = cfg.prefixSetMatchInfo
+		newPolicyStmt.conditions = append(newPolicyStmt.conditions, tempCondition)
+	   }	
+        if(cfg.routeProtocolType != -1) {
+         logger.Println("Add Protocol match condition")
+		 if newPolicyStmt.conditions == nil {
+			newPolicyStmt.conditions = make([] PolicyConditions, 0)
+		 }
+		 tempCondition.conditionType = ribdCommonDefs.PolicyConditionTypeProtocolMatch
+		 tempCondition.conditionInfo = cfg.routeProtocolType	
+		}
+		
+		//actions
+		if len(cfg.routeDisposition) > 0 {
+			logger.Println("Add routeDisposition action")
+			if newPolicyStmt.actions == nil {
+				newPolicyStmt.actions = make ([] PolicyActions, 0)
+			}
+			tempAction.actionType = ribdCommonDefs.PolicyActionTypeRouteDisposition
+			tempAction.actionInfo = cfg.routeDisposition
+		}
+		
+		if(cfg.redistribute == true) {
+			logger.Println("Add redistribute action")
+			if newPolicyStmt.actions == nil {
+				newPolicyStmt.actions = make ([] PolicyActions, 0)
+			}
+			tempAction.actionType = ribdCommonDefs.PolicyActionTypeRouteRedistribute
+			tempAction.actionInfo = cfg.redistributeTargetProtocol
+		}
+		if ok := PolicyConfigDB.Insert(patriciaDB.Prefix(cfg.name), newPolicyStmt); ok != true {
+			logger.Println(" return value not ok")
+			return
+		}
+	}
+}
 
 func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["Connected"] = ribdCommonDefs.CONNECTED
@@ -63,8 +132,9 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatementMatchPrefixSet(cfg *
 
 func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStatement) (val bool, err error) {
 	logger.Println("CreatePolicyDefinitionStatement")
-	policyStmtInfo := PolicyDB.Get(patriciaDB.Prefix(cfg.Name))
+	policyStmtInfo := PolicyConfigDB.Get(patriciaDB.Prefix(cfg.Name))
 	protoType := -1
+	targetProtoType := -1
 	var tempMatchPrefixSetInfo ribd.PolicyDefinitionStatementMatchPrefixSet
 	if(policyStmtInfo == nil) {
 	   logger.Println("Defining a new policy statement with name ", cfg.Name)
@@ -76,8 +146,13 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 	      protoType = retProto
 	   }
 	   logger.Printf("protoType for installProtocolEq %s is %d\n", cfg.InstallProtocolEq, protoType)
-	   newPolicyStmtInfo :=PolicyStmtInfo{name:cfg.Name, prefixSetMatchInfo:tempMatchPrefixSetInfo, routeProtocolType:protoType, routeDisposition:cfg.RouteDisposition, localDBSliceIdx:int8(len(localPolicyStmtDB))}
-		if ok := PolicyDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyStmtInfo); ok != true {
+	   retProto,found = RouteProtocolTypeMapDB[cfg.RedistributeTargetProtocol]
+	   if(found == true ) {
+	      targetProtoType = retProto
+	   }
+	   logger.Printf("protoType for installProtocolEq %s is %d\n", cfg.InstallProtocolEq, protoType)
+	   newPolicyStmtInfo := PolicyStmtInfo{name:cfg.Name, prefixSetMatchInfo:tempMatchPrefixSetInfo, routeProtocolType:protoType, routeDisposition:cfg.RouteDisposition, redistribute:cfg.Redistribute,redistributeTargetProtocol:targetProtoType,localDBSliceIdx:int8(len(localPolicyStmtDB))}
+		if ok := PolicyConfigDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyStmtInfo); ok != true {
 			logger.Println(" return value not ok")
 			return val, err
 		}
@@ -86,6 +161,7 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 			localPolicyStmtDB = make([]localDB, 0)
 		} 
 	    localPolicyStmtDB = append(localPolicyStmtDB, localDBRecord)
+	    updatePolicyDB(newPolicyStmtInfo)
 	} else {
 		logger.Println("Duplicate Policy definition name")
 		err = errors.New("Duplicate policy definition")
@@ -129,7 +205,7 @@ func (m RouteServiceHandler) GetBulkPolicyStmts( fromIndex ribd.Int, rcount ribd
 			break
 		}
 		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyStmtDB[i+fromIndex].prefix))
-		prefixNodeGet := PolicyDB.Get(localPolicyStmtDB[i+fromIndex].prefix)
+		prefixNodeGet := PolicyConfigDB.Get(localPolicyStmtDB[i+fromIndex].prefix)
 		if(prefixNodeGet != nil) {
 			prefixNode := prefixNodeGet.(PolicyStmtInfo)
 			nextNode = &tempNode[validCount]

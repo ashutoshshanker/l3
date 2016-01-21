@@ -91,7 +91,8 @@ struct PolicyDefinitionStatement{
 	2 : PolicyDefinitionStatementMatchPrefixSet MatchPrefixSetInfo
 	3 : string 	InstallProtocolEq
 	4 : string   RouteDisposition
-	//5 : 
+	5 : bool     Redistribute
+	6 : string   RedistributeTargetProtocol
 }
 struct PolicyDefinitionStatementGetInfo {
 	1: int StartIdx
