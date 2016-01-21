@@ -521,8 +521,13 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	}
 
     //pass through policy engine
+<<<<<<< HEAD
 	policyRoute := ribd.Routes { Ipaddr : destNetIp, Mask : networkMask,	NextHopIp : nextHopIp, NextHopIfType: nextHopIfType, IfIndex : nextHopIfIndex, Metric : metric, Prototype:routeType}
 	PolicyEngineFilter(policyRoute)	
+=======
+	//policyRoute := ribd.Routes { Ipaddr : destNetIp, Mask : networkMask,	NextHopIp : nextHopIp, NextHopIfType: nextHopIfType, IfIndex : nextHopIfIndex, Metric : metric, Prototype:routeType}
+	//PolicyEngineApplyPolicy(policyRoute)	
+>>>>>>> upstream/master
 	//If this is not a connected route, then nothing more to do
 	if(routeType == ribdCommonDefs.CONNECTED) {
 	   logger.Println("This is a connected route, so send a route add event")
