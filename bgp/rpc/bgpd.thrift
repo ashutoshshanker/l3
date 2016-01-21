@@ -1,8 +1,8 @@
 namespace go bgpd
 typedef i32 int
 
-struct BGPGlobal {
-    1: i32 AS,
+struct BGPGlobalConfig {
+    1: i32 ASNum,
     2: string RouterId,
 }
 
@@ -33,7 +33,7 @@ struct BGPQueues {
 	2: i32 Output
 }
 
-struct BGPNeighbor {
+struct BGPNeighborConfig {
     1: i32 PeerAS,
     2: i32 LocalAS,
 	3: string AuthPassword,
@@ -41,6 +41,8 @@ struct BGPNeighbor {
     5: string NeighborAddress,
 	6: i32 RouteReflectorClusterId,
 	7: bool RouteReflectorClient,
+	8: bool MultiHopEnable,
+	9: byte MultiHopTTL,
 }
 
 struct BGPNeighborState {
@@ -55,6 +57,8 @@ struct BGPNeighborState {
 	9: BGPQueues Queues,
 	10: i32 RouteReflectorClusterId,
 	11: bool RouteReflectorClient,
+	12: bool MultiHopEnable,
+	13: byte MultiHopTTL,
 }
 
 struct BGPNeighborStateBulk {
@@ -67,14 +71,14 @@ struct BGPNeighborStateBulk {
 
 service BGPServer
 {
-    bool CreateBGPGlobal(1: BGPGlobal bgpConf);
+    bool CreateBGPGlobal(1: BGPGlobalConfig bgpConf);
 	BGPGlobalState GetBGPGlobal();
-    bool UpdateBGPGlobal(1: BGPGlobal origGlobal, 2: BGPGlobal updatedGlobal, 3: list<bool> attrSet);
+    bool UpdateBGPGlobal(1: BGPGlobalConfig origGlobal, 2: BGPGlobalConfig updatedGlobal, 3: list<bool> attrSet);
     //bool DeleteBGPGlobal(1: BGPGlobal bgpConf);
 
-    bool CreateBGPNeighbor(1: BGPNeighbor neighbor);
+    bool CreateBGPNeighbor(1: BGPNeighborConfig neighbor);
 	BGPNeighborState GetBGPNeighbor(1: string ip);
 	BGPNeighborStateBulk BulkGetBGPNeighbors(1: i64 index, 2: i64 count);
-    bool UpdateBGPNeighbor(1: BGPNeighbor origNeighbor, 2: BGPNeighbor updatedNeighbor, 3: list<bool> attrSet);
+    bool UpdateBGPNeighbor(1: BGPNeighborConfig origNeighbor, 2: BGPNeighborConfig updatedNeighbor, 3: list<bool> attrSet);
     bool DeleteBGPNeighbor(1: string neighborAddress);
 }
