@@ -27,10 +27,10 @@ func main() {
 		fmt.Println("Failed to open the socket, error:", err)
 	}
 
-	client := ospfd.NewOSPFServerClientFactory(clientTransport, protocolFactory)
+	client := ospfd.NewOSPFDServicesClientFactory(clientTransport, protocolFactory)
 
-	globalConfigArgs := ospfd.NewOspfGlobalConf()
-        globalConfigArgs.RouterId = "40.1.1.2"
+	globalConfigArgs := ospfd.NewOspfGlobalConfig()
+        globalConfigArgs.RouterIdKey = "40.1.1.2"
         globalConfigArgs.AdminStat = 1
         globalConfigArgs.ASBdrRtrStatus = true
         globalConfigArgs.TOSSupport = true
@@ -46,7 +46,7 @@ func main() {
         globalConfigArgs.StubRouterAdvertisement = 1
 
 	fmt.Println("calling CreateOspfGlobal with attr:", globalConfigArgs)
-	ret, err := client.CreateOspfGlobalConf(globalConfigArgs)
+	ret, err := client.CreateOspfGlobalConfig(globalConfigArgs)
 	if !ret {
 		fmt.Println("CreateOspfGlobal FAILED, ret:", ret, "err:", err)
 	}
