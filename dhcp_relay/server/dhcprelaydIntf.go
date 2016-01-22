@@ -61,7 +61,8 @@ func DhcpRelayInitPortParams() error {
 	}
 	logger.Info("DRA calling asicd for port config")
 	count := 10
-	dhcprelayGblInfo = make(map[int]DhcpRelayAgentGlobalInfo)
+	// for optimization initializing 25 interfaces map...
+	dhcprelayGblInfo = make(map[string]DhcpRelayAgentGlobalInfo, 25)
 	for {
 		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortConfig(
 			int64(currMarker), int64(count))

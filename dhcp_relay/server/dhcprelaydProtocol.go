@@ -2,30 +2,80 @@
 package relayServer
 
 import (
-	_ "asicd/asicdConstDefs"
-	_ "asicdServices"
-	_ "dhcprelayd"
-	_ "encoding/json"
-	_ "flag"
-	_ "fmt"
-	_ "git.apache.org/thrift.git/lib/go/thrift"
+	"fmt"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	_ "io/ioutil"
-	_ "log/syslog"
-	_ "os"
-	_ "os/signal"
-	_ "strconv"
-	_ "syscall"
-	_ "utils/ipcutils"
+	"time"
 )
 
 type DhcpRelayPcapHandle struct {
-	pcap_handle *pcap.Handle
-	ifName      string
+	pcapHandle *pcap.Handle
+	ifName     string
 }
 
-func DhcpRelayAgentHandleProtocol(ifName string) {
+var (
+	snapLen     int32         = 65549 // packet capture length
+	promisc     bool          = false // mode
+	pcapTimeOut time.Duration = 1 * time.Second
+)
 
+func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
+	for {
+		//dhcprelayConfigMutex := &sync.Mutex{}
+		dhcprelayConfigMutex.RLock()
+		if !info.IntfConfig.Enable {
+			logger.Info("DRA: relay agent disabled deleting pcap" +
+				"handler if any")
+			// delete pcap handler and exit out of the go routine
+			// @TODO: jgheewala memory leak???
+			info.PcapHandler.pcapHandle = nil
+			return
+		}
+		recvHandler := info.PcapHandler.pcapHandle
+		dhcprelayConfigMutex.RUnlock()
+		src := gopacket.NewPacketSource(recvHandler,
+			layers.LayerTypeEthernet)
+		in := src.Packets()
+		packet, ok := <-in
+		if ok {
+			logger.Info(fmt.Sprintln("packet is", packet))
+		}
+	}
+}
+
+func DhcpRelayAgentPcapCreate(info DhcpRelayAgentGlobalInfo) {
+	logger.Info("DRA: Creating Pcap Handler for intf:" +
+		info.IntfConfig.IfIndex)
+	info.StateDebugInfo.pcapHandler = "Creating Pcap Handler"
+	var filter string = "udp port 67 or udp port 68"
+	pcapLocalHandle, err := pcap.OpenLive(info.IntfConfig.IfIndex,
+		snapLen, promisc, pcapTimeOut)
+	if pcapLocalHandle == nil {
+		logger.Err(fmt.Sprintln("DRA: server no device found: ",
+			info.IntfConfig.IfIndex, err))
+	} else {
+		info.StateDebugInfo.pcapHandler = "Setting filter for Pcap " +
+			"Handler"
+		logger.Info("DRA: setting filter for intf: " +
+			info.IntfConfig.IfIndex + " filter: " + filter)
+		err = pcapLocalHandle.SetBPFFilter(filter)
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: Unable to set filter on:",
+				info.IntfConfig.IfIndex, err))
+		}
+		//dhcprelayConfigMutex := &sync.Mutex{}
+		dhcprelayConfigMutex.RLock()
+		// will the localHandler get destroyed?
+		info.PcapHandler.pcapHandle = pcapLocalHandle
+		info.PcapHandler.ifName = info.IntfConfig.IfIndex
+		info.StateDebugInfo.pcapHandler = "Pcap Handler successfully " +
+			"created for intf " + info.IntfConfig.IfIndex
+		dhcprelayConfigMutex.RUnlock()
+		logger.Info("DRA: Pcap Handler created successfully for intf " +
+			info.IntfConfig.IfIndex)
+		go DhcpRelayAgentReceiveDhcpPkt(info)
+	}
 }
 
 /*
@@ -44,7 +94,7 @@ func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
 	//for ifNum, portInfo := range portInfoMap {
 	//ifName := portInfo.Name
 	// Created a global Entry for Interface
-	gblEntry := dhcprelayGblInfo[ifNum]
+	gblEntry := dhcprelayGblInfo[ifName]
 	// Setting up default values for globalEntry
 	gblEntry.IntfConfig.IpSubnet = ""
 	gblEntry.IntfConfig.Netmask = ""
@@ -59,8 +109,9 @@ func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
 
 	// Stats information
 	gblEntry.StateDebugInfo.initDone = "init done"
+	gblEntry.PcapHandler = nil
 
-	dhcprelayGblInfo[ifNum] = gblEntry
+	dhcprelayGblInfo[ifName] = gblEntry
 
 	//}
 	//logger.Info("DRA: PCAP Handling Initialized successfully")
