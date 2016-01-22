@@ -117,6 +117,7 @@ func (server *OSPFServer)processOspfHeader(ospfPkt []byte, key IntfConfKey, md *
 */
     md.pktType = OspfType(ospfHdr.pktType)
     md.pktlen = ospfHdr.pktlen
+    copy(md.routerId, ospfHdr.routerId)
     return nil
 }
 
@@ -161,6 +162,7 @@ func (server *OSPFServer)ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packet
     } else {
         server.logger.Info("Ospfv2 Header is processed successfully")
     }
+    return
 }
 
 func (server *OSPFServer)processOspfData(data []byte, ipHdrMd *IpHdrMetadata, ospfHdrMd *OspfHdrMetadata, key IntfConfKey) error {
