@@ -64,6 +64,7 @@ const (
 type IntfToNeighMsg struct {
         IntfConfKey IntfConfKey
 	RouterId     uint32
+	RtrPrio      uint8
 	NeighborIP   net.IP
 	nbrDeadTimer time.Duration
 	TwoWayStatus bool
