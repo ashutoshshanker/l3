@@ -21,28 +21,28 @@ const (
 const RouteLocal = (RouteTypeConnected | RouteTypeStatic | RouteTypeIGP)
 
 type Path struct {
-	server *BGPServer
-	logger *syslog.Writer
-	peer *Peer
-	pathAttrs []packet.BGPPathAttr
-	withdrawn bool
-	updated bool
-	Pref uint32
-	NextHop string
+	server        *BGPServer
+	logger        *syslog.Writer
+	peer          *Peer
+	pathAttrs     []packet.BGPPathAttr
+	withdrawn     bool
+	updated       bool
+	Pref          uint32
+	NextHop       string
 	NextHopIfType ribd.Int
-	NextHopIfIdx ribd.Int
-	Metric ribd.Int
-	routeType uint8
+	NextHopIfIdx  ribd.Int
+	Metric        ribd.Int
+	routeType     uint8
 }
 
 func NewPath(server *BGPServer, peer *Peer, pa []packet.BGPPathAttr, withdrawn bool, updated bool, routeType uint8) *Path {
 	path := &Path{
-		server: server,
-		logger: server.logger,
-		peer: peer,
+		server:    server,
+		logger:    server.logger,
+		peer:      peer,
 		pathAttrs: pa,
 		withdrawn: withdrawn,
-		updated: updated,
+		updated:   updated,
 		routeType: routeType,
 	}
 
@@ -52,17 +52,17 @@ func NewPath(server *BGPServer, peer *Peer, pa []packet.BGPPathAttr, withdrawn b
 
 func (p *Path) Clone() *Path {
 	path := &Path{
-		server: p.server,
-		logger: p.server.logger,
-		peer: p.peer,
-		pathAttrs: p.pathAttrs,
-		withdrawn: p.withdrawn,
-		updated: p.updated,
-		Pref: p.Pref,
-		NextHop: p.NextHop,
+		server:       p.server,
+		logger:       p.server.logger,
+		peer:         p.peer,
+		pathAttrs:    p.pathAttrs,
+		withdrawn:    p.withdrawn,
+		updated:      p.updated,
+		Pref:         p.Pref,
+		NextHop:      p.NextHop,
 		NextHopIfIdx: p.NextHopIfIdx,
-		Metric: p.Metric,
-		routeType: p.routeType,
+		Metric:       p.Metric,
+		routeType:    p.routeType,
 	}
 
 	return path
@@ -138,10 +138,21 @@ func (p *Path) HasASLoop() bool {
 	for _, attr := range p.pathAttrs {
 		if attr.GetCode() == packet.BGPPathAttrTypeASPath {
 			asPaths := attr.(*packet.BGPPathAttrASPath).Value
+			asSize := attr.(*packet.BGPPathAttrASPath).ASSize
 			for _, asSegment := range asPaths {
-				for _, as := range asSegment.AS {
-					if uint32(as) == p.peer.Neighbor.Config.LocalAS {
-						return true
+				if asSize == 4 {
+					seg := asSegment.(*packet.BGPAS4PathSegment)
+					for _, as := range seg.AS {
+						if as == p.peer.Neighbor.Config.LocalAS {
+							return true
+						}
+					}
+				} else {
+					seg := asSegment.(*packet.BGPAS2PathSegment)
+					for _, as := range seg.AS {
+						if as == uint16(p.peer.Neighbor.Config.LocalAS) {
+							return true
+						}
 					}
 				}
 			}
@@ -162,10 +173,10 @@ func (p *Path) GetNumASes() uint32 {
 		if attr.GetCode() == packet.BGPPathAttrTypeASPath {
 			asPaths := attr.(*packet.BGPPathAttrASPath).Value
 			for _, asPath := range asPaths {
-				if asPath.Type == packet.BGPASPathSet {
+				if asPath.GetType() == packet.BGPASPathSet {
 					total += 1
-				} else if asPath.Type == packet.BGPASPathSequence {
-					total += uint32(asPath.Length)
+				} else if asPath.GetType() == packet.BGPASPathSequence {
+					total += uint32(asPath.GetLen())
 				}
 			}
 			break
@@ -210,7 +221,7 @@ func (p *Path) GetNumClusters() uint16 {
 	for _, attr := range p.pathAttrs {
 		if attr.GetCode() == packet.BGPPathAttrTypeClusterList {
 			length := attr.(*packet.BGPPathAttrClusterList).Length
-			total = length/4
+			total = length / 4
 			break
 		}
 	}

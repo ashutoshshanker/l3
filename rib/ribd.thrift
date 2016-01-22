@@ -90,8 +90,9 @@ struct PolicyDefinitionStatement{
     1 : string   Name
 	2 : PolicyDefinitionStatementMatchPrefixSet MatchPrefixSetInfo
 	3 : string 	InstallProtocolEq
-	4 : bool 	AcceptRoute
-	5 : bool 	RejectRoute
+	4 : string   RouteDisposition
+	5 : bool     Redistribute
+	6 : string   RedistributeTargetProtocol
 }
 struct PolicyDefinitionStatementGetInfo {
 	1: int StartIdx
@@ -148,7 +149,8 @@ service RouteService
 
 	bool CreatePolicyDefinitionStatement(1: PolicyDefinitionStatement config);
 //	bool UpdatePolicyDefinitionStatement(1: PolicyDefinitionStatement origconfig, 2: PolicyDefinitionStatement newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyDefinitionStatement(1: PolicyDefinitionStatement config);
+	bool DeletePolicyDefinitionStatement(1: PolicyDefinitionStatement config);
+    PolicyDefinitionStatementGetInfo getBulkPolicyStmts(1: int fromIndex, 2: int count);
 
 	bool CreatePolicyDefinition(1: PolicyDefinition config);
 //	bool UpdatePolicyDefinition(1: PolicyDefinition origconfig, 2: PolicyDefinition newconfig, 3: list<bool> attrset);

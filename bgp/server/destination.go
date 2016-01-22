@@ -347,7 +347,7 @@ func deleteIBGPRoutes(updatedPaths []*Path) []*Path {
 
 func (d *Destination) removeIBGPRoutesIfEBGPExist(updatedPaths []*Path) []*Path {
 	for _, path := range updatedPaths {
-		if path.peer.IsExternal() {
+		if path.peer != nil && path.peer.IsExternal() {
 			return deleteIBGPRoutes(updatedPaths)
 		}
 	}

@@ -13,24 +13,11 @@ import (
 	"strconv"
 	"time"
 	"utils/ipcutils"
-	//    "l3/rib/ribdCommonDefs"
 	"asicd/pluginManager/pluginCommon"
 	"asicdServices"
 	"sync"
 )
 
-var (
-	snapshot_len int32         = 65549 //packet capture length
-	promiscuous  bool          = false //mode
-	timeout_pcap time.Duration = 5 * time.Second
-)
-
-const (
-	OSPF_HELLO_MIN_SIZE = 20
-	OSPF_HEADER_SIZE    = 24
-	IP_HEADER_MIN_LEN   = 20
-	OSPF_PROTO_ID       = 89
-)
 
 type ClientJson struct {
 	Name string `json:Name`
@@ -53,6 +40,7 @@ type OSPFServer struct {
 	IPIntfPropertyMap map[string]IPIntfProperty
 	ospfGlobalConf    GlobalConf
 	GlobalConfigCh    chan config.GlobalConf
+    AreaConfigCh            chan config.AreaConf
 	IntfConfigCh      chan config.InterfaceConf
 	/*
 	   connRoutesTimer         *time.Timer
@@ -63,6 +51,7 @@ type OSPFServer struct {
 	asicdSubSocket      *nanomsg.SubSocket
 	asicdSubSocketCh    chan []byte
 	asicdSubSocketErrCh chan error
+    AreaConfMap             map[AreaConfKey]AreaConf
 	IntfConfMap         map[IntfConfKey]IntfConf
 	NeighborConfigMap   map[int32]OspfNeighborEntry
 	NeighborListMap     map[IntfConfKey]list.List
@@ -73,9 +62,11 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer := &OSPFServer{}
 	ospfServer.logger = logger
 	ospfServer.GlobalConfigCh = make(chan config.GlobalConf)
+    ospfServer.AreaConfigCh = make(chan config.AreaConf)
 	ospfServer.IntfConfigCh = make(chan config.InterfaceConf)
 	ospfServer.portPropertyMap = make(map[int32]PortProperty)
 	ospfServer.vlanPropertyMap = make(map[uint16]VlanProperty)
+    ospfServer.AreaConfMap = make(map[AreaConfKey]AreaConf)
 	ospfServer.IntfConfMap = make(map[IntfConfKey]IntfConf)
 	ospfServer.NeighborConfigMap = make(map[int32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
@@ -132,67 +123,6 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 	}
 }
 
-func computeOspfCheckSum(ospfPkt []byte) uint16 {
-	var csum uint32
-
-	for i := 0; i < len(ospfPkt); i += 2 {
-		csum += uint32(ospfPkt[i]) << 8
-		csum += uint32(ospfPkt[i+1])
-	}
-	ospfChkSum := ^uint16((csum >> 16) + csum)
-	return ospfChkSum
-}
-
-func (server *OSPFServer) StopSendRecvHelloPkts(intfConfKey IntfConfKey) {
-	ent, _ := server.IntfConfMap[intfConfKey]
-	//server.logger.Info("Stop Receiving Hello Pkt")
-	//ent.HelloPktRecvCh<-false
-	server.logger.Info("Stop Sending Hello Pkt")
-	ent.HelloPktSendCh <- false
-	status := <-ent.HelloPktSendStatusCh
-	if status == "closed" {
-		server.logger.Info("Hello Pkt Send Thread closed successfully")
-	}
-}
-
-func (server *OSPFServer) StartSendRecvHelloPkts(intfConfKey IntfConfKey) {
-	server.logger.Info("Start Sending Hello Pkt")
-	//ent.HelloPktSendCh<-true
-	go server.StartSendHelloPkt(intfConfKey)
-	//go server.StartRecvHelloPkt(intfConfKey)
-	server.logger.Info("Start Receiving Hello Pkt")
-	//ent.HelloPktRecvCh<-true
-}
-
-func (server *OSPFServer) StartSendHelloPkt(key IntfConfKey) {
-	ent, _ := server.IntfConfMap[key]
-	server.logger.Info(fmt.Sprintln("Started Send Hello Pkt Thread", ent.IfName))
-	handle := ent.SendPcapHdl
-	ospfHelloPkt := server.BuildHelloPkt(ent)
-	for {
-		time.Sleep(time.Duration(ent.IfHelloInterval) * time.Second)
-		select {
-		case status := <-ent.HelloPktSendCh:
-			if status == false {
-				ent.HelloPktSendStatusCh <- "closed"
-				return
-			}
-		default:
-			if handle != nil {
-				if err := handle.WritePacketData(ospfHelloPkt); err != nil {
-					server.logger.Err("Unable to send the hello pkt")
-				}
-			} else {
-				server.logger.Err("Invalid pcap handle")
-			}
-		}
-	}
-}
-
-func (server *OSPFServer) StartRecvHelloPkt(key IntfConfKey) {
-
-}
-
 func (server *OSPFServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Ospf Server"))
 	server.ConnectToClients(paramFile)
@@ -217,6 +147,9 @@ func (server *OSPFServer) StartServer(paramFile string) {
 		select {
 		case gConf := <-server.GlobalConfigCh:
 			server.processGlobalConfig(gConf)
+            case areaConf := <-server.AreaConfigCh:
+                server.logger.Info(fmt.Sprintln("Received call for performing Area Configuration", areaConf))
+                server.processAreaConfig(areaConf)
 		case ifConf := <-server.IntfConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Intf Configuration", ifConf))
 			server.processIntfConfig(ifConf)

@@ -9,6 +9,8 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/net/ipv4"
 )
 
 type BGPFSMState int
@@ -929,6 +931,9 @@ func (fsm *FSM) ProcessPacket(msg *packet.BGPMessage, msgErr *packet.BGPMessageE
 		case packet.BGPMsgTypeNotification:
 			fsm.peer.Neighbor.State.Messages.Received.Notification++
 			event = BGPEventNotifMsg
+			notifyMsg := msg.Body.(*packet.BGPNotification)
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "Received notification message:",
+				notifyMsg.ErrorCode, notifyMsg.ErrorSubcode, notifyMsg.Data))
 
 		case packet.BGPMsgTypeKeepAlive:
 			event = BGPEventKeepAliveMsg
@@ -1055,7 +1060,7 @@ func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 		fsm.peerType = config.PeerTypeExternal
 	}
 
-	fsm.Manager.receivedBGPOpenMessage(fsm.id, fsm.peerConn.dir, body.BGPId)
+	fsm.Manager.receivedBGPOpenMessage(fsm.id, fsm.peerConn.dir, body)
 }
 
 func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {
@@ -1195,6 +1200,15 @@ func Connect(fsm *FSM, seconds uint16, addr string, connCh chan net.Conn, errCh 
 	if err != nil {
 		errCh <- err
 	} else {
+		packetConn := ipv4.NewConn(conn)
+		ttl := 1
+		if fsm.pConf.MultiHopEnable {
+			ttl = int(fsm.pConf.MultiHopTTL)
+		}
+		if err = packetConn.SetTTL(ttl); err != nil {
+			errCh <- err
+			return
+		}
 		connCh <- conn
 	}
 }

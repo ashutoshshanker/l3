@@ -147,10 +147,6 @@ func (mgr *FSMManager) fsmBroken(id uint8, fsmDelete bool) {
 	mgr.Peer.PeerConnBroken(fsmDelete)
 }
 
-func (mgr *FSMManager) setBGPId(bgpId net.IP) {
-	mgr.Peer.SetBGPId(bgpId)
-}
-
 func (mgr *FSMManager) SendUpdateMsg(bgpMsg *packet.BGPMessage) {
 	defer mgr.fsmMutex.Unlock()
 	mgr.fsmMutex.Lock()
@@ -218,14 +214,14 @@ func (mgr *FSMManager) getFSMIdByDir(connDir config.ConnDir) uint8 {
 	return uint8(config.ConnDirInvalid)
 }
 
-func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, bgpId net.IP) {
+func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, openMsg *packet.BGPOpen) {
 	var closeConnDir config.ConnDir = config.ConnDirInvalid
 
 	defer mgr.fsmMutex.Unlock()
 	mgr.fsmMutex.Lock()
 
 	localBGPId := packet.ConvertIPBytesToUint(mgr.gConf.RouterId.To4())
-	bgpIdInt := packet.ConvertIPBytesToUint(bgpId.To4())
+	bgpIdInt := packet.ConvertIPBytesToUint(openMsg.BGPId.To4())
 	for fsmId, fsm := range mgr.fsms {
 		if fsmId != id && fsm != nil && fsm.State.state() >= BGPFSMOpensent {
 			if fsm.State.state() == BGPFSMEstablished {
@@ -246,6 +242,7 @@ func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, 
 		}
 	}
 	if closeConnDir == config.ConnDirInvalid || closeConnDir != connDir {
-		mgr.setBGPId(bgpId)
+		asSize := packet.GetASSize(openMsg)
+		mgr.Peer.SetPeerAttrs(openMsg.BGPId, asSize)
 	}
 }

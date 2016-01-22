@@ -11,7 +11,8 @@ import (
 type DhcpRelayGlobalConfig struct {
 	// This will tell whether DHCP RELAY is enabled/disabled
 	// on the box right now or not.
-	Enable bool `SNAPROUTE: "KEY"`
+	DhcpRelay string `SNAPROUTE: "KEY"`
+	Enable    bool
 }
 
 /*
@@ -21,11 +22,13 @@ type DhcpRelayIntfConfig struct {
 	IpSubnet string `SNAPROUTE: "KEY"`
 	Netmask  string `SNAPROUTE: "KEY"`
 	//@TODO: Need to check if_index type
-	IfIndex string
+	IfIndex string `SNAPROUTE: "KEY"`
 	// Use below field for agent sub-type
 	AgentSubType int32
 	Enable       bool
-	ServerIp     []string
+	// To make life easy for testing first pass lets have only 1 server
+	//ServerIp     []string
+	ServerIp string
 }
 
 /******** Trift APIs *******/
@@ -35,7 +38,12 @@ type DhcpRelayIntfConfig struct {
 
 func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobalConfig(
 	config *dhcprelayd.DhcpRelayGlobalConfig) (bool, error) {
-	fmt.Println("Dhcp Relay %d", config.Enable)
+
+	if config.Enable {
+		fmt.Println("Enabling Dhcp Relay Global Config")
+	} else {
+		fmt.Println("Disabling Dhcp Relay Global Config")
+	}
 	return true, nil
 }
 
@@ -53,6 +61,13 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobalConfig(
 
 func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
+	fmt.Println("Creating Dhcp Relay Config for interface")
+	fmt.Println("IpSubnet:", config.IpSubnet)
+	fmt.Println("Netmask:", config.Netmask)
+	fmt.Println("IF Index:", config.IfIndex)
+	fmt.Println("AgentSubType:", config.AgentSubType)
+	fmt.Println("Enable:", config.Enable)
+	fmt.Println("ServerIp:", config.ServerIp)
 	return true, nil
 }
 

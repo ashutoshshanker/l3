@@ -4,6 +4,7 @@ package packet
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"net"
 )
 
@@ -24,6 +25,12 @@ type BGPPktSrc struct {
 func NewBGPPktSrc(src string, msg *BGPMessage) *BGPPktSrc {
 	return &BGPPktSrc{src, msg}
 }
+
+type BGPPeerAttrs struct {
+	ASSize uint8
+}
+
+const BGPASTrans uint16 = 23456
 
 const BGPHeaderMarkerLen int = 16
 
@@ -98,12 +105,12 @@ var BGPOptParamTypeToStruct = map[BGPOptParamType]BGPOptParam{
 type BGPCapabilityType uint8
 
 const (
-	_                     BGPCapabilityType = iota
-	BGPCapType4ByteASPath                   = 65
+	_                 BGPCapabilityType = iota
+	BGPCapTypeAS4Path                   = 65
 )
 
 var BGPCapTypeToStruct = map[BGPCapabilityType]BGPCapability{
-	BGPCapType4ByteASPath: &BGPCap4ByteASPath{},
+	BGPCapTypeAS4Path: &BGPCapAS4Path{},
 }
 
 type BGPPathAttrFlag uint8
@@ -134,6 +141,13 @@ const (
 	BGPPathAttrTypeOriginatorId
 	BGPPathAttrTypeClusterList
 	BGPPathAttrTypeUnknown
+	_
+	_
+	_
+	_
+	_
+	BGPPathAttrTypeAS4Path
+	BGPPathAttrTypeAS4Aggregator
 )
 
 type BGPPathAttrOriginType uint8
@@ -229,7 +243,7 @@ func (header *BGPHeader) Len() uint32 {
 type BGPBody interface {
 	Clone() BGPBody
 	Encode() ([]byte, error)
-	Decode(*BGPHeader, []byte) error
+	Decode(*BGPHeader, []byte, interface{}) error
 }
 
 type BGPCapability interface {
@@ -273,12 +287,12 @@ func (msg *BGPCapabilityBase) GetCode() BGPCapabilityType {
 	return msg.Type
 }
 
-type BGPCap4ByteASPath struct {
+type BGPCapAS4Path struct {
 	BGPCapabilityBase
 	Value uint32
 }
 
-func (msg *BGPCap4ByteASPath) Encode() ([]byte, error) {
+func (msg *BGPCapAS4Path) Encode() ([]byte, error) {
 	pkt, err := msg.BGPCapabilityBase.Encode()
 	if err != nil {
 		return nil, err
@@ -288,7 +302,7 @@ func (msg *BGPCap4ByteASPath) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (msg *BGPCap4ByteASPath) Decode(pkt []byte) error {
+func (msg *BGPCapAS4Path) Decode(pkt []byte) error {
 	err := msg.BGPCapabilityBase.Decode(pkt)
 	if err != nil {
 		return err
@@ -298,10 +312,10 @@ func (msg *BGPCap4ByteASPath) Decode(pkt []byte) error {
 	return nil
 }
 
-func NewBGPCap4ByteASPath(as uint32) *BGPCap4ByteASPath {
-	return &BGPCap4ByteASPath{
+func NewBGPCap4ByteASPath(as uint32) *BGPCapAS4Path {
+	return &BGPCapAS4Path{
 		BGPCapabilityBase: BGPCapabilityBase{
-			Type: BGPCapType4ByteASPath,
+			Type: BGPCapTypeAS4Path,
 			Len:  4,
 		},
 		Value: as,
@@ -346,7 +360,7 @@ type BGPOptParamBase struct {
 }
 
 func (msg *BGPOptParamBase) Encode() ([]byte, error) {
-	pkt := make([]byte, msg.TotalLen())
+	pkt := make([]byte, 2)
 	pkt[0] = uint8(msg.Type)
 	pkt[1] = msg.Len
 	return pkt, nil
@@ -518,7 +532,7 @@ func (msg *BGPOpen) GetOptParam(pkt []byte) (BGPOptParam, error) {
 	}
 }
 
-func (msg *BGPOpen) Decode(header *BGPHeader, pkt []byte) error {
+func (msg *BGPOpen) Decode(header *BGPHeader, pkt []byte, data interface{}) error {
 	msg.Version = pkt[0]
 	msg.MyAS = uint32(binary.BigEndian.Uint16(pkt[1:3]))
 	msg.HoldTime = binary.BigEndian.Uint16(pkt[3:5])
@@ -550,6 +564,10 @@ func NewBGPOpenMessage(myAS uint32, holdTime uint16, bgpId string, optParams []B
 		optParamsLen += param.TotalLen()
 	}
 
+	if myAS > math.MaxUint16 {
+		myAS = uint32(BGPASTrans)
+	}
+
 	return &BGPMessage{
 		Header: BGPHeader{Type: BGPMsgTypeOpen},
 		Body:   &BGPOpen{4, myAS, holdTime, net.ParseIP(bgpId), optParamsLen, optParams},
@@ -568,7 +586,7 @@ func (msg *BGPKeepAlive) Encode() ([]byte, error) {
 	return nil, nil
 }
 
-func (msg *BGPKeepAlive) Decode(*BGPHeader, []byte) error {
+func (msg *BGPKeepAlive) Decode(*BGPHeader, []byte, interface{}) error {
 	return nil
 }
 
@@ -600,7 +618,7 @@ func (msg *BGPNotification) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (msg *BGPNotification) Decode(header *BGPHeader, pkt []byte) error {
+func (msg *BGPNotification) Decode(header *BGPHeader, pkt []byte, data interface{}) error {
 	msg.ErrorCode = pkt[0]
 	msg.ErrorSubcode = pkt[1]
 	if len(pkt) > 2 {
@@ -661,7 +679,7 @@ func NewIPPrefix(prefix net.IP, length uint8) *IPPrefix {
 type BGPPathAttr interface {
 	Clone() BGPPathAttr
 	Encode() ([]byte, error)
-	Decode(pkt []byte) error
+	Decode(pkt []byte, data interface{}) error
 	TotalLen() uint32
 	GetCode() BGPPathAttrType
 }
@@ -703,7 +721,7 @@ func (pa *BGPPathAttrBase) checkFlags(pkt []byte) error {
 	return nil
 }
 
-func (pa *BGPPathAttrBase) Decode(pkt []byte) error {
+func (pa *BGPPathAttrBase) Decode(pkt []byte, data interface{}) error {
 	if len(pkt) < 3 {
 		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enough data to decode"}
 	}
@@ -780,8 +798,8 @@ func (o *BGPPathAttrOrigin) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (o *BGPPathAttrOrigin) Decode(pkt []byte) error {
-	err := o.BGPPathAttrBase.Decode(pkt)
+func (o *BGPPathAttrOrigin) Decode(pkt []byte, data interface{}) error {
+	err := o.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
@@ -808,23 +826,73 @@ func NewBGPPathAttrOrigin(originType BGPPathAttrOriginType) *BGPPathAttrOrigin {
 	return origin
 }
 
-type BGPASPathSegment struct {
+type BGPASPathSegment interface {
+	Clone() BGPASPathSegment
+	Encode(pkt []byte) error
+	Decode(pkt []byte, data interface{}) error
+	PrependAS(as uint32) bool
+	TotalLen() uint16
+	GetType() BGPASPathSegmentType
+	GetLen() uint8
+	GetNumASes() uint8
+}
+
+type BGPASPathSegmentBase struct {
 	Type                BGPASPathSegmentType
 	Length              uint8
-	AS                  []uint16
 	BGPASPathSegmentLen uint16
 }
 
-func (ps *BGPASPathSegment) Clone() *BGPASPathSegment {
+func (ps *BGPASPathSegmentBase) Encode(pkt []byte) error {
+	pkt[0] = uint8(ps.Type)
+	pkt[1] = ps.Length
+
+	return nil
+}
+
+func (ps *BGPASPathSegmentBase) Decode(pkt []byte, data interface{}) error {
+	if len(pkt) <= 2 {
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enough data to decode AS path segment"}
+	}
+
+	ps.Type = BGPASPathSegmentType(pkt[0])
+	ps.Length = pkt[1]
+
+	return nil
+}
+
+func (ps *BGPASPathSegmentBase) TotalLen() uint16 {
+	return ps.BGPASPathSegmentLen
+}
+
+func (ps *BGPASPathSegmentBase) PrependAS(as uint32) bool {
+	return true
+}
+
+func (ps *BGPASPathSegmentBase) GetType() BGPASPathSegmentType {
+	return ps.Type
+}
+
+func (ps *BGPASPathSegmentBase) GetLen() uint8 {
+	return ps.Length
+}
+
+type BGPAS2PathSegment struct {
+	BGPASPathSegmentBase
+	AS []uint16
+}
+
+func (ps *BGPAS2PathSegment) Clone() BGPASPathSegment {
 	x := *ps
 	x.AS = make([]uint16, len(ps.AS), cap(ps.AS))
 	copy(x.AS, ps.AS)
 	return &x
 }
 
-func (ps *BGPASPathSegment) Encode(pkt []byte) error {
-	pkt[0] = uint8(ps.Type)
-	pkt[1] = ps.Length
+func (ps *BGPAS2PathSegment) Encode(pkt []byte) error {
+	if err := ps.BGPASPathSegmentBase.Encode(pkt); err != nil {
+		return err
+	}
 
 	for i, as := range ps.AS {
 		binary.BigEndian.PutUint16(pkt[(i*2)+2:], as)
@@ -833,15 +901,12 @@ func (ps *BGPASPathSegment) Encode(pkt []byte) error {
 	return nil
 }
 
-func (ps *BGPASPathSegment) Decode(pkt []byte) error {
-	if len(pkt) <= 2 {
-		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enough data to decode AS path segment"}
+func (ps *BGPAS2PathSegment) Decode(pkt []byte, data interface{}) error {
+	if err := ps.BGPASPathSegmentBase.Decode(pkt, data); err != nil {
+		return err
 	}
 
-	ps.Type = BGPASPathSegmentType(pkt[0])
-	ps.Length = pkt[1]
-
-	if len(pkt) < int(ps.Length)-2 {
+	if (len(pkt) - 2) < int(ps.Length)*2 {
 		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enough data to decode AS path segment"}
 	}
 
@@ -853,7 +918,117 @@ func (ps *BGPASPathSegment) Decode(pkt []byte) error {
 	return nil
 }
 
-func (ps *BGPASPathSegment) PrependAS(as uint16) bool {
+func (ps *BGPAS2PathSegment) GetNumASes() uint8 {
+	if ps.Type == BGPASPathSet {
+		return 1
+	} else {
+		return uint8(len(ps.AS))
+	}
+}
+
+func (ps *BGPAS2PathSegment) PrependAS(as uint32) bool {
+	if ps.Length >= 255 {
+		return false
+	}
+
+	ps.AS = append(ps.AS, uint16(as))
+	copy(ps.AS[1:], ps.AS[0:])
+	ps.AS[0] = uint16(as)
+	ps.Length += 1
+	ps.BGPASPathSegmentLen += 2
+	return true
+}
+
+func NewBGPAS2PathSegment(segType BGPASPathSegmentType) *BGPAS2PathSegment {
+	as := make([]uint16, 0)
+	return &BGPAS2PathSegment{
+		BGPASPathSegmentBase: BGPASPathSegmentBase{
+			Type:                segType,
+			Length:              0,
+			BGPASPathSegmentLen: 2,
+		},
+		AS: as,
+	}
+}
+
+func NewBGPAS2PathSegmentSeq() *BGPAS2PathSegment {
+	return NewBGPAS2PathSegment(BGPASPathSequence)
+}
+
+type BGPAS4PathSegment struct {
+	BGPASPathSegmentBase
+	AS []uint32
+}
+
+func (ps *BGPAS4PathSegment) Clone() BGPASPathSegment {
+	x := *ps
+	x.AS = make([]uint32, len(ps.AS), cap(ps.AS))
+	copy(x.AS, ps.AS)
+	return &x
+}
+
+func (ps *BGPAS4PathSegment) CloneAsAS4PathSegment() *BGPAS4PathSegment {
+	x := *ps
+	x.AS = make([]uint32, len(ps.AS), cap(ps.AS))
+	copy(x.AS, ps.AS)
+	return &x
+}
+
+func (ps *BGPAS4PathSegment) CloneAsAS2PathSegment() (*BGPAS2PathSegment, bool) {
+	x := NewBGPAS2PathSegment(ps.Type)
+	x.AS = make([]uint16, len(ps.AS), cap(ps.AS))
+	x.Length = ps.Length
+	x.BGPASPathSegmentLen += uint16(x.Length * 2)
+	mappable := true
+	for i, as := range ps.AS {
+		if as > math.MaxUint16 {
+			x.AS[i] = BGPASTrans
+			mappable = false
+		} else {
+			x.AS[i] = uint16(as)
+		}
+	}
+	return x, mappable
+}
+
+func (ps *BGPAS4PathSegment) Encode(pkt []byte) error {
+	if err := ps.BGPASPathSegmentBase.Encode(pkt); err != nil {
+		return err
+	}
+
+	for i, as := range ps.AS {
+		binary.BigEndian.PutUint32(pkt[(i*4)+2:], as)
+	}
+
+	return nil
+}
+
+func (ps *BGPAS4PathSegment) Decode(pkt []byte, data interface{}) error {
+	if err := ps.BGPASPathSegmentBase.Decode(pkt, data); err != nil {
+		return err
+	}
+
+	if (len(pkt) - 2) < int(ps.Length)*4 {
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Not enough data to decode AS path segment"}
+	}
+
+	ps.AS = make([]uint32, ps.Length)
+	for i := 0; i < int(ps.Length); i++ {
+		ps.AS[i] = binary.BigEndian.Uint32(pkt[(i*4)+2:])
+	}
+	ps.BGPASPathSegmentLen = uint16(ps.Length*4 + 2)
+	return nil
+}
+
+func (ps *BGPAS4PathSegment) GetNumASes() uint8 {
+	if ps.Type == BGPASPathSet {
+		return 1
+	} else {
+		return uint8(len(ps.AS))
+	}
+}
+
+func (ps *BGPAS4PathSegment) PrependAS(as uint32) bool {
 	if ps.Length >= 255 {
 		return false
 	}
@@ -862,23 +1037,26 @@ func (ps *BGPASPathSegment) PrependAS(as uint16) bool {
 	copy(ps.AS[1:], ps.AS[0:])
 	ps.AS[0] = as
 	ps.Length += 1
-	ps.BGPASPathSegmentLen += 2
+	ps.BGPASPathSegmentLen += 4
 	return true
 }
 
-func NewBGPASPathSegmentSeq() *BGPASPathSegment {
-	as := make([]uint16, 0)
-	return &BGPASPathSegment{
-		Type:                BGPASPathSequence,
-		Length:              0,
-		AS:                  as,
-		BGPASPathSegmentLen: 2,
+func NewBGPAS4PathSegmentSeq() *BGPAS4PathSegment {
+	as := make([]uint32, 0)
+	return &BGPAS4PathSegment{
+		BGPASPathSegmentBase: BGPASPathSegmentBase{
+			Type:                BGPASPathSequence,
+			Length:              0,
+			BGPASPathSegmentLen: 2,
+		},
+		AS: as,
 	}
 }
 
 type BGPPathAttrASPath struct {
 	BGPPathAttrBase
-	Value []BGPASPathSegment
+	Value  []BGPASPathSegment
+	ASSize uint8
 }
 
 func (as *BGPPathAttrASPath) Clone() BGPPathAttr {
@@ -886,10 +1064,22 @@ func (as *BGPPathAttrASPath) Clone() BGPPathAttr {
 	x.BGPPathAttrBase = as.BGPPathAttrBase.Clone()
 	x.Value = make([]BGPASPathSegment, 0, len(as.Value))
 	for _, item := range as.Value {
-		x.Value = append(x.Value, *item.Clone())
+		x.Value = append(x.Value, item.Clone())
 	}
 	//copy(x.Value, as.Value)
 	return &x
+}
+
+func (as *BGPPathAttrASPath) CloneAsAS4Path() *BGPPathAttrAS4Path {
+	x := NewBGPPathAttrAS4Path()
+	//x.BGPPathAttrBase = as.BGPPathAttrBase.Clone()
+	x.BGPPathAttrBase.Length = as.BGPPathAttrBase.Length
+	x.Value = make([]*BGPAS4PathSegment, 0, len(as.Value))
+	x.BGPPathAttrBase.BGPPathAttrLen += uint16(len(as.Value) * 4)
+	for _, item := range as.Value {
+		x.Value = append(x.Value, item.(*BGPAS4PathSegment).CloneAsAS4PathSegment())
+	}
+	return x
 }
 
 func (as *BGPPathAttrASPath) Encode() ([]byte, error) {
@@ -904,27 +1094,35 @@ func (as *BGPPathAttrASPath) Encode() ([]byte, error) {
 		if err != nil {
 			return pkt, err
 		}
-		length += val.BGPASPathSegmentLen
+		length += val.TotalLen()
 	}
 
 	return pkt, nil
 }
 
-func (as *BGPPathAttrASPath) Decode(pkt []byte) error {
-	err := as.BGPPathAttrBase.Decode(pkt)
+func (as *BGPPathAttrASPath) Decode(pkt []byte, data interface{}) error {
+	err := as.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
 
 	as.Value = make([]BGPASPathSegment, 0)
 	ptr := uint32(as.BGPPathAttrLen)
+	peerAttrs := data.(BGPPeerAttrs)
+	as.ASSize = peerAttrs.ASSize
+	var asPathSegment BGPASPathSegment
 	for ptr < (uint32(as.Length) + uint32(as.BGPPathAttrLen)) {
-		asPathSegment := BGPASPathSegment{}
-		err = asPathSegment.Decode(pkt[ptr:])
+		if as.ASSize == 4 {
+			asPathSegment = NewBGPAS4PathSegmentSeq()
+		} else {
+			asPathSegment = NewBGPAS2PathSegmentSeq()
+		}
+
+		err = asPathSegment.Decode(pkt[ptr:], data)
 		if err != nil {
 			return nil
 		}
-		ptr += uint32(asPathSegment.BGPASPathSegmentLen)
+		ptr += uint32(asPathSegment.TotalLen())
 		if ptr > (uint32(as.Length) + uint32(as.BGPPathAttrLen)) {
 			return BGPMessageError{BGPUpdateMsgError, BGPAttrLenError, pkt, "Bad Attribute Length"}
 		}
@@ -936,11 +1134,16 @@ func (as *BGPPathAttrASPath) Decode(pkt []byte) error {
 	return nil
 }
 
-func (as *BGPPathAttrASPath) AddASPathSegment(pathSeg *BGPASPathSegment) {
-	as.Value = append(as.Value, *pathSeg)
+func (as *BGPPathAttrASPath) PrependASPathSegment(pathSeg BGPASPathSegment) {
+	as.Value = append(as.Value, pathSeg)
 	copy(as.Value[1:], as.Value[0:])
-	as.Value[0] = *pathSeg
-	as.BGPPathAttrBase.Length += pathSeg.BGPASPathSegmentLen
+	as.Value[0] = pathSeg
+	as.BGPPathAttrBase.Length += pathSeg.TotalLen()
+}
+
+func (as *BGPPathAttrASPath) AppendASPathSegment(pathSeg BGPASPathSegment) {
+	as.Value = append(as.Value, pathSeg)
+	as.BGPPathAttrBase.Length += pathSeg.TotalLen()
 }
 
 func NewBGPPathAttrASPath() *BGPPathAttrASPath {
@@ -950,6 +1153,87 @@ func NewBGPPathAttrASPath() *BGPPathAttrASPath {
 			Code:  BGPPathAttrTypeASPath,
 		},
 		Value: make([]BGPASPathSegment, 0),
+	}
+	asPath.BGPPathAttrBase.Length = 0
+	asPath.BGPPathAttrBase.BGPPathAttrLen = 4
+	return asPath
+}
+
+type BGPPathAttrAS4Path struct {
+	BGPPathAttrBase
+	Value []*BGPAS4PathSegment
+}
+
+func (as *BGPPathAttrAS4Path) Clone() BGPPathAttr {
+	x := *as
+	x.BGPPathAttrBase = as.BGPPathAttrBase.Clone()
+	x.Value = make([]*BGPAS4PathSegment, 0, len(as.Value))
+	for _, item := range as.Value {
+		x.Value = append(x.Value, item.Clone().(*BGPAS4PathSegment))
+	}
+	//copy(x.Value, as.Value)
+	return &x
+}
+
+func (as *BGPPathAttrAS4Path) Encode() ([]byte, error) {
+	pkt, err := as.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, err
+	}
+
+	length := as.BGPPathAttrBase.BGPPathAttrLen
+	for _, val := range as.Value {
+		err = val.Encode(pkt[length:])
+		if err != nil {
+			return pkt, err
+		}
+		length += val.TotalLen()
+	}
+
+	return pkt, nil
+}
+
+func (as *BGPPathAttrAS4Path) Decode(pkt []byte, data interface{}) error {
+	err := as.BGPPathAttrBase.Decode(pkt, data)
+	if err != nil {
+		return err
+	}
+
+	as.Value = make([]*BGPAS4PathSegment, 0)
+	ptr := uint32(as.BGPPathAttrLen)
+	for ptr < (uint32(as.Length) + uint32(as.BGPPathAttrLen)) {
+		asPathSegment := NewBGPAS4PathSegmentSeq()
+
+		err = asPathSegment.Decode(pkt[ptr:], data)
+		if err != nil {
+			return nil
+		}
+		ptr += uint32(asPathSegment.TotalLen())
+		if ptr > (uint32(as.Length) + uint32(as.BGPPathAttrLen)) {
+			return BGPMessageError{BGPUpdateMsgError, BGPAttrLenError, pkt, "Bad Attribute Length"}
+		}
+		as.Value = append(as.Value, asPathSegment)
+	}
+	if ptr != (uint32(as.Length) + uint32(as.BGPPathAttrLen)) {
+		return BGPMessageError{BGPUpdateMsgError, BGPAttrLenError, pkt, "Bad Attribute Length"}
+	}
+	return nil
+}
+
+func (as *BGPPathAttrAS4Path) AddASPathSegment(pathSeg *BGPAS4PathSegment) {
+	as.Value = append(as.Value, pathSeg)
+	copy(as.Value[1:], as.Value[0:])
+	as.Value[0] = pathSeg
+	as.BGPPathAttrBase.Length += pathSeg.TotalLen()
+}
+
+func NewBGPPathAttrAS4Path() *BGPPathAttrAS4Path {
+	asPath := &BGPPathAttrAS4Path{
+		BGPPathAttrBase: BGPPathAttrBase{
+			Flags: BGPPathAttrFlagOptional | BGPPathAttrFlagTransitive,
+			Code:  BGPPathAttrTypeASPath,
+		},
+		Value: make([]*BGPAS4PathSegment, 0),
 	}
 	asPath.BGPPathAttrBase.Length = 0
 	asPath.BGPPathAttrBase.BGPPathAttrLen = 4
@@ -979,8 +1263,8 @@ func (n *BGPPathAttrNextHop) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (n *BGPPathAttrNextHop) Decode(pkt []byte) error {
-	err := n.BGPPathAttrBase.Decode(pkt)
+func (n *BGPPathAttrNextHop) Decode(pkt []byte, data interface{}) error {
+	err := n.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
@@ -1023,8 +1307,8 @@ func (m *BGPPathAttrMultiExitDisc) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (m *BGPPathAttrMultiExitDisc) Decode(pkt []byte) error {
-	err := m.BGPPathAttrBase.Decode(pkt)
+func (m *BGPPathAttrMultiExitDisc) Decode(pkt []byte, data interface{}) error {
+	err := m.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
@@ -1054,8 +1338,8 @@ func (l *BGPPathAttrLocalPref) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (l *BGPPathAttrLocalPref) Decode(pkt []byte) error {
-	err := l.BGPPathAttrBase.Decode(pkt)
+func (l *BGPPathAttrLocalPref) Decode(pkt []byte, data interface{}) error {
+	err := l.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
@@ -1110,8 +1394,8 @@ func (a *BGPPathAttrAggregator) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (a *BGPPathAttrAggregator) Decode(pkt []byte) error {
-	err := a.BGPPathAttrBase.Decode(pkt)
+func (a *BGPPathAttrAggregator) Decode(pkt []byte, data interface{}) error {
+	err := a.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
@@ -1128,6 +1412,56 @@ func NewBGPPathAttrAggregator() *BGPPathAttrAggregator {
 			Flags:          BGPPathAttrFlagTransitive | BGPPathAttrFlagOptional,
 			Code:           BGPPathAttrTypeAggregator,
 			Length:         6,
+			BGPPathAttrLen: 3,
+		},
+		AS: 0,
+		IP: net.IP{},
+	}
+}
+
+type BGPPathAttrAS4Aggregator struct {
+	BGPPathAttrBase
+	AS uint32
+	IP net.IP
+}
+
+func (a *BGPPathAttrAS4Aggregator) Clone() BGPPathAttr {
+	x := *a
+	x.BGPPathAttrBase = a.BGPPathAttrBase.Clone()
+	x.IP = make(net.IP, len(a.IP), cap(a.IP))
+	copy(x.IP, a.IP)
+	return &x
+}
+
+func (a *BGPPathAttrAS4Aggregator) Encode() ([]byte, error) {
+	pkt, err := a.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, err
+	}
+
+	binary.BigEndian.PutUint32(pkt[a.BGPPathAttrBase.BGPPathAttrLen:], a.AS)
+	copy(pkt[a.BGPPathAttrBase.BGPPathAttrLen+4:], a.IP)
+	return pkt, nil
+}
+
+func (a *BGPPathAttrAS4Aggregator) Decode(pkt []byte, data interface{}) error {
+	err := a.BGPPathAttrBase.Decode(pkt, data)
+	if err != nil {
+		return err
+	}
+
+	a.AS = binary.BigEndian.Uint32(pkt[a.BGPPathAttrLen : a.BGPPathAttrLen+4])
+	a.IP = make(net.IP, 4)
+	copy(a.IP, pkt[a.BGPPathAttrLen+4:a.BGPPathAttrLen+8])
+	return nil
+}
+
+func NewBGPPathAttrAS4Aggregator() *BGPPathAttrAS4Aggregator {
+	return &BGPPathAttrAS4Aggregator{
+		BGPPathAttrBase: BGPPathAttrBase{
+			Flags:          BGPPathAttrFlagTransitive | BGPPathAttrFlagOptional,
+			Code:           BGPPathAttrTypeAS4Aggregator,
+			Length:         8,
 			BGPPathAttrLen: 3,
 		},
 		AS: 0,
@@ -1156,8 +1490,8 @@ func (o *BGPPathAttrOriginatorId) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (o *BGPPathAttrOriginatorId) Decode(pkt []byte) error {
-	err := o.BGPPathAttrBase.Decode(pkt)
+func (o *BGPPathAttrOriginatorId) Decode(pkt []byte, data interface{}) error {
+	err := o.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
@@ -1207,7 +1541,7 @@ func (c *BGPPathAttrClusterList) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (c *BGPPathAttrClusterList) Decode(pkt []byte) error {
+func (c *BGPPathAttrClusterList) Decode(pkt []byte, data interface{}) error {
 	pkt, err := c.BGPPathAttrBase.Encode()
 	if err != nil {
 		return err
@@ -1263,8 +1597,8 @@ func (u *BGPPathAttrUnknown) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (u *BGPPathAttrUnknown) Decode(pkt []byte) error {
-	err := u.BGPPathAttrBase.Decode(pkt)
+func (u *BGPPathAttrUnknown) Decode(pkt []byte, data interface{}) error {
+	err := u.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
@@ -1403,7 +1737,7 @@ func checkPathAttributes(pathAttrs []BGPPathAttr) error {
 	return nil
 }
 
-func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte) error {
+func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) error {
 	msg.WithdrawnRoutesLen = binary.BigEndian.Uint16(pkt[0:2])
 
 	ptr := uint32(2)
@@ -1434,7 +1768,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte) error {
 	msg.PathAttributes = make([]BGPPathAttr, 0)
 	for length > 0 {
 		pa := BGPGetPathAttr(pkt[ptr:])
-		pa.Decode(pkt[ptr:])
+		pa.Decode(pkt[ptr:], data)
 		msg.PathAttributes = append(msg.PathAttributes, pa)
 		ptr += pa.TotalLen()
 		length -= pa.TotalLen()
@@ -1488,7 +1822,7 @@ func (msg *BGPMessage) Encode() ([]byte, error) {
 	return append(header, body...), nil
 }
 
-func (msg *BGPMessage) Decode(header *BGPHeader, pkt []byte) error {
+func (msg *BGPMessage) Decode(header *BGPHeader, pkt []byte, data interface{}) error {
 	msg.Header = *header
 	switch header.Type {
 	case BGPMsgTypeOpen:
@@ -1500,9 +1834,16 @@ func (msg *BGPMessage) Decode(header *BGPHeader, pkt []byte) error {
 	case BGPMsgTypeUpdate:
 		msg.Body = &BGPUpdate{}
 
+	case BGPMsgTypeNotification:
+		msg.Body = &BGPNotification{}
+
 	default:
 		return nil
 	}
-	msg.Body.Decode(header, pkt)
-	return nil
+	err := msg.Body.Decode(header, pkt, data)
+
+	if err == nil && msg.Header.Type == BGPMsgTypeUpdate {
+		NormalizeASPath(msg, data)
+	}
+	return err
 }
