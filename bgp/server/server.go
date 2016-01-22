@@ -91,6 +91,7 @@ func (server *BGPServer) listenForPeers(acceptCh chan *net.TCPConn) {
 		tcpConn, err := listener.AcceptTCP()
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("AcceptTCP failed with", err))
+			continue
 		}
 		server.logger.Info(fmt.Sprintln("Got a peer connection from %s", tcpConn.RemoteAddr()))
 		acceptCh <- tcpConn

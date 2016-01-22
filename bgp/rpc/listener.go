@@ -79,8 +79,8 @@ func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
 	var neighborIP string
 	for rows.Next() {
 		if err = rows.Scan(&nConf.PeerAS, &nConf.LocalAS, &nConf.AuthPassword, &nConf.Description, &neighborIP,
-			&nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable,
-			&nConf.MultiHopTTL); err != nil {
+			&nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable, &nConf.MultiHopTTL,
+			&nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighborConfig rows with error %s", err))
 			return err
 		}
@@ -189,6 +189,9 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 		RouteReflectorClient:    bgpNeighbor.RouteReflectorClient,
 		MultiHopEnable:          bgpNeighbor.MultiHopEnable,
 		MultiHopTTL:             uint8(bgpNeighbor.MultiHopTTL),
+		ConnectRetryTime:        uint32(bgpNeighbor.ConnectRetryTime),
+		HoldTime:                uint32(bgpNeighbor.HoldTime),
+		KeepaliveTime:           uint32(bgpNeighbor.KeepaliveTime),
 	}
 	return pConf, true
 }
@@ -226,6 +229,9 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.RouteReflectorClient = neighborState.RouteReflectorClient
 	bgpNeighborResponse.MultiHopEnable = neighborState.MultiHopEnable
 	bgpNeighborResponse.MultiHopTTL = int8(neighborState.MultiHopTTL)
+	bgpNeighborResponse.ConnectRetryTime = int32(neighborState.ConnectRetryTime)
+	bgpNeighborResponse.HoldTime = int32(neighborState.HoldTime)
+	bgpNeighborResponse.KeepaliveTime = int32(neighborState.KeepaliveTime)
 
 	received := bgpd.NewBgpCounters()
 	received.Notification = int64(neighborState.Messages.Received.Notification)
