@@ -80,8 +80,8 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	dhcprelayGblInfo[config.IfIndex] = gblEntry
 	// Release lock after updation is done
 	gblEntry.dhcprelayConfigMutex.RUnlock()
-	//@TODO: duplicate create request is not working... FIXME jgheewala
-	// Also if entry is present then update DB with new info rather than
+	//@TODO: FIXME jgheewala
+	// if entry is present then update DB with new info rather than
 	// just writing it again...
 	if gblEntry.PcapHandler.pcapHandle != nil {
 		logger.Info("DRA: no need to create pcap as its already created")
