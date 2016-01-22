@@ -81,10 +81,13 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	// Release lock after updation is done
 	gblEntry.dhcprelayConfigMutex.RUnlock()
 	//@TODO: duplicate create request is not working... FIXME jgheewala
+	// Also if entry is present then update DB with new info rather than
+	// just writing it again...
 	if gblEntry.PcapHandler.pcapHandle != nil {
-		logger.Info("no need to create pcap as its already created")
+		logger.Info("DRA: no need to create pcap as its already created")
 		return true, nil
 	}
+	logger.Info("DRA: len of global entries is " + string(len(dhcprelayGblInfo)))
 	// Stats information
 	DhcpRelayAgentUpdateStats("dhcp relay config create request",
 		gblEntry)

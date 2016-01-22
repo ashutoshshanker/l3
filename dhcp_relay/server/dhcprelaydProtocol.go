@@ -32,26 +32,27 @@ func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
 		logger.Err(fmt.Sprintln("DRA: server no device found: ",
 			info.IntfConfig.IfIndex, err))
 		return
-	} else {
-		DhcpRelayAgentUpdateStats("Setting filter for Pcap Handler",
-			info)
-		logger.Info("DRA: setting filter for intf: " +
-			info.IntfConfig.IfIndex + " filter: " + filter)
-		err = pcapLocalHandle.SetBPFFilter(filter)
-		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: Unable to set filter on:",
-				info.IntfConfig.IfIndex, err))
-		}
-		info.dhcprelayConfigMutex.RLock()
-		// will the localHandler get destroyed?
-		info.PcapHandler.pcapHandle = pcapLocalHandle
-		info.PcapHandler.ifName = info.IntfConfig.IfIndex
-		info.dhcprelayConfigMutex.RUnlock()
-		DhcpRelayAgentUpdateStats("Pcap Handler Successfully Created",
-			info)
-		logger.Info("DRA: Pcap Handler successfully updated for intf " +
-			info.IntfConfig.IfIndex)
 	}
+	DhcpRelayAgentUpdateStats("Setting filter for Pcap Handler",
+		info)
+	logger.Info("DRA: setting filter for intf: " +
+		info.IntfConfig.IfIndex + " filter: " + filter)
+	err = pcapLocalHandle.SetBPFFilter(filter)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: Unable to set filter on:",
+			info.IntfConfig.IfIndex, err))
+	}
+	info.dhcprelayConfigMutex.RLock()
+	info.PcapHandler.pcapHandle = pcapLocalHandle
+	info.PcapHandler.ifName = info.IntfConfig.IfIndex
+	dhcprelayGblInfo[info.IntfConfig.IfIndex] = info
+	info.dhcprelayConfigMutex.RUnlock()
+
+	logger.Info("DRA: Pcap Handler successfully updated for intf " +
+		info.IntfConfig.IfIndex)
+
+	DhcpRelayAgentUpdateStats("Pcap Handler Successfully Created", info)
+
 	info.dhcprelayConfigMutex.RLock()
 	if !info.IntfConfig.Enable || info.PcapHandler.pcapHandle == nil {
 		logger.Info("DRA: relay agent disabled deleting pcap" +
@@ -59,15 +60,20 @@ func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
 		// delete pcap handler and exit out of the go routine
 		// @TODO: jgheewala memory leak???
 		info.PcapHandler.pcapHandle = nil
+		dhcprelayGblInfo[info.IntfConfig.IfIndex] = info
+		info.dhcprelayConfigMutex.RUnlock()
 		return
 	}
 	recvHandler := info.PcapHandler.pcapHandle
-	info.dhcprelayConfigMutex.RUnlock()
 	logger.Info("DRA: opening new packet source for ifName " +
 		info.IntfConfig.IfIndex)
 	src := gopacket.NewPacketSource(recvHandler,
 		layers.LayerTypeEthernet)
 	info.inputPacket = src.Packets()
+	dhcprelayGblInfo[info.IntfConfig.IfIndex] = info
+	info.dhcprelayConfigMutex.RUnlock()
+
+	// Receive packets infintely or unless channel is closed
 	for {
 		packet, ok := <-info.inputPacket
 		if ok {
@@ -90,7 +96,6 @@ func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
 	gblEntry.dhcprelayConfigMutex = sync.RWMutex{}
 	// Stats information
 	gblEntry.StateDebugInfo.stats = make([]string, 150)
-	//gblEntry.PcapHandler = 0
 	DhcpRelayAgentUpdateStats(ifName, gblEntry)
 	DhcpRelayAgentUpdateStats("Global Init Done", gblEntry)
 
