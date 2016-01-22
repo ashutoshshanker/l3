@@ -254,7 +254,7 @@ func (st *ConnectState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.SetPeerConn(data)
 		st.fsm.sendOpenMessage()
-		st.fsm.SetHoldTime(BGPHoldTimeDefault)
+		st.fsm.SetHoldTime(st.fsm.peer.Neighbor.Config.HoldTime, st.fsm.peer.Neighbor.Config.KeepaliveTime)
 		st.fsm.StartHoldTimer()
 		st.BaseState.fsm.ChangeState(NewOpenSentState(st.BaseState.fsm))
 
@@ -339,7 +339,7 @@ func (st *ActiveState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.SetPeerConn(data)
 		st.fsm.sendOpenMessage()
-		st.fsm.SetHoldTime(BGPHoldTimeDefault)
+		st.fsm.SetHoldTime(st.fsm.peer.Neighbor.Config.HoldTime, st.fsm.peer.Neighbor.Config.KeepaliveTime)
 		st.fsm.StartHoldTimer()
 		st.fsm.ChangeState(NewOpenSentState(st.fsm))
 
@@ -603,6 +603,7 @@ func (st *OpenConfirmState) enter() {
 
 func (st *OpenConfirmState) leave() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "State: OpenConfirm - leave"))
+	st.fsm.SetHoldTime(st.fsm.peer.Neighbor.Config.HoldTime, st.fsm.peer.Neighbor.Config.KeepaliveTime)
 }
 
 func (st *OpenConfirmState) state() BGPFSMState {
@@ -717,6 +718,7 @@ func (st *EstablishedState) enter() {
 
 func (st *EstablishedState) leave() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "State: Established - leave"))
+	st.fsm.SetHoldTime(st.fsm.peer.Neighbor.Config.HoldTime, st.fsm.peer.Neighbor.Config.KeepaliveTime)
 	st.fsm.ConnBroken()
 }
 
@@ -767,13 +769,13 @@ type FSM struct {
 	event BGPFSMEvent
 
 	connectRetryCounter int
-	connectRetryTime    uint16
+	connectRetryTime    uint32
 	connectRetryTimer   *time.Timer
 
-	holdTime  uint16
+	holdTime  uint32
 	holdTimer *time.Timer
 
-	keepAliveTime  uint16
+	keepAliveTime  uint32
 	keepAliveTimer *time.Timer
 
 	autoStart       bool
@@ -804,9 +806,9 @@ func NewFSM(fsmManager *FSMManager, id uint8, peer *Peer) *FSM {
 		pConf:            &peer.Neighbor.Config,
 		Manager:          fsmManager,
 		id:               id,
-		connectRetryTime: BGPConnectRetryTime,      // seconds
-		holdTime:         BGPHoldTimeDefault,       // seconds
-		keepAliveTime:    (BGPHoldTimeDefault / 3), // seconds
+		connectRetryTime: peer.Neighbor.Config.ConnectRetryTime, // seconds
+		holdTime:         peer.Neighbor.Config.HoldTime,         // seconds
+		keepAliveTime:    peer.Neighbor.Config.KeepaliveTime,    // seconds
 		rxPktsFlag:       false,
 		outConnCh:        make(chan net.Conn),
 		outConnErrCh:     make(chan error),
@@ -986,14 +988,14 @@ func (fsm *FSM) StopConnectRetryTimer() {
 	fsm.connectRetryTimer.Stop()
 }
 
-func (fsm *FSM) SetHoldTime(holdTime uint16) {
+func (fsm *FSM) SetHoldTime(holdTime uint32, keepaliveTime uint32) {
 	if holdTime < 0 || (holdTime > 0 && holdTime < 3) {
 		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Cannot set hold time. Invalid value", holdTime))
 		return
 	}
 
 	fsm.holdTime = holdTime
-	fsm.keepAliveTime = holdTime / 3
+	fsm.keepAliveTime = keepaliveTime
 }
 
 func (fsm *FSM) StartHoldTimer() {
@@ -1050,9 +1052,8 @@ func (fsm *FSM) HandleAnotherConnection(data interface{}) {
 
 func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 	body := pkt.Body.(*packet.BGPOpen)
-	if body.HoldTime < fsm.holdTime {
-		fsm.holdTime = body.HoldTime
-		fsm.keepAliveTime = fsm.holdTime / 3
+	if uint32(body.HoldTime) < fsm.holdTime {
+		fsm.SetHoldTime(uint32(body.HoldTime), uint32(body.HoldTime/3))
 	}
 	if body.MyAS == fsm.Manager.gConf.AS {
 		fsm.peerType = config.PeerTypeInternal
@@ -1086,7 +1087,7 @@ func (fsm *FSM) sendUpdateMessage(bgpMsg *packet.BGPMessage) {
 
 func (fsm *FSM) sendOpenMessage() {
 	optParams := packet.ConstructOptParams(uint32(fsm.pConf.LocalAS))
-	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.LocalAS, fsm.holdTime, fsm.gConf.RouterId.To4().String(), optParams)
+	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.LocalAS, uint16(fsm.holdTime), fsm.gConf.RouterId.To4().String(), optParams)
 	packet, _ := bgpOpenMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
@@ -1194,7 +1195,7 @@ func (fsm *FSM) StopConnToPeer() {
 	}
 }
 
-func Connect(fsm *FSM, seconds uint16, addr string, connCh chan net.Conn, errCh chan error) {
+func Connect(fsm *FSM, seconds uint32, addr string, connCh chan net.Conn, errCh chan error) {
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Connect called... calling DialTimeout with", seconds, "second timeout"))
 	conn, err := net.DialTimeout("tcp", addr, time.Duration(seconds)*time.Second)
 	if err != nil {
@@ -1213,7 +1214,7 @@ func Connect(fsm *FSM, seconds uint16, addr string, connCh chan net.Conn, errCh 
 	}
 }
 
-func ConnectToPeer(fsm *FSM, seconds uint16, addr string, fsmConnCh chan net.Conn, fsmConnErrCh chan error,
+func ConnectToPeer(fsm *FSM, seconds uint32, addr string, fsmConnCh chan net.Conn, fsmConnErrCh chan error,
 	fsmStopConnCh chan bool) {
 	var stopConn bool = false
 	connCh := make(chan net.Conn)

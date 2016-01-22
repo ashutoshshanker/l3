@@ -43,6 +43,9 @@ struct BGPNeighborConfig {
 	7: bool RouteReflectorClient,
 	8: bool MultiHopEnable,
 	9: byte MultiHopTTL,
+	10: i32 ConnectRetryTime
+	11: i32 HoldTime
+	12: i32 KeepaliveTime
 }
 
 struct BGPNeighborState {
@@ -59,6 +62,9 @@ struct BGPNeighborState {
 	11: bool RouteReflectorClient,
 	12: bool MultiHopEnable,
 	13: byte MultiHopTTL,
+	14: i32 ConnectRetryTime
+	15: i32 HoldTime
+	16: i32 KeepaliveTime
 }
 
 struct BGPNeighborStateBulk {
