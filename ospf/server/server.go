@@ -1,6 +1,8 @@
 package server
 
 import (
+	"asicd/pluginManager/pluginCommon"
+	"asicdServices"
 	"container/list"
 	"encoding/json"
 	"fmt"
@@ -11,13 +13,9 @@ import (
 	"log/syslog"
 	"ribd"
 	"strconv"
-	"time"
-	"utils/ipcutils"
-	"asicd/pluginManager/pluginCommon"
-	"asicdServices"
 	"sync"
+	"utils/ipcutils"
 )
-
 
 type ClientJson struct {
 	Name string `json:Name`
@@ -40,7 +38,7 @@ type OSPFServer struct {
 	IPIntfPropertyMap map[string]IPIntfProperty
 	ospfGlobalConf    GlobalConf
 	GlobalConfigCh    chan config.GlobalConf
-    AreaConfigCh            chan config.AreaConf
+	AreaConfigCh      chan config.AreaConf
 	IntfConfigCh      chan config.InterfaceConf
 	/*
 	   connRoutesTimer         *time.Timer
@@ -51,9 +49,9 @@ type OSPFServer struct {
 	asicdSubSocket      *nanomsg.SubSocket
 	asicdSubSocketCh    chan []byte
 	asicdSubSocketErrCh chan error
-    AreaConfMap             map[AreaConfKey]AreaConf
+	AreaConfMap         map[AreaConfKey]AreaConf
 	IntfConfMap         map[IntfConfKey]IntfConf
-	NeighborConfigMap   map[int32]OspfNeighborEntry
+	NeighborConfigMap   map[uint32]OspfNeighborEntry
 	NeighborListMap     map[IntfConfKey]list.List
 	neighborConfMutex   sync.Mutex
 }
@@ -62,13 +60,13 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer := &OSPFServer{}
 	ospfServer.logger = logger
 	ospfServer.GlobalConfigCh = make(chan config.GlobalConf)
-    ospfServer.AreaConfigCh = make(chan config.AreaConf)
+	ospfServer.AreaConfigCh = make(chan config.AreaConf)
 	ospfServer.IntfConfigCh = make(chan config.InterfaceConf)
 	ospfServer.portPropertyMap = make(map[int32]PortProperty)
 	ospfServer.vlanPropertyMap = make(map[uint16]VlanProperty)
-    ospfServer.AreaConfMap = make(map[AreaConfKey]AreaConf)
+	ospfServer.AreaConfMap = make(map[AreaConfKey]AreaConf)
 	ospfServer.IntfConfMap = make(map[IntfConfKey]IntfConf)
-	ospfServer.NeighborConfigMap = make(map[int32]OspfNeighborEntry)
+	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
 	/*
@@ -147,9 +145,9 @@ func (server *OSPFServer) StartServer(paramFile string) {
 		select {
 		case gConf := <-server.GlobalConfigCh:
 			server.processGlobalConfig(gConf)
-            case areaConf := <-server.AreaConfigCh:
-                server.logger.Info(fmt.Sprintln("Received call for performing Area Configuration", areaConf))
-                server.processAreaConfig(areaConf)
+		case areaConf := <-server.AreaConfigCh:
+			server.logger.Info(fmt.Sprintln("Received call for performing Area Configuration", areaConf))
+			server.processAreaConfig(areaConf)
 		case ifConf := <-server.IntfConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Intf Configuration", ifConf))
 			server.processIntfConfig(ifConf)
