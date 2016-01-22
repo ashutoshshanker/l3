@@ -113,6 +113,7 @@ var destNetSlice []localDB
 var acceptConfig bool
 var AsicdSub *nanomsg.SubSocket
 var RIBD_PUB *nanomsg.PubSocket
+var RIBD_BGPD_PUB *nanomsg.PubSocket
 
 /*
 func setProtocol(routeType ribd.Int) (proto int8, err error) {
@@ -477,13 +478,14 @@ func setupEventHandler(sub *nanomsg.SubSocket, address string, subtype ribd.Int)
 	//processPortdEvents(sub)
 	processEvents(sub, subtype)
 }
-func InitPublisher() (pub *nanomsg.PubSocket) {
+func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
+	logger.Println("Setting up %s", pub_str, "publisher")
 	pub, err := nanomsg.NewPubSocket()
 	if err != nil {
 		logger.Println("Failed to open pub socket")
 		return nil
 	}
-	ep, err := pub.Bind(ribdCommonDefs.PUB_SOCKET_ADDR)
+	ep, err := pub.Bind(pub_str)
 	if err != nil {
 		logger.Println("Failed to bind pub socket - ", ep)
 		return nil
@@ -502,7 +504,8 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	logger.Println("configfile = ", configFile)
 	ConnectToClients(configFile)
 	BuildRouteProtocolTypeMapDB()
-	RIBD_PUB = InitPublisher()
+	RIBD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_ADDR)
+	RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	//CreateRoutes("RouteSetup.json")
 	UpdateRoutesFromDB(paramsDir)

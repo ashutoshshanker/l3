@@ -11,6 +11,7 @@ const (
 	  PolicyActionTypeRouteDisposition = 0
 	  PolicyActionTypeRouteRedistribute = 1
 	  PUB_SOCKET_ADDR = "ipc:///tmp/ribd.ipc"	
+	  PUB_SOCKET_BGPD_ADDR = "ipc://tmp/ribd_bgpd.ipc"
 	  NOTIFY_ROUTE_CREATED = 1
 	  NOTIFY_ROUTE_DELETED = 2
 	  NOTIFY_ROUTE_INVALIDATED = 3
