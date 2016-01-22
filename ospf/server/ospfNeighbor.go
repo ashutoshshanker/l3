@@ -118,7 +118,6 @@ func (server *OSPFServer) scanNeighborDeadTimers() {
 		} // end of if
 	}
 	server.neighborConfMutex.Unlock()
-	time.Sleep(10)
 }
 
 func (server *OSPFServer) printIntfNeighbors(nbrId uint32) {

@@ -158,14 +158,18 @@ func (server *OSPFServer)processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetada
         return err
     }
 
+   /* TEMP
     if ospfHdrMd.backbone == true {
         if (ospfHelloData.options & EOption) != 0x0 {
             err := errors.New("External Routing Capability mismatch")
             return err
         }
     }
+*/
 
-    server.processOspfHelloNeighbor(data[OSPF_HELLO_MIN_SIZE:], ospfHelloData, ipHdrMd, ospfHdrMd, key)
+    if len(data) > OSPF_HELLO_MIN_SIZE {
+    	server.processOspfHelloNeighbor(data[OSPF_HELLO_MIN_SIZE:], ospfHelloData, ipHdrMd, ospfHdrMd, key)
+   }
 
     return nil
 }
