@@ -1,14 +1,15 @@
 package server
 
 import (
-    //"fmt"
+    "fmt"
     "time"
+    "l3/ospf/config"
     "github.com/google/gopacket"
     "github.com/google/gopacket/layers"
 )
 
+
 func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
-    ent, _ := server.IntfConfMap[key]
 /*
     waitTimerCb := func() {
         server.logger.Info("Wait timer expired")
@@ -16,11 +17,56 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
     }
 */
     for {
+        ent, _ := server.IntfConfMap[key]
         select {
         case <-ent.HelloIntervalTicker.C:
             server.StartSendHelloPkt(key)
         case <-ent.WaitTimer.C:
             server.logger.Info("Wait timer expired")
+            //server.IntfConfMap[key] = ent
+            // Elect BDR And DR
+            server.ElectBDRAndDR(key)
+        case msg := <-ent.BackupSeenCh:
+            server.logger.Info(fmt.Sprintf("Transit to backup seen state", msg))
+            ent.IfFSMState = config.OtherDesignatedRouter
+            server.IntfConfMap[key] = ent
+        case createMsg := <-ent.NeighCreateCh:
+            neighborKey := NeighborKey {
+                RouterId:       createMsg.RouterId,
+            }
+            neighborEntry, exist := ent.NeighborMap[neighborKey]
+            if !exist {
+                neighborEntry.TwoWayStatus = createMsg.TwoWayStatus
+                neighborEntry.RtrPrio = createMsg.RtrPrio
+                copy(neighborEntry.DRtr, createMsg.DRtr)
+                copy(neighborEntry.BDRtr, createMsg.BDRtr)
+                ent.NeighborMap[neighborKey] = neighborEntry
+                server.IntfConfMap[key] = ent
+            }
+        case changeMsg:= <-ent.NeighChangeCh:
+            neighborKey := NeighborKey {
+                RouterId:       changeMsg.RouterId,
+            }
+            neighborEntry, exist := ent.NeighborMap[neighborKey]
+            if !exist {
+                if (neighborEntry.RtrPrio != changeMsg.RtrPrio ||
+                    bytesEqual(neighborEntry.DRtr, changeMsg.DRtr) == false ||
+                    bytesEqual(neighborEntry.BDRtr, changeMsg.BDRtr) == false) &&
+                    changeMsg.TwoWayStatus == true {
+                    neighborEntry.TwoWayStatus = changeMsg.TwoWayStatus
+                    neighborEntry.RtrPrio = changeMsg.RtrPrio
+                    copy(neighborEntry.DRtr, changeMsg.DRtr)
+                    copy(neighborEntry.BDRtr, changeMsg.BDRtr)
+                    ent.NeighborMap[neighborKey] = neighborEntry
+                    server.IntfConfMap[key] = ent
+                    server.ElectBDRAndDR(key)
+                    // Update Neighbor and Re-elect BDR And DR
+                }
+            }
+        case nbrStateChangeMsg := <-ent.NbrStateChangeCh:
+            // Elect BDR and DR
+            server.logger.Info(fmt.Sprintf("Recev Neighbor State Change message", nbrStateChangeMsg))
+            server.ElectBDRAndDR(key)
         case state := <-ent.PktSendCh:
             if state == false {
                 server.StopSendHelloPkt(key)
@@ -29,6 +75,16 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
             }
         }
     }
+}
+
+func (server *OSPFServer)ElectBDRAndDR(key IntfConfKey) {
+    ent, _ := server.IntfConfMap[key]
+    if ent.IfFSMState == config.OtherDesignatedRouter ||
+        ent.IfFSMState == config.DesignatedRouter ||
+        ent.IfFSMState == config.BackupDesignatedRouter {
+        server.logger.Info("Election of BDR andDR")
+    }
+    return
 }
 
 func (server *OSPFServer)StopOspfTransPkts(key IntfConfKey) {
