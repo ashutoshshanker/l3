@@ -2,6 +2,7 @@
 package packet
 
 import (
+	"l3/bgp/utils"
 	"math"
 	"net"
 )
@@ -363,6 +364,10 @@ func NormalizeASPath(updateMsg *BGPMessage, data interface{}) {
 	var as4Aggregator *BGPPathAttrAS4Aggregator
 
 	body := updateMsg.Body.(*BGPUpdate)
+	if body.TotalPathAttrLen == 0 {
+		return
+	}
+
 	for _, pa := range body.PathAttributes {
 		if pa.GetCode() == BGPPathAttrTypeASPath {
 			asPath = pa.(*BGPPathAttrASPath)
@@ -373,6 +378,11 @@ func NormalizeASPath(updateMsg *BGPMessage, data interface{}) {
 		} else if pa.GetCode() == BGPPathAttrTypeAS4Aggregator {
 			as4Aggregator = pa.(*BGPPathAttrAS4Aggregator)
 		}
+	}
+
+	if asPath == nil {
+		utils.Logger.Err("***** BGP update message does not have AS path *****")
+		return
 	}
 
 	if asPath.ASSize == 2 {
