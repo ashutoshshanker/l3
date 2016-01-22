@@ -42,6 +42,7 @@ var localPolicyStmtDB []localDB
 
 func updateProtocolPolicyTable(protoType int, name string, op int) {
 	logger.Printf("updateProtocolPolicyTable for protocol %d policy name %s op %d\n", protoType, name, op)
+    var i int
     policyList := ProtocolPolicyListDB[protoType]
 	if(policyList == nil) {
 		if (op == del) {
@@ -52,6 +53,15 @@ func updateProtocolPolicyTable(protoType int, name string, op int) {
 	}
     if op == add {
 	   policyList = append(policyList, name)
+	}
+	if op == del {
+		for i =0; i< len(policyList);i++ {
+			if policyList[i] == name {
+				logger.Println("Found the policy in the protocol policy table, deleting it")
+				break
+			}
+		}
+		policyList = append(policyList[:i], policyList[i+1:]...)
 	}
 	ProtocolPolicyListDB[protoType] = policyList
 }
@@ -113,6 +123,7 @@ func updatePolicyDB(cfg PolicyStmtInfo) {
 			logger.Println(" return value not ok")
 			return
 		}
+	    PolicyEngineTraverseAndApply(newPolicyStmt)
 	}
 }
 
@@ -178,6 +189,9 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
     if protoType != -1 {
 		updateProtocolPolicyTable(protoType, cfg.Name, add)
 	}
+	if len(tempMatchPrefixSetInfo.PrefixSet) > 0 {
+		//updatePrefixPolicyTable(tempMatchPrefixSetInfo.PrefixSet, cfg.Name, add)
+	}
 	return val, err
 }
 
@@ -214,6 +228,9 @@ func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDe
 	   //update other tables
         if policyStmtInfo.routeProtocolType != -1 {
 		  updateProtocolPolicyTable(policyStmtInfo.routeProtocolType, cfg.Name, del)
+	    }
+	    if len(policyStmtInfo.prefixSetMatchInfo.PrefixSet) > 0 {
+		   //updatePrefixPolicyTable(tempMatchPrefixSetInfo.PrefixSet, cfg.Name, del)
 	    }
 	} 
 	return val, err
