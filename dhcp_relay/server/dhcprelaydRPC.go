@@ -61,6 +61,7 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobalConfig(
 
 func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
+	logger.Info("DRA: Intf Config Create")
 	fmt.Println("Creating Dhcp Relay Config for interface")
 	fmt.Println("IpSubnet:", config.IpSubnet)
 	fmt.Println("Netmask:", config.Netmask)
@@ -68,25 +69,22 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	fmt.Println("AgentSubType:", config.AgentSubType)
 	fmt.Println("Enable:", config.Enable)
 	fmt.Println("ServerIp:", config.ServerIp)
-	//dhcprelayConfigMutex := &sync.Mutex{}
-
-	// Acquire lock for updating configuration.
-	dhcprelayConfigMutex.RLock()
-
 	// Copy over configuration into globalInfo
 	gblEntry := dhcprelayGblInfo[config.IfIndex]
+	// Acquire lock for updating configuration.
+	gblEntry.dhcprelayConfigMutex.RLock()
 	gblEntry.IntfConfig.IpSubnet = config.IpSubnet
 	gblEntry.IntfConfig.Netmask = config.Netmask
 	gblEntry.IntfConfig.AgentSubType = config.AgentSubType
 	gblEntry.IntfConfig.Enable = config.Enable
-	// Stats information
-	gblEntry.StateDebugInfo.configCreate = "dhcp relay config create " +
-		"request for interface " + config.IfIndex
 	dhcprelayGblInfo[config.IfIndex] = gblEntry
-
 	// Release lock after updation is done
-	dhcprelayConfigMutex.RUnlock()
-	go DhcpRelayAgentPcapCreate(gblEntry)
+	gblEntry.dhcprelayConfigMutex.RUnlock()
+
+	// Stats information
+	DhcpRelayAgentUpdateStats("dhcp relay config create request",
+		gblEntry)
+	go DhcpRelayAgentReceiveDhcpPkt(gblEntry)
 	return true, nil
 }
 
