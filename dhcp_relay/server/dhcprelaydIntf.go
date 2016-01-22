@@ -81,7 +81,7 @@ func DhcpRelayInitPortParams() error {
 			if hack == true {
 				portNum = 1
 				entry = portInfoMap[portNum]
-				entry.Name = "port1"
+				entry.Name = "wlp2s0" //"enp1s0f0"
 			} else {
 				portNum = int(bulkInfo.PortConfigList[i].IfIndex)
 				entry = portInfoMap[portNum]
