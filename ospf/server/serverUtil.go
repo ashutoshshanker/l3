@@ -3,6 +3,7 @@ package server
 import (
     "fmt"
     "strconv"
+    "net"
 )
 
 const big = 0xFFFFFF
@@ -103,3 +104,36 @@ func convertAuthKey(s string) ([]byte) {
     }
     return []byte {p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]}
 }
+
+func computeCheckSum(pkt []byte) (uint16) {
+    var csum uint32
+
+    for i := 0; i < len(pkt); i+= 2 {
+        csum += uint32(pkt[i]) << 8
+        csum += uint32(pkt[i+1])
+    }
+    chkSum := ^uint16((csum >> 16) + csum)
+    return chkSum
+}
+
+func bytesEqual(x, y []byte) bool {
+    if len(x) != len(y) {
+        return false
+    }
+    for i, b := range x {
+        if y[i] != b {
+            return false
+        }
+    }
+    return true
+}
+
+func isInSubnet(ifIpAddr net.IP, srcIp net.IP, netMask net.IPMask) (bool) {
+    net1 := ifIpAddr.Mask(netMask)
+    net2 := srcIp.Mask(netMask)
+    if net1.Equal(net2) {
+        return true
+    }
+    return false
+}
+

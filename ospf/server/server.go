@@ -9,26 +9,12 @@ import (
     "strconv"
     "utils/ipcutils"
     "l3/ospf/config"
-    "time"
     "log/syslog"
     "ribd"
-//    "l3/rib/ribdCommonDefs"
     "asicdServices"
     "asicd/pluginManager/pluginCommon"
 )
 
-var (
-    snapshot_len            int32 = 65549  //packet capture length
-    promiscuous             bool = false  //mode
-    timeout_pcap            time.Duration = 5 * time.Second
-)
-
-const (
-    OSPF_HELLO_MIN_SIZE = 20
-    OSPF_HEADER_SIZE = 24
-    IP_HEADER_MIN_LEN = 20
-    OSPF_PROTO_ID = 89
-)
 
 type ClientJson struct {
         Name string `json:Name`
@@ -126,71 +112,6 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
             }
         }
     }
-}
-
-func computeOspfCheckSum(ospfPkt []byte) (uint16) {
-    var csum uint32
-
-    for i := 0; i < len(ospfPkt); i+= 2 {
-        csum += uint32(ospfPkt[i]) << 8
-        csum += uint32(ospfPkt[i+1])
-    }
-    ospfChkSum := ^uint16((csum >> 16) + csum)
-    return ospfChkSum
-}
-
-func (server *OSPFServer)StopSendRecvHelloPkts(intfConfKey IntfConfKey) {
-    server.logger.Info("Stop Sending Hello Pkt")
-    server.StopSendHelloPkt(intfConfKey)
-    //server.logger.Info("Stop Receiving Hello Pkt")
-    //ent.HelloPktRecvCh<-false
-}
-
-func (server *OSPFServer)StartSendRecvHelloPkts(intfConfKey IntfConfKey) {
-    server.logger.Info("Start Sending Hello Pkt")
-    server.StartSendHelloPkt(intfConfKey)
-    server.logger.Info("Start Receiving Hello Pkt")
-    //ent.HelloPktRecvCh<-true
-}
-
-func (server *OSPFServer)StopSendHelloPkt(key IntfConfKey) {
-    ent, _ := server.IntfConfMap[key]
-    if ent.SendHelloPktTimer == nil {
-        server.logger.Err("No thread is there to stop.")
-        return
-    }
-    ret := ent.SendHelloPktTimer.Stop()
-    if ret == true {
-        server.logger.Info("Successfully stopped sending Hello Pkt")
-    } else if ret == false {
-        server.logger.Info("Unable to stop sending Hello Pkt")
-    }
-    ent.SendHelloPktTimer = nil
-    server.IntfConfMap[key] = ent
-}
-
-func (server *OSPFServer)StartSendHelloPkt(key IntfConfKey) {
-    ent, _ := server.IntfConfMap[key]
-    server.logger.Info(fmt.Sprintln("Started Send Hello Pkt Thread", ent.IfName))
-    handle := ent.SendPcapHdl
-    ospfHelloPkt := server.BuildHelloPkt(ent)
-    helloInterval := time.Duration(ent.IfHelloInterval) * time.Second
-    if handle == nil {
-        server.logger.Err("Invalid pcap handle")
-        return
-    }
-    SendHelloPktFunc := func() {
-        if err := handle.WritePacketData(ospfHelloPkt); err != nil {
-            server.logger.Err("Unable to send the hello pkt")
-        }
-        ent.SendHelloPktTimer.Reset(time.Duration(ent.IfHelloInterval) * time.Second)
-    }
-    ent.SendHelloPktTimer = time.AfterFunc(helloInterval, SendHelloPktFunc)
-    server.IntfConfMap[key] = ent
-}
-
-func (server *OSPFServer)StartRecvHelloPkt(key IntfConfKey) {
-
 }
 
 func (server *OSPFServer)InitServer(paramFile string) {
