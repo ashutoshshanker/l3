@@ -38,7 +38,12 @@ type DhcpRelayIntfConfig struct {
 
 func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobalConfig(
 	config *dhcprelayd.DhcpRelayGlobalConfig) (bool, error) {
-	fmt.Println("Dhcp Relay %d", config.Enable)
+
+	if config.Enable {
+		fmt.Println("Enabling Dhcp Relay Global Config")
+	} else {
+		fmt.Println("Disabling Dhcp Relay Global Config")
+	}
 	return true, nil
 }
 
@@ -56,6 +61,13 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobalConfig(
 
 func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
+	fmt.Println("Creating Dhcp Relay Config for interface")
+	fmt.Println("IpSubnet:", config.IpSubnet)
+	fmt.Println("Netmask:", config.Netmask)
+	fmt.Println("IF Index:", config.IfIndex)
+	fmt.Println("AgentSubType:", config.AgentSubType)
+	fmt.Println("Enable:", config.Enable)
+	fmt.Println("ServerIp:", config.ServerIp)
 	return true, nil
 }
 

@@ -30,5 +30,5 @@ func main() {
 		fmt.Println("Cannot start server")
 		panic(err)
 	}
-	fmt.Printf("done\n")
+	logger.Info(fmt.Sprintln("Dhcp Relay started successfully"))
 }

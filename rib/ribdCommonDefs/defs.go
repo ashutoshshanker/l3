@@ -6,6 +6,10 @@ const (
       STATIC     = 1
       OSPF       = 89
       BGP        = 8
+	  PolicyConditionTypePrefixMatch = 0
+	  PolicyConditionTypeProtocolMatch = 1
+	  PolicyActionTypeRouteDisposition = 0
+	  PolicyActionTypeRouteRedistribute = 1
 	  PUB_SOCKET_ADDR = "ipc:///tmp/ribd.ipc"	
 	  NOTIFY_ROUTE_CREATED = 1
 	  NOTIFY_ROUTE_DELETED = 2
