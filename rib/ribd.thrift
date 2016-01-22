@@ -149,7 +149,7 @@ service RouteService
 
 	bool CreatePolicyDefinitionStatement(1: PolicyDefinitionStatement config);
 //	bool UpdatePolicyDefinitionStatement(1: PolicyDefinitionStatement origconfig, 2: PolicyDefinitionStatement newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyDefinitionStatement(1: PolicyDefinitionStatement config);
+	bool DeletePolicyDefinitionStatement(1: PolicyDefinitionStatement config);
     PolicyDefinitionStatementGetInfo getBulkPolicyStmts(1: int fromIndex, 2: int count);
 
 	bool CreatePolicyDefinition(1: PolicyDefinition config);

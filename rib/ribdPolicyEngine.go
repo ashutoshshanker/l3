@@ -63,9 +63,14 @@ func policyEngineApplyPolicy(route ribd.Routes, name string) {
 		switch policyStmt.actions[i].actionType {
 		   case ribdCommonDefs.PolicyActionTypeRouteDisposition:
 		      logger.Println("PolicyActionTypeRouteDisposition action to be applied")
+			  logger.Println("RouteDisposition action = ", policyStmt.actions[i].actionInfo)
 			  break
 		   case ribdCommonDefs.PolicyActionTypeRouteRedistribute:
 		      logger.Println("PolicyActionTypeRouteRedistribute action to be applied")
+			  logger.Println("Redistribute target protocol = %d %s ", policyStmt.actions[i].actionInfo, ReverseRouteProtoTypeMapDB[policyStmt.actions[i].actionInfo.(int)])
+	
+	          //Send a event
+	          RouteNotificationSend(route)
 			  break
 		   default:
 		      logger.Println("Unknown type of action")
@@ -73,8 +78,8 @@ func policyEngineApplyPolicy(route ribd.Routes, name string) {
 		}
 	}
 }
-func policyEngineCheckConditions( route ribd.Routes) {
-	logger.Println("policyEngineCheckConditions")
+func policyEngineCheckPolicy( route ribd.Routes) {
+	logger.Println("policyEngineCheckPolicy")
 	
 	//Protocol based policy checks
 	policyList := ProtocolPolicyListDB[int(route.Prototype)]
@@ -92,5 +97,24 @@ func policyEngineCheckConditions( route ribd.Routes) {
 }
 func PolicyEngineFilter(route ribd.Routes) {
 	logger.Println("PolicyEngineFilter")
-	policyEngineCheckConditions(route)
+	policyEngineCheckPolicy(route)
+}
+
+func policyEngineCheck(prefix patriciaDB.Prefix, item patriciaDB.Item, handle patriciaDB.Item) (err error) {
+   logger.Println("policyEngineCheck")	
+   policy := handle.(PolicyStmt)
+   rmapInfoRecordList := item.(RouteInfoRecordList)
+   if len(rmapInfoRecordList.routeInfoList) == 0 {
+      logger.Println("len(rmapInfoRecordList.routeInfoList) == 0")
+	  return err	
+   }
+   logger.Println("Selected route index = ", rmapInfoRecordList.selectedRouteIdx)
+   selectedRouteInfoRecord := rmapInfoRecordList.routeInfoList[rmapInfoRecordList.selectedRouteIdx]
+   policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol)}
+   policyEngineApplyPolicy(policyRoute, policy.name)
+   return err
+}
+func PolicyEngineTraverseAndApply(policy PolicyStmt) {
+	logger.Println("PolicyEngineTraverseAndApply - traverse routing table and apply policy ", policy.name)
+    RouteInfoMap.VisitAndUpdate(policyEngineCheck, policy)
 }

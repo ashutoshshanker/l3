@@ -42,6 +42,7 @@ var localPolicyStmtDB []localDB
 
 func updateProtocolPolicyTable(protoType int, name string, op int) {
 	logger.Printf("updateProtocolPolicyTable for protocol %d policy name %s op %d\n", protoType, name, op)
+    var i int
     policyList := ProtocolPolicyListDB[protoType]
 	if(policyList == nil) {
 		if (op == del) {
@@ -52,6 +53,15 @@ func updateProtocolPolicyTable(protoType int, name string, op int) {
 	}
     if op == add {
 	   policyList = append(policyList, name)
+	}
+	if op == del {
+		for i =0; i< len(policyList);i++ {
+			if policyList[i] == name {
+				logger.Println("Found the policy in the protocol policy table, deleting it")
+				break
+			}
+		}
+		policyList = append(policyList[:i], policyList[i+1:]...)
 	}
 	ProtocolPolicyListDB[protoType] = policyList
 }
@@ -83,8 +93,9 @@ func updatePolicyDB(cfg PolicyStmtInfo) {
 		 }
 		 tempCondition.conditionType = ribdCommonDefs.PolicyConditionTypeProtocolMatch
 		 tempCondition.conditionInfo = cfg.routeProtocolType	
+		 newPolicyStmt.conditions = append(newPolicyStmt.conditions, tempCondition)
 		}
-		
+		logger.Println("Number of conditions for this policy = ", len(newPolicyStmt.conditions))
 		//actions
 		if len(cfg.routeDisposition) > 0 {
 			logger.Println("Add routeDisposition action")
@@ -93,6 +104,7 @@ func updatePolicyDB(cfg PolicyStmtInfo) {
 			}
 			tempAction.actionType = ribdCommonDefs.PolicyActionTypeRouteDisposition
 			tempAction.actionInfo = cfg.routeDisposition
+		    newPolicyStmt.actions = append(newPolicyStmt.actions, tempAction)
 		}
 		
 		if(cfg.redistribute == true) {
@@ -102,11 +114,16 @@ func updatePolicyDB(cfg PolicyStmtInfo) {
 			}
 			tempAction.actionType = ribdCommonDefs.PolicyActionTypeRouteRedistribute
 			tempAction.actionInfo = cfg.redistributeTargetProtocol
+		    newPolicyStmt.actions = append(newPolicyStmt.actions, tempAction)
 		}
-		if ok := PolicyConfigDB.Insert(patriciaDB.Prefix(cfg.name), newPolicyStmt); ok != true {
+
+		logger.Println("Number of actions for this policy = ", len(newPolicyStmt.actions))
+
+		if ok := PolicyDB.Insert(patriciaDB.Prefix(cfg.name), newPolicyStmt); ok != true {
 			logger.Println(" return value not ok")
 			return
 		}
+	    PolicyEngineTraverseAndApply(newPolicyStmt)
 	}
 }
 
@@ -132,10 +149,11 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatementMatchPrefixSet(cfg *
 
 func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStatement) (val bool, err error) {
 	logger.Println("CreatePolicyDefinitionStatement")
-	policyStmtInfo := PolicyConfigDB.Get(patriciaDB.Prefix(cfg.Name))
 	protoType := -1
 	targetProtoType := -1
 	var tempMatchPrefixSetInfo ribd.PolicyDefinitionStatementMatchPrefixSet
+
+	policyStmtInfo := PolicyConfigDB.Get(patriciaDB.Prefix(cfg.Name))
 	if(policyStmtInfo == nil) {
 	   logger.Println("Defining a new policy statement with name ", cfg.Name)
 	   if cfg.MatchPrefixSetInfo != nil {
@@ -171,6 +189,50 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
     if protoType != -1 {
 		updateProtocolPolicyTable(protoType, cfg.Name, add)
 	}
+	if len(tempMatchPrefixSetInfo.PrefixSet) > 0 {
+		//updatePrefixPolicyTable(tempMatchPrefixSetInfo.PrefixSet, cfg.Name, add)
+	}
+	return val, err
+}
+
+func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStatement) (val bool, err error) {
+	logger.Println("DeletePolicyDefinitionStatement for name ", cfg.Name)
+	ok := PolicyConfigDB.Match(patriciaDB.Prefix(cfg.Name))
+	if !ok {
+		err = errors.New("No policy statement with this name found")
+		return val, err
+	}
+	policyStmtInfoGet := PolicyConfigDB.Get(patriciaDB.Prefix(cfg.Name))
+	if(policyStmtInfoGet != nil) {
+       //invalidate localPolicyStmt 
+	   policyStmtInfo := policyStmtInfoGet.(PolicyStmtInfo)
+	   if policyStmtInfo.localDBSliceIdx < int8(len(localPolicyStmtDB)) {
+          logger.Println("local DB slice index for this policy stmt is ", policyStmtInfo.localDBSliceIdx)
+		  localPolicyStmtDB[policyStmtInfo.localDBSliceIdx].isValid = false		
+	   }
+	   logger.Println("Deleting policy config statement with name ", cfg.Name)
+		if ok := PolicyConfigDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
+			logger.Println(" return value not ok for delete PolicyConfigDB")
+			return val, err
+		}
+	    logger.Println("Deleting policy statement with name ", cfg.Name)
+	    ok := PolicyDB.Match(patriciaDB.Prefix(cfg.Name))
+	    if !ok {
+           logger.Println("policy stmt not found in operational DB")
+	    } else {
+		   if ok := PolicyDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
+			 logger.Println(" return value not ok for delete PolicyDB")
+			 return val, err
+		   }
+		}
+	   //update other tables
+        if policyStmtInfo.routeProtocolType != -1 {
+		  updateProtocolPolicyTable(policyStmtInfo.routeProtocolType, cfg.Name, del)
+	    }
+	    if len(policyStmtInfo.prefixSetMatchInfo.PrefixSet) > 0 {
+		   //updatePrefixPolicyTable(tempMatchPrefixSetInfo.PrefixSet, cfg.Name, del)
+	    }
+	} 
 	return val, err
 }
 
@@ -216,6 +278,10 @@ func (m RouteServiceHandler) GetBulkPolicyStmts( fromIndex ribd.Int, rcount ribd
 			tempMatchPrefixSetInfo[validCount] = prefixNode.prefixSetMatchInfo
 			nextNode.MatchPrefixSetInfo = &tempMatchPrefixSetInfo[validCount]
 		    nextNode.RouteDisposition = prefixNode.routeDisposition
+			nextNode.Redistribute = prefixNode.redistribute
+			if prefixNode.redistributeTargetProtocol != -1 {
+				nextNode.RedistributeTargetProtocol = ReverseRouteProtoTypeMapDB[prefixNode.redistributeTargetProtocol]
+			}
 			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
 			if(len(returnNodes) == 0){
 				returnNodes = make([]*ribd.PolicyDefinitionStatement, 0)
@@ -232,7 +298,6 @@ func (m RouteServiceHandler) GetBulkPolicyStmts( fromIndex ribd.Int, rcount ribd
 	policyStmts.Count = validCount
 	return policyStmts, err
 }
-
 
 func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinition) (val bool, err error) {
 	logger.Println("CreatePolicyDefinition")

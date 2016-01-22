@@ -8,7 +8,7 @@ struct DhcpRelayGlobalConfig{
 struct DhcpRelayIntfConfig{
 	1 : string 	IpSubnet
 	2 : string 	Netmask
-	3 : string 	IfIndex
+	3 : string 	IfIndex // this is if_name....:)
 	4 : i32 	AgentSubType
 	5 : bool 	Enable
 	6 : string 	ServerIp
