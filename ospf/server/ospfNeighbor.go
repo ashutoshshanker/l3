@@ -21,59 +21,64 @@ type OspfNeighborEntry struct {
 	OspfNbrDeadTimer       time.Duration
 }
 
-func (server *OSPFServer) ProcessHelloPktEvent(nbrData IntfToNeighMsg) {
-	var nbrConf OspfNeighborEntry
-	var nbrState config.NbrState
-	//var nbrList list.List
+func (server *OSPFServer) ProcessHelloPktEvent() {
+	nbrData := <-(server.neighborHelloEventCh)
+	for {
+		var nbrConf OspfNeighborEntry
+		var nbrState config.NbrState
+		//var nbrList list.List
 
-	/*
-		intfConfKey := IntfConfKey{
-			IPAddr:  intfIPaddr,
-			IntfIdx: intfIndex,
-		} */
-	//Check if neighbor exists
-	_, exists := server.NeighborConfigMap[nbrData.RouterId]
-	if exists {
-		server.neighborConfMutex.Lock()
-		nbrConf = server.NeighborConfigMap[nbrData.RouterId]
-		if nbrData.TwoWayStatus { // update the state
-			nbrConf.OspfNbrState = config.NbrTwoWay
-		} else {
-			nbrConf.OspfNbrState = config.NbrInit
+		/*
+			intfConfKey := IntfConfKey{
+				IPAddr:  intfIPaddr,
+				IntfIdx: intfIndex,
+			} */
+		//Check if neighbor exists
+		_, exists := server.NeighborConfigMap[nbrData.RouterId]
+		if exists {
+			server.neighborConfMutex.Lock()
+			nbrConf = server.NeighborConfigMap[nbrData.RouterId]
+			if nbrData.TwoWayStatus { // update the state
+				nbrConf.OspfNbrState = config.NbrTwoWay
+			} else {
+				nbrConf.OspfNbrState = config.NbrInit
+			}
+			nbrConf.OspfNbrInactivityTimer = time.Now()
+			server.NeighborConfigMap[nbrData.RouterId] = nbrConf
+			server.neighborConfMutex.Unlock()
+		} else { //neighbor doesnt exist
+			server.neighborConfMutex.Lock()
+			if nbrData.TwoWayStatus {
+				nbrState = config.NbrTwoWay
+			} else {
+				nbrState = config.NbrInit
+			}
+			//fill up neighbor config datastruct
+			nbrConf = OspfNeighborEntry{
+				OspfNbrRtrId:           nbrData.RouterId,
+				OspfNbrIPAddr:          nbrData.NeighborIP,
+				OspfNbrOptions:         0,
+				OspfNbrState:           nbrState,
+				OspfNbrDeadTimer:       nbrData.nbrDeadTimer,
+				OspfNbrInactivityTimer: time.Now(),
+			}
+			server.NeighborConfigMap[nbrData.RouterId] = nbrConf
+			server.neighborConfMutex.Unlock()
 		}
-		nbrConf.OspfNbrInactivityTimer = time.Now()
-		server.NeighborConfigMap[nbrData.RouterId] = nbrConf
-		server.neighborConfMutex.Unlock()
-	} else { //neighbor doesnt exist
-		server.neighborConfMutex.Lock()
-		if nbrData.TwoWayStatus {
-			nbrState = config.NbrTwoWay
-		} else {
-			nbrState = config.NbrInit
-		}
-		//fill up neighbor config datastruct
-		nbrConf = OspfNeighborEntry{
-			OspfNbrRtrId:           nbrData.RouterId,
-			OspfNbrIPAddr:          nbrData.NeighborIP,
-			OspfNbrOptions:         0,
-			OspfNbrState:           nbrState,
-			OspfNbrDeadTimer:       nbrData.nbrDeadTimer,
-			OspfNbrInactivityTimer: time.Now(),
-		}
-		server.NeighborConfigMap[nbrData.RouterId] = nbrConf
-		server.neighborConfMutex.Unlock()
-	}
-	/*
-		_, list_exists := server.NeighborListMap[intfConfKey]
-		if !list_exists {
-			//create a list and Nbrconf  object
-			nbrList.PushBack(neighborKey)
-			server.NeighborListMap[intfConfKey] = nbrList
-		} else {
-			nbrList = server.NeighborListMap[intfConfKey]
-			nbrList.PushBack(neighborKey)
-		}
-	*/
+		fmt.Println("Nbr ", nbrData.RouterId, "state ", nbrConf.OspfNbrState)
+
+		/*
+			_, list_exists := server.NeighborListMap[intfConfKey]
+			if !list_exists {
+				//create a list and Nbrconf  object
+				nbrList.PushBack(neighborKey)
+				server.NeighborListMap[intfConfKey] = nbrList
+			} else {
+				nbrList = server.NeighborListMap[intfConfKey]
+				nbrList.PushBack(neighborKey)
+			}
+		*/
+	} // end of for
 }
 
 func (server *OSPFServer) scanNeighborDeadTimers() {

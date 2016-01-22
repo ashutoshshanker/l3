@@ -12,6 +12,7 @@ type OspfHdrMetadata struct {
 	pktType  OspfType
 	pktlen   uint16
 	backbone bool
+        routerId []byte
 }
 
 func NewOspfHdrMetadata() *OspfHdrMetadata {
@@ -61,8 +62,23 @@ const (
 )
 
 type IntfToNeighMsg struct {
+        IntfConfKey IntfConfKey
 	RouterId     uint32
+	RtrPrio      uint8
 	NeighborIP   net.IP
 	nbrDeadTimer time.Duration
 	TwoWayStatus bool
 }
+
+type NbrStateChangeMsg struct {
+        RouterId    int32
+	TwoWayStatus bool
+}
+
+const (
+    EOption     = 0x02
+    MCOption    = 0x04
+    NPOption    = 0x08
+    EAOption    = 0x20
+    DCOption    = 0x40
+)

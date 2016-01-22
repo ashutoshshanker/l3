@@ -6,25 +6,51 @@ import (
 	 "utils/patriciaDB"
 	 "l3/rib/ribdCommonDefs"
 )
-func policyEngineApplyPolicy(route ribd.Routes, name string) {
-	logger.Println("PolicyEngineApplyPolicy - ", name)
+func policyEngineActionRedistribute(route ribd.Routes, targetProtocol int) {
+	logger.Println("policyEngineActionRedistribute")
+	//Send a event based on target protocol
+    switch targetProtocol {
+      case ribdCommonDefs.BGP:
+        logger.Println("Redistribute to BGP")
+        RouteNotificationSend(RIBD_BGPD_PUB, route)
+        break
+      default:
+        logger.Println("Unknown target protocol")	
+    }
+}
+
+func policyEngineImplementActions(route ribd.Routes, policyStmt PolicyStmt) {
+	logger.Println("policyEngineImplementActions")
+	if policyStmt.actions == nil {
+		logger.Println("No actions")
+		return
+	}
 	var i int
-	var allConditionsMatch = true
-	var anyConditionsMatch = false
-	policyStmtGet := PolicyDB.Get(patriciaDB.Prefix(name))
-	if(policyStmtGet == nil) {
-		logger.Printf("Didnt find the policy %s in the policy DB\n", name)
-		return
+	for i=0;i<len(policyStmt.actions);i++ {
+	  logger.Printf("policy action number %d type %d\n", i, policyStmt.actions[i].actionType)
+		switch policyStmt.actions[i].actionType {
+		   case ribdCommonDefs.PolicyActionTypeRouteDisposition:
+		      logger.Println("PolicyActionTypeRouteDisposition action to be applied")
+			  logger.Println("RouteDisposition action = ", policyStmt.actions[i].actionInfo)
+			  break
+		   case ribdCommonDefs.PolicyActionTypeRouteRedistribute:
+		      logger.Println("PolicyActionTypeRouteRedistribute action to be applied")
+			  logger.Println("Redistribute target protocol = %d %s ", policyStmt.actions[i].actionInfo, ReverseRouteProtoTypeMapDB[policyStmt.actions[i].actionInfo.(int)])
+	
+	          //Send a event
+			  policyEngineActionRedistribute(route, policyStmt.actions[i].actionInfo.(int))
+			  break
+		   default:
+		      logger.Println("Unknown type of action")
+			  return
+		}
 	}
-	policyStmt := policyStmtGet.(PolicyStmt)
-	if policyStmt.name != name {
-		logger.Println("Mismatch in the policy names")
-		return
-	}
-	if policyStmt.conditions == nil {
-		logger.Println("No policy conditions")
-		return
-	}
+}
+func policyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (allConditionsMatch bool , anyConditionsMatch bool){
+    logger.Println("policyEngineMatchConditions")
+	var i int
+	allConditionsMatch = true
+	anyConditionsMatch = false
 	for i=0;i<len(policyStmt.conditions);i++ {
 	  logger.Printf("policy condition number %d type %d\n", i, policyStmt.conditions[i].conditionType)
       switch policyStmt.conditions[i].conditionType {
@@ -44,9 +70,29 @@ func policyEngineApplyPolicy(route ribd.Routes, name string) {
 		break
 		default:
 		  logger.Println("Not a known condition type")
-		  return
+          return allConditionsMatch, anyConditionsMatch
 	  }
 	}
+   return allConditionsMatch, anyConditionsMatch
+}
+
+func policyEngineApplyPolicy(route ribd.Routes, name string) {
+	logger.Println("PolicyEngineApplyPolicy - ", name)
+	policyStmtGet := PolicyDB.Get(patriciaDB.Prefix(name))
+	if(policyStmtGet == nil) {
+		logger.Printf("Didnt find the policy %s in the policy DB\n", name)
+		return
+	}
+	policyStmt := policyStmtGet.(PolicyStmt)
+	if policyStmt.name != name {
+		logger.Println("Mismatch in the policy names")
+		return
+	}
+	if policyStmt.conditions == nil {
+		logger.Println("No policy conditions")
+		return
+	}
+	allConditionsMatch, anyConditionsMatch := policyEngineMatchConditions(route, policyStmt)
 	if allConditionsMatch {
 		logger.Println("All conditions match")
 		//use this later to control actions
@@ -54,29 +100,7 @@ func policyEngineApplyPolicy(route ribd.Routes, name string) {
 	if anyConditionsMatch {
 		logger.Println("Some conditions match")
 	}
-	if policyStmt.actions == nil {
-		logger.Println("No actions")
-		return
-	}
-	for i=0;i<len(policyStmt.actions);i++ {
-	  logger.Printf("policy action number %d type %d\n", i, policyStmt.actions[i].actionType)
-		switch policyStmt.actions[i].actionType {
-		   case ribdCommonDefs.PolicyActionTypeRouteDisposition:
-		      logger.Println("PolicyActionTypeRouteDisposition action to be applied")
-			  logger.Println("RouteDisposition action = ", policyStmt.actions[i].actionInfo)
-			  break
-		   case ribdCommonDefs.PolicyActionTypeRouteRedistribute:
-		      logger.Println("PolicyActionTypeRouteRedistribute action to be applied")
-			  logger.Println("Redistribute target protocol = %d %s ", policyStmt.actions[i].actionInfo, ReverseRouteProtoTypeMapDB[policyStmt.actions[i].actionInfo.(int)])
-	
-	          //Send a event
-	          RouteNotificationSend(route)
-			  break
-		   default:
-		      logger.Println("Unknown type of action")
-			  return
-		}
-	}
+	policyEngineImplementActions(route, policyStmt)
 }
 func policyEngineCheckPolicy( route ribd.Routes) {
 	logger.Println("policyEngineCheckPolicy")

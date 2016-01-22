@@ -46,14 +46,15 @@ type OSPFServer struct {
 	   ribSubSocketCh      chan []byte
 	   ribSubSocketErrCh   chan error
 	*/
-	asicdSubSocket      *nanomsg.SubSocket
-	asicdSubSocketCh    chan []byte
-	asicdSubSocketErrCh chan error
-	AreaConfMap         map[AreaConfKey]AreaConf
-	IntfConfMap         map[IntfConfKey]IntfConf
-	NeighborConfigMap   map[uint32]OspfNeighborEntry
-	NeighborListMap     map[IntfConfKey]list.List
-	neighborConfMutex   sync.Mutex
+	asicdSubSocket       *nanomsg.SubSocket
+	asicdSubSocketCh     chan []byte
+	asicdSubSocketErrCh  chan error
+	AreaConfMap          map[AreaConfKey]AreaConf
+	IntfConfMap          map[IntfConfKey]IntfConf
+	NeighborConfigMap    map[uint32]OspfNeighborEntry
+	NeighborListMap      map[IntfConfKey]list.List
+	neighborConfMutex    sync.Mutex
+	neighborHelloEventCh chan IntfToNeighMsg
 }
 
 func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
@@ -69,6 +70,8 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
+	ospfServer.neighborHelloEventCh = make(chan IntfToNeighMsg)
+
 	/*
 	   ospfServer.ribSubSocketCh = make(chan []byte)
 	   ospfServer.ribSubSocketErrCh = make(chan error)
