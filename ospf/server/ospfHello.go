@@ -222,7 +222,7 @@ func (server *OSPFServer)processOspfHelloNeighbor(data []byte, ospfHelloData *OS
 
     nbrDeadInterval := time.Duration(ent.IfRtrDeadInterval) * time.Second
     server.CreateAndSendHelloRecvdMsg(routerId, ipHdrMd, ospfHdrMd, nbrDeadInterval,
-                                     ent.IfType, TwoWayStatus, key)
+                                     ent.IfType, TwoWayStatus, ospfHelloData.rtrPrio, key)
 
     var backupSeenMsg BackupSeenMsg
 
@@ -252,9 +252,11 @@ func (server *OSPFServer)processOspfHelloNeighbor(data []byte, ospfHelloData *OS
     }
 }
 
-func (server *OSPFServer)CreateAndSendHelloRecvdMsg(routerId uint32, ipHdrMd *IpHdrMetadata,
-     ospfHdrMd *OspfHdrMetadata, nbrDeadInterval time.Duration, ifType config.IfType,
-     TwoWayStatus bool, key IntfConfKey) {
+func (server *OSPFServer)CreateAndSendHelloRecvdMsg(routerId uint32,
+     ipHdrMd *IpHdrMetadata,
+     ospfHdrMd *OspfHdrMetadata,
+     nbrDeadInterval time.Duration, ifType config.IfType,
+     TwoWayStatus bool, rtrPrio uint8, key IntfConfKey) {
     var msg IntfToNeighMsg
 
     if ifType == config.Broadcast ||
@@ -265,6 +267,7 @@ func (server *OSPFServer)CreateAndSendHelloRecvdMsg(routerId uint32, ipHdrMd *Ip
         copy(msg.NeighborIP, ospfHdrMd.routerId)
     }
     msg.RouterId = routerId
+    msg.RtrPrio = rtrPrio
     msg.nbrDeadTimer = nbrDeadInterval
     msg.IntfConfKey.IPAddr = key.IPAddr
     msg.IntfConfKey.IntfIdx = key.IntfIdx
