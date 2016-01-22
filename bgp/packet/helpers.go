@@ -2,6 +2,7 @@
 package packet
 
 import (
+	"math"
 	"net"
 )
 
@@ -17,15 +18,27 @@ func PrependAS(updateMsg *BGPMessage, AS uint32, asSize uint8) {
 					newASPathSegment = NewBGPAS4PathSegmentSeq()
 				} else {
 					newASPathSegment = NewBGPAS2PathSegmentSeq()
+					if asSize == 2 {
+						if AS > math.MaxUint16 {
+							AS = uint32(BGPASTrans)
+						}
+					}
 				}
-
 				pa.(*BGPPathAttrASPath).PrependASPathSegment(newASPathSegment)
 			}
-
 			asPathSegments = pa.(*BGPPathAttrASPath).Value
 			asPathSegments[0].PrependAS(AS)
 			pa.(*BGPPathAttrASPath).BGPPathAttrBase.Length += uint16(asSize)
-			return
+		} else if pa.GetCode() == BGPPathAttrTypeAS4Path {
+			asPathSegments := pa.(*BGPPathAttrAS4Path).Value
+			var newAS4PathSegment *BGPAS4PathSegment
+			if len(asPathSegments) == 0 || asPathSegments[0].GetType() == BGPASPathSet || asPathSegments[0].GetLen() >= 255 {
+				newAS4PathSegment = NewBGPAS4PathSegmentSeq()
+				pa.(*BGPPathAttrAS4Path).AddASPathSegment(newAS4PathSegment)
+			}
+			asPathSegments = pa.(*BGPPathAttrAS4Path).Value
+			asPathSegments[0].PrependAS(AS)
+			pa.(*BGPPathAttrASPath).BGPPathAttrBase.Length += uint16(asSize)
 		}
 	}
 }
@@ -322,16 +335,22 @@ func Convert4ByteTo2ByteASPath(updateMsg *BGPMessage) {
 	for idx, pa := range body.PathAttributes {
 		if pa.GetCode() == BGPPathAttrTypeASPath {
 			asPath := pa.(*BGPPathAttrASPath)
+			addAS4Path := false
 			newAS4Path := asPath.CloneAsAS4Path()
 			newAS2Path := NewBGPPathAttrASPath()
 			for _, seg := range asPath.Value {
 				as4Seg := seg.(*BGPAS4PathSegment)
-				as2Seg := as4Seg.CloneAsAS2PathSegment()
+				as2Seg, mappable := as4Seg.CloneAsAS2PathSegment()
+				if !mappable {
+					addAS4Path = true
+				}
 				newAS2Path.AppendASPathSegment(as2Seg)
 			}
 			body.PathAttributes[idx] = nil
 			body.PathAttributes[idx] = newAS2Path
-			addPathAttr(updateMsg, BGPPathAttrTypeAS4Path, newAS4Path)
+			if addAS4Path {
+				addPathAttr(updateMsg, BGPPathAttrTypeAS4Path, newAS4Path)
+			}
 			break
 		}
 	}
