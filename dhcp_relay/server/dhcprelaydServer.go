@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"utils/ipcutils"
 )
@@ -31,7 +32,9 @@ type DhcpRelayServiceHandler struct {
  * until it is out
  */
 type DhcpRelayAgentStateInfo struct {
-	initDone string
+	initDone     string
+	configCreate string
+	pcapHandler  string
 }
 
 /*
@@ -42,15 +45,17 @@ type DhcpRelayAgentStateInfo struct {
 type DhcpRelayAgentGlobalInfo struct {
 	IntfConfig     dhcprelayd.DhcpRelayIntfConfig
 	StateDebugInfo DhcpRelayAgentStateInfo
+	PcapHandler    *DhcpRelayPcapHandle
 }
 
 var (
 	// map key would be if_name
-	dhcprelayGblInfo    map[int]DhcpRelayAgentGlobalInfo
-	asicdSubSocket      *nanomsg.SubSocket
-	logger              *syslog.Writer
-	asicdSubSocketCh    chan []byte = make(chan []byte)
-	asicdSubSocketErrCh chan error  = make(chan error)
+	dhcprelayGblInfo     map[string]DhcpRelayAgentGlobalInfo
+	asicdSubSocket       *nanomsg.SubSocket
+	logger               *syslog.Writer
+	asicdSubSocketCh     chan []byte = make(chan []byte)
+	asicdSubSocketErrCh  chan error  = make(chan error)
+	dhcprelayConfigMutex sync.RWMutex
 )
 
 /******* Local API Calls. *******/
@@ -224,6 +229,7 @@ func InitDhcpRelayPortPktHandler() error {
 	//go DhcpRelayAgentUpdateHandler()
 	// OS signal channel listener thread
 	DhcpRelayAgentOSSignalHandle()
+	dhcprelayConfigMutex = sync.RWMutex{}
 	// @TODO: jgheewala... DO we need a routine to listen to intf state
 	// change???
 	/*

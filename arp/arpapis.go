@@ -351,7 +351,7 @@ func arp_entry_refresh() {
 }
 
 func BuildAsicToLinuxMap() {
-	pcap_handle_map = make(map[int]pcapHandle)
+	pcap_handle_map = make(map[int]pcapHandle, len(portConfigMap))
 	var filter string = "not ether proto 0x8809"
 	for ifNum, portConfig := range portConfigMap {
 		ifName := portConfig.Name
