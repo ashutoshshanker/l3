@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/google/gopacket"
 	"io/ioutil"
 	"log/syslog"
 	"os"
@@ -40,8 +41,9 @@ type DhcpRelayAgentStateInfo struct {
 type DhcpRelayAgentGlobalInfo struct {
 	IntfConfig           dhcprelayd.DhcpRelayIntfConfig
 	StateDebugInfo       DhcpRelayAgentStateInfo
-	PcapHandler          *DhcpRelayPcapHandle
+	PcapHandler          DhcpRelayPcapHandle
 	dhcprelayConfigMutex sync.RWMutex
+	inputPacket          chan gopacket.Packet
 }
 
 var (

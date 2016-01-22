@@ -62,13 +62,13 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobalConfig(
 func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
 	logger.Info("DRA: Intf Config Create")
-	fmt.Println("Creating Dhcp Relay Config for interface")
-	fmt.Println("IpSubnet:", config.IpSubnet)
-	fmt.Println("Netmask:", config.Netmask)
-	fmt.Println("IF Index:", config.IfIndex)
-	fmt.Println("AgentSubType:", config.AgentSubType)
-	fmt.Println("Enable:", config.Enable)
-	fmt.Println("ServerIp:", config.ServerIp)
+	logger.Info("DRA: Creating Dhcp Relay Config for interface")
+	logger.Info("DRA: IpSubnet:" + config.IpSubnet)
+	logger.Info("DRA: Netmask:" + config.Netmask)
+	logger.Info("DRA: IF Index:" + config.IfIndex)
+	logger.Info("DRA: AgentSubType:" + string(config.AgentSubType))
+	logger.Info(fmt.Sprintln("DRA: Enable:", config.Enable))
+	logger.Info("DRA: ServerIp:" + config.ServerIp)
 	// Copy over configuration into globalInfo
 	gblEntry := dhcprelayGblInfo[config.IfIndex]
 	// Acquire lock for updating configuration.
@@ -80,7 +80,11 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	dhcprelayGblInfo[config.IfIndex] = gblEntry
 	// Release lock after updation is done
 	gblEntry.dhcprelayConfigMutex.RUnlock()
-
+	//@TODO: duplicate create request is not working... FIXME jgheewala
+	if gblEntry.PcapHandler.pcapHandle != nil {
+		logger.Info("no need to create pcap as its already created")
+		return true, nil
+	}
 	// Stats information
 	DhcpRelayAgentUpdateStats("dhcp relay config create request",
 		gblEntry)
