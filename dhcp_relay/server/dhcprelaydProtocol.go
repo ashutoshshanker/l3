@@ -6,6 +6,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"net"
 	"sync"
 	"time"
 )
@@ -21,18 +22,15 @@ var (
 	pcapTimeOut time.Duration = 1 * time.Second
 )
 
-func DhcpRelayAgentDecodeInPkt(inputPacket gopacket.Packet, handler *pcap.Handle) {
-	// Will reuse these for each packet
+func DhcpRelayAgentDecodeInPkt(inputPacket gopacket.Packet, handler *pcap.Handle,
+	ethLayer layers.Ethernet, ipLayer layers.IPv4, udpLayer layers.UDP,
+	payload gopacket.Payload) {
 	//@FIXME: jgheewala getting error on decode
 	//Trouble decoding layers:  No decoder for layer type Payload
-	var ethLayer layers.Ethernet
-	var ipLayer layers.IPv4
-	//var tcpLayer layers.TCP
-	var udpLayer layers.UDP
 
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
-		&ethLayer, &ipLayer /*&tcpLayer,*/, &udpLayer)
-	foundLayerTypes := []gopacket.LayerType{}
+		&ethLayer, &ipLayer /*&tcpLayer,*/, &udpLayer, &payload)
+	foundLayerTypes := make([]gopacket.LayerType, 0, 10)
 
 	err := parser.DecodeLayers(inputPacket.Data(), &foundLayerTypes)
 	if err != nil {
@@ -40,18 +38,15 @@ func DhcpRelayAgentDecodeInPkt(inputPacket gopacket.Packet, handler *pcap.Handle
 	}
 
 	for _, layerType := range foundLayerTypes {
+		if layerType == layers.LayerTypeEthernet {
+			logger.Info(fmt.Sprintln("DRA: Eth: ", ethLayer.SrcMAC,
+				"->", ethLayer.DstMAC))
+
+		}
 		if layerType == layers.LayerTypeIPv4 {
 			logger.Info(fmt.Sprintln("DRA: IPv4: ", ipLayer.SrcIP,
 				"->", ipLayer.DstIP))
 		}
-		/*
-			if layerType == layers.LayerTypeTCP {
-				logger.Info(fmt.Sprintln("DRA: TCP Port: ",
-					tcpLayer.SrcPort, "->", tcpLayer.DstPort))
-				logger.Info(fmt.Sprintln("DRA: TCP SYN:", tcpLayer.SYN,
-					" | ACK:", tcpLayer.ACK))
-			}
-		*/
 		if layerType == layers.LayerTypeUDP {
 			logger.Info(fmt.Sprintln("DRA: UDP Port: ",
 				udpLayer.SrcPort, "->", udpLayer.DstPort))
@@ -60,15 +55,43 @@ func DhcpRelayAgentDecodeInPkt(inputPacket gopacket.Packet, handler *pcap.Handle
 
 }
 func DhcpRelayAgentSendPacketToDhcpServer(info DhcpRelayAgentGlobalInfo,
-	inputPacket gopacket.Packet, handler *pcap.Handle) {
+	inputPacket gopacket.Packet, handler *pcap.Handle,
+	ethLayer layers.Ethernet, ipLayer layers.IPv4, udpLayer layers.UDP,
+	payload gopacket.Payload) {
+	// Send raw bytes over wire
+	rawBytes := []byte{10, 20, 30}
 
-	//outputPacket := []byte{10, 20, 30}
-	/*
-		err := handler.WritePacketData(inputPacket)
-		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: couldn't write to output data", err))
-		}
-	*/
+	// Ethernet Info
+	eth := &layers.Ethernet{
+		SrcMAC: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x34},
+		DstMAC: ethLayer.DstMAC,
+	}
+
+	// Ip Info
+	ip := &layers.IPv4{
+		SrcIP: ipLayer.SrcIP,
+		DstIP: ipLayer.DstIP,
+	}
+
+	// UDP (Port) Info
+	udp := &layers.UDP{
+		SrcPort: udpLayer.SrcPort,
+		DstPort: udpLayer.DstPort,
+	}
+
+	// Add DRA Option to the packet formed
+	// Create the packet with the layers
+	buffer := gopacket.NewSerializeBuffer()
+	options := gopacket.SerializeOptions{
+		ComputeChecksums: true,
+	}
+	gopacket.SerializeLayers(buffer, options, eth, ip,
+		udp, gopacket.Payload(rawBytes))
+	logger.Info(fmt.Sprintln("DRA: PacketData... ", buffer.Bytes()))
+	err := handler.WritePacketData(buffer.Bytes())
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: couldn't write to output data", err))
+	}
 }
 
 func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
@@ -125,11 +148,17 @@ func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
 	for {
 		packet, ok := <-info.inputPacket
 		if ok {
+			// Will reuse these for each packet
+			var ethLayer layers.Ethernet
+			var ipLayer layers.IPv4
+			var udpLayer layers.UDP
+			var payload gopacket.Payload
 			//Decode the packet...
-			DhcpRelayAgentDecodeInPkt(packet, recvHandler)
+			DhcpRelayAgentDecodeInPkt(packet, recvHandler, ethLayer,
+				ipLayer, udpLayer, payload)
 			//Send out the packet
 			DhcpRelayAgentSendPacketToDhcpServer(info, packet,
-				recvHandler)
+				recvHandler, ethLayer, ipLayer, udpLayer, payload)
 		}
 	}
 }
