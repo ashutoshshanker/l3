@@ -21,6 +21,56 @@ var (
 	pcapTimeOut time.Duration = 1 * time.Second
 )
 
+func DhcpRelayAgentDecodeInPkt(inputPacket gopacket.Packet, handler *pcap.Handle) {
+	// Will reuse these for each packet
+	//@FIXME: jgheewala getting error on decode
+	//Trouble decoding layers:  No decoder for layer type Payload
+	var ethLayer layers.Ethernet
+	var ipLayer layers.IPv4
+	//var tcpLayer layers.TCP
+	var udpLayer layers.UDP
+
+	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
+		&ethLayer, &ipLayer /*&tcpLayer,*/, &udpLayer)
+	foundLayerTypes := []gopacket.LayerType{}
+
+	err := parser.DecodeLayers(inputPacket.Data(), &foundLayerTypes)
+	if err != nil {
+		logger.Info(fmt.Sprintln("DRA: Trouble decoding layers: ", err))
+	}
+
+	for _, layerType := range foundLayerTypes {
+		if layerType == layers.LayerTypeIPv4 {
+			logger.Info(fmt.Sprintln("DRA: IPv4: ", ipLayer.SrcIP,
+				"->", ipLayer.DstIP))
+		}
+		/*
+			if layerType == layers.LayerTypeTCP {
+				logger.Info(fmt.Sprintln("DRA: TCP Port: ",
+					tcpLayer.SrcPort, "->", tcpLayer.DstPort))
+				logger.Info(fmt.Sprintln("DRA: TCP SYN:", tcpLayer.SYN,
+					" | ACK:", tcpLayer.ACK))
+			}
+		*/
+		if layerType == layers.LayerTypeUDP {
+			logger.Info(fmt.Sprintln("DRA: UDP Port: ",
+				udpLayer.SrcPort, "->", udpLayer.DstPort))
+		}
+	}
+
+}
+func DhcpRelayAgentSendPacketToDhcpServer(info DhcpRelayAgentGlobalInfo,
+	inputPacket gopacket.Packet, handler *pcap.Handle) {
+
+	//outputPacket := []byte{10, 20, 30}
+	/*
+		err := handler.WritePacketData(inputPacket)
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: couldn't write to output data", err))
+		}
+	*/
+}
+
 func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
 	logger.Info("DRA: Creating Pcap Handler for intf: " +
 		info.IntfConfig.IfIndex)
@@ -50,7 +100,6 @@ func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
 
 	logger.Info("DRA: Pcap Handler successfully updated for intf " +
 		info.IntfConfig.IfIndex)
-
 	DhcpRelayAgentUpdateStats("Pcap Handler Successfully Created", info)
 
 	info.dhcprelayConfigMutex.RLock()
@@ -58,7 +107,6 @@ func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
 		logger.Info("DRA: relay agent disabled deleting pcap" +
 			"handler if any")
 		// delete pcap handler and exit out of the go routine
-		// @TODO: jgheewala memory leak???
 		info.PcapHandler.pcapHandle = nil
 		dhcprelayGblInfo[info.IntfConfig.IfIndex] = info
 		info.dhcprelayConfigMutex.RUnlock()
@@ -77,7 +125,11 @@ func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
 	for {
 		packet, ok := <-info.inputPacket
 		if ok {
-			logger.Info(fmt.Sprintln("DRA: packet is", packet))
+			//Decode the packet...
+			DhcpRelayAgentDecodeInPkt(packet, recvHandler)
+			//Send out the packet
+			DhcpRelayAgentSendPacketToDhcpServer(info, packet,
+				recvHandler)
 		}
 	}
 }
