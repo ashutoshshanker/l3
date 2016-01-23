@@ -994,6 +994,7 @@ func (fsm *FSM) SetHoldTime(holdTime uint32, keepaliveTime uint32) {
 		return
 	}
 
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Set hold time to", holdTime, "and keepalive time to", keepaliveTime))
 	fsm.holdTime = holdTime
 	fsm.keepAliveTime = keepaliveTime
 }
