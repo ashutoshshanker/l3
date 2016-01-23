@@ -49,7 +49,7 @@ func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
 		info.dhcprelayConfigMutex.RUnlock()
 		DhcpRelayAgentUpdateStats("Pcap Handler Successfully Created",
 			info)
-		logger.Info("DRA: Pcap Handler created successfully for intf " +
+		logger.Info("DRA: Pcap Handler successfully updated for intf " +
 			info.IntfConfig.IfIndex)
 	}
 	info.dhcprelayConfigMutex.RLock()
@@ -67,9 +67,9 @@ func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
 		info.IntfConfig.IfIndex)
 	src := gopacket.NewPacketSource(recvHandler,
 		layers.LayerTypeEthernet)
-	in := src.Packets()
+	info.inputPacket = src.Packets()
 	for {
-		packet, ok := <-in
+		packet, ok := <-info.inputPacket
 		if ok {
 			logger.Info(fmt.Sprintln("DRA: packet is", packet))
 		}
@@ -77,7 +77,7 @@ func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
 }
 
 func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
-	logger.Info("DRA: Initializaing Global Info for" + ifName + " " +
+	logger.Info("DRA: Initializaing Global Info for " + ifName + " " +
 		string(ifNum))
 	// Created a global Entry for Interface
 	gblEntry := dhcprelayGblInfo[ifName]
@@ -90,7 +90,7 @@ func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
 	gblEntry.dhcprelayConfigMutex = sync.RWMutex{}
 	// Stats information
 	gblEntry.StateDebugInfo.stats = make([]string, 150)
-	gblEntry.PcapHandler = nil
+	//gblEntry.PcapHandler = 0
 	DhcpRelayAgentUpdateStats(ifName, gblEntry)
 	DhcpRelayAgentUpdateStats("Global Init Done", gblEntry)
 
