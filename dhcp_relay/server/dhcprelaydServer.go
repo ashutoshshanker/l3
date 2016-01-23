@@ -60,8 +60,9 @@ func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 }
 
 func DhcpRelayAgentUpdateStats(input string, info DhcpRelayAgentGlobalInfo) {
-	info.dhcprelayConfigMutex.RLock()
 	info.StateDebugInfo.stats = append(info.StateDebugInfo.stats, input)
+	info.dhcprelayConfigMutex.RLock()
+	dhcprelayGblInfo[info.IntfConfig.IfIndex] = info
 	info.dhcprelayConfigMutex.RUnlock()
 }
 
