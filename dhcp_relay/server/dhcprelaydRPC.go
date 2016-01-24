@@ -90,7 +90,7 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	logger.Info("DRA: len of global entries is " + string(len(dhcprelayGblInfo)))
 	// Stats information
 	DhcpRelayAgentUpdateStats("dhcp relay config create request",
-		gblEntry)
+		&gblEntry)
 	go DhcpRelayAgentReceiveDhcpPkt(gblEntry)
 	return true, nil
 }
