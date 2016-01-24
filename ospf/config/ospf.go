@@ -149,9 +149,9 @@ const (
 	Loopback               IfState = 2
 	Waiting                IfState = 3
 	PiontToPoint           IfState = 4
-	DesignatedRouter       IfState = 5
-	BackupDesignatedRouter IfState = 6
-	OtherDesignatedRouter  IfState = 7
+	OtherDesignatedRouter  IfState = 5
+	DesignatedRouter       IfState = 6
+	BackupDesignatedRouter IfState = 7
 )
 
 type NbrState int

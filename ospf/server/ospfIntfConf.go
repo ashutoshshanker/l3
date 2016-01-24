@@ -124,6 +124,8 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		ent.IfName = ipIntfProp.IfName
 		ent.IfIpAddr = ipIntfProp.IpAddr
 		ent.IfMacAddr = ipIntfProp.MacAddr
+                ent.IfDR = []byte {0, 0, 0, 0}
+                ent.IfBDR = []byte {0, 0, 0, 0}
 		sendHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
 		if sendHdl == nil {
 			server.logger.Err(fmt.Sprintln("SendHdl: No device found.", ent.IfName, err))
@@ -289,6 +291,9 @@ func (server *OSPFServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
 	server.StopOspfTransPkts(intfConfKey)
 	server.logger.Info("Stop Receiving Hello Pkt")
 	server.StopOspfRecvPkts(intfConfKey)
+	ent, _ := server.IntfConfMap[intfConfKey]
+        ent.NeighborMap = nil
+	server.IntfConfMap[intfConfKey] = ent
 }
 
 func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
@@ -298,10 +303,11 @@ func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
 	// rtrDeadInterval := time.Duration(ent.IfRtrDeadInterval * time.Second)
 	ent.HelloIntervalTicker = time.NewTicker(helloInterval)
 	ent.WaitTimer = time.NewTimer(waitTime)
+        ent.NeighborMap = make(map[NeighborKey]NeighborData)
+        ent.IfFSMState = config.Waiting
+	server.IntfConfMap[intfConfKey] = ent
 	server.logger.Info("Start Sending Hello Pkt")
 	go server.StartOspfTransPkts(intfConfKey)
 	server.logger.Info("Start Receiving Hello Pkt")
 	go server.StartOspfRecvPkts(intfConfKey)
-        ent.IfFSMState = config.Waiting
-	server.IntfConfMap[intfConfKey] = ent
 }
