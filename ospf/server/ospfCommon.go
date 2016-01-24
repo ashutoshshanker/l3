@@ -28,8 +28,8 @@ const (
 )
 
 type IpHdrMetadata struct {
-	srcIP     net.IP
-	dstIP     net.IP
+	srcIP     []byte
+	dstIP     []byte
 	dstIPType DstIPType
 }
 

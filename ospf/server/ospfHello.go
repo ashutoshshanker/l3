@@ -65,11 +65,13 @@ func (server *OSPFServer)BuildHelloPkt(ent IntfConf) ([]byte) {
     helloData := OSPFHelloData {
         netmask:                ent.IfNetmask,
         helloInterval:          ent.IfHelloInterval,
-        options:                uint8(2),
+        options:                uint8(2), // Need to revisit
         rtrPrio:                ent.IfRtrPriority,
         rtrDeadInterval:        ent.IfRtrDeadInterval,
-        designatedRtr:          []byte {0, 0, 0, 0},
-        backupDesignatedRtr:    []byte {0, 0, 0, 0},
+        designatedRtr:          ent.IfDR,
+        backupDesignatedRtr:    ent.IfBDR,
+        //designatedRtr:          []byte {0, 0, 0, 0},
+        //backupDesignatedRtr:    []byte {0, 0, 0, 0},
         //neighbor:               []byte {1, 1, 1, 1},
     }
 
@@ -158,31 +160,66 @@ func (server *OSPFServer)processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetada
         return err
     }
 
-   /* TEMP
     if ospfHdrMd.backbone == true {
-        if (ospfHelloData.options & EOption) != 0x0 {
+        server.logger.Info(fmt.Sprintln("Options:", ospfHelloData.options, "EOPTIONS:", EOption))
+        if (ospfHelloData.options & EOption) == 0 {
             err := errors.New("External Routing Capability mismatch")
             return err
         }
     }
-*/
 
-    if len(data) > OSPF_HELLO_MIN_SIZE {
-    	server.processOspfHelloNeighbor(data[OSPF_HELLO_MIN_SIZE:], ospfHelloData, ipHdrMd, ospfHdrMd, key)
-   }
+   //Todo: Find whether one way or two way
+    TwoWayStatus := false
+/*
+    ospfHdrMetadata := OspfHdrMetadata {
+        pktType:    ospfHdrMd.pktType,
+        pktlen:     ospfHdrMd.pktlen,
+        backbone:   ospfHdrMd.backbone,
+    }
+    ospfHdrMetadata.routerId = ospfHdrMd.routerId
+
+    ipHdrMetadata := IpHdrMetadata {
+        dstIPType:      ipHdrMd.dstIPType,
+    }
+    ipHdrMetadata.srcIP = ipHdrMd.srcIP
+    copy(ipHdrMetadata.dstIP, ipHdrMd.dstIP)
+*/
+    server.logger.Info(fmt.Sprintln("ospfHelloData", ospfHelloData))
+    server.logger.Info(fmt.Sprintln("ipHdrMd", ipHdrMd))
+    server.logger.Info(fmt.Sprintln("ospfHdrMd", ospfHdrMd))
+    nbrlen := ospfHdrMd.pktlen - (OSPF_HELLO_MIN_SIZE + OSPF_HEADER_SIZE)
+    if nbrlen > 0 {
+        j := uint16(OSPF_HELLO_MIN_SIZE)
+        i := OSPF_HELLO_MIN_SIZE + 4
+        k := 0
+        for ; k < int(nbrlen); i, j, k = i+4, j+4, k+4 {
+            if bytesEqual(data[j:i], server.ospfGlobalConf.RouterId) == true {
+                TwoWayStatus = true
+                break
+            }
+        }
+    }
+
+
+    server.processOspfHelloNeighbor(TwoWayStatus, ospfHelloData, ipHdrMd, ospfHdrMd, key)
 
     return nil
 }
 
-func (server *OSPFServer)processOspfHelloNeighbor(data []byte, ospfHelloData *OSPFHelloData, ipHdrMd *IpHdrMetadata, ospfHdrMd *OspfHdrMetadata, key IntfConfKey) {
+func (server *OSPFServer)processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloData *OSPFHelloData, ipHdrMd *IpHdrMetadata, ospfHdrMd *OspfHdrMetadata, key IntfConfKey) {
 
+    server.logger.Info(fmt.Sprintln("ospfHelloData", ospfHelloData))
+    server.logger.Info(fmt.Sprintln("ipHdrMd", ipHdrMd))
+    server.logger.Info(fmt.Sprintln("ospfHdrMd", ospfHdrMd))
     routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
     neighborKey := NeighborKey {
         RouterId:       routerId,
     }
 
     //Todo: Find whether one way or two way
+/*
     TwoWayStatus := false
+
     j := uint16(OSPF_HELLO_MIN_SIZE)
     i := OSPF_HELLO_MIN_SIZE + 4
     for ; j < ospfHdrMd.pktlen; i, j = i+4, j+4 {
@@ -191,7 +228,7 @@ func (server *OSPFServer)processOspfHelloNeighbor(data []byte, ospfHelloData *OS
             break
         }
     }
-
+*/
     ent, _ := server.IntfConfMap[key]
 
     neighborEntry, exist := ent.NeighborMap[neighborKey]
@@ -200,24 +237,22 @@ func (server *OSPFServer)processOspfHelloNeighbor(data []byte, ospfHelloData *OS
         neighCreateMsg.RouterId = routerId
         neighCreateMsg.RtrPrio = ospfHelloData.rtrPrio
         neighCreateMsg.TwoWayStatus = TwoWayStatus
-        copy(neighCreateMsg.DRtr, ospfHelloData.designatedRtr)
-        copy(neighCreateMsg.BDRtr, ospfHelloData.backupDesignatedRtr)
+        neighCreateMsg.DRtr = append(neighCreateMsg.DRtr, ospfHelloData.designatedRtr...)
+        neighCreateMsg.BDRtr = append(neighCreateMsg.BDRtr, ospfHelloData.backupDesignatedRtr...)
         ent.NeighCreateCh <- neighCreateMsg
         server.logger.Info(fmt.Sprintln("Neighbor Entry Created", neighborEntry))
     } else {
-        if ent.IfFSMState == config.OtherDesignatedRouter ||
-            ent.IfFSMState == config.DesignatedRouter ||
-            ent.IfFSMState == config.BackupDesignatedRouter {
-            if neighborEntry.RtrPrio != ospfHelloData.rtrPrio ||
+        if ent.IfFSMState > config.Waiting {
+            if neighborEntry.TwoWayStatus != TwoWayStatus ||
                 bytesEqual(neighborEntry.DRtr, ospfHelloData.designatedRtr) == false ||
-                bytesEqual(neighborEntry.BDRtr, ospfHelloData.backupDesignatedRtr) == false {
-                server.logger.Info("Neighbor Change")
+                bytesEqual(neighborEntry.BDRtr, ospfHelloData.backupDesignatedRtr) == false ||
+                neighborEntry.RtrPrio != ospfHelloData.rtrPrio {
                 var neighChangeMsg NeighChangeMsg
                 neighChangeMsg.RouterId = routerId
                 neighChangeMsg.TwoWayStatus = TwoWayStatus
                 neighChangeMsg.RtrPrio = ospfHelloData.rtrPrio
-                copy(neighChangeMsg.DRtr, ospfHelloData.designatedRtr)
-                copy(neighChangeMsg.BDRtr, ospfHelloData.backupDesignatedRtr)
+                neighChangeMsg.DRtr = append(neighChangeMsg.DRtr, ospfHelloData.designatedRtr...)
+                neighChangeMsg.BDRtr = append(neighChangeMsg.BDRtr, ospfHelloData.backupDesignatedRtr...)
                 ent.NeighChangeCh <- neighChangeMsg
             }
         }
@@ -236,8 +271,8 @@ func (server *OSPFServer)processOspfHelloNeighbor(data []byte, ospfHelloData *OS
                 ret := ent.WaitTimer.Stop()
                 if ret == true {
                     backupSeenMsg.RouterId = routerId
-                    copy(backupSeenMsg.DRId, ospfHdrMd.routerId)
-                    copy(backupSeenMsg.BDRId, ospfHelloData.backupDesignatedRtr)
+                    backupSeenMsg.DRId = append(backupSeenMsg.DRId, ospfHdrMd.routerId...)
+                    backupSeenMsg.BDRId = append(backupSeenMsg.BDRId, ospfHelloData.backupDesignatedRtr...)
                     server.logger.Info("Neigbor choose itself as Designated Router")
                     server.logger.Info("Backup Designated Router also exist")
                     ent.BackupSeenCh <-backupSeenMsg
@@ -248,8 +283,8 @@ func (server *OSPFServer)processOspfHelloNeighbor(data []byte, ospfHelloData *OS
             if ret == true {
                 server.logger.Info("Neigbor choose itself as Backup Designated Router")
                 backupSeenMsg.RouterId = routerId
-                copy(backupSeenMsg.DRId, ospfHelloData.designatedRtr)
-                copy(backupSeenMsg.BDRId, ospfHdrMd.routerId)
+                backupSeenMsg.DRId = append(backupSeenMsg.DRId, ospfHelloData.designatedRtr...)
+                backupSeenMsg.BDRId = append(backupSeenMsg.BDRId, ospfHdrMd.routerId...)
                 ent.BackupSeenCh <-backupSeenMsg
             }
         }
@@ -266,9 +301,11 @@ func (server *OSPFServer)CreateAndSendHelloRecvdMsg(routerId uint32,
     if ifType == config.Broadcast ||
         ifType == config.Nbma ||
         ifType == config.PointToMultipoint {
-        copy(msg.NeighborIP, ipHdrMd.srcIP)
+        msg.NeighborIP = net.IPv4(ipHdrMd.srcIP[0],ipHdrMd.srcIP[1],ipHdrMd.srcIP[2],ipHdrMd.srcIP[3])
+        //copy(msg.NeighborIP, ipHdrMd.srcIP)
     } else { //Check for Virtual Links and p2p
-        copy(msg.NeighborIP, ospfHdrMd.routerId)
+        msg.NeighborIP = net.IPv4(ospfHdrMd.routerId[0],ospfHdrMd.routerId[1],ospfHdrMd.routerId[2],ospfHdrMd.routerId[3])
+        //copy(msg.NeighborIP, ospfHdrMd.routerId)
     }
     msg.RouterId = routerId
     msg.RtrPrio = rtrPrio
