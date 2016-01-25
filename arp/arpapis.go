@@ -297,6 +297,7 @@ func initARPhandlerParams() {
 	vlanPropertyMap = make(map[int]vlanProperty)
 	portConfigMap = make(map[int]portConfig)
 	ipv4IntfPropertyMap = make(map[string]ipv4IntfProperty)
+	portLagPropertyMap = make(map[int32]portLagProperty)
 	if success != true {
 		logWriter.Err("server: Failed to initialise ARP cache")
 		//logger.Println("Failed to initialise ARP cache")
