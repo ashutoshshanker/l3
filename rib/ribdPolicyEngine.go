@@ -27,18 +27,25 @@ func policyEngineImplementActions(route ribd.Routes, policyStmt PolicyStmt) {
 	}
 	var i int
 	for i=0;i<len(policyStmt.actions);i++ {
-	  logger.Printf("policy action number %d type %d\n", i, policyStmt.actions[i].actionType)
-		switch policyStmt.actions[i].actionType {
+	  logger.Printf("Find policy action number %d name %s in the action database\n", i, policyStmt.actions[i])
+	  actionItem := PolicyActionsDB.Get(patriciaDB.Prefix(policyStmt.actions[i]))
+	  if actionItem == nil {
+	     logger.Println("Did not find action ", policyStmt.actions[i], " in the action database")	
+		 continue
+	  }
+	  action := actionItem.(PolicyAction)
+	  logger.Printf("policy action number %d type %d\n", i, action.actionType)
+		switch action.actionType {
 		   case ribdCommonDefs.PolicyActionTypeRouteDisposition:
 		      logger.Println("PolicyActionTypeRouteDisposition action to be applied")
-			  logger.Println("RouteDisposition action = ", policyStmt.actions[i].actionInfo)
+			  logger.Println("RouteDisposition action = ", action.actionInfo)
 			  break
 		   case ribdCommonDefs.PolicyActionTypeRouteRedistribute:
 		      logger.Println("PolicyActionTypeRouteRedistribute action to be applied")
-			  logger.Println("Redistribute target protocol = %d %s ", policyStmt.actions[i].actionInfo, ReverseRouteProtoTypeMapDB[policyStmt.actions[i].actionInfo.(int)])
+			  logger.Println("Redistribute target protocol = %d %s ", action.actionInfo, ReverseRouteProtoTypeMapDB[action.actionInfo.(int)])
 	
 	          //Send a event
-			  policyEngineActionRedistribute(route, policyStmt.actions[i].actionInfo.(int))
+			  policyEngineActionRedistribute(route, action.actionInfo.(int))
 			  break
 		   default:
 		      logger.Println("Unknown type of action")
@@ -52,14 +59,21 @@ func policyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (allC
 	allConditionsMatch = true
 	anyConditionsMatch = false
 	for i=0;i<len(policyStmt.conditions);i++ {
-	  logger.Printf("policy condition number %d type %d\n", i, policyStmt.conditions[i].conditionType)
-      switch policyStmt.conditions[i].conditionType {
+	  logger.Printf("Find policy condition number %d name %s in the condition database\n", i, policyStmt.conditions[i])
+	  conditionItem := PolicyConditionsDB.Get(patriciaDB.Prefix(policyStmt.conditions[i]))
+	  if conditionItem == nil {
+	     logger.Println("Did not find condition ", policyStmt.conditions[i], " in the condition database")	
+		 continue
+	  }
+	  condition := conditionItem.(PolicyCondition)
+	  logger.Printf("policy condition number %d type %d\n", i, condition.conditionType)
+      switch condition.conditionType {
 		case ribdCommonDefs.PolicyConditionTypePrefixMatch:
 		  logger.Println("PolicyConditionTypePrefixMatch case")
 		break
 		case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 		  logger.Println("PolicyConditionTypeProtocolMatch case")
-		  matchProto := policyStmt.conditions[i].conditionInfo.(int)
+		  matchProto := condition.conditionInfo.(int)
 		  if matchProto == int(route.Prototype) {
 			logger.Println("Protocol condition matches")
 			anyConditionsMatch = true
