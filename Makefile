@@ -2,13 +2,15 @@ COMPS=arp\
 		bgp\
 		ospf\
 		rib\
-		dhcp_relay
+		dhcp_relay\
+		bfd
 
 IPCS=arp\
 	  bgp\
 	  ospf\
 	  rib\
-	  dhcp_relay
+	  dhcp_relay\
+	  bfd
 
 all: ipc exe install
 
