@@ -2,20 +2,19 @@
 package relayServer
 
 import (
-	_ "asicd/asicdConstDefs"
 	"asicdServices"
 	"dhcprelayd"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	_ "github.com/google/gopacket/pcap"
-	nanomsg "github.com/op/go-nanomsg"
+	"github.com/google/gopacket"
 	"io/ioutil"
 	"log/syslog"
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"utils/ipcutils"
 )
@@ -31,7 +30,7 @@ type DhcpRelayServiceHandler struct {
  * until it is out
  */
 type DhcpRelayAgentStateInfo struct {
-	initDone string
+	stats []string
 }
 
 /*
@@ -40,17 +39,18 @@ type DhcpRelayAgentStateInfo struct {
  *	    PCAP Handler specific to Interface
  */
 type DhcpRelayAgentGlobalInfo struct {
-	IntfConfig     dhcprelayd.DhcpRelayIntfConfig
-	StateDebugInfo DhcpRelayAgentStateInfo
+	IntfConfig           dhcprelayd.DhcpRelayIntfConfig
+	StateDebugInfo       DhcpRelayAgentStateInfo
+	PcapHandler          DhcpRelayPcapHandle
+	dhcprelayConfigMutex sync.RWMutex
+	inputPacket          chan gopacket.Packet
 }
 
 var (
 	// map key would be if_name
-	dhcprelayGblInfo    map[int]DhcpRelayAgentGlobalInfo
-	asicdSubSocket      *nanomsg.SubSocket
-	logger              *syslog.Writer
-	asicdSubSocketCh    chan []byte = make(chan []byte)
-	asicdSubSocketErrCh chan error  = make(chan error)
+	dhcprelayGblInfo map[string]DhcpRelayAgentGlobalInfo
+	logger           *syslog.Writer
+	//dhcprelayConfigMutex sync.RWMutex
 )
 
 /******* Local API Calls. *******/
@@ -59,16 +59,11 @@ func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 	return &DhcpRelayServiceHandler{}
 }
 
-// @TODO: cleanup if not needed....
-func DhcpRelayAgentUpdateHandler() {
-	for {
-		select {
-		case rxBuf := <-asicdSubSocketCh:
-			dhcpRelayAgentProcessAsicdNotification(rxBuf)
-		case <-asicdSubSocketErrCh:
-
-		}
-	}
+func DhcpRelayAgentUpdateStats(input string, info *DhcpRelayAgentGlobalInfo) {
+	info.StateDebugInfo.stats = append(info.StateDebugInfo.stats, input)
+	info.dhcprelayConfigMutex.RLock()
+	dhcprelayGblInfo[info.IntfConfig.IfIndex] = *info
+	info.dhcprelayConfigMutex.RUnlock()
 }
 
 /*
@@ -80,14 +75,14 @@ func DhcpRelayAgentConnectToClients(paramsFile string) error {
 	var clientsList []ClientJson
 	bytes, err := ioutil.ReadFile(paramsFile)
 	if err != nil {
-		logger.Err(fmt.Sprintln("Error while reading configuration file",
+		logger.Err(fmt.Sprintln("DRA:Error while reading configuration file",
 			paramsFile))
 		return err
 	}
 	logger.Info("DRA: Connecting to Clients")
 	err = json.Unmarshal(bytes, &clientsList)
 	if err != nil {
-		logger.Err("Error in Unmarshalling Json")
+		logger.Err("DRA: Error in Unmarshalling Json")
 		return err
 	}
 
@@ -95,7 +90,7 @@ func DhcpRelayAgentConnectToClients(paramsFile string) error {
 	for _, client := range clientsList {
 		logger.Info(fmt.Sprintln("DRA: Client name is", client.Name))
 		if client.Name == "asicd" {
-			logger.Info(fmt.Sprintln("Connecting to asicd at port",
+			logger.Info(fmt.Sprintln("DRA: Connecting to asicd at port",
 				client.Port))
 			asicdClient.Address = "localhost:" +
 				strconv.Itoa(client.Port)
@@ -104,7 +99,7 @@ func DhcpRelayAgentConnectToClients(paramsFile string) error {
 				ipcutils.CreateIPCHandles(asicdClient.Address)
 			if asicdClient.Transport == nil ||
 				asicdClient.PtrProtocolFactory == nil {
-				logger.Err(fmt.Sprintln("Connecting to",
+				logger.Err(fmt.Sprintln("DRA: Connecting to",
 					client.Name+"failed"))
 			}
 			asicdClient.ClientHdl =
@@ -150,56 +145,6 @@ func DhcpRelayAgentOSSignalHandle() {
 	go DhcpRelaySignalHandler(sigChannel)
 }
 
-func DhcpRelayAgentListenForASICUpdate(address string) error {
-	logger.Info("DRA: Setting up relay agent for Asic Update")
-	var err error
-	if asicdSubSocket, err = nanomsg.NewSubSocket(); err != nil {
-		logger.Info(fmt.Sprintln("Failed to create ASIC subscribe "+
-			"socket, error:", err))
-		return err
-	}
-
-	if err = asicdSubSocket.Subscribe(""); err != nil {
-		logger.Info(fmt.Sprintln("Failed to subscribe to \"\" on "+
-			"ASIC subscribe socket, error:", err))
-		return err
-	}
-
-	if _, err = asicdSubSocket.Connect(address); err != nil {
-		logger.Err(fmt.Sprintln("Failed to connect to ASIC "+
-			"publisher socket, address:", address, "error:", err))
-		return err
-	}
-
-	logger.Info(fmt.Sprintln("Connected to ASIC publisher at address:",
-		address))
-	if err = asicdSubSocket.SetRecvBuffer(1024 * 1024); err != nil {
-		logger.Info(fmt.Sprintln("Failed to set the buffer size "+
-			"for ASIC publisher socket, error:", err))
-		return err
-	}
-	logger.Info("DRA: relay agent set for Asic Update successfully")
-	return nil
-
-}
-
-// @TODO: Not used right now... clean it up later
-func DhcpRelayAgentAsicdSubscriber() {
-	for {
-		logger.Info("DRA: Read on Asic subscriber socket...")
-		rxBuf, err := asicdSubSocket.Recv(0)
-		if err != nil {
-			logger.Err(fmt.Sprintln("Recv on Asicd subscriber "+
-				"socket failed with error:", err))
-			asicdSubSocketErrCh <- err
-			continue
-		}
-		logger.Info(fmt.Sprintln("Asicd subscriber recv returned:",
-			rxBuf))
-		asicdSubSocketCh <- rxBuf
-	}
-}
-
 /*
  *  InitDhcpRelayPktHandler:
  *	    This API is used to initialize all the data structures varialbe that
@@ -214,25 +159,14 @@ func InitDhcpRelayPortPktHandler() error {
 		"Directory Location for config files")
 	flag.Parse()
 	configFile := *params_dir + "/clients.json"
-	logger.Info(fmt.Sprintln("configFile is ", configFile))
+	logger.Info(fmt.Sprintln("DRA: configFile is ", configFile))
 	// connect to client
 	err := DhcpRelayAgentConnectToClients(configFile)
 	if err != nil {
 		return err
 	}
-	// @TODO: jgheewala: Do we need update handler...???
-	//go DhcpRelayAgentUpdateHandler()
 	// OS signal channel listener thread
 	DhcpRelayAgentOSSignalHandle()
-	// @TODO: jgheewala... DO we need a routine to listen to intf state
-	// change???
-	/*
-		DhcpRelayAgentListenForASICUpdate(pluginCommon.PUB_SOCKET_ADDR)
-		if err == nil {
-			// asicd update listerner thread
-			go DhcpRelayAgentAsicdSubscriber()
-		}
-	*/
 	// Initialize port parameters
 	err = DhcpRelayInitPortParams()
 	if err != nil {
@@ -257,7 +191,7 @@ func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr stri
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
 	transport, err := thrift.NewTServerSocket(addr)
 	if err != nil {
-		logger.Info(fmt.Sprintln("StartServer: NewTServerSocket "+
+		logger.Info(fmt.Sprintln("DRA: StartServer: NewTServerSocket "+
 			"failed with error:", err))
 		return err
 	}
@@ -270,10 +204,10 @@ func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr stri
 		transportFactory, protocolFactory)
 	err = server.Serve()
 	if err != nil {
-		logger.Info(fmt.Sprintln("Failed to start the listener, err:", err))
+		logger.Info(fmt.Sprintln("DRA: Failed to start the listener, err:", err))
 		return err
 	}
 
-	logger.Info(fmt.Sprintln("Start the Server successfully"))
+	logger.Info("DRA:Start the Server successfully")
 	return nil
 }

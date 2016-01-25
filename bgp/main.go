@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"l3/bgp/rpc"
 	"l3/bgp/server"
+	"l3/bgp/utils"
 	"log/syslog"
 	"ribd"
 )
@@ -17,13 +18,15 @@ const BGPConfPort string = "4050"
 const RIBConfPort string = "5000"
 
 func main() {
-	fmt.Println("Start the logger")
+	fmt.Println("SR BGP: Start the logger")
 	logger, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "SR BGP")
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exit!")
+		fmt.Println("SR BGP: Failed to start the logger. Exit!")
 		return
 	}
+
 	logger.Info("Started the logger successfully.")
+	utils.SetLogger(logger)
 
 	paramsDir := flag.String("params", "./params", "Params directory")
 	flag.Parse()

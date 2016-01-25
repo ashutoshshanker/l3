@@ -137,3 +137,13 @@ func isInSubnet(ifIpAddr net.IP, srcIp net.IP, netMask net.IPMask) (bool) {
     return false
 }
 
+func convertIPv4ToUint32(ip []byte) (uint32) {
+    var val uint32 = 0
+
+    val =  val + uint32(ip[0])
+    val = (val << 8) + uint32(ip[1])
+    val = (val << 8) + uint32(ip[2])
+    val = (val << 8) + uint32(ip[3])
+
+    return val
+}

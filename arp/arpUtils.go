@@ -96,4 +96,11 @@ func getInterfaceNameByIndex(index int) (ifName string, err error) {
     return ifi.Name, nil
 }
 
+func getIfIndex(portNum int) int32 {
+        ent, exist := portLagPropertyMap[int32(portNum)]
+        if exist {
+                return ent.IfIndex
+        }
 
+        return int32(portNum)
+}

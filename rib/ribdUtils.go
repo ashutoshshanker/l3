@@ -11,7 +11,21 @@ import (
 	"l3/rib/ribdCommonDefs"
 )
 
-func RouteNotificationSend(route ribd.Routes) {
+var RouteProtocolTypeMapDB = make(map[string]int)
+var ReverseRouteProtoTypeMapDB = make(map[int]string)
+
+func BuildRouteProtocolTypeMapDB() {
+	RouteProtocolTypeMapDB["Connected"] = ribdCommonDefs.CONNECTED
+	RouteProtocolTypeMapDB["BGP"]       = ribdCommonDefs.BGP
+	RouteProtocolTypeMapDB["Static"]       = ribdCommonDefs.STATIC
+	
+	//reverse
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.CONNECTED] = "Connected"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.BGP] = "BGP"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.STATIC] = "Static"
+}
+
+func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes) {
 	logger.Println("RouteNotificationSend") 
 	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : route}
 	msgbufbytes, err := json.Marshal( msgBuf)
@@ -22,7 +36,7 @@ func RouteNotificationSend(route ribd.Routes) {
 	   return
 	}
    	logger.Println("buf", buf)
-   	RIBD_PUB.Send(buf, nanomsg.DontWait)
+   	PUB.Send(buf, nanomsg.DontWait)
 }
 
 func getIPInt(ip net.IP) (ipInt int, err error) {

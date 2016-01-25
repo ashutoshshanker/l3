@@ -524,7 +524,8 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	//pass through policy engine
 	policyRoute := ribd.Routes{Ipaddr: destNetIp, Mask: networkMask, NextHopIp: nextHopIp, NextHopIfType: nextHopIfType, IfIndex: nextHopIfIndex, Metric: metric, Prototype: routeType}
 	PolicyEngineFilter(policyRoute)
-	/*
+
+/*	
 	//If this is not a connected route, then nothing more to do
 	if routeType == ribdCommonDefs.CONNECTED {
 		logger.Println("This is a connected route, so send a route add event")
@@ -536,19 +537,10 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	}
 
 	//Send a event
+	logger.Println("This is a temporary notification till policies take effect")
 	route := ribd.Routes{Ipaddr: destNetIp, Mask: networkMask, NextHopIp: nextHopIp, NextHopIfType: nextHopIfType, IfIndex: nextHopIfIndex, Metric: metric}
-
-	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: route}
-	msgbufbytes, err := json.Marshal(msgBuf)
-	msg := ribdCommonDefs.RibdNotifyMsg{MsgType: ribdCommonDefs.NOTIFY_ROUTE_CREATED, MsgBuf: msgbufbytes}
-	buf, err := json.Marshal(msg)
-	if err != nil {
-		logger.Println("Error in marshalling Json")
-		return
-	}
-	logger.Println("buf", buf)
-	RIBD_PUB.Send(buf, nanomsg.DontWait)
-	*/
+	RouteNotificationSend(RIBD_PUB, route)
+*/
 	return 0, err
 }
 

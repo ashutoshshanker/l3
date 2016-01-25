@@ -15,33 +15,76 @@ type IntfConfKey struct {
 	IntfIdx config.InterfaceIndexOrZero
 }
 
+type NeighborData struct {
+        TwoWayStatus        bool
+        RtrPrio             uint8
+        DRtr                []byte
+        BDRtr               []byte
+        NbrIP               uint32
+}
+
+type NeighborKey struct {
+        RouterId            uint32
+}
+
+type BackupSeenMsg struct {
+        RouterId    uint32
+        BDRId       []byte
+        DRId        []byte
+}
+
+type NeighCreateMsg struct {
+        RouterId            uint32
+        NbrIP               uint32
+        TwoWayStatus        bool
+        RtrPrio             uint8
+        DRtr                []byte
+        BDRtr               []byte
+}
+
+type NeighChangeMsg struct {
+        RouterId            uint32
+        NbrIP               uint32
+        TwoWayStatus        bool
+        RtrPrio             uint8
+        DRtr                []byte
+        BDRtr               []byte
+}
+
 type IntfConf struct {
-	IfAreaId              []byte
-	IfType                config.IfType
-	IfAdminStat           config.Status
-	IfRtrPriority         uint8
-	IfTransitDelay        config.UpToMaxAge
-	IfRetransInterval     config.UpToMaxAge
-	IfHelloInterval       uint16
-	IfRtrDeadInterval     uint32
-	IfPollInterval        config.PositiveInteger
-	IfAuthKey             []byte
-	IfMulticastForwarding config.MulticastForwarding
-	IfDemand              bool
-	IfAuthType            uint16
-	PktSendCh             chan bool
-	PktSendStatusCh       chan bool
-	PktRecvCh             chan bool
-	PktRecvStatusCh       chan bool
-	SendPcapHdl           *pcap.Handle
-	RecvPcapHdl           *pcap.Handle
-	HelloIntervalTicker   *time.Ticker
-	//RtrDeadIntervalTimer    *time.Timer
-	WaitTimer *time.Timer
-	IfName    string
-	IfIpAddr  net.IP
-	IfMacAddr net.HardwareAddr
-	IfNetmask []byte
+	IfAreaId                []byte
+	IfType                  config.IfType
+	IfAdminStat             config.Status
+	IfRtrPriority           uint8
+	IfTransitDelay          config.UpToMaxAge
+	IfRetransInterval       config.UpToMaxAge
+	IfHelloInterval         uint16
+	IfRtrDeadInterval       uint32
+	IfPollInterval          config.PositiveInteger
+	IfAuthKey               []byte
+	IfMulticastForwarding   config.MulticastForwarding
+	IfDemand                bool
+	IfAuthType              uint16
+	PktSendCh               chan bool
+	PktSendStatusCh         chan bool
+	PktRecvCh               chan bool
+	PktRecvStatusCh         chan bool
+	SendPcapHdl             *pcap.Handle
+	RecvPcapHdl             *pcap.Handle
+	HelloIntervalTicker     *time.Ticker
+        BackupSeenCh            chan BackupSeenMsg
+        NeighborMap             map[NeighborKey]NeighborData
+        NeighCreateCh           chan NeighCreateMsg
+        NeighChangeCh           chan NeighChangeMsg
+        NbrStateChangeCh        chan NbrStateChangeMsg
+	WaitTimer               *time.Timer
+        IfFSMState              config.IfState
+        IfDR                    []byte
+        IfBDR                   []byte
+	IfName                  string
+	IfIpAddr                net.IP
+	IfMacAddr               net.HardwareAddr
+	IfNetmask               []byte
 }
 
 func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfProperty) {
@@ -72,14 +115,20 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		ent.PktSendStatusCh = make(chan bool)
 		ent.PktRecvCh = make(chan bool)
 		ent.PktRecvStatusCh = make(chan bool)
+                ent.BackupSeenCh = make(chan BackupSeenMsg)
+                ent.NeighCreateCh = make(chan NeighCreateMsg)
+                ent.NeighChangeCh = make(chan NeighChangeMsg)
+                ent.NbrStateChangeCh = make(chan NbrStateChangeMsg)
 		//ent.WaitTimerExpired = make(chan bool)
 		ent.WaitTimer = nil
 		ent.HelloIntervalTicker = nil
-		//ent.RtrDeadIntervalTimer = nil
+                ent.NeighborMap = make(map[NeighborKey]NeighborData)
 		ent.IfNetmask = ipIntfProp.NetMask
 		ent.IfName = ipIntfProp.IfName
 		ent.IfIpAddr = ipIntfProp.IpAddr
 		ent.IfMacAddr = ipIntfProp.MacAddr
+                ent.IfDR = []byte {0, 0, 0, 0}
+                ent.IfBDR = []byte {0, 0, 0, 0}
 		sendHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
 		if sendHdl == nil {
 			server.logger.Err(fmt.Sprintln("SendHdl: No device found.", ent.IfName, err))
@@ -245,6 +294,9 @@ func (server *OSPFServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
 	server.StopOspfTransPkts(intfConfKey)
 	server.logger.Info("Stop Receiving Hello Pkt")
 	server.StopOspfRecvPkts(intfConfKey)
+	ent, _ := server.IntfConfMap[intfConfKey]
+        ent.NeighborMap = nil
+	server.IntfConfMap[intfConfKey] = ent
 }
 
 func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
@@ -254,9 +306,10 @@ func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
 	// rtrDeadInterval := time.Duration(ent.IfRtrDeadInterval * time.Second)
 	ent.HelloIntervalTicker = time.NewTicker(helloInterval)
 	ent.WaitTimer = time.NewTimer(waitTime)
-	//ent.RtrDeadIntervalTimer := time.NewTicker(rtrDeadInterval)
-	server.logger.Info("Start Sending Hello Pkt")
+        ent.NeighborMap = make(map[NeighborKey]NeighborData)
+        ent.IfFSMState = config.Waiting
 	server.IntfConfMap[intfConfKey] = ent
+	server.logger.Info("Start Sending Hello Pkt")
 	go server.StartOspfTransPkts(intfConfKey)
 	server.logger.Info("Start Receiving Hello Pkt")
 	go server.StartOspfRecvPkts(intfConfKey)

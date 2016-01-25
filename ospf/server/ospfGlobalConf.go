@@ -78,8 +78,17 @@ func (server *OSPFServer)processGlobalConfig(gConf config.GlobalConf) {
         }
     }
 
+    if server.ospfGlobalConf.AdminStat == config.Enabled {
+        server.nbrFSMCtrlCh <- false
+        //server.NeighborListMap = nil
+    }
     server.logger.Info(fmt.Sprintln("Received call for performing Global Configuration", gConf))
     server.updateGlobalConf(gConf)
+
+    if server.ospfGlobalConf.AdminStat == config.Enabled {
+        //server.NeighborListMap = make(map[IntfConfKey]list.List)
+        go server.ProcessHelloPktEvent()
+    }
 
     for key, ent := range localIntfStateMap {
         if ent == config.Enabled &&

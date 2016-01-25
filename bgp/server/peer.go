@@ -34,11 +34,16 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 	}
 
 	peer.Neighbor.State = config.NeighborState{
-		PeerAS:          peerConf.PeerAS,
-		LocalAS:         peerConf.LocalAS,
-		AuthPassword:    peerConf.AuthPassword,
-		Description:     peerConf.Description,
-		NeighborAddress: peerConf.NeighborAddress,
+		PeerAS:           peerConf.PeerAS,
+		LocalAS:          peerConf.LocalAS,
+		AuthPassword:     peerConf.AuthPassword,
+		Description:      peerConf.Description,
+		NeighborAddress:  peerConf.NeighborAddress,
+		MultiHopEnable:   peerConf.MultiHopEnable,
+		MultiHopTTL:      peerConf.MultiHopTTL,
+		ConnectRetryTime: peerConf.ConnectRetryTime,
+		HoldTime:         peerConf.HoldTime,
+		KeepaliveTime:    peerConf.KeepaliveTime,
 	}
 
 	if peerConf.LocalAS == peerConf.PeerAS {
@@ -117,9 +122,11 @@ func (p *Peer) SendKeepAlives(conn *net.TCPConn) {
 	}
 }
 
-func (p *Peer) SetPeerAttrs(bgpId net.IP, asSize uint8) {
+func (p *Peer) SetPeerAttrs(bgpId net.IP, asSize uint8, holdTime uint32, keepaliveTime uint32) {
 	p.BGPId = bgpId
 	p.ASSize = asSize
+	p.Neighbor.State.HoldTime = holdTime
+	p.Neighbor.State.KeepaliveTime = keepaliveTime
 }
 
 func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
@@ -174,6 +181,11 @@ func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 		p.Neighbor.Transport.Config.LocalAddress = nil
 		p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
 	}
+
+	p.Neighbor.State.ConnectRetryTime = p.Neighbor.Config.ConnectRetryTime
+	p.Neighbor.State.HoldTime = p.Neighbor.Config.HoldTime
+	p.Neighbor.State.KeepaliveTime = p.Neighbor.Config.KeepaliveTime
+
 }
 
 func (p *Peer) FSMStateChange(state BGPFSMState) {
