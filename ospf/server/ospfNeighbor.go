@@ -24,8 +24,9 @@ type OspfNeighborEntry struct {
 }
 
 func (server *OSPFServer) ProcessHelloPktEvent() {
-	nbrData := <-(server.neighborHelloEventCh)
 	for {
+            select {
+            case nbrData := <-(server.neighborHelloEventCh):
 		fmt.Println("NBREVENT: Received hellopkt event for nbrId ", nbrData.RouterId)
 		var nbrConf OspfNeighborEntry
 		var nbrState config.NbrState
@@ -85,6 +86,11 @@ func (server *OSPFServer) ProcessHelloPktEvent() {
 				nbrList.PushBack(neighborKey)
 			}
 		*/
+            case state := <-server.nbrFSMCtrlCh:
+                if state == false {
+                    return
+                }
+            }
 	} // end of for
 }
 

@@ -55,6 +55,7 @@ type OSPFServer struct {
 	NeighborListMap      map[IntfConfKey]list.List
 	neighborConfMutex    sync.Mutex
 	neighborHelloEventCh chan IntfToNeighMsg
+        nbrFSMCtrlCh         chan bool
 }
 
 func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
@@ -71,6 +72,7 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
 	ospfServer.neighborHelloEventCh = make(chan IntfToNeighMsg)
+	ospfServer.nbrFSMCtrlCh = make(chan bool)
 
 	/*
 	   ospfServer.ribSubSocketCh = make(chan []byte)
