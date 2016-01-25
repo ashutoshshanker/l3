@@ -97,6 +97,10 @@ type portProperty struct {
 	untagged_vlanName string
 }
 
+type portLagProperty struct {
+        IfIndex int32
+}
+
 type vlanProperty struct {
 	vlanName      string
 	untaggedPorts []int32
@@ -166,6 +170,7 @@ var port_property_map map[int]portProperty
 var vlanPropertyMap map[int]vlanProperty
 var portConfigMap map[int]portConfig
 var ipv4IntfPropertyMap map[string]ipv4IntfProperty
+var portLagPropertyMap map[int32]portLagProperty
 
 var asicdSubSocket *nanomsg.SubSocket
 
@@ -878,8 +883,9 @@ func updateArpCache() {
 				if asicdClient.IsConnected {
 					//logger.Println("1. Updating an entry in asic for ", msg.ip)
 					logWriter.Info(fmt.Sprintln("1. Updating an entry in asic for ", msg.ip))
+                                        ifIndex := getIfIndex(msg.ent.port)
 					rv, error := asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.ip,
-						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), (int32)(msg.ent.port))
+						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), ifIndex)
 					if rv < 0 {
 						ent, _ = arp_cache.arpMap[msg.ip]
 						ent.valid = false
@@ -1041,9 +1047,9 @@ func updateArpCache() {
 					logWriter.Info(fmt.Sprintln("2. Creating an entry in asic for IP:", msg.ip, "MAC:",
 						(msg.ent.macAddr).String(), "VLAN:",
 						(int32)(arp_cache.arpMap[msg.ip].vlanid)))
+                                        ifIndex := getIfIndex(msg.ent.port)
 					rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
-						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid),
-						(int32)(msg.ent.port))
+						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), ifIndex)
 					if rv < 0 {
 						ent, _ = arp_cache.arpMap[msg.ip]
 						ent.valid = false
@@ -1091,9 +1097,9 @@ func updateArpCache() {
 					logWriter.Info(fmt.Sprintln("3. Creating an entry in asic for IP:", msg.ip, "MAC:",
 						(msg.ent.macAddr).String(), "VLAN:",
 						(int32)(arp_cache.arpMap[msg.ip].vlanid)))
+                                        ifIndex := getIfIndex(msg.ent.port)
 					rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
-						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid),
-						(int32)(msg.ent.port))
+						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), ifIndex)
 					if rv < 0 {
 						ent, _ = arp_cache.arpMap[msg.ip]
 						ent.valid = false
@@ -1141,8 +1147,9 @@ func updateArpCache() {
 				if asicdClient.IsConnected {
 					logger.Println("6. Creating an entry in asic for ", msg.ip)
 					logWriter.Info(fmt.Sprintln("6. Creating an entry in asic for ", msg.ip))
+                                        ifIndex := getIfIndex(msg.ent.port)
 					rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
-						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), (int32)(msg.ent.port))
+						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), ifIndex)
 					if rv < 0 {
 						ent, _ = arp_cache.arpMap[msg.ip]
 						ent.valid = false
@@ -1247,7 +1254,16 @@ func processAsicdNotification(rxBuf []byte) {
 			return
 		}
 		processL3StateChange(l3IntfStateNotifyMsg)
-	}
+	} else if msg.MsgType == asicdConstDefs.NOTIFY_LAG_CREATE ||
+                msg.MsgType == asicdConstDefs.NOTIFY_LAG_DELETE {
+                var lagNotifyMsg asicdConstDefs.LagNotifyMsg
+               err = json.Unmarshal(msg.Msg, &lagNotifyMsg)
+               if err != nil {
+                       logWriter.Err(fmt.Sprintln("Unable to unmashal lagNotifyMsg:", msg.Msg))
+                        return
+                }
+                updatePortLagPropertyMap(lagNotifyMsg, msg.MsgType)
+        }
 }
 
 func updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
@@ -1266,6 +1282,20 @@ func updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType u
 		delete(vlanPropertyMap, int(vlanNotifyMsg.VlanId))
 		for _, portNum := range vlanNotifyMsg.UntagPorts {
 			delete(port_property_map, int(portNum))
+		}
+	}
+}
+
+func updatePortLagPropertyMap(msg asicdConstDefs.LagNotifyMsg, msgType uint8) {
+	if msgType == asicdConstDefs.NOTIFY_LAG_CREATE { // Create LAG
+		for _, portNum := range msg.IfIndexList {
+			ent := portLagPropertyMap[portNum]
+			ent.IfIndex = msg.IfIndex
+			portLagPropertyMap[portNum] = ent
+		}
+	} else { // Delete Lag
+		for _, portNum := range msg.IfIndexList {
+			delete(portLagPropertyMap, portNum)
 		}
 	}
 }
@@ -1294,8 +1324,8 @@ func processL3StateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
 			logWriter.Err(fmt.Sprintln("Error parsing ip address:", err))
 			return
 		}
-		arpProbe(ip.String(), entry.ifType, entry.ifIdx)
 		ipv4IntfPropertyMap[msg.IpAddr] = entry
+		arpProbe(ip.String(), entry.ifType, entry.ifIdx)
 	} else if msg.IfState == asicdConstDefs.INTF_STATE_DOWN {
 		logger.Println("Received L3 interface down notification for", msg.IpAddr)
 		entry := ipv4IntfPropertyMap[msg.IpAddr]
