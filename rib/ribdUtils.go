@@ -11,6 +11,20 @@ import (
 	"l3/rib/ribdCommonDefs"
 )
 
+var RouteProtocolTypeMapDB = make(map[string]int)
+var ReverseRouteProtoTypeMapDB = make(map[int]string)
+
+func BuildRouteProtocolTypeMapDB() {
+	RouteProtocolTypeMapDB["Connected"] = ribdCommonDefs.CONNECTED
+	RouteProtocolTypeMapDB["BGP"]       = ribdCommonDefs.BGP
+	RouteProtocolTypeMapDB["Static"]       = ribdCommonDefs.STATIC
+	
+	//reverse
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.CONNECTED] = "Connected"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.BGP] = "BGP"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.STATIC] = "Static"
+}
+
 func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes) {
 	logger.Println("RouteNotificationSend") 
 	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : route}

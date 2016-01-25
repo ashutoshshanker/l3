@@ -39,61 +39,102 @@ struct PolicyDefinitionSetsPrefixSetGetInfo {
 	4: bool More
 	5: list<PolicyDefinitionSetsPrefixSet> PolicyDefinitionSetsPrefixSetList
 }
-struct PolicyDefinitionStatementMatchPrefixSet{
-	1 : string 	PrefixSet
-	2 : i32 	MatchSetOptions
+struct PolicyDefinitionStmtMatchPrefixSetCondition{
+	1 : string  Name
+	2 : string 	PrefixSet
+	3 : i32 	MatchSetOptions
 }
-struct PolicyDefinitionStatementMatchPrefixSetGetInfo {
+struct PolicyDefinitionStmtMatchPrefixSetConditionsGetInfo {
 	1: int StartIdx
 	2: int EndIdx
 	3: int Count
 	4: bool More
-	5: list<PolicyDefinitionStatementMatchPrefixSet> PolicyDefinitionStatementMatchPrefixSetList
+	5: list<PolicyDefinitionStmtMatchPrefixSetCondition> PolicyDefinitionStmtMatchPrefixSetConditionList
 }
 //Neighbor 
 //NeighborSet 
-struct PolicyDefinitionStatementMatchNeighborSet{
-	1 : string 	NeighborSet
-	2 : i32 	MatchSetOptions
+struct PolicyDefinitionStmtMatchNeighborSetCondition{
+	1 : string  Name
+	2 : string 	NeighborSet
+	3 : i32 	MatchSetOptions
 }
-struct PolicyDefinitionStatementMatchNeighborSetGetInfo {
+struct PolicyDefinitionStmtMatchNeighborSetConditionsGetInfo {
 	1: int StartIdx
 	2: int EndIdx
 	3: int Count
 	4: bool More
-	5: list<PolicyDefinitionStatementMatchNeighborSet> PolicyDefinitionStatementMatchNeighborSetList
+	5: list<PolicyDefinitionStmtMatchNeighborSetCondition> PolicyDefinitionStmtMatchNeighborSetConditionList
 }
 //Tag 
 //TagSet
-struct PolicyDefinitionStatementMatchTagSet{
-	1 : string 	TagSet
-	2 : i32 	MatchSetOptions
+struct PolicyDefinitionStmtMatchTagSetCondition{
+	1 : string  Name
+	2 : string 	TagSet
+	3 : i32 	MatchSetOptions
 }
-struct PolicyDefinitionStatementMatchTagSetGetInfo {
+struct PolicyDefinitionStmtMatchTagSetConditionsGetInfo {
 	1: int StartIdx
 	2: int EndIdx
 	3: int Count
 	4: bool More
-	5: list<PolicyDefinitionStatementMatchTagSet> PolicyDefinitionStatementMatchTagSetList
+	5: list<PolicyDefinitionStmtMatchTagSetCondition> PolicyDefinitionStmtMatchTagSetConditionList
 }
-struct PolicyDefinitionStatementIgpActions{
-	1 : set<i32> 	SetTag
+
+struct PolicyDefinitionStmtMatchProtocolCondition{
+	1 : string  Name
+	2 : string InstallProtocolEq
 }
-struct PolicyDefinitionStatementIgpActionsGetInfo {
+struct PolicyDefinitionStmtMatchProtocolConditionsGetInfo {
 	1: int StartIdx
 	2: int EndIdx
 	3: int Count
 	4: bool More
-	5: list<PolicyDefinitionStatementIgpActions> PolicyDefinitionStatementIgpActionsList
+	5: list<PolicyDefinitionStmtMatchProtocolCondition> PolicyDefinitionStmtMatchProtocolConditionList
 }
+
+struct PolicyDefinitionStmtIgpActions{
+	1 : string  Name
+	2 : set<i32> 	SetTag
+}
+struct PolicyDefinitionStmtIgpActionsGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<PolicyDefinitionStmtIgpActions> PolicyDefinitionStmtIgpActionsList
+}
+
+struct PolicyDefinitionStmtRouteDispositionAction{
+	1 : string  Name
+	2 : string 	RouteDisposition
+}
+struct PolicyDefinitionStmtRouteDispositionActionsGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<PolicyDefinitionStmtRouteDispositionAction> PolicyDefinitionStmtRouteDispositionActionList
+}
+
+struct PolicyDefinitionStmtRedistributionAction{
+	1 : string  Name
+	2 : string 	RedistributeTargetProtocol
+}
+
+struct PolicyDefinitionStmtRedistributionActionsGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<PolicyDefinitionStmtRedistributionAction> PolicyDefinitionStmtRedistributionActionList
+}
+
 struct PolicyDefinitionStatement{
     1 : string   Name
-	2 : PolicyDefinitionStatementMatchPrefixSet MatchPrefixSetInfo
-	3 : string 	InstallProtocolEq
-	4 : string   RouteDisposition
-	5 : bool     Redistribute
-	6 : string   RedistributeTargetProtocol
+	2 : list<string> Conditions
+	3 : list<string> Actions
 }
+
 struct PolicyDefinitionStatementGetInfo {
 	1: int StartIdx
 	2: int EndIdx
@@ -131,21 +172,35 @@ service RouteService
 //	bool UpdatePolicyDefinitionSetsPrefixSet(1: PolicyDefinitionSetsPrefixSet origconfig, 2: PolicyDefinitionSetsPrefixSet newconfig, 3: list<bool> attrset);
 //	bool DeletePolicyDefinitionSetsPrefixSet(1: PolicyDefinitionSetsPrefixSet config);
 
-	bool CreatePolicyDefinitionStatementMatchPrefixSet(1: PolicyDefinitionStatementMatchPrefixSet config);
-//	bool UpdatePolicyDefinitionStatementMatchPrefixSet(1: PolicyDefinitionStatementMatchPrefixSet origconfig, 2: PolicyDefinitionStatementMatchPrefixSet newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyDefinitionStatementMatchPrefixSet(1: PolicyDefinitionStatementMatchPrefixSet config);
+//	bool CreatePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtMatchPrefixSetCondition config);
+//	bool UpdatePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtMatchPrefixSetCondition origconfig, 2: PolicyDefinitionStmtMatchPrefixSetCondition newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtMatchPrefixSetCondition config);
 
-	//bool CreatePolicyDefinitionStatementMatchNeighborSet(1: PolicyDefinitionStatementMatchNeighborSet config);
-	//bool UpdatePolicyDefinitionStatementMatchNeighborSet(1: PolicyDefinitionStatementMatchNeighborSet origconfig, 2: PolicyDefinitionStatementMatchNeighborSet newconfig, 3: list<bool> attrset);
-	//bool DeletePolicyDefinitionStatementMatchNeighborSet(1: PolicyDefinitionStatementMatchNeighborSet config);
+//	bool CreatePolicyDefinitionStmtMatchNeighborSetCondition(1: PolicyDefinitionStmtMatchNeighborSetCondition config);
+//	bool UpdatePolicyDefinitionStmtMatchNeighborSetCondition(1: PolicyDefinitionStmtMatchNeighborSetCondition origconfig, 2: PolicyDefinitionStmtMatchNeighborSetCondition newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinitionStmtMatchNeighborSetCondition(1: PolicyDefinitionStmtMatchNeighborSetCondition config);
 
-	//bool CreatePolicyDefinitionStatementMatchTagSet(1: PolicyDefinitionStatementMatchTagSet config);
-	//bool UpdatePolicyDefinitionStatementMatchTagSet(1: PolicyDefinitionStatementMatchTagSet origconfig, 2: PolicyDefinitionStatementMatchTagSet newconfig, 3: list<bool> attrset);
-	//bool DeletePolicyDefinitionStatementMatchTagSet(1: PolicyDefinitionStatementMatchTagSet config);
+//	bool CreatePolicyDefinitionStmtMatchTagSetCondition(1: PolicyDefinitionStmtMatchTagSetCondition config);
+//	bool UpdatePolicyDefinitionStmtMatchTagSetCondition(1: PolicyDefinitionStmtMatchTagSetCondition origconfig, 2: PolicyDefinitionStmtMatchTagSetCondition newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinitionStmtMatchTagSetCondition(1: PolicyDefinitionStmtMatchTagSetCondition config);
 
-	//bool CreatePolicyDefinitionStatementIgpActions(1: PolicyDefinitionStatementIgpActions config);
-	//bool UpdatePolicyDefinitionStatementIgpActions(1: PolicyDefinitionStatementIgpActions origconfig, 2: PolicyDefinitionStatementIgpActions newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyDefinitionStatementIgpActions(1: PolicyDefinitionStatementIgpActions config);
+	bool CreatePolicyDefinitionStmtMatchProtocolCondition(1: PolicyDefinitionStmtMatchProtocolCondition config);
+//	bool UpdatePolicyDefinitionStmtMatchProtocolCondition(1: PolicyDefinitionStmtMatchProtocolCondition origconfig, 2: PolicyDefinitionStmtMatchProtocolCondition newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinitionStmtMatchProtocolCondition(1: PolicyDefinitionStmtMatchProtocolCondition config);
+    PolicyDefinitionStmtMatchProtocolConditionsGetInfo getBulkPolicyDefinitionStmtMatchProtocolConditions(1: int fromIndex, 2: int count);
+
+//	bool CreatePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions config);
+//	bool UpdatePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions origconfig, 2: PolicyDefinitionStmtIgpActions newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions config);
+
+//	bool CreatePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction config);
+//	bool UpdatePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction origconfig, 2: PolicyDefinitionStmtRouteDispositionAction newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction config);
+
+	bool CreatePolicyDefinitionStmtRedistributionAction(1: PolicyDefinitionStmtRedistributionAction config);
+//	bool UpdatePolicyDefinitionStmtRedistributionAction(1: PolicyDefinitionStmtRedistributionAction origconfig, 2: PolicyDefinitionStmtRedistributionAction newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinitionStmtRedistributionAction(1: PolicyDefinitionStmtRedistributionAction config);
+    PolicyDefinitionStmtRedistributionActionsGetInfo getBulkPolicyDefinitionStmtRedistributionActions(1: int fromIndex, 2: int count);
 
 	bool CreatePolicyDefinitionStatement(1: PolicyDefinitionStatement config);
 //	bool UpdatePolicyDefinitionStatement(1: PolicyDefinitionStatement origconfig, 2: PolicyDefinitionStatement newconfig, 3: list<bool> attrset);
