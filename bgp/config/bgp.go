@@ -54,6 +54,9 @@ type NeighborConfig struct {
 	RouteReflectorClient    bool
 	MultiHopEnable          bool
 	MultiHopTTL             uint8
+	ConnectRetryTime        uint32
+	HoldTime                uint32
+	KeepaliveTime           uint32
 }
 
 type NeighborState struct {
@@ -70,6 +73,9 @@ type NeighborState struct {
 	RouteReflectorClient    bool
 	MultiHopEnable          bool
 	MultiHopTTL             uint8
+	ConnectRetryTime        uint32
+	HoldTime                uint32
+	KeepaliveTime           uint32
 }
 
 type TransportConfig struct {

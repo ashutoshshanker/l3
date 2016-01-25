@@ -41,8 +41,8 @@ func (server *OSPFServer)processIPv4Layer(ipLayer gopacket.Layer, ipAddr net.IP,
         return err
     }
 
-    ipHdrMd.srcIP = ipPkt.SrcIP
-    ipHdrMd.dstIP = ipPkt.DstIP
+    ipHdrMd.srcIP = ipPkt.SrcIP.To4()
+    ipHdrMd.dstIP = ipPkt.DstIP.To4()
     if allSPFRouter.Equal(ipPkt.DstIP) {
         ipHdrMd.dstIPType = AllSPFRouter
     } else if allDRouter.Equal(ipPkt.DstIP) {
@@ -117,6 +117,7 @@ func (server *OSPFServer)processOspfHeader(ospfPkt []byte, key IntfConfKey, md *
 */
     md.pktType = OspfType(ospfHdr.pktType)
     md.pktlen = ospfHdr.pktlen
+    md.routerId = ospfHdr.routerId
     return nil
 }
 
@@ -161,6 +162,7 @@ func (server *OSPFServer)ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packet
     } else {
         server.logger.Info("Ospfv2 Header is processed successfully")
     }
+    return
 }
 
 func (server *OSPFServer)processOspfData(data []byte, ipHdrMd *IpHdrMetadata, ospfHdrMd *OspfHdrMetadata, key IntfConfKey) error {

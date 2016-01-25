@@ -1,5 +1,7 @@
 RM=rm -f
 RMFORCE=rm -rf
+#GOLDFLAGS="-r /opt/flexswitch/sharedlib"
+GOLDFLAGS=-r /opt/flexswitch/sharedlib
 DESTDIR=$(SR_CODE_BASE)/snaproute/src/out/bin
 GENERATED_IPC=$(SR_CODE_BASE)/generated/src
 IPC_GEN_CMD=thrift
@@ -11,7 +13,7 @@ ipc:
 	 $(IPC_GEN_CMD) --gen go -out $(GENERATED_IPC) $(IPC_SRCS)
 
 exe: $(SRCS)
-	 go build -o $(DESTDIR)/$(COMP_NAME) $(SRCS)
+	 go build -o $(DESTDIR)/$(COMP_NAME) -ldflags="$(GOLDFLAGS)" $(SRCS)
 
 guard:
 ifndef SR_CODE_BASE

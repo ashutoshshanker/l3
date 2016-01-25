@@ -2,18 +2,19 @@
 package relayServer
 
 import (
-	"asicd/asicdConstDefs"
 	"asicdServices"
 	"dhcprelayd"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/google/gopacket"
 	"io/ioutil"
 	"log/syslog"
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"utils/ipcutils"
 )
@@ -24,41 +25,46 @@ import (
 type DhcpRelayServiceHandler struct {
 }
 
-type portInfo struct {
-	Name string // Port Name used for configuration
-}
-
-type ClientJson struct {
-	Name string `json:Name`
-	Port int    `json:Port`
-}
-
-type DHCPRELAYClientBase struct {
-	Address            string
-	Transport          thrift.TTransport
-	PtrProtocolFactory *thrift.TBinaryProtocolFactory
-	IsConnected        bool
-}
-
-type AsicdClient struct {
-	DHCPRELAYClientBase
-	ClientHdl *asicdServices.ASICDServicesClient
+/*
+ * DhcpRelayAgentStateInfo will maintain state from when a packet was recieved
+ * until it is out
+ */
+type DhcpRelayAgentStateInfo struct {
+	stats []string
 }
 
 /*
- * Global Variable
+ * Global DRA Data Structure:
+ *	    IntfConfig Info
+ *	    PCAP Handler specific to Interface
  */
+type DhcpRelayAgentGlobalInfo struct {
+	IntfConfig           dhcprelayd.DhcpRelayIntfConfig
+	StateDebugInfo       DhcpRelayAgentStateInfo
+	PcapHandler          DhcpRelayPcapHandle
+	dhcprelayConfigMutex sync.RWMutex
+	inputPacket          chan gopacket.Packet
+}
+
 var (
-	logger      *syslog.Writer
-	portInfoMap map[int]portInfo // PORT NAME
-	asicdClient AsicdClient
+	// map key would be if_name
+	dhcprelayGblInfo map[string]DhcpRelayAgentGlobalInfo
+	logger           *syslog.Writer
+	//dhcprelayConfigMutex sync.RWMutex
 )
+
+/******* Local API Calls. *******/
 
 func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 	return &DhcpRelayServiceHandler{}
 }
 
-/******* Local API Calls. *******/
+func DhcpRelayAgentUpdateStats(input string, info *DhcpRelayAgentGlobalInfo) {
+	info.StateDebugInfo.stats = append(info.StateDebugInfo.stats, input)
+	info.dhcprelayConfigMutex.RLock()
+	dhcprelayGblInfo[info.IntfConfig.IfIndex] = *info
+	info.dhcprelayConfigMutex.RUnlock()
+}
 
 /*
  *  ConnectToClients:
@@ -69,14 +75,14 @@ func DhcpRelayAgentConnectToClients(paramsFile string) error {
 	var clientsList []ClientJson
 	bytes, err := ioutil.ReadFile(paramsFile)
 	if err != nil {
-		logger.Err(fmt.Sprintln("Error while reading configuration file",
+		logger.Err(fmt.Sprintln("DRA:Error while reading configuration file",
 			paramsFile))
 		return err
 	}
-	logger.Info("DRA Connecting to Clients")
+	logger.Info("DRA: Connecting to Clients")
 	err = json.Unmarshal(bytes, &clientsList)
 	if err != nil {
-		logger.Err("Error in Unmarshalling Json")
+		logger.Err("DRA: Error in Unmarshalling Json")
 		return err
 	}
 
@@ -84,7 +90,7 @@ func DhcpRelayAgentConnectToClients(paramsFile string) error {
 	for _, client := range clientsList {
 		logger.Info(fmt.Sprintln("DRA: Client name is", client.Name))
 		if client.Name == "asicd" {
-			logger.Info(fmt.Sprintln("Connecting to asicd at port",
+			logger.Info(fmt.Sprintln("DRA: Connecting to asicd at port",
 				client.Port))
 			asicdClient.Address = "localhost:" +
 				strconv.Itoa(client.Port)
@@ -93,7 +99,7 @@ func DhcpRelayAgentConnectToClients(paramsFile string) error {
 				ipcutils.CreateIPCHandles(asicdClient.Address)
 			if asicdClient.Transport == nil ||
 				asicdClient.PtrProtocolFactory == nil {
-				logger.Err(fmt.Sprintln("Connecting to",
+				logger.Err(fmt.Sprintln("DRA: Connecting to",
 					client.Name+"failed"))
 			}
 			asicdClient.ClientHdl =
@@ -101,10 +107,10 @@ func DhcpRelayAgentConnectToClients(paramsFile string) error {
 					asicdClient.Transport,
 					asicdClient.PtrProtocolFactory)
 			asicdClient.IsConnected = true
-			logger.Info("DRA is connected to asicd")
+			logger.Info("DRA: is connected to asicd")
 		}
 	}
-	logger.Info("DRA successfully connected to clients")
+	logger.Info("DRA: successfully connected to clients")
 	return nil
 }
 
@@ -117,11 +123,11 @@ func DhcpRelaySignalHandler(sigChannel <-chan os.Signal) {
 	signal := <-sigChannel // receive from sigChannel and assign it to signal
 	switch signal {
 	case syscall.SIGHUP:
-		logger.Alert("Received SIGHUP SIGNAL for DRA")
+		logger.Alert("DRA: Received SIGHUP SIGNAL")
 		// @TODO: jgheewala clean up stuff on exit...
 		os.Exit(0)
 	default:
-		logger.Info(fmt.Sprintln("DRA Unhandled Signal : ", signal))
+		logger.Info(fmt.Sprintln("DRA: Unhandled Signal : ", signal))
 	}
 
 }
@@ -140,46 +146,6 @@ func DhcpRelayAgentOSSignalHandle() {
 }
 
 /*
- * DhcpRelayInitPortParams:
- *	    API to handle initialization of port parameter
- */
-func DhcpRelayInitPortParams() error {
-	logger.Info("DRA initializing Port Parameters")
-	// constructing port configs...
-	currMarker := int64(asicdConstDefs.MIN_SYS_PORTS)
-	if !asicdClient.IsConnected {
-		logger.Info("DRA is not connected to asicd.... is it bad?")
-	}
-	logger.Info("DRA calling asicd for port config")
-	count := 10
-	for {
-		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortConfig(
-			int64(currMarker), int64(count))
-		if err != nil {
-			logger.Err(fmt.Sprintln("DRA getting bulk port config"+
-				" from asicd failed with reason", err))
-			//return err <--- DRA doesn't start as no bulk port
-			//		  config
-			return nil
-		}
-		objCount := int(bulkInfo.ObjCount)
-		more := bool(bulkInfo.More)
-		currMarker = int64(bulkInfo.NextMarker)
-		for i := 0; i < objCount; i++ {
-			portNum := int(bulkInfo.PortConfigList[i].IfIndex)
-			entry := portInfoMap[portNum]
-			entry.Name = bulkInfo.PortConfigList[i].Name
-			portInfoMap[portNum] = entry
-		}
-		if more == false {
-			return nil
-		}
-	}
-	logger.Info("DRA initialized Port Parameters successfully")
-	return nil
-}
-
-/*
  *  InitDhcpRelayPktHandler:
  *	    This API is used to initialize all the data structures varialbe that
  *	    is needed by relay agent to perform its operation
@@ -193,27 +159,20 @@ func InitDhcpRelayPortPktHandler() error {
 		"Directory Location for config files")
 	flag.Parse()
 	configFile := *params_dir + "/clients.json"
-	logger.Info(fmt.Sprintln("configFile is ", configFile))
+	logger.Info(fmt.Sprintln("DRA: configFile is ", configFile))
 	// connect to client
 	err := DhcpRelayAgentConnectToClients(configFile)
 	if err != nil {
 		return err
 	}
-	// OS signal channgel Handler
+	// OS signal channel listener thread
 	DhcpRelayAgentOSSignalHandle()
-	// @TODO: jgheewala... DO we need a routine to listen to intf state
-	// change???
-	// handle_asicd_updates()
-
 	// Initialize port parameters
 	err = DhcpRelayInitPortParams()
 	if err != nil {
-		logger.Err("DRA initializing port paramters failed")
+		logger.Err("DRA: initializing port paramters failed")
 		return err
 	}
-
-	// Init packet handling ... i.e pcap handling and this need to be per
-	// port/interface basis
 
 	return nil
 }
@@ -232,7 +191,7 @@ func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr stri
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
 	transport, err := thrift.NewTServerSocket(addr)
 	if err != nil {
-		logger.Info(fmt.Sprintln("StartServer: NewTServerSocket "+
+		logger.Info(fmt.Sprintln("DRA: StartServer: NewTServerSocket "+
 			"failed with error:", err))
 		return err
 	}
@@ -245,10 +204,10 @@ func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr stri
 		transportFactory, protocolFactory)
 	err = server.Serve()
 	if err != nil {
-		logger.Info(fmt.Sprintln("Failed to start the listener, err:", err))
+		logger.Info(fmt.Sprintln("DRA: Failed to start the listener, err:", err))
 		return err
 	}
 
-	logger.Info(fmt.Sprintln("Start the Server successfully"))
+	logger.Info("DRA:Start the Server successfully")
 	return nil
 }

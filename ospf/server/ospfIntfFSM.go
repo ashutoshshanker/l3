@@ -1,14 +1,16 @@
 package server
 
 import (
-    //"fmt"
+    "fmt"
     "time"
+    "l3/ospf/config"
+    "encoding/binary"
     "github.com/google/gopacket"
     "github.com/google/gopacket/layers"
 )
 
+
 func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
-    ent, _ := server.IntfConfMap[key]
 /*
     waitTimerCb := func() {
         server.logger.Info("Wait timer expired")
@@ -16,11 +18,106 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
     }
 */
     for {
+        ent, _ := server.IntfConfMap[key]
         select {
         case <-ent.HelloIntervalTicker.C:
             server.StartSendHelloPkt(key)
         case <-ent.WaitTimer.C:
             server.logger.Info("Wait timer expired")
+            //server.IntfConfMap[key] = ent
+            // Elect BDR And DR
+            server.ElectBDRAndDR(key)
+        case msg := <-ent.BackupSeenCh:
+            server.logger.Info(fmt.Sprintf("Transit to action state because of backup seen", msg))
+/*
+            ent.IfFSMState = config.OtherDesignatedRouter
+*/
+            server.ElectBDRAndDR(key)
+        case createMsg := <-ent.NeighCreateCh:
+            neighborKey := NeighborKey {
+                RouterId:       createMsg.RouterId,
+                NbrIP:          createMsg.NbrIP,
+            }
+            neighborEntry, exist := ent.NeighborMap[neighborKey]
+            if !exist {
+                neighborEntry.TwoWayStatus = createMsg.TwoWayStatus
+                neighborEntry.RtrPrio = createMsg.RtrPrio
+                neighborEntry.DRtr = createMsg.DRtr
+                neighborEntry.BDRtr = createMsg.BDRtr
+                ent.NeighborMap[neighborKey] = neighborEntry
+                server.IntfConfMap[key] = ent
+                server.logger.Info(fmt.Sprintln("1 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap, "neighborKey:", neighborKey))
+                if createMsg.TwoWayStatus == true &&
+                    ent.IfFSMState != config.Waiting {
+                    server.ElectBDRAndDR(key)
+                }
+            }
+        case changeMsg:= <-ent.NeighChangeCh:
+            neighborKey := NeighborKey {
+                RouterId:       changeMsg.RouterId,
+                NbrIP:          changeMsg.NbrIP,
+            }
+            neighborEntry, exist := ent.NeighborMap[neighborKey]
+            if exist {
+                server.logger.Info(fmt.Sprintln("Change msg: ", changeMsg, "neighbor entry:", neighborEntry, "neighbor key:", neighborKey))
+                //rtrId := changeMsg.RouterId
+                NbrIP := changeMsg.NbrIP
+                oldRtrPrio := neighborEntry.RtrPrio
+                oldDRtr := binary.BigEndian.Uint32(neighborEntry.DRtr)
+                oldBDRtr := binary.BigEndian.Uint32(neighborEntry.BDRtr)
+                newDRtr := binary.BigEndian.Uint32(changeMsg.DRtr)
+                newBDRtr := binary.BigEndian.Uint32(changeMsg.BDRtr)
+                oldTwoWayStatus := neighborEntry.TwoWayStatus
+/*
+                if (neighborEntry.RtrPrio != changeMsg.RtrPrio ||
+                    bytesEqual(neighborEntry.DRtr, changeMsg.DRtr) == false ||
+                    bytesEqual(neighborEntry.BDRtr, changeMsg.BDRtr) == false) &&
+                    changeMsg.TwoWayStatus == true {
+*/
+                neighborEntry.TwoWayStatus = changeMsg.TwoWayStatus
+                neighborEntry.RtrPrio = changeMsg.RtrPrio
+                neighborEntry.DRtr = changeMsg.DRtr
+                neighborEntry.BDRtr = changeMsg.BDRtr
+                ent.NeighborMap[neighborKey] = neighborEntry
+                server.IntfConfMap[key] = ent
+                server.logger.Info(fmt.Sprintln("2 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap))
+                if ent.IfFSMState > config.Waiting {
+                    // RFC2328 Section 9.2 (Neighbor Change Event)
+                    if (oldDRtr == NbrIP && newDRtr != NbrIP && oldTwoWayStatus == true) ||
+                        (oldDRtr != NbrIP && newDRtr == NbrIP && oldTwoWayStatus == true) ||
+                        (oldBDRtr == NbrIP && newBDRtr != NbrIP && oldTwoWayStatus == true) ||
+                        (oldBDRtr != NbrIP && newBDRtr == NbrIP && oldTwoWayStatus == true) ||
+                        (oldTwoWayStatus != changeMsg.TwoWayStatus) ||
+                        (oldRtrPrio != changeMsg.RtrPrio && oldTwoWayStatus == true) {
+
+                        // Update Neighbor and Re-elect BDR And DR
+                        server.ElectBDRAndDR(key)
+                    }
+                }
+/*
+                }
+*/
+            }
+        case nbrStateChangeMsg := <-ent.NbrStateChangeCh:
+            // Only when Neighbor Went Down from TwoWayStatus
+            // Todo: Handle NbrIP: Ashutosh
+            server.logger.Info("Hello4")
+            server.logger.Info(fmt.Sprintf("Recev Neighbor State Change message", nbrStateChangeMsg))
+            nbrKey := NeighborKey {
+                RouterId:   nbrStateChangeMsg.RouterId,
+            }
+            neighborEntry, exist := ent.NeighborMap[nbrKey]
+            if exist {
+                oldTwoWayStatus := neighborEntry.TwoWayStatus
+                delete(ent.NeighborMap, nbrKey)
+                server.IntfConfMap[key] = ent
+                if ent.IfFSMState > config.Waiting {
+                    // RFC2328 Section 9.2 (Neighbor Change Event)
+                    if oldTwoWayStatus == true {
+                        server.ElectBDRAndDR(key)
+                    }
+                }
+            }
         case state := <-ent.PktSendCh:
             if state == false {
                 server.StopSendHelloPkt(key)
@@ -29,6 +126,191 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
             }
         }
     }
+}
+
+func (server *OSPFServer)ElectBDR(key IntfConfKey) ([]byte) {
+    ent, _ := server.IntfConfMap[key]
+    electedBDR := []byte {0, 0, 0, 0}
+    var electedRtrPrio uint8
+    var electedRtrId uint32
+    var MaxRtrPrio uint8
+    var RtrIdWithMaxPrio uint32
+    var NbrIPWithMaxPrio uint32
+
+    for nbrkey, nbrEntry := range ent.NeighborMap {
+        if nbrEntry.TwoWayStatus == true &&
+            nbrEntry.RtrPrio > 0 &&
+            nbrkey.NbrIP != 0 {
+            tempDR := binary.BigEndian.Uint32(nbrEntry.DRtr)
+            if tempDR == nbrkey.NbrIP {
+                continue
+            }
+            tempBDR := binary.BigEndian.Uint32(nbrEntry.BDRtr)
+            if tempBDR == nbrkey.NbrIP {
+                if nbrEntry.RtrPrio > electedRtrPrio {
+                    electedRtrPrio = nbrEntry.RtrPrio
+                    electedRtrId = nbrkey.RouterId
+                    electedBDR = nbrEntry.BDRtr
+                } else if nbrEntry.RtrPrio == electedRtrPrio {
+                    if electedRtrId < nbrkey.RouterId {
+                        electedRtrPrio = nbrEntry.RtrPrio
+                        electedRtrId = nbrkey.RouterId
+                        electedBDR = nbrEntry.BDRtr
+                    }
+                }
+            }
+            if MaxRtrPrio < nbrEntry.RtrPrio {
+                MaxRtrPrio = nbrEntry.RtrPrio
+                RtrIdWithMaxPrio = nbrkey.RouterId
+                NbrIPWithMaxPrio = nbrkey.NbrIP
+            } else if MaxRtrPrio == nbrEntry.RtrPrio {
+                if RtrIdWithMaxPrio < nbrkey.RouterId {
+                    MaxRtrPrio = nbrEntry.RtrPrio
+                    RtrIdWithMaxPrio = nbrkey.RouterId
+                    NbrIPWithMaxPrio = nbrkey.NbrIP
+                }
+            }
+        }
+    }
+
+    if ent.IfRtrPriority != 0 &&
+        bytesEqual(ent.IfIpAddr.To4(), []byte {0, 0, 0, 0}) == false {
+        if bytesEqual(ent.IfIpAddr.To4(), ent.IfDR) == false {
+            if bytesEqual(ent.IfIpAddr.To4(), ent.IfBDR) == true {
+                rtrId := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
+                if ent.IfRtrPriority > electedRtrPrio {
+                    electedRtrPrio = ent.IfRtrPriority
+                    electedRtrId = rtrId
+                    electedBDR = ent.IfIpAddr.To4()
+                } else if ent.IfRtrPriority == electedRtrPrio {
+                    if electedRtrId < rtrId {
+                        electedRtrPrio = ent.IfRtrPriority
+                        electedRtrId = rtrId
+                        electedBDR = ent.IfIpAddr.To4()
+                    }
+                }
+            }
+
+            tempRtrId := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
+            if MaxRtrPrio < ent.IfRtrPriority {
+                MaxRtrPrio = ent.IfRtrPriority
+                NbrIPWithMaxPrio = binary.BigEndian.Uint32(ent.IfIpAddr.To4())
+                RtrIdWithMaxPrio = tempRtrId
+            } else if MaxRtrPrio == ent.IfRtrPriority {
+                if RtrIdWithMaxPrio < tempRtrId {
+                    MaxRtrPrio = ent.IfRtrPriority
+                    NbrIPWithMaxPrio = binary.BigEndian.Uint32(ent.IfIpAddr.To4())
+                    RtrIdWithMaxPrio = tempRtrId
+                }
+            }
+
+        }
+    }
+    if bytesEqual(electedBDR, []byte{0, 0, 0, 0}) == true {
+        binary.BigEndian.PutUint32(electedBDR, NbrIPWithMaxPrio)
+    }
+
+    return electedBDR
+}
+
+func (server *OSPFServer)ElectDR(key IntfConfKey, electedBDR []byte) ([]byte) {
+    ent, _ := server.IntfConfMap[key]
+    electedDR := []byte {0, 0, 0, 0}
+    var electedRtrPrio uint8
+    var electedRtrId uint32
+
+    for key, nbrEntry := range ent.NeighborMap {
+        if nbrEntry.TwoWayStatus == true &&
+            nbrEntry.RtrPrio > 0  &&
+            key.NbrIP != 0 {
+            tempDR := binary.BigEndian.Uint32(nbrEntry.DRtr)
+            if tempDR == key.NbrIP {
+                if nbrEntry.RtrPrio > electedRtrPrio {
+                    electedRtrPrio = nbrEntry.RtrPrio
+                    electedRtrId = key.RouterId
+                    electedDR = nbrEntry.DRtr
+                } else if nbrEntry.RtrPrio == electedRtrPrio {
+                    if electedRtrId < key.RouterId {
+                        electedRtrPrio = nbrEntry.RtrPrio
+                        electedRtrId = key.RouterId
+                        electedDR = nbrEntry.DRtr
+                    }
+                }
+            }
+        }
+    }
+
+    if ent.IfRtrPriority > 0 &&
+        bytesEqual(ent.IfIpAddr.To4(), []byte {0, 0, 0, 0}) == false {
+        if bytesEqual(ent.IfIpAddr.To4(), ent.IfDR) == true {
+            rtrId := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
+            if ent.IfRtrPriority > electedRtrPrio {
+                electedRtrPrio = ent.IfRtrPriority
+                electedRtrId = rtrId
+                electedDR = ent.IfIpAddr.To4()
+            } else if ent.IfRtrPriority == electedRtrPrio {
+                if electedRtrId < rtrId {
+                    electedRtrPrio = ent.IfRtrPriority
+                    electedRtrId = rtrId
+                    electedDR = ent.IfIpAddr.To4()
+                }
+            }
+        }
+    }
+
+    if bytesEqual(electedDR, []byte{0, 0, 0, 0}) == true {
+        electedDR = electedBDR
+    }
+    return electedDR
+}
+
+func (server *OSPFServer)ElectBDRAndDR(key IntfConfKey) {
+    ent, _ := server.IntfConfMap[key]
+    server.logger.Info(fmt.Sprintln("Election of BDR andDR", ent.IfFSMState))
+
+    //oldDR := ent.IfDR
+    //oldBDR := ent.IfBDR
+    oldState := ent.IfFSMState
+    var newState config.IfState
+
+    electedBDR := server.ElectBDR(key)
+    ent.IfBDR = electedBDR
+    electedDR := server.ElectDR(key, electedBDR)
+    ent.IfDR = electedDR
+    if bytesEqual(ent.IfDR, ent.IfIpAddr.To4()) == true {
+        newState = config.DesignatedRouter
+    } else if bytesEqual(ent.IfBDR, ent.IfIpAddr.To4()) == true {
+        newState = config.BackupDesignatedRouter
+    } else {
+        newState = config.OtherDesignatedRouter
+    }
+
+    server.logger.Info(fmt.Sprintln("1. Election of BDR:", ent.IfBDR, " and DR:", ent.IfDR, "new State:", newState))
+    server.IntfConfMap[key] = ent
+
+    if (newState != oldState &&
+        !(newState == config.OtherDesignatedRouter &&
+            oldState < config.OtherDesignatedRouter)) {
+        ent, _ = server.IntfConfMap[key]
+        electedBDR = server.ElectBDR(key)
+        ent.IfBDR = electedBDR
+        electedDR = server.ElectDR(key, electedBDR)
+        ent.IfDR = electedDR
+        if bytesEqual(ent.IfDR, ent.IfIpAddr.To4()) == true {
+            newState = config.DesignatedRouter
+        } else if bytesEqual(ent.IfBDR, ent.IfIpAddr.To4()) == true {
+            newState = config.BackupDesignatedRouter
+        } else {
+            newState = config.OtherDesignatedRouter
+        }
+        server.logger.Info(fmt.Sprintln("2. Election of BDR:", ent.IfBDR, " and DR:", ent.IfDR, "new State:", newState))
+        server.IntfConfMap[key] = ent
+    }
+
+    ent, _ = server.IntfConfMap[key]
+    ent.IfFSMState = newState
+    server.logger.Info(fmt.Sprintln("Final Election of BDR:", ent.IfBDR, " and DR:", ent.IfDR, "new State:", newState))
+    server.IntfConfMap[key] = ent
 }
 
 func (server *OSPFServer)StopOspfTransPkts(key IntfConfKey) {
