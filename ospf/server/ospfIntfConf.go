@@ -24,6 +24,7 @@ type NeighborData struct {
 
 type NeighborKey struct {
         RouterId            uint32
+        NbrIP               uint32
 }
 
 type BackupSeenMsg struct {
@@ -34,6 +35,7 @@ type BackupSeenMsg struct {
 
 type NeighCreateMsg struct {
         RouterId            uint32
+        NbrIP               uint32
         TwoWayStatus        bool
         RtrPrio             uint8
         DRtr                []byte
@@ -42,6 +44,7 @@ type NeighCreateMsg struct {
 
 type NeighChangeMsg struct {
         RouterId            uint32
+        NbrIP               uint32
         TwoWayStatus        bool
         RtrPrio             uint8
         DRtr                []byte

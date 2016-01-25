@@ -212,8 +212,10 @@ func (server *OSPFServer)processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloDa
     server.logger.Info(fmt.Sprintln("ipHdrMd", ipHdrMd))
     server.logger.Info(fmt.Sprintln("ospfHdrMd", ospfHdrMd))
     routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
+    NbrIP := convertIPv4ToUint32(ipHdrMd.srcIP)
     neighborKey := NeighborKey {
         RouterId:       routerId,
+        NbrIP:          NbrIP,
     }
 
     //Todo: Find whether one way or two way
@@ -235,6 +237,7 @@ func (server *OSPFServer)processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloDa
     if !exist {
         var neighCreateMsg NeighCreateMsg
         neighCreateMsg.RouterId = routerId
+        neighCreateMsg.NbrIP = NbrIP
         neighCreateMsg.RtrPrio = ospfHelloData.rtrPrio
         neighCreateMsg.TwoWayStatus = TwoWayStatus
         neighCreateMsg.DRtr = append(neighCreateMsg.DRtr, ospfHelloData.designatedRtr...)
@@ -242,19 +245,18 @@ func (server *OSPFServer)processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloDa
         ent.NeighCreateCh <- neighCreateMsg
         server.logger.Info(fmt.Sprintln("Neighbor Entry Created", neighborEntry))
     } else {
-        if ent.IfFSMState > config.Waiting {
-            if neighborEntry.TwoWayStatus != TwoWayStatus ||
-                bytesEqual(neighborEntry.DRtr, ospfHelloData.designatedRtr) == false ||
-                bytesEqual(neighborEntry.BDRtr, ospfHelloData.backupDesignatedRtr) == false ||
-                neighborEntry.RtrPrio != ospfHelloData.rtrPrio {
-                var neighChangeMsg NeighChangeMsg
-                neighChangeMsg.RouterId = routerId
-                neighChangeMsg.TwoWayStatus = TwoWayStatus
-                neighChangeMsg.RtrPrio = ospfHelloData.rtrPrio
-                neighChangeMsg.DRtr = append(neighChangeMsg.DRtr, ospfHelloData.designatedRtr...)
-                neighChangeMsg.BDRtr = append(neighChangeMsg.BDRtr, ospfHelloData.backupDesignatedRtr...)
-                ent.NeighChangeCh <- neighChangeMsg
-            }
+        if neighborEntry.TwoWayStatus != TwoWayStatus ||
+            bytesEqual(neighborEntry.DRtr, ospfHelloData.designatedRtr) == false ||
+            bytesEqual(neighborEntry.BDRtr, ospfHelloData.backupDesignatedRtr) == false ||
+            neighborEntry.RtrPrio != ospfHelloData.rtrPrio {
+            var neighChangeMsg NeighChangeMsg
+            neighChangeMsg.RouterId = routerId
+            neighChangeMsg.NbrIP = NbrIP
+            neighChangeMsg.TwoWayStatus = TwoWayStatus
+            neighChangeMsg.RtrPrio = ospfHelloData.rtrPrio
+            neighChangeMsg.DRtr = append(neighChangeMsg.DRtr, ospfHelloData.designatedRtr...)
+            neighChangeMsg.BDRtr = append(neighChangeMsg.BDRtr, ospfHelloData.backupDesignatedRtr...)
+            ent.NeighChangeCh <- neighChangeMsg
         }
         server.logger.Info(fmt.Sprintln("Neighbor Entry already exist", neighborEntry))
     }
@@ -266,25 +268,25 @@ func (server *OSPFServer)processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloDa
     var backupSeenMsg BackupSeenMsg
 
     if TwoWayStatus == true && ent.IfFSMState == config.Waiting {
-        if bytesEqual(ospfHdrMd.routerId, ospfHelloData.designatedRtr) == true {
+        if bytesEqual(ipHdrMd.srcIP, ospfHelloData.designatedRtr) == true {
             if bytesEqual(ospfHelloData.backupDesignatedRtr, []byte {0, 0, 0, 0}) == false {
                 ret := ent.WaitTimer.Stop()
                 if ret == true {
                     backupSeenMsg.RouterId = routerId
-                    backupSeenMsg.DRId = append(backupSeenMsg.DRId, ospfHdrMd.routerId...)
+                    backupSeenMsg.DRId = append(backupSeenMsg.DRId, ipHdrMd.srcIP...)
                     backupSeenMsg.BDRId = append(backupSeenMsg.BDRId, ospfHelloData.backupDesignatedRtr...)
                     server.logger.Info("Neigbor choose itself as Designated Router")
                     server.logger.Info("Backup Designated Router also exist")
                     ent.BackupSeenCh <-backupSeenMsg
                 }
             }
-        } else if bytesEqual(ospfHdrMd.routerId, ospfHelloData.backupDesignatedRtr) == true {
+        } else if bytesEqual(ipHdrMd.srcIP, ospfHelloData.backupDesignatedRtr) == true {
             ret := ent.WaitTimer.Stop()
             if ret == true {
                 server.logger.Info("Neigbor choose itself as Backup Designated Router")
                 backupSeenMsg.RouterId = routerId
                 backupSeenMsg.DRId = append(backupSeenMsg.DRId, ospfHelloData.designatedRtr...)
-                backupSeenMsg.BDRId = append(backupSeenMsg.BDRId, ospfHdrMd.routerId...)
+                backupSeenMsg.BDRId = append(backupSeenMsg.BDRId, ipHdrMd.srcIP...)
                 ent.BackupSeenCh <-backupSeenMsg
             }
         }
