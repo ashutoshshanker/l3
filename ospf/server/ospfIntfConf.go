@@ -20,11 +20,11 @@ type NeighborData struct {
         RtrPrio             uint8
         DRtr                []byte
         BDRtr               []byte
+        NbrIP               uint32
 }
 
 type NeighborKey struct {
         RouterId            uint32
-        NbrIP               uint32
 }
 
 type BackupSeenMsg struct {
