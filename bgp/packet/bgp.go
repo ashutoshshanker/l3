@@ -105,11 +105,13 @@ var BGPOptParamTypeToStruct = map[BGPOptParamType]BGPOptParam{
 type BGPCapabilityType uint8
 
 const (
-	_                 BGPCapabilityType = iota
-	BGPCapTypeAS4Path                   = 65
+	_ BGPCapabilityType = iota
+	BGPCapTypeMPExt
+	BGPCapTypeAS4Path = 65
 )
 
 var BGPCapTypeToStruct = map[BGPCapabilityType]BGPCapability{
+	BGPCapTypeMPExt:   &BGPCapMPExt{},
 	BGPCapTypeAS4Path: &BGPCapAS4Path{},
 }
 
@@ -140,14 +142,15 @@ const (
 	_
 	BGPPathAttrTypeOriginatorId
 	BGPPathAttrTypeClusterList
-	BGPPathAttrTypeUnknown
 	_
 	_
 	_
-	_
+	BGPPathAttrTypeMPReachNLRI
+	BGPPathAttrTypeMPUnreachNLRI
 	_
 	BGPPathAttrTypeAS4Path
 	BGPPathAttrTypeAS4Aggregator
+	BGPPathAttrTypeUnknown
 )
 
 type BGPPathAttrOriginType uint8
@@ -177,6 +180,12 @@ var BGPPathAttrTypeToStructMap = map[BGPPathAttrType]BGPPathAttr{
 	BGPPathAttrTypeLocalPref:       &BGPPathAttrLocalPref{},
 	BGPPathAttrTypeAtomicAggregate: &BGPPathAttrAtomicAggregate{},
 	BGPPathAttrTypeAggregator:      &BGPPathAttrAggregator{},
+	BGPPathAttrTypeOriginatorId:    &BGPPathAttrOriginatorId{},
+	BGPPathAttrTypeClusterList:     &BGPPathAttrClusterList{},
+	BGPPathAttrTypeMPReachNLRI:     &BGPPathAttrMPReachNLRI{},
+	BGPPathAttrTypeMPUnreachNLRI:   &BGPPathAttrMPUnreachNLRI{},
+	BGPPathAttrTypeAS4Path:         &BGPPathAttrAS4Path{},
+	BGPPathAttrTypeAS4Aggregator:   &BGPPathAttrAS4Aggregator{},
 }
 
 var BGPPathAttrTypeFlagsMap = map[BGPPathAttrType][]BGPPathAttrFlag{
@@ -187,6 +196,12 @@ var BGPPathAttrTypeFlagsMap = map[BGPPathAttrType][]BGPPathAttrFlag{
 	BGPPathAttrTypeLocalPref:       []BGPPathAttrFlag{BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
 	BGPPathAttrTypeAtomicAggregate: []BGPPathAttrFlag{BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
 	BGPPathAttrTypeAggregator:      []BGPPathAttrFlag{BGPPathAttrFlagOptional & BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeOriginatorId:    []BGPPathAttrFlag{BGPPathAttrFlagOptional, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeClusterList:     []BGPPathAttrFlag{BGPPathAttrFlagOptional, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeMPReachNLRI:     []BGPPathAttrFlag{BGPPathAttrFlagOptional, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeMPUnreachNLRI:   []BGPPathAttrFlag{BGPPathAttrFlagOptional, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeAS4Path:         []BGPPathAttrFlag{BGPPathAttrFlagOptional & BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
+	BGPPathAttrTypeAS4Aggregator:   []BGPPathAttrFlag{BGPPathAttrFlagOptional & BGPPathAttrFlagTransitive, BGPPathAttrFlagAllMinusExtendedLen},
 }
 
 var BGPPathAttrTypeLenMap = map[BGPPathAttrType]uint16{
@@ -196,6 +211,7 @@ var BGPPathAttrTypeLenMap = map[BGPPathAttrType]uint16{
 	BGPPathAttrTypeLocalPref:       4,
 	BGPPathAttrTypeAtomicAggregate: 0,
 	BGPPathAttrTypeAggregator:      6,
+	BGPPathAttrTypeAS4Aggregator:   6,
 }
 
 type BGPMessageError struct {
@@ -285,6 +301,49 @@ func (msg *BGPCapabilityBase) TotalLen() uint8 {
 
 func (msg *BGPCapabilityBase) GetCode() BGPCapabilityType {
 	return msg.Type
+}
+
+type BGPCapMPExt struct {
+	BGPCapabilityBase
+	AFI      uint16
+	Reserved uint8
+	SAFI     uint8
+}
+
+func (mp *BGPCapMPExt) Encode() ([]byte, error) {
+	pkt, err := mp.BGPCapabilityBase.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	binary.BigEndian.PutUint16(pkt[2:], mp.AFI)
+	pkt[4] = 0
+	pkt[5] = mp.SAFI
+	return pkt, nil
+}
+
+func (mp *BGPCapMPExt) Decode(pkt []byte) error {
+	err := mp.BGPCapabilityBase.Decode(pkt)
+	if err != nil {
+		return err
+	}
+
+	mp.AFI = binary.BigEndian.Uint16(pkt[2:])
+	mp.Reserved = 0
+	mp.SAFI = pkt[5]
+	return nil
+}
+
+func NewBGPCapMPExt(afi uint16, safi uint8) *BGPCapMPExt {
+	return &BGPCapMPExt{
+		BGPCapabilityBase: BGPCapabilityBase{
+			Type: BGPCapTypeMPExt,
+			Len:  4,
+		},
+		AFI:      afi,
+		Reserved: 0,
+		SAFI:     safi,
+	}
 }
 
 type BGPCapAS4Path struct {
@@ -1571,6 +1630,171 @@ func NewBGPPathAttrClusterList() *BGPPathAttrClusterList {
 			BGPPathAttrLen: 3,
 		},
 		Value: make([]uint32, 0),
+	}
+}
+
+type BGPPathAttrMPReachNLRI struct {
+	BGPPathAttrBase
+	AFI      uint16
+	SAFI     uint8
+	Length   uint8
+	NextHop  []byte
+	Reserved byte
+	NLRI     [][]byte
+}
+
+func (r *BGPPathAttrMPReachNLRI) Clone() BGPPathAttr {
+	x := *r
+	x.BGPPathAttrBase = r.BGPPathAttrBase.Clone()
+	x.NextHop = make(net.IP, len(r.NextHop))
+	copy(x.NextHop, r.NextHop)
+	x.NLRI = make([][]byte, len(r.NLRI))
+	for i, nlri := range r.NLRI {
+		x.NLRI[i] = make(net.IP, len(nlri))
+		copy(x.NLRI[i], nlri)
+	}
+	return &x
+}
+
+func (r *BGPPathAttrMPReachNLRI) Encode() ([]byte, error) {
+	pkt, err := r.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, nil
+	}
+	idx := int(r.BGPPathAttrBase.BGPPathAttrLen)
+
+	binary.BigEndian.PutUint16(pkt[idx:idx+2], r.AFI)
+	idx += 2
+	pkt[idx] = r.SAFI
+	idx++
+
+	pkt[idx] = uint8(len(r.NextHop))
+	copy(pkt[idx:], r.NextHop)
+	idx += len(r.NextHop)
+
+	pkt[idx] = 0
+	idx++
+
+	for i := 0; i < len(r.NLRI); i++ {
+		copy(pkt[idx:], r.NLRI[i])
+		idx += len(r.NLRI[i])
+	}
+	return pkt, nil
+}
+
+func (r *BGPPathAttrMPReachNLRI) Decode(pkt []byte, data interface{}) error {
+	pkt, err := r.BGPPathAttrBase.Encode()
+	if err != nil {
+		return err
+	}
+
+	idx := int(r.BGPPathAttrBase.BGPPathAttrLen)
+	r.AFI = binary.BigEndian.Uint16(pkt[idx : idx+2])
+	r.SAFI = pkt[idx+2]
+	r.Length = pkt[idx+3]
+	idx += 3
+
+	r.NextHop = make([]byte, r.Length)
+	copy(r.NextHop, pkt[idx:idx+int(r.Length)])
+	idx += int(r.Length)
+
+	r.Reserved = pkt[idx]
+	idx++
+
+	r.NLRI = make([][]byte, 0)
+	for uint32(idx) < r.TotalLen() {
+		bytes := int((pkt[idx] + 7) / 8)
+		idx++
+		nlri := make([]byte, bytes)
+		copy(nlri[0:], pkt[idx:idx+bytes])
+		r.NLRI = append(r.NLRI, nlri)
+		idx += bytes
+	}
+	return nil
+}
+
+func NewBGPPathAttrMPReachNLRI() *BGPPathAttrMPReachNLRI {
+	return &BGPPathAttrMPReachNLRI{
+		BGPPathAttrBase: BGPPathAttrBase{
+			Flags:          BGPPathAttrFlagOptional & BGPPathAttrFlagExtendedLen,
+			Code:           BGPPathAttrTypeMPReachNLRI,
+			Length:         0,
+			BGPPathAttrLen: 4,
+		},
+		NextHop: make([]byte, 0),
+		NLRI:    make([][]byte, 0),
+	}
+}
+
+type BGPPathAttrMPUnreachNLRI struct {
+	BGPPathAttrBase
+	AFI  uint16
+	SAFI uint8
+	NLRI [][]byte
+}
+
+func (u *BGPPathAttrMPUnreachNLRI) Clone() BGPPathAttr {
+	x := *u
+	x.BGPPathAttrBase = u.BGPPathAttrBase.Clone()
+	x.NLRI = make([][]byte, len(u.NLRI))
+	for i, nlri := range u.NLRI {
+		x.NLRI[i] = make(net.IP, len(nlri))
+		copy(x.NLRI[i], nlri)
+	}
+	return &x
+}
+
+func (u *BGPPathAttrMPUnreachNLRI) Encode() ([]byte, error) {
+	pkt, err := u.BGPPathAttrBase.Encode()
+	if err != nil {
+		return pkt, nil
+	}
+	idx := int(u.BGPPathAttrBase.BGPPathAttrLen)
+
+	binary.BigEndian.PutUint16(pkt[idx:idx+2], u.AFI)
+	idx += 2
+	pkt[idx] = u.SAFI
+	idx++
+
+	for i := 0; i < len(u.NLRI); i++ {
+		copy(pkt[idx:], u.NLRI[i])
+		idx += len(u.NLRI[i])
+	}
+	return pkt, nil
+}
+
+func (u *BGPPathAttrMPUnreachNLRI) Decode(pkt []byte, data interface{}) error {
+	pkt, err := u.BGPPathAttrBase.Encode()
+	if err != nil {
+		return err
+	}
+
+	idx := int(u.BGPPathAttrBase.BGPPathAttrLen)
+	u.AFI = binary.BigEndian.Uint16(pkt[idx : idx+2])
+	u.SAFI = pkt[idx+2]
+	idx += 2
+
+	u.NLRI = make([][]byte, 0)
+	for uint32(idx) < u.TotalLen() {
+		bytes := int((pkt[idx] + 7) / 8)
+		idx++
+		nlri := make([]byte, bytes)
+		copy(nlri[0:], pkt[idx:idx+bytes])
+		u.NLRI = append(u.NLRI, nlri)
+		idx += bytes
+	}
+	return nil
+}
+
+func NewBGPPathAttrMPUnreachNLRI() *BGPPathAttrMPUnreachNLRI {
+	return &BGPPathAttrMPUnreachNLRI{
+		BGPPathAttrBase: BGPPathAttrBase{
+			Flags:          BGPPathAttrFlagOptional & BGPPathAttrFlagExtendedLen,
+			Code:           BGPPathAttrTypeMPUnreachNLRI,
+			Length:         0,
+			BGPPathAttrLen: 4,
+		},
+		NLRI: make([][]byte, 0),
 	}
 }
 
