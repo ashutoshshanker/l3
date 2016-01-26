@@ -241,18 +241,13 @@ type AreaConf struct {
 
 type AreaState struct {
 	AreaId                              AreaId
-	AuthType                            AuthType
-	ImportAsExtern                      ImportAsExtern
-	SpfRuns                             int
-	AreaBdrRtrCount                     int
-	AsBdrRtrCount                       int
-	AreaLsaCount                        int
-	AreaLsaCksumSum                     int
-	AreaSummary                         AreaSummary
-	AreaNssaTranslatorRole              NssaTranslatorRole
+	SpfRuns                             int32
+	AreaBdrRtrCount                     int32
+	AsBdrRtrCount                       int32
+	AreaLsaCount                        int32
+	AreaLsaCksumSum                     int32
 	AreaNssaTranslatorState             NssaTranslatorState
-	AreaNssaTranslatorStabilityInterval PositiveInteger
-	AreaNssaTranslatorEvents            int
+	AreaNssaTranslatorEvents            int32
 }
 
 // Indexed by StubAreaId and StubTOS
@@ -335,23 +330,10 @@ type InterfaceConf struct {
 type InterfaceState struct {
 	IfIpAddress                IpAddress
 	AddressLessIf              InterfaceIndexOrZero
-	IfAreaId                   AreaId
-	IfType                     IfType
-	IfAdminStat                Status
-	IfRtrPriority              DesignatedRouterPriority
-	IfTransitDelay             UpToMaxAge
-	IfRetransInterval          UpToMaxAge
-	IfHelloInterval            HelloRange
-	IfRtrDeadInterval          PositiveInteger
-	IfPollInterval             PositiveInteger
 	IfState                    IfState
 	IfDesignatedRouter         IpAddress
 	IfBackupDesignatedRouter   IpAddress
 	IfEvents                   int
-	IfAuthKey                  string
-	IfMulticastForwarding      MulticastForwarding
-	IfDemand                   bool
-	IfAuthType                 AuthType
 	IfLsaCount                 int
 	IfLsaCksumSum              uint32
 	IfDesignatedRouterId       RouterId
