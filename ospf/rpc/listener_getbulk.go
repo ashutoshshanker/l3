@@ -3,16 +3,43 @@ package rpc
 import (
     "ospfd"
     "fmt"
-//    "l3/ospf/config"
+    "l3/ospf/config"
 //    "l3/ospf/server"
 //    "log/syslog"
 //    "net"
 )
 
+func (h *OSPFHandler) convertAreaEntryStateToThrift(ent config.AreaState) *ospfd.OspfAreaEntryState {
+        areaEntry := ospfd.NewOspfAreaEntryState()
+        areaEntry.AreaIdKey = string(ent.AreaId)
+        areaEntry.SpfRuns = ent.SpfRuns
+        areaEntry.AreaBdrRtrCount = ent.AreaBdrRtrCount
+        areaEntry.AsBdrRtrCount = ent.AsBdrRtrCount
+        areaEntry.AreaLsaCount = ent.AreaLsaCount
+        areaEntry.AreaLsaCksumSum = ent.AreaLsaCksumSum
+        areaEntry.AreaNssaTranslatorState = int32(ent.AreaNssaTranslatorState)
+        areaEntry.AreaNssaTranslatorEvents = ent.AreaNssaTranslatorEvents
+
+        return areaEntry
+
+}
+
+
 func (h *OSPFHandler) GetBulkOspfAreaEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfAreaEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Area attrs"))
-    ospfAreaResponse := ospfd.NewOspfAreaEntryStateGetInfo()
-    return ospfAreaResponse, nil
+        h.logger.Info(fmt.Sprintln("Get Area attrs"))
+
+        nextIdx, currCount, ospfAreaEntryStates := h.server.GetBulkOspfAreaEntryState(int(fromIdx), int(count))
+        ospfAreaEntryStateResponse := make([]*ospfd.OspfAreaEntryState, len(ospfAreaEntryStates))
+        for idx, item := range ospfAreaEntryStates {
+                ospfAreaEntryStateResponse[idx] = h.convertAreaEntryStateToThrift(item)
+        }
+        ospfAreaEntryStateGetInfo := ospfd.NewOspfAreaEntryStateGetInfo()
+        ospfAreaEntryStateGetInfo.Count = ospfd.Int(currCount)
+        ospfAreaEntryStateGetInfo.StartIdx = ospfd.Int(fromIdx)
+        ospfAreaEntryStateGetInfo.EndIdx = ospfd.Int(nextIdx)
+        ospfAreaEntryStateGetInfo.More = (nextIdx != 0)
+        ospfAreaEntryStateGetInfo.OspfAreaEntryStateList = ospfAreaEntryStateResponse
+        return ospfAreaEntryStateGetInfo, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfLsdbEntryStateGetInfo, error) {
