@@ -170,7 +170,7 @@ const (
    +---------------------------------------------------------------+
 */
 /*
- * API to return Header Lenght of the incoming packet
+ * ========================GET API's FOR ABOVE MESSAGE FORMAT==================
  */
 func (p DhcpRelayAgentPacket) GetHeaderLen() byte {
 	return p[2]
@@ -213,6 +213,9 @@ func (p DhcpRelayAgentPacket) GetCHAddr() net.HardwareAddr {
 	}
 	return net.HardwareAddr(p[28 : 28+hLen]) // max endPos 44
 }
+func (p DhcpRelayAgentPacket) GetCookie() []byte {
+	return p[236:240]
+}
 
 func ParseMessageTypeToString(mtype MessageType) {
 	switch mtype {
@@ -235,6 +238,58 @@ func ParseMessageTypeToString(mtype MessageType) {
 	default:
 		logger.Info("DRA: Message Type: UnKnown...Discard the Packet")
 	}
+}
+
+/*
+ * ========================SET API's FOR ABOVE MESSAGE FORMAT==================
+ */
+func (p DhcpRelayAgentPacket) SetOpCode(c OpCode) {
+	p[0] = byte(c)
+}
+
+func (p DhcpRelayAgentPacket) SetCHAddr(a net.HardwareAddr) {
+	copy(p[28:44], a)
+	p[2] = byte(len(a))
+}
+
+func (p DhcpRelayAgentPacket) SetHType(hType byte) {
+	p[1] = hType
+}
+
+func (p DhcpRelayAgentPacket) SetCookie(cookie []byte) {
+	copy(p.GetCookie(), cookie)
+}
+
+func (p DhcpRelayAgentPacket) SetHops(hops byte) {
+	p[3] = hops
+}
+
+func (p DhcpRelayAgentPacket) SetXId(xId []byte) {
+	copy(p.GetXId(), xId)
+}
+
+func (p DhcpRelayAgentPacket) SetSecs(secs []byte) {
+	copy(p.GetSecs(), secs)
+}
+
+func (p DhcpRelayAgentPacket) SetFlags(flags []byte) {
+	copy(p.GetFlags(), flags)
+}
+
+func (p DhcpRelayAgentPacket) SetCIAddr(ip net.IP) {
+	copy(p.GetCIAddr(), ip.To4())
+}
+
+func (p DhcpRelayAgentPacket) SetYIAddr(ip net.IP) {
+	copy(p.GetYIAddr(), ip.To4())
+}
+
+func (p DhcpRelayAgentPacket) SetSIAddr(ip net.IP) {
+	copy(p.GetSIAddr(), ip.To4())
+}
+
+func (p DhcpRelayAgentPacket) SetGIAddr(ip net.IP) {
+	copy(p.GetGIAddr(), ip.To4())
 }
 
 func (p DhcpRelayAgentPacket) AllocateOptions() []byte {
@@ -276,81 +331,43 @@ func (p DhcpRelayAgentPacket) ParseDhcpOptions() DhcpRelayAgentOptions {
 /*
  * APT to decode incoming Packet by converting the byte into DHCP packet format
  */
-func DhcpRelayAgentDecodeInPkt(data []byte, bytesRead int) {
+func DhcpRelayAgentDecodeInPkt(data []byte, bytesRead int) (DhcpRelayAgentPacket,
+	DhcpRelayAgentOptions) {
 	logger.Info(fmt.Sprintln("DRA: Decoding PKT"))
 	inRequest := DhcpRelayAgentPacket(data[:bytesRead])
 	if inRequest.GetHeaderLen() > DHCP_PACKET_HEADER_SIZE {
 		logger.Warning("Header Lenght is invalid... don't do anything")
-		return
+		return nil, nil
 	}
 	reqOptions := inRequest.ParseDhcpOptions()
 	logger.Info("DRA: CIAddr is " + inRequest.GetCIAddr().String())
 	logger.Info("DRA: CHaddr is " + inRequest.GetCHAddr().String())
 	logger.Info("DRA: YIAddr is " + inRequest.GetYIAddr().String())
 	logger.Info("DRA: GIAddr is " + inRequest.GetGIAddr().String())
+	logger.Info(fmt.Sprintln("DRA: Cookie is ", inRequest.GetCookie()))
 	mType := reqOptions[OptionDHCPMessageType]
 	ParseMessageTypeToString(MessageType(mType[0]))
-
 	logger.Info(fmt.Sprintln("DRA: Decoding of Pkt done"))
+
+	return inRequest, reqOptions
+}
+
+/*
+ * API to create a new Dhcp packet with Relay Agent information in it
+ */
+func DhcpRelayAgentCreateNewPacket(opCode OpCode) DhcpRelayAgentPacket {
+	p := make(DhcpRelayAgentPacket, DHCP_PACKET_OPTIONS_LEN+1) //241
+	//p.SetOpCode(opCode)
+	//p.SetHType(1) // Ethernet
+	//p.SetCookie([]byte{99, 130, 83, 99}) @TODO: do we want to set
+	//cookies???
+	p[DHCP_PACKET_OPTIONS_LEN] = byte(End) // set opcode END at the very last
+	return p
 }
 
 func DhcpRelayAgentSendPacketToDhcpServer(controlMessage *ipv4.ControlMessage,
-	data []byte) {
+	data []byte, inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions) {
 	logger.Info("DRA: Creating Send Pkt")
-	/*
-	   rawBytes := []byte{10, 20, 30}
-	           // Ethernet Info
-	           eth := &layers.Ethernet{
-	                   SrcMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x12, 0x34},
-	                   DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
-	                   EthernetType: layers.EthernetTypeIPv4,
-	           }
-	           logger.Info(fmt.Sprintln("DRA: eth payload", eth))
-
-	               // Ip Info
-	               ip := &layers.IPv4{
-	                       SrcIP:    net.IP{0, 0, 0, 0},
-	                       DstIP:    net.IP{255, 255, 255, 255},
-	                       Version:  4,
-	                       Protocol: layers.IPProtocolUDP,
-	                       TTL:      64,
-	               }
-	               logger.Info(fmt.Sprintln("DRA: ip payload", ip))
-
-	               // UDP (Port) Info
-	               udp := &layers.UDP{
-	                       SrcPort: 67,
-	                       DstPort: 68,
-	               }
-	               udp.SetNetworkLayerForChecksum(ip)
-	               logger.Info(fmt.Sprintln("DRA: udp payload", udp))
-
-	               // Add DRA Option to the packet formed
-	               // Create the packet with the layers
-	               buffer := gopacket.NewSerializeBuffer()
-	               options := gopacket.SerializeOptions{
-	                       // FixLengths determines whether, during serialization, layers
-	                       // should fix the values for any length field that depends on the
-	                       // payload.
-	                       FixLengths: true,
-	                       // ComputeChecksums determines whether, during serialization, layers
-	                       // should recompute checksums based on their payloads.
-	                       ComputeChecksums: true,
-	               }
-
-	               err := gopacket.SerializeLayers(buffer, options, eth, ip, udp,
-	                       gopacket.Payload(rawBytes))
-	               if err != nil {
-	                       logger.Err(fmt.Sprintln("DRA: Serializing gopacket failed", err))
-	                       return
-	               }
-	               logger.Info(fmt.Sprintln("DRA: PacketData... ", buffer.Bytes()))
-	               err = handler.WritePacketData(buffer.Bytes())
-	               if err != nil {
-	                       logger.Err(fmt.Sprintln("DRA: couldn't write to output data", err))
-	                       return
-	               }
-	*/
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully"))
 }
 
@@ -366,13 +383,17 @@ func DhcpRelayAgentReceiveDhcpPktFromClient() {
 			continue
 		}
 		//Decode the packet...
-		DhcpRelayAgentDecodeInPkt(buf, bytesRead)
+		inReq, reqOptions := DhcpRelayAgentDecodeInPkt(buf, bytesRead)
+		if inReq == nil || reqOptions == nil {
+			logger.Warning("Couldn't decode dhcp packet...continue")
+			continue
+		}
 		//logger.Info(fmt.Sprintln("DRA: bytesread is ", bytesRead))
 		logger.Info(fmt.Sprintln("DRA: control message is ", cm))
 		logger.Info(fmt.Sprintln("DRA: srcAddr is ", srcAddr))
 		//logger.Info(fmt.Sprintln("DRA: buffer is ", buf))
 		// Send Packet
-		DhcpRelayAgentSendPacketToDhcpServer(cm, buf)
+		DhcpRelayAgentSendPacketToDhcpServer(cm, buf, inReq, reqOptions)
 	}
 }
 
