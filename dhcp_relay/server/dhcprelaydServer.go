@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/google/gopacket"
+	"golang.org/x/net/ipv4"
 	"io/ioutil"
 	"log/syslog"
 	"os"
@@ -41,16 +42,15 @@ type DhcpRelayAgentStateInfo struct {
 type DhcpRelayAgentGlobalInfo struct {
 	IntfConfig           dhcprelayd.DhcpRelayIntfConfig
 	StateDebugInfo       DhcpRelayAgentStateInfo
-	PcapHandler          DhcpRelayPcapHandle
 	dhcprelayConfigMutex sync.RWMutex
 	inputPacket          chan gopacket.Packet
 }
 
 var (
 	// map key would be if_name
-	dhcprelayGblInfo map[string]DhcpRelayAgentGlobalInfo
-	logger           *syslog.Writer
-	//dhcprelayConfigMutex sync.RWMutex
+	dhcprelayGblInfo    map[string]DhcpRelayAgentGlobalInfo
+	dhcprelayClientConn *ipv4.PacketConn
+	logger              *syslog.Writer
 )
 
 /******* Local API Calls. *******/
