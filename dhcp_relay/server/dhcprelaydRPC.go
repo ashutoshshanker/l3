@@ -83,15 +83,16 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	//@TODO: FIXME jgheewala
 	// if entry is present then update DB with new info rather than
 	// just writing it again...
-	if gblEntry.PcapHandler.pcapHandle != nil {
+	if dhcprelayClientConn != nil {
 		logger.Info("DRA: no need to create pcap as its already created")
 		return true, nil
+	} else {
+		logger.Info("DRA: len of global entries is " + string(len(dhcprelayGblInfo)))
+		// Stats information
+		DhcpRelayAgentUpdateStats("dhcp relay config create request",
+			&gblEntry)
+		DhcpRelayAgentCreateClientServerConn()
 	}
-	logger.Info("DRA: len of global entries is " + string(len(dhcprelayGblInfo)))
-	// Stats information
-	DhcpRelayAgentUpdateStats("dhcp relay config create request",
-		&gblEntry)
-	go DhcpRelayAgentReceiveDhcpPkt(gblEntry)
 	return true, nil
 }
 
