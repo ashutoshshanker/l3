@@ -172,42 +172,42 @@ const (
 /*
  * API to return Header Lenght of the incoming packet
  */
-func (p DhcpRelayAgentPacket) HeaderLen() byte {
+func (p DhcpRelayAgentPacket) GetHeaderLen() byte {
 	return p[2]
 }
 
-func (p DhcpRelayAgentPacket) OpCode() OpCode {
+func (p DhcpRelayAgentPacket) GetOpCode() OpCode {
 	return OpCode(p[0])
 }
-func (p DhcpRelayAgentPacket) HeaderType() byte {
+func (p DhcpRelayAgentPacket) GetHeaderType() byte {
 	return p[1]
 }
-func (p DhcpRelayAgentPacket) Hops() byte {
+func (p DhcpRelayAgentPacket) GetHops() byte {
 	return p[3]
 }
-func (p DhcpRelayAgentPacket) XId() []byte {
+func (p DhcpRelayAgentPacket) GetXId() []byte {
 	return p[4:8]
 }
-func (p DhcpRelayAgentPacket) Secs() []byte {
+func (p DhcpRelayAgentPacket) GetSecs() []byte {
 	return p[8:10]
 }
-func (p DhcpRelayAgentPacket) Flags() []byte {
+func (p DhcpRelayAgentPacket) GetFlags() []byte {
 	return p[10:12]
 }
-func (p DhcpRelayAgentPacket) CIAddr() net.IP {
+func (p DhcpRelayAgentPacket) GetCIAddr() net.IP {
 	return net.IP(p[12:16])
 }
-func (p DhcpRelayAgentPacket) YIAddr() net.IP {
+func (p DhcpRelayAgentPacket) GetYIAddr() net.IP {
 	return net.IP(p[16:20])
 }
-func (p DhcpRelayAgentPacket) SIAddr() net.IP {
+func (p DhcpRelayAgentPacket) GetSIAddr() net.IP {
 	return net.IP(p[20:24])
 }
-func (p DhcpRelayAgentPacket) GIAddr() net.IP {
+func (p DhcpRelayAgentPacket) GetGIAddr() net.IP {
 	return net.IP(p[24:28])
 }
-func (p DhcpRelayAgentPacket) CHAddr() net.HardwareAddr {
-	hLen := p.HeaderLen()
+func (p DhcpRelayAgentPacket) GetCHAddr() net.HardwareAddr {
+	hLen := p.GetHeaderLen()
 	if hLen > DHCP_PACKET_HEADER_SIZE { // Prevent chaddr exceeding p boundary
 		hLen = DHCP_PACKET_HEADER_SIZE
 	}
@@ -279,15 +279,15 @@ func (p DhcpRelayAgentPacket) ParseDhcpOptions() DhcpRelayAgentOptions {
 func DhcpRelayAgentDecodeInPkt(data []byte, bytesRead int) {
 	logger.Info(fmt.Sprintln("DRA: Decoding PKT"))
 	inRequest := DhcpRelayAgentPacket(data[:bytesRead])
-	if inRequest.HeaderLen() > DHCP_PACKET_HEADER_SIZE {
+	if inRequest.GetHeaderLen() > DHCP_PACKET_HEADER_SIZE {
 		logger.Warning("Header Lenght is invalid... don't do anything")
 		return
 	}
 	reqOptions := inRequest.ParseDhcpOptions()
-	logger.Info("DRA: CIAddr is " + inRequest.CIAddr().String())
-	logger.Info("DRA: CHaddr is " + inRequest.CHAddr().String())
-	logger.Info("DRA: YIAddr is " + inRequest.YIAddr().String())
-	logger.Info("DRA: GIAddr is " + inRequest.GIAddr().String())
+	logger.Info("DRA: CIAddr is " + inRequest.GetCIAddr().String())
+	logger.Info("DRA: CHaddr is " + inRequest.GetCHAddr().String())
+	logger.Info("DRA: YIAddr is " + inRequest.GetYIAddr().String())
+	logger.Info("DRA: GIAddr is " + inRequest.GetGIAddr().String())
 	mType := reqOptions[OptionDHCPMessageType]
 	ParseMessageTypeToString(MessageType(mType[0]))
 
