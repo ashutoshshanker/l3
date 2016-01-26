@@ -5,68 +5,24 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
+	_ "github.com/google/gopacket/pcap"
+	"golang.org/x/net/ipv4"
 	"net"
 	"sync"
-	"time"
 )
 
-type DhcpRelayPcapHandle struct {
-	pcapHandle *pcap.Handle
-	ifName     string
-}
-
-var (
-	snapLen     int32         = 65549 // packet capture length
-	promisc     bool          = false // mode
-	pcapTimeOut time.Duration = 1 * time.Second
-)
-
-func DhcpRelayAgentCreatePcapHandler(info *DhcpRelayAgentGlobalInfo) {
-	logger.Info("DRA: Creating Pcap Handler for intf: " +
-		info.IntfConfig.IfIndex)
-	DhcpRelayAgentUpdateStats("Creating Pcap Handler", info)
-	var filter string = "udp port 67 or udp port 68"
-	pcapLocalHandle, err := pcap.OpenLive(info.IntfConfig.IfIndex,
-		snapLen, promisc, pcapTimeOut)
-	if pcapLocalHandle == nil {
-		logger.Err(fmt.Sprintln("DRA: server no device found: ",
-			info.IntfConfig.IfIndex, err))
-		return
-	}
-	DhcpRelayAgentUpdateStats("Setting filter for Pcap Handler",
-		info)
-	logger.Info("DRA: setting filter for intf: " +
-		info.IntfConfig.IfIndex + " filter: " + filter)
-	err = pcapLocalHandle.SetBPFFilter(filter)
-	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: Unable to set filter on:",
-			info.IntfConfig.IfIndex, err))
-	}
-	info.dhcprelayConfigMutex.RLock()
-	info.PcapHandler.pcapHandle = pcapLocalHandle
-	info.PcapHandler.ifName = info.IntfConfig.IfIndex
-	dhcprelayGblInfo[info.IntfConfig.IfIndex] = *info
-	info.dhcprelayConfigMutex.RUnlock()
-
-	logger.Info("DRA: Pcap Handler successfully updated for intf " +
-		info.IntfConfig.IfIndex)
-	DhcpRelayAgentUpdateStats("Pcap Handler Successfully Created", info)
-
-}
-
-func DhcpRelayAgentDecodeInPkt(inputPacket gopacket.Packet, handler *pcap.Handle,
-	ethLayer *layers.Ethernet, ipLayer *layers.IPv4, udpLayer *layers.UDP,
+func DhcpRelayAgentDecodeInPkt(data []byte, ethLayer *layers.Ethernet,
+	ipLayer *layers.IPv4, udpLayer *layers.UDP,
 	payload *gopacket.Payload) {
 	//@FIXME: jgheewala getting error on decode
 	//Trouble decoding layers:  No decoder for layer type Payload
 
 	logger.Info(fmt.Sprintln("DRA: Decoding PKT"))
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
-		ethLayer, ipLayer /*&tcpLayer,*/, udpLayer, payload)
+		ethLayer, ipLayer, udpLayer, payload)
 	foundLayerTypes := make([]gopacket.LayerType, 0, 10)
 
-	err := parser.DecodeLayers(inputPacket.Data(), &foundLayerTypes)
+	err := parser.DecodeLayers(data, &foundLayerTypes)
 	if err != nil {
 		logger.Info(fmt.Sprintln("DRA: Trouble decoding layers: ", err))
 	}
@@ -88,10 +44,11 @@ func DhcpRelayAgentDecodeInPkt(inputPacket gopacket.Packet, handler *pcap.Handle
 	}
 	logger.Info(fmt.Sprintln("DRA: Decoding of Pkt done"))
 }
-func DhcpRelayAgentSendPacketToDhcpServer(info DhcpRelayAgentGlobalInfo,
-	inputPacket gopacket.Packet, handler *pcap.Handle,
-	ethLayer layers.Ethernet, ipLayer layers.IPv4, udpLayer layers.UDP,
-	payload gopacket.Payload) {
+
+/*
+func DhcpRelayAgentSendPacketToDhcpServer(inputPacket gopacket.Packet,
+	handler *pcap.Handle, ethLayer layers.Ethernet, ipLayer layers.IPv4,
+	udpLayer layers.UDP, payload gopacket.Payload) {
 
 	logger.Info("DRA: Creating Send Pkt")
 	// Send raw bytes over wire
@@ -99,8 +56,9 @@ func DhcpRelayAgentSendPacketToDhcpServer(info DhcpRelayAgentGlobalInfo,
 
 	// Ethernet Info
 	eth := &layers.Ethernet{
-		SrcMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x12, 0x34},
-		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		SrcMAC: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x12, 0x34},
+		DstMAC: ethLayer.DstMAC,
+		//DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 	logger.Info(fmt.Sprintln("DRA: eth payload", eth))
@@ -151,50 +109,61 @@ func DhcpRelayAgentSendPacketToDhcpServer(info DhcpRelayAgentGlobalInfo,
 
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully"))
 }
+*/
 
-func DhcpRelayAgentReceiveDhcpPkt(info DhcpRelayAgentGlobalInfo) {
-	// Create & Store Pcap Handler in Global Info
-	DhcpRelayAgentCreatePcapHandler(&info)
-
-	info.dhcprelayConfigMutex.RLock()
-	// Check Whether DRA is Enabled or not
-	if !info.IntfConfig.Enable || info.PcapHandler.pcapHandle == nil {
-		logger.Info("DRA: relay agent disabled deleting pcap" +
-			"handler if any")
-		// delete pcap handler and exit out of the go routine
-		info.PcapHandler.pcapHandle = nil
-		dhcprelayGblInfo[info.IntfConfig.IfIndex] = info
-		info.dhcprelayConfigMutex.RUnlock()
-		return
-	}
-	// Store inputPacket into Global Info so that when DRA is deleted we can
-	// close the Pcap Handler....
-	recvHandler := info.PcapHandler.pcapHandle
-	logger.Info("DRA: opening new packet source for ifName " +
-		info.IntfConfig.IfIndex)
-	src := gopacket.NewPacketSource(recvHandler,
-		layers.LayerTypeEthernet)
-	info.inputPacket = src.Packets()
-	dhcprelayGblInfo[info.IntfConfig.IfIndex] = info
-	info.dhcprelayConfigMutex.RUnlock()
-
-	// Receive packets infintely or unless channel is closed
+func DhcpRelayAgentReceiveDhcpPktFromClient() {
+	var buf []byte = make([]byte, 1500)
 	for {
-		packet, ok := <-info.inputPacket
-		if ok {
-			// Will reuse these for each packet
+		bytesRead, cm, srcAddr, err := dhcprelayClientConn.ReadFrom(buf)
+		if err != nil {
+			logger.Err("DRA: reading buffer failed")
+		}
+		// Will reuse these for each packet
+		/*
 			var ethLayer layers.Ethernet
 			var ipLayer layers.IPv4
 			var udpLayer layers.UDP
 			var payload gopacket.Payload
-			//Decode the packet...
-			DhcpRelayAgentDecodeInPkt(packet, recvHandler, &ethLayer,
-				&ipLayer, &udpLayer, &payload)
-			//Send out the packet
-			DhcpRelayAgentSendPacketToDhcpServer(info, packet,
-				recvHandler, ethLayer, ipLayer, udpLayer, payload)
-		}
+		*/
+		//Decode the packet...
+		//DhcpRelayAgentDecodeInPkt(buf, &ethLayer, &ipLayer, &udpLayer,
+		//	&payload)
+		logger.Info(fmt.Sprintln("DRA: bytesread is ", bytesRead))
+		logger.Info(fmt.Sprintln("DRA: control message is ", cm))
+		logger.Info(fmt.Sprintln("DRA: srcAddr is ", srcAddr))
 	}
+}
+
+func DhcpRelayAgentCreateClientServerConn() {
+
+	// Client send dhcp packet from port 68 to server port 67
+	// So create a filter for udp:67 for messages send out by client to
+	// server
+	logger.Info("DRA: creating listenPacket for udp port 67")
+	saddr := net.UDPAddr{
+		Port: 67,
+		IP:   net.ParseIP(""),
+	}
+	/*
+		caddr := net.UDPAddr{
+			Port: 68,
+			IP:   net.ParseIP("0.0.0.0"),
+		}*/
+	dhcprelayNetHandler, err := net.ListenUDP("udp", &saddr)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: Opening udp port for client --> server failed", err))
+		return
+	}
+	dhcprelayClientConn = ipv4.NewPacketConn(dhcprelayNetHandler)
+	controlFlag := ipv4.FlagTTL | ipv4.FlagSrc | ipv4.FlagDst | ipv4.FlagInterface
+	err = dhcprelayClientConn.SetControlMessage(controlFlag, true)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: Setting control flag failed..", err))
+		return
+	}
+	logger.Info("DRA: Connection opened successfully")
+	go DhcpRelayAgentReceiveDhcpPktFromClient()
+
 }
 
 func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
