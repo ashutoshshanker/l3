@@ -12,7 +12,11 @@ func (server *OSPFServer) GetBulkOspfAreaEntryState(idx int, cnt int) (int, int,
         var count int
 
         //server.AreaStateMutex.RLock()
-        server.AreaStateTimer.Stop()
+        ret := server.AreaStateTimer.Stop()
+        if ret == false {
+                server.logger.Err("Ospf is busy refreshing the cache")
+                return nextIdx, count, nil
+        }
         length := len(server.AreaStateSlice)
         if idx + cnt > length {
                 count = length - idx
@@ -54,7 +58,11 @@ func (server *OSPFServer) GetBulkOspfIfEntryState(idx int, cnt int) (int, int, [
         var nextIdx int
         var count int
 
-        server.IntfStateTimer.Stop()
+        ret := server.IntfStateTimer.Stop()
+        if ret == false {
+                server.logger.Err("Ospf is busy refreshing the cache")
+                return nextIdx, count, nil
+        }
         length := len(server.IntfKeySlice)
         if idx + cnt > length {
                 count = length - idx
