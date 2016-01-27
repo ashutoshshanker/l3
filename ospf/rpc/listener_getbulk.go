@@ -1,9 +1,10 @@
 package rpc
 
 import (
-    "ospfd"
-    "fmt"
-    "l3/ospf/config"
+        "ospfd"
+        "fmt"
+        "l3/ospf/config"
+        "errors"
 //    "l3/ospf/server"
 //    "log/syslog"
 //    "net"
@@ -21,7 +22,22 @@ func (h *OSPFHandler) convertAreaEntryStateToThrift(ent config.AreaState) *ospfd
         areaEntry.AreaNssaTranslatorEvents = ent.AreaNssaTranslatorEvents
 
         return areaEntry
+}
 
+func (h *OSPFHandler) convertIfEntryStateToThrift(ent config.InterfaceState) *ospfd.OspfIfEntryState {
+        ifEntry := ospfd.NewOspfIfEntryState()
+        ifEntry.IfIpAddressKey = string(ent.IfIpAddress)
+        ifEntry.AddressLessIfKey = int32(ent.AddressLessIf)
+        ifEntry.IfState = int32(ent.IfState)
+        ifEntry.IfDesignatedRouter = string(ent.IfDesignatedRouter)
+        ifEntry.IfBackupDesignatedRouter = string(ent.IfBackupDesignatedRouter)
+        ifEntry.IfEvents = int32(ent.IfEvents)
+        ifEntry.IfLsaCount = int32(ent.IfLsaCount)
+        ifEntry.IfLsaCksumSum = int32(ent.IfLsaCksumSum)
+        ifEntry.IfDesignatedRouterId = string(ent.IfDesignatedRouterId)
+        ifEntry.IfBackupDesignatedRouterId = string(ent.IfBackupDesignatedRouter)
+
+        return ifEntry
 }
 
 
@@ -29,6 +45,10 @@ func (h *OSPFHandler) GetBulkOspfAreaEntryState(fromIdx ospfd.Int, count ospfd.I
         h.logger.Info(fmt.Sprintln("Get Area attrs"))
 
         nextIdx, currCount, ospfAreaEntryStates := h.server.GetBulkOspfAreaEntryState(int(fromIdx), int(count))
+        if ospfAreaEntryStates == nil {
+                err := errors.New("Ospf is busy refreshing the cache")
+                return nil, err
+        }
         ospfAreaEntryStateResponse := make([]*ospfd.OspfAreaEntryState, len(ospfAreaEntryStates))
         for idx, item := range ospfAreaEntryStates {
                 ospfAreaEntryStateResponse[idx] = h.convertAreaEntryStateToThrift(item)
@@ -49,9 +69,24 @@ func (h *OSPFHandler) GetBulkOspfLsdbEntryState(fromIdx ospfd.Int, count ospfd.I
 }
 
 func (h *OSPFHandler) GetBulkOspfIfEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfIfEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Interface attrs"))
-    ospfIfResponse := ospfd.NewOspfIfEntryStateGetInfo()
-    return ospfIfResponse, nil
+        h.logger.Info(fmt.Sprintln("Get Interface attrs"))
+
+        nextIdx, currCount, ospfIfEntryStates := h.server.GetBulkOspfIfEntryState(int(fromIdx), int(count))
+        if ospfIfEntryStates == nil {
+                err := errors.New("Ospf is busy refreshing the cache")
+                return nil, err
+        }
+        ospfIfEntryStateResponse := make([]*ospfd.OspfIfEntryState, len(ospfIfEntryStates))
+        for idx, item := range ospfIfEntryStates {
+                ospfIfEntryStateResponse[idx] = h.convertIfEntryStateToThrift(item)
+        }
+        ospfIfEntryStateGetInfo := ospfd.NewOspfIfEntryStateGetInfo()
+        ospfIfEntryStateGetInfo.Count = ospfd.Int(currCount)
+        ospfIfEntryStateGetInfo.StartIdx = ospfd.Int(fromIdx)
+        ospfIfEntryStateGetInfo.EndIdx = ospfd.Int(nextIdx)
+        ospfIfEntryStateGetInfo.More = (nextIdx != 0)
+        ospfIfEntryStateGetInfo.OspfIfEntryStateList = ospfIfEntryStateResponse
+        return ospfIfEntryStateGetInfo, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfNbrEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfNbrEntryStateGetInfo, error) {

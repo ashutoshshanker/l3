@@ -78,9 +78,16 @@ type IntfConf struct {
         NeighChangeCh           chan NeighChangeMsg
         NbrStateChangeCh        chan NbrStateChangeMsg
 	WaitTimer               *time.Timer
+        /* IntefaceState: Start */
+        IfDRIp                  []byte
+        IfBDRIp                 []byte
         IfFSMState              config.IfState
-        IfDR                    []byte
-        IfBDR                   []byte
+        IfEvents                int32
+        IfLsaCount              int32
+        IfLsaCksumSum           int32
+        IfDRtrId                uint32
+        IfBDRtrId               uint32
+        /* IntefaceState: End */
 	IfName                  string
 	IfIpAddr                net.IP
 	IfMacAddr               net.HardwareAddr
@@ -127,8 +134,13 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		ent.IfName = ipIntfProp.IfName
 		ent.IfIpAddr = ipIntfProp.IpAddr
 		ent.IfMacAddr = ipIntfProp.MacAddr
-                ent.IfDR = []byte {0, 0, 0, 0}
-                ent.IfBDR = []byte {0, 0, 0, 0}
+                ent.IfDRIp = []byte {0, 0, 0, 0}
+                ent.IfBDRIp = []byte {0, 0, 0, 0}
+                ent.IfDRtrId = 0
+                ent.IfBDRtrId = 0
+                ent.IfEvents = 0
+                ent.IfLsaCount = 0
+                ent.IfLsaCksumSum = 0
 		sendHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
 		if sendHdl == nil {
 			server.logger.Err(fmt.Sprintln("SendHdl: No device found.", ent.IfName, err))
@@ -194,6 +206,10 @@ func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		server.logger.Err("No such inteface exists")
 		return
 	}
+
+        server.IntfKeySlice = append(server.IntfKeySlice, intfConfKey)
+        server.IntfKeyToSliceIdxMap[intfConfKey] = true
+
 	if server.ospfGlobalConf.AdminStat == config.Enabled {
 		server.StartSendRecvPkts(intfConfKey)
 	}
@@ -224,6 +240,7 @@ func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		server.StopSendRecvPkts(intfConfKey)
 	}
 	server.logger.Info(fmt.Sprintln("1:delete IPIntfConfMap for ", intfConfKey))
+        server.IntfKeyToSliceIdxMap[intfConfKey] = false
 	delete(server.IntfConfMap, intfConfKey)
 }
 
@@ -259,6 +276,14 @@ func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 		ent.IfMulticastForwarding = ifConf.IfMulticastForwarding
 		ent.IfDemand = ifConf.IfDemand
 		ent.IfAuthType = uint16(ifConf.IfAuthType)
+                /* Re initiate the Interface State */
+                ent.IfDRIp = []byte {0, 0, 0, 0}
+                ent.IfBDRIp = []byte {0, 0, 0, 0}
+                ent.IfDRtrId = 0
+                ent.IfBDRtrId = 0
+                ent.IfEvents = 0
+                ent.IfLsaCount = 0
+                ent.IfLsaCksumSum = 0
 		server.IntfConfMap[intfConfKey] = ent
 		server.logger.Info(fmt.Sprintln("1:Update IPIntfConfMap for ", intfConfKey))
 	}
@@ -314,3 +339,28 @@ func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
 	server.logger.Info("Start Receiving Hello Pkt")
 	go server.StartOspfRecvPkts(intfConfKey)
 }
+
+func (server *OSPFServer)initIntfStateSlice() {
+        var intfStateRefFunc func()
+        intfStateRefFunc = func() {
+                server.IntfKeySlice = []IntfConfKey{}
+                server.IntfKeyToSliceIdxMap = nil
+                server.IntfKeyToSliceIdxMap = make(map[IntfConfKey]bool)
+                server.IntfSliceRefreshCh <- true
+                msg := <-server.IntfSliceRefreshDoneCh
+                if msg == true {
+                        server.logger.Info("Interface slice got refreshed")
+                }
+                server.IntfStateTimer.Reset(server.RefreshDuration)
+        }
+        server.IntfStateTimer = time.AfterFunc(server.RefreshDuration, intfStateRefFunc)
+}
+
+func (server *OSPFServer)refreshIntfKeySlice() {
+        for key, _ := range server.IntfConfMap {
+                server.IntfKeySlice = append(server.IntfKeySlice, key)
+                server.IntfKeyToSliceIdxMap[key] = true
+        }
+}
+
+
