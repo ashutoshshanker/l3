@@ -8,7 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	"github.com/google/gopacket"
+	"golang.org/x/net/ipv4"
 	"io/ioutil"
 	"log/syslog"
 	"os"
@@ -41,16 +41,30 @@ type DhcpRelayAgentStateInfo struct {
 type DhcpRelayAgentGlobalInfo struct {
 	IntfConfig           dhcprelayd.DhcpRelayIntfConfig
 	StateDebugInfo       DhcpRelayAgentStateInfo
-	PcapHandler          DhcpRelayPcapHandle
 	dhcprelayConfigMutex sync.RWMutex
-	inputPacket          chan gopacket.Packet
 }
+type Option struct {
+	Code  DhcpOptionCode
+	Value []byte
+}
+
+type DhcpOptionCode byte
+type OpCode byte
+type MessageType byte // Option 53
+// Map of DHCP options
+type DhcpRelayAgentOptions map[DhcpOptionCode][]byte
+
+// A DHCP packet
+type DhcpRelayAgentPacket []byte
 
 var (
 	// map key would be if_name
-	dhcprelayGblInfo map[string]DhcpRelayAgentGlobalInfo
-	logger           *syslog.Writer
-	//dhcprelayConfigMutex sync.RWMutex
+	dhcprelayGblInfo    map[string]DhcpRelayAgentGlobalInfo
+	dhcprelayClientConn *ipv4.PacketConn
+	logger              *syslog.Writer
+	// PadddingToMinimumSize pads a packet so that when sent over UDP,
+	// the entire packet, is 300 bytes (which is BOOTP/DHCP min)
+	dhcprelayPadder [DHCP_PACKET_MIN_SIZE]byte
 )
 
 /******* Local API Calls. *******/

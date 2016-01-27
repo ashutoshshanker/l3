@@ -215,7 +215,7 @@ func (server *OSPFServer)processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloDa
     NbrIP := convertIPv4ToUint32(ipHdrMd.srcIP)
     neighborKey := NeighborKey {
         RouterId:       routerId,
-        NbrIP:          NbrIP,
+        //NbrIP:          NbrIP,
     }
 
     //Todo: Find whether one way or two way

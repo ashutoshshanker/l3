@@ -14,6 +14,7 @@ import (
 	"ribd"
 	"strconv"
 	"sync"
+	"time"
 	"utils/ipcutils"
 )
 
@@ -55,7 +56,18 @@ type OSPFServer struct {
 	NeighborListMap      map[IntfConfKey]list.List
 	neighborConfMutex    sync.Mutex
 	neighborHelloEventCh chan IntfToNeighMsg
-        nbrFSMCtrlCh         chan bool
+	neighborFSMCtrlCh    chan bool
+	neighborConfCh       chan ospfNeighborConfMsg
+	neighborConfStopCh   chan bool
+
+	nbrFSMCtrlCh chan bool
+
+	AreaStateTimer           *time.Timer
+	AreaStateMutex           sync.RWMutex
+	AreaStateMap             map[AreaConfKey]AreaState
+	AreaStateSlice           []AreaConfKey
+	AreaConfKeyToSliceIdxMap map[AreaConfKey]int
+	RefreshDuration          time.Duration
 }
 
 func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
@@ -73,6 +85,14 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.neighborConfMutex = sync.Mutex{}
 	ospfServer.neighborHelloEventCh = make(chan IntfToNeighMsg)
 	ospfServer.nbrFSMCtrlCh = make(chan bool)
+	ospfServer.neighborConfCh = make(chan ospfNeighborConfMsg)
+	ospfServer.neighborConfStopCh = make(chan bool)
+
+	ospfServer.AreaStateMutex = sync.RWMutex{}
+	ospfServer.AreaStateMap = make(map[AreaConfKey]AreaState)
+	ospfServer.AreaStateSlice = []AreaConfKey{}
+	ospfServer.AreaConfKeyToSliceIdxMap = make(map[AreaConfKey]int)
+	ospfServer.RefreshDuration = time.Duration(10) * time.Minute
 
 	/*
 	   ospfServer.ribSubSocketCh = make(chan []byte)
@@ -132,6 +152,8 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	server.BuildPortPropertyMap()
 	server.initOspfGlobalConfDefault()
 	server.logger.Info(fmt.Sprintln("GlobalConf:", server.ospfGlobalConf))
+	server.initAreaConfDefault()
+	server.logger.Info(fmt.Sprintln("AreaConf:", server.AreaConfMap))
 	/*
 	   server.logger.Info("Listen for RIBd updates")
 	   server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)

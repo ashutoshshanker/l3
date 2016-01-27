@@ -36,10 +36,11 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
         case createMsg := <-ent.NeighCreateCh:
             neighborKey := NeighborKey {
                 RouterId:       createMsg.RouterId,
-                NbrIP:          createMsg.NbrIP,
+                //NbrIP:          createMsg.NbrIP,
             }
             neighborEntry, exist := ent.NeighborMap[neighborKey]
             if !exist {
+                neighborEntry.NbrIP = createMsg.NbrIP
                 neighborEntry.TwoWayStatus = createMsg.TwoWayStatus
                 neighborEntry.RtrPrio = createMsg.RtrPrio
                 neighborEntry.DRtr = createMsg.DRtr
@@ -55,7 +56,7 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
         case changeMsg:= <-ent.NeighChangeCh:
             neighborKey := NeighborKey {
                 RouterId:       changeMsg.RouterId,
-                NbrIP:          changeMsg.NbrIP,
+                //NbrIP:          changeMsg.NbrIP,
             }
             neighborEntry, exist := ent.NeighborMap[neighborKey]
             if exist {
@@ -74,6 +75,7 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
                     bytesEqual(neighborEntry.BDRtr, changeMsg.BDRtr) == false) &&
                     changeMsg.TwoWayStatus == true {
 */
+                neighborEntry.NbrIP = changeMsg.NbrIP
                 neighborEntry.TwoWayStatus = changeMsg.TwoWayStatus
                 neighborEntry.RtrPrio = changeMsg.RtrPrio
                 neighborEntry.DRtr = changeMsg.DRtr
@@ -101,7 +103,6 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
         case nbrStateChangeMsg := <-ent.NbrStateChangeCh:
             // Only when Neighbor Went Down from TwoWayStatus
             // Todo: Handle NbrIP: Ashutosh
-            server.logger.Info("Hello4")
             server.logger.Info(fmt.Sprintf("Recev Neighbor State Change message", nbrStateChangeMsg))
             nbrKey := NeighborKey {
                 RouterId:   nbrStateChangeMsg.RouterId,
@@ -140,13 +141,13 @@ func (server *OSPFServer)ElectBDR(key IntfConfKey) ([]byte) {
     for nbrkey, nbrEntry := range ent.NeighborMap {
         if nbrEntry.TwoWayStatus == true &&
             nbrEntry.RtrPrio > 0 &&
-            nbrkey.NbrIP != 0 {
+            nbrEntry.NbrIP != 0 {
             tempDR := binary.BigEndian.Uint32(nbrEntry.DRtr)
-            if tempDR == nbrkey.NbrIP {
+            if tempDR == nbrEntry.NbrIP {
                 continue
             }
             tempBDR := binary.BigEndian.Uint32(nbrEntry.BDRtr)
-            if tempBDR == nbrkey.NbrIP {
+            if tempBDR == nbrEntry.NbrIP {
                 if nbrEntry.RtrPrio > electedRtrPrio {
                     electedRtrPrio = nbrEntry.RtrPrio
                     electedRtrId = nbrkey.RouterId
@@ -162,12 +163,12 @@ func (server *OSPFServer)ElectBDR(key IntfConfKey) ([]byte) {
             if MaxRtrPrio < nbrEntry.RtrPrio {
                 MaxRtrPrio = nbrEntry.RtrPrio
                 RtrIdWithMaxPrio = nbrkey.RouterId
-                NbrIPWithMaxPrio = nbrkey.NbrIP
+                NbrIPWithMaxPrio = nbrEntry.NbrIP
             } else if MaxRtrPrio == nbrEntry.RtrPrio {
                 if RtrIdWithMaxPrio < nbrkey.RouterId {
                     MaxRtrPrio = nbrEntry.RtrPrio
                     RtrIdWithMaxPrio = nbrkey.RouterId
-                    NbrIPWithMaxPrio = nbrkey.NbrIP
+                    NbrIPWithMaxPrio = nbrEntry.NbrIP
                 }
             }
         }
@@ -222,9 +223,9 @@ func (server *OSPFServer)ElectDR(key IntfConfKey, electedBDR []byte) ([]byte) {
     for key, nbrEntry := range ent.NeighborMap {
         if nbrEntry.TwoWayStatus == true &&
             nbrEntry.RtrPrio > 0  &&
-            key.NbrIP != 0 {
+            nbrEntry.NbrIP != 0 {
             tempDR := binary.BigEndian.Uint32(nbrEntry.DRtr)
-            if tempDR == key.NbrIP {
+            if tempDR == nbrEntry.NbrIP {
                 if nbrEntry.RtrPrio > electedRtrPrio {
                     electedRtrPrio = nbrEntry.RtrPrio
                     electedRtrId = key.RouterId

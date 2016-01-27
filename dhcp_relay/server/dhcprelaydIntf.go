@@ -91,8 +91,12 @@ func DhcpRelayInitPortParams() error {
 			// Init DRA Global Handling for all interfaces....
 			DhcpRelayAgentInitGblHandling(entry.Name, portNum)
 		}
+		if hack {
+			logger.Info("DRA: HACK and hence creating clien/server right away")
+			DhcpRelayAgentCreateClientServerConn()
+		}
 		if more == false {
-			return nil
+			break
 		}
 	}
 	logger.Info("DRA: initialized Port Parameters & Global Info successfully")

@@ -1,93 +1,48 @@
 package server
 
 import (
-	"fmt"
-	"l3/ospf/config"
-	"time"
+	//"fmt"
+	"l3/bfd/config"
+	//"time"
 	//"l3/ospf/rpc"
-	//    "l3/rib/ribdCommonDefs"
-	"github.com/google/gopacket/pcap"
-	"net"
+	//"l3/rib/ribdCommonDefs"
+	//"github.com/google/gopacket/pcap"
+	//"net"
 )
 
-type IntfConfKey struct {
-	IPAddr  config.IpAddress
-	IntfIdx config.InterfaceIndexOrZero
-}
-
-type NeighborData struct {
-        TwoWayStatus        bool
-        RtrPrio             uint8
-        DRtr                []byte
-        BDRtr               []byte
-        NbrIP               uint32
-}
-
-type NeighborKey struct {
-        RouterId            uint32
-}
-
-type BackupSeenMsg struct {
-        RouterId    uint32
-        BDRId       []byte
-        DRId        []byte
-}
-
-type NeighCreateMsg struct {
-        RouterId            uint32
-        NbrIP               uint32
-        TwoWayStatus        bool
-        RtrPrio             uint8
-        DRtr                []byte
-        BDRtr               []byte
-}
-
-type NeighChangeMsg struct {
-        RouterId            uint32
-        NbrIP               uint32
-        TwoWayStatus        bool
-        RtrPrio             uint8
-        DRtr                []byte
-        BDRtr               []byte
-}
-
 type IntfConf struct {
-	IfAreaId                []byte
-	IfType                  config.IfType
-	IfAdminStat             config.Status
-	IfRtrPriority           uint8
-	IfTransitDelay          config.UpToMaxAge
-	IfRetransInterval       config.UpToMaxAge
-	IfHelloInterval         uint16
-	IfRtrDeadInterval       uint32
-	IfPollInterval          config.PositiveInteger
-	IfAuthKey               []byte
-	IfMulticastForwarding   config.MulticastForwarding
-	IfDemand                bool
-	IfAuthType              uint16
-	PktSendCh               chan bool
-	PktSendStatusCh         chan bool
-	PktRecvCh               chan bool
-	PktRecvStatusCh         chan bool
-	SendPcapHdl             *pcap.Handle
-	RecvPcapHdl             *pcap.Handle
-	HelloIntervalTicker     *time.Ticker
-        BackupSeenCh            chan BackupSeenMsg
-        NeighborMap             map[NeighborKey]NeighborData
-        NeighCreateCh           chan NeighCreateMsg
-        NeighChangeCh           chan NeighChangeMsg
-        NbrStateChangeCh        chan NbrStateChangeMsg
-	WaitTimer               *time.Timer
-        IfFSMState              config.IfState
-        IfDR                    []byte
-        IfBDR                   []byte
-	IfName                  string
-	IfIpAddr                net.IP
-	IfMacAddr               net.HardwareAddr
-	IfNetmask               []byte
+	/*
+		IfAreaId              []byte
+		IfType                config.IfType
+		IfAdminStat           config.Status
+		IfRtrPriority         uint8
+		IfTransitDelay        config.UpToMaxAge
+		IfRetransInterval     config.UpToMaxAge
+		IfHelloInterval       uint16
+		IfRtrDeadInterval     uint32
+		IfPollInterval        config.PositiveInteger
+		IfAuthKey             []byte
+		IfMulticastForwarding config.MulticastForwarding
+		IfDemand              bool
+		IfAuthType            uint16
+		PktSendCh             chan bool
+		PktSendStatusCh       chan bool
+		PktRecvCh             chan bool
+		PktRecvStatusCh       chan bool
+		SendPcapHdl           *pcap.Handle
+		RecvPcapHdl           *pcap.Handle
+		HelloIntervalTicker   *time.Ticker
+		//RtrDeadIntervalTimer    *time.Timer
+		WaitTimer *time.Timer
+		IfName    string
+		IfIpAddr  net.IP
+		IfMacAddr net.HardwareAddr
+		IfNetmask []byte
+	*/
 }
 
-func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfProperty) {
+/*
+func (server *BFDServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfProperty) {
 	ent, exist := server.IntfConfMap[key]
 	if !exist {
 		areaId := convertAreaOrRouterId("0.0.0.0")
@@ -115,20 +70,14 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		ent.PktSendStatusCh = make(chan bool)
 		ent.PktRecvCh = make(chan bool)
 		ent.PktRecvStatusCh = make(chan bool)
-                ent.BackupSeenCh = make(chan BackupSeenMsg)
-                ent.NeighCreateCh = make(chan NeighCreateMsg)
-                ent.NeighChangeCh = make(chan NeighChangeMsg)
-                ent.NbrStateChangeCh = make(chan NbrStateChangeMsg)
 		//ent.WaitTimerExpired = make(chan bool)
 		ent.WaitTimer = nil
 		ent.HelloIntervalTicker = nil
-                ent.NeighborMap = make(map[NeighborKey]NeighborData)
+		//ent.RtrDeadIntervalTimer = nil
 		ent.IfNetmask = ipIntfProp.NetMask
 		ent.IfName = ipIntfProp.IfName
 		ent.IfIpAddr = ipIntfProp.IpAddr
 		ent.IfMacAddr = ipIntfProp.MacAddr
-                ent.IfDR = []byte {0, 0, 0, 0}
-                ent.IfBDR = []byte {0, 0, 0, 0}
 		sendHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
 		if sendHdl == nil {
 			server.logger.Err(fmt.Sprintln("SendHdl: No device found.", ent.IfName, err))
@@ -158,7 +107,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 	}
 }
 
-func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
+func (server *BFDServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 	ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to parse IP address", msg.IpAddr))
@@ -199,7 +148,7 @@ func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 	}
 }
 
-func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
+func (server *BFDServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 	ip, _, err := net.ParseCIDR(msg.IpAddr)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to parse IP address", msg.IpAddr))
@@ -227,7 +176,7 @@ func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 	delete(server.IntfConfMap, intfConfKey)
 }
 
-func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
+func (server *BFDServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 	intfConfKey := IntfConfKey{
 		IPAddr:  ifConf.IfIpAddress,
 		IntfIdx: config.InterfaceIndexOrZero(ifConf.AddressLessIf),
@@ -263,54 +212,55 @@ func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 		server.logger.Info(fmt.Sprintln("1:Update IPIntfConfMap for ", intfConfKey))
 	}
 }
+*/
 
-func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
-	intfConfKey := IntfConfKey{
-		IPAddr:  ifConf.IfIpAddress,
-		IntfIdx: config.InterfaceIndexOrZero(ifConf.AddressLessIf),
-	}
-	ent, exist := server.IntfConfMap[intfConfKey]
-	if !exist {
-		server.logger.Err("No such L3 interface exists")
-		return
-	}
-	if ent.IfAdminStat == config.Enabled &&
-		server.ospfGlobalConf.AdminStat == config.Enabled {
-		server.StopSendRecvPkts(intfConfKey)
-	}
+func (server *BFDServer) processIntfConfig(ifConf config.InterfaceConf) {
+	/*
+		intfConfKey := IntfConfKey{
+			IPAddr:  ifConf.IfIpAddress,
+			IntfIdx: config.InterfaceIndexOrZero(ifConf.AddressLessIf),
+		}
+		ent, exist := server.IntfConfMap[intfConfKey]
+		if !exist {
+			server.logger.Err("No such L3 interface exists")
+			return
+		}
+		if ent.IfAdminStat == config.Enabled &&
+			server.ospfGlobalConf.AdminStat == config.Enabled {
+			server.StopSendRecvPkts(intfConfKey)
+		}
 
-	server.updateIPIntfConfMap(ifConf)
+		server.updateIPIntfConfMap(ifConf)
 
-	server.logger.Info(fmt.Sprintln("InterfaceConf:", server.IntfConfMap))
-	ent, _ = server.IntfConfMap[intfConfKey]
-	if ent.IfAdminStat == config.Enabled &&
-		server.ospfGlobalConf.AdminStat == config.Enabled {
-		server.StartSendRecvPkts(intfConfKey)
-	}
+		server.logger.Info(fmt.Sprintln("InterfaceConf:", server.IntfConfMap))
+		ent, _ = server.IntfConfMap[intfConfKey]
+		if ent.IfAdminStat == config.Enabled &&
+			server.ospfGlobalConf.AdminStat == config.Enabled {
+			server.StartSendRecvPkts(intfConfKey)
+		}
+	*/
 }
 
-func (server *OSPFServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
+/*
+func (server *BFDServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
 	server.logger.Info("Stop Sending Hello Pkt")
 	server.StopOspfTransPkts(intfConfKey)
 	server.logger.Info("Stop Receiving Hello Pkt")
 	server.StopOspfRecvPkts(intfConfKey)
-	ent, _ := server.IntfConfMap[intfConfKey]
-        ent.NeighborMap = nil
-	server.IntfConfMap[intfConfKey] = ent
 }
 
-func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
+func (server *BFDServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
 	ent, _ := server.IntfConfMap[intfConfKey]
 	helloInterval := time.Duration(ent.IfHelloInterval) * time.Second
 	waitTime := time.Duration(ent.IfRtrDeadInterval) * time.Second
 	// rtrDeadInterval := time.Duration(ent.IfRtrDeadInterval * time.Second)
 	ent.HelloIntervalTicker = time.NewTicker(helloInterval)
 	ent.WaitTimer = time.NewTimer(waitTime)
-        ent.NeighborMap = make(map[NeighborKey]NeighborData)
-        ent.IfFSMState = config.Waiting
-	server.IntfConfMap[intfConfKey] = ent
+	//ent.RtrDeadIntervalTimer := time.NewTicker(rtrDeadInterval)
 	server.logger.Info("Start Sending Hello Pkt")
+	server.IntfConfMap[intfConfKey] = ent
 	go server.StartOspfTransPkts(intfConfKey)
 	server.logger.Info("Start Receiving Hello Pkt")
 	go server.StartOspfRecvPkts(intfConfKey)
 }
+*/
