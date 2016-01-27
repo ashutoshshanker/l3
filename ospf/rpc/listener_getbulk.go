@@ -104,4 +104,8 @@ func (h *OSPFHandler) GetBulkOspfAreaLsaCountEntryState(fromIdx ospfd.Int, count
     return ospfAreaLsaCountResponse, nil
 }
 
-
+func (h *OSPFHandler) GetBulkOspfGlobalState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfGlobalStateGetInfo, error) {
+    h.logger.Info(fmt.Sprintln("Get OSPF global state"))
+    ospfGlobalStateResponse := ospfd.NewOspfGlobalStateGetInfo()
+    return ospfGlobalStateResponse, nil
+}
