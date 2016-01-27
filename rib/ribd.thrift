@@ -16,6 +16,7 @@ struct Routes {
 	7: int Prototype,
 	8: bool IsValid,
 	9: int SliceIdx,
+	10: int PolicyCounter,
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -129,19 +130,57 @@ struct PolicyDefinitionStmtRedistributionActionsGetInfo {
 	5: list<PolicyDefinitionStmtRedistributionAction> PolicyDefinitionStmtRedistributionActionList
 }
 
-struct PolicyDefinitionStatement{
-    1 : string   Name
-	2 : list<string> Conditions
-	3 : list<string> Actions
+struct PolicyDefinitionStmtConfig{
+	1:  string  Name
+	2 : string 	AdminState
+	3 : string 	MatchConditions
+	4 : list<string> 	Conditions
+	5 : list<string> 	Actions
+	6 : bool     Export
+	7 : bool     Import
 }
-
-struct PolicyDefinitionStatementGetInfo {
+struct PolicyDefinitionStmtState{
+	1 : string  Name
+	2 : string 	AdminState
+	3 : string 	OperState
+	4 : string 	MatchConditions
+	5 : list<string> 	Conditions
+	6 : list<string> 	Actions
+	7 : bool     Export
+	8 : bool     Import
+}
+struct PolicyDefinitionStmtStateGetInfo {
 	1: int StartIdx
 	2: int EndIdx
 	3: int Count
 	4: bool More
-	5: list<PolicyDefinitionStatement> PolicyDefinitionStatementList
+	5: list<PolicyDefinitionStmtState> PolicyDefinitionStmtStateList
 }
+struct PolicyDefinitionConditionState{
+	1 : string 	Name
+	2 : string 	ConditionInfo
+	3 : list<string> 	PolicyList
+}
+struct PolicyDefinitionConditionStateGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<PolicyDefinitionConditionState> PolicyDefinitionConditionStateList
+}
+struct PolicyDefinitionActionState{
+	1 : string 	Name
+	2 : string 	ActionInfo
+	3 : list<string> 	PolicyList
+}
+struct PolicyDefinitionActionStateGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<PolicyDefinitionActionState> PolicyDefinitionActionStateList
+}
+
 struct PolicyDefinition{
 	1: string Name
 	2: list<string> PolicyDefinitionStatements
@@ -167,6 +206,8 @@ service RouteService
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	void linkDown(1: int ifType, 2:int ifIndex);
 	void linkUp(1: int ifType, 2:int ifIndex);
+	void intfUp(1:string ipAddr);
+	void intfDown(1:string ipAddr);
 
 	bool CreatePolicyDefinitionSetsPrefixSet(1: PolicyDefinitionSetsPrefixSet config);
 //	bool UpdatePolicyDefinitionSetsPrefixSet(1: PolicyDefinitionSetsPrefixSet origconfig, 2: PolicyDefinitionSetsPrefixSet newconfig, 3: list<bool> attrset);
@@ -187,7 +228,7 @@ service RouteService
 	bool CreatePolicyDefinitionStmtMatchProtocolCondition(1: PolicyDefinitionStmtMatchProtocolCondition config);
 //	bool UpdatePolicyDefinitionStmtMatchProtocolCondition(1: PolicyDefinitionStmtMatchProtocolCondition origconfig, 2: PolicyDefinitionStmtMatchProtocolCondition newconfig, 3: list<bool> attrset);
 //	bool DeletePolicyDefinitionStmtMatchProtocolCondition(1: PolicyDefinitionStmtMatchProtocolCondition config);
-    PolicyDefinitionStmtMatchProtocolConditionsGetInfo getBulkPolicyDefinitionStmtMatchProtocolConditions(1: int fromIndex, 2: int count);
+//    PolicyDefinitionStmtMatchProtocolConditionsGetInfo getBulkPolicyDefinitionStmtMatchProtocolConditions(1: int fromIndex, 2: int count);
 
 //	bool CreatePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions config);
 //	bool UpdatePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions origconfig, 2: PolicyDefinitionStmtIgpActions newconfig, 3: list<bool> attrset);
@@ -200,12 +241,15 @@ service RouteService
 	bool CreatePolicyDefinitionStmtRedistributionAction(1: PolicyDefinitionStmtRedistributionAction config);
 //	bool UpdatePolicyDefinitionStmtRedistributionAction(1: PolicyDefinitionStmtRedistributionAction origconfig, 2: PolicyDefinitionStmtRedistributionAction newconfig, 3: list<bool> attrset);
 //	bool DeletePolicyDefinitionStmtRedistributionAction(1: PolicyDefinitionStmtRedistributionAction config);
-    PolicyDefinitionStmtRedistributionActionsGetInfo getBulkPolicyDefinitionStmtRedistributionActions(1: int fromIndex, 2: int count);
+//    PolicyDefinitionStmtRedistributionActionsGetInfo getBulkPolicyDefinitionStmtRedistributionActions(1: int fromIndex, 2: int count);
 
-	bool CreatePolicyDefinitionStatement(1: PolicyDefinitionStatement config);
-//	bool UpdatePolicyDefinitionStatement(1: PolicyDefinitionStatement origconfig, 2: PolicyDefinitionStatement newconfig, 3: list<bool> attrset);
-	bool DeletePolicyDefinitionStatement(1: PolicyDefinitionStatement config);
-    PolicyDefinitionStatementGetInfo getBulkPolicyStmts(1: int fromIndex, 2: int count);
+	bool CreatePolicyDefinitionStatement(1: PolicyDefinitionStmtConfig config);
+//	bool UpdatePolicyDefinitionStatement(1: PolicyDefinitionStmtConfig origconfig, 2: PolicyDefinitionStmtConfig newconfig, 3: list<bool> attrset);
+	bool DeletePolicyDefinitionStatement(1: PolicyDefinitionStmtConfig config);
+
+	PolicyDefinitionStmtStateGetInfo GetBulkPolicyDefinitionStmtState(1: int fromIndex, 2: int count);
+	PolicyDefinitionConditionStateGetInfo GetBulkPolicyDefinitionConditionState(1: int fromIndex, 2: int count);
+	PolicyDefinitionActionStateGetInfo GetBulkPolicyDefinitionActionState(1: int fromIndex, 2: int count);
 
 	bool CreatePolicyDefinition(1: PolicyDefinition config);
 //	bool UpdatePolicyDefinition(1: PolicyDefinition origconfig, 2: PolicyDefinition newconfig, 3: list<bool> attrset);

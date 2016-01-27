@@ -25,11 +25,11 @@ func BuildRouteProtocolTypeMapDB() {
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.STATIC] = "Static"
 }
 
-func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes) {
+func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes, evt int) {
 	logger.Println("RouteNotificationSend") 
 	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : route}
 	msgbufbytes, err := json.Marshal( msgBuf)
-    msg := ribdCommonDefs.RibdNotifyMsg {MsgType:ribdCommonDefs.NOTIFY_ROUTE_CREATED, MsgBuf: msgbufbytes}
+    msg := ribdCommonDefs.RibdNotifyMsg {MsgType:uint16(evt), MsgBuf: msgbufbytes}
 	buf, err := json.Marshal( msg)
 	if err != nil {
 	   logger.Println("Error in marshalling Json")
