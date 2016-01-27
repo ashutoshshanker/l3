@@ -57,9 +57,10 @@ const (
 	invalidate
 )
 const (
-	FIBOnly = iota
-	FIBAndRIB
-	RIBOnly
+	Invalid = -1
+	FIBOnly = 0
+	FIBAndRIB = 1
+	RIBOnly = 2
 )
 const (
 	SUB_PORTD = 0
@@ -152,7 +153,7 @@ func processL3IntfDownEvent(ipAddr string) {
 			//      if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){
 			logger.Printf("Delete this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)
 
-			//Send a event
+/*			//Send a event
 			msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: *ConnectedRoutes[i]}
 			msgbufbytes, err := json.Marshal(msgBuf)
 			msg := ribdCommonDefs.RibdNotifyMsg{MsgType: ribdCommonDefs.NOTIFY_ROUTE_DELETED, MsgBuf: msgbufbytes}
@@ -163,7 +164,7 @@ func processL3IntfDownEvent(ipAddr string) {
 			}
 			logger.Println("buf", buf)
 			RIBD_PUB.Send(buf, nanomsg.DontWait)
-
+*/
 			//Delete this route
 			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, 0, FIBOnly)
 		}
@@ -188,6 +189,10 @@ func processL3IntfUpEvent(ipAddr string) {
 			logger.Printf("Add this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)
 
 			ConnectedRoutes[i].IsValid = true
+	        policyRoute := ribd.Routes{Ipaddr: ConnectedRoutes[i].Ipaddr, Mask: ConnectedRoutes[i].Mask, NextHopIp: ConnectedRoutes[i].NextHopIp, NextHopIfType: ConnectedRoutes[i].NextHopIfType, IfIndex: ConnectedRoutes[i].IfIndex, Metric: ConnectedRoutes[i].Metric, Prototype: ConnectedRoutes[i].Prototype}
+	        params := RouteParams{destNetIp:ConnectedRoutes[i].Ipaddr, networkMask:ConnectedRoutes[i].Mask, nextHopIp:ConnectedRoutes[i].NextHopIp, nextHopIfType:ConnectedRoutes[i].NextHopIfType, nextHopIfIndex:ConnectedRoutes[i].IfIndex, metric:ConnectedRoutes[i].Metric, routeType:ConnectedRoutes[i].Prototype,sliceIdx: ConnectedRoutes[i].SliceIdx, createType:FIBOnly, deleteType:Invalid}
+	        PolicyEngineFilter(policyRoute, ribdCommonDefs.PolicyPath_Import, params)
+/*
 			//Send a event
 			msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: *ConnectedRoutes[i]}
 			msgbufbytes, err := json.Marshal(msgBuf)
@@ -199,9 +204,9 @@ func processL3IntfUpEvent(ipAddr string) {
 			}
 			logger.Println("buf", buf)
 			RIBD_PUB.Send(buf, nanomsg.DontWait)
-
+*/
 			//Add this route
-			createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ConnectedRoutes[i].Metric, ConnectedRoutes[i].NextHopIp, ConnectedRoutes[i].NextHopIfType, ConnectedRoutes[i].IfIndex, ConnectedRoutes[i].Prototype, FIBOnly, ConnectedRoutes[i].SliceIdx)
+//			createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ConnectedRoutes[i].Metric, ConnectedRoutes[i].NextHopIp, ConnectedRoutes[i].NextHopIfType, ConnectedRoutes[i].IfIndex, ConnectedRoutes[i].Prototype, FIBOnly, ConnectedRoutes[i].SliceIdx)
 		}
 	}
 }
@@ -211,7 +216,6 @@ func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int) {
 	for i := 0; i < len(ConnectedRoutes); i++ {
 		if ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex) {
 			logger.Printf("Delete this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)
-
 			//Send a event
 			msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: *ConnectedRoutes[i]}
 			msgbufbytes, err := json.Marshal(msgBuf)
@@ -264,6 +268,18 @@ func (m RouteServiceHandler) LinkDown(ifType ribd.Int, ifIndex ribd.Int) (err er
 func (m RouteServiceHandler) LinkUp(ifType ribd.Int, ifIndex ribd.Int) (err error) {
 	logger.Println("LinkUp")
 	processLinkUpEvent(ifType, ifIndex)
+	return nil
+}
+
+func (m RouteServiceHandler) IntfDown(ipAddr string) (err error) {
+	logger.Println("IntfDown")
+	processL3IntfDownEvent(ipAddr)
+	return nil
+}
+
+func (m RouteServiceHandler) IntfUp(ipAddr string) (err error) {
+	logger.Println("IntfUp")
+	processL3IntfUpEvent(ipAddr)
 	return nil
 }
 

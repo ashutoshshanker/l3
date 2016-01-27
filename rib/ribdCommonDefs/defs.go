@@ -16,6 +16,8 @@ const (
 	  NOTIFY_ROUTE_DELETED = 2
 	  NOTIFY_ROUTE_INVALIDATED = 3
 	  DEFAULT_NOTIFICATION_SIZE = 128
+	  PolicyPath_Import = 1
+	  PolicyPath_Export = 2
 )
 //enumerations
 var (
