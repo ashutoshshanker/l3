@@ -250,32 +250,42 @@ struct OspfAreaLsaCountEntryStateGetInfo {
 struct OspfGlobalConfig{
 	1 : string 	RouterIdKey
 	2 : i32 	AdminStat
-	3 : i32 	VersionNumber
-	4 : bool 	AreaBdrRtrStatus
-	5 : bool 	ASBdrRtrStatus
-	6 : i32 	ExternLsaCount
-	7 : i32 	ExternLsaCksumSum
-	8 : bool 	TOSSupport
-	9 : i32 	OriginateNewLsas
-	10 : i32 	RxNewLsas
-	11 : i32 	ExtLsdbLimit
-	12 : i32 	MulticastExtensions
-	13 : i32 	ExitOverflowInterval
-	14 : bool 	DemandExtensions
-	15 : bool 	RFC1583Compatibility
-	16 : bool 	OpaqueLsaSupport
-	17 : i32 	ReferenceBandwidth
-	18 : i32 	RestartSupport
-	19 : i32 	RestartInterval
-	20 : bool 	RestartStrictLsaChecking
-	21 : i32 	RestartStatus
-	22 : i32 	RestartAge
-	23 : i32 	RestartExitReason
-	24 : i32 	AsLsaCount
-	25 : i32 	AsLsaCksumSum
-	26 : bool 	StubRouterSupport
-	27 : i32 	StubRouterAdvertisement
-	28 : i32 	DiscontinuityTime
+	3 : bool 	ASBdrRtrStatus
+	4 : bool 	TOSSupport
+	5 : i32 	ExtLsdbLimit
+	6 : i32 	MulticastExtensions
+	7 : i32 	ExitOverflowInterval
+	8 : bool 	DemandExtensions
+	9 : bool 	RFC1583Compatibility
+	10 : i32 	ReferenceBandwidth
+	11 : i32 	RestartSupport
+	12 : i32 	RestartInterval
+	13 : bool 	RestartStrictLsaChecking
+	14 : i32 	StubRouterAdvertisement
+}
+struct OspfGlobalState{
+	1 : string 	RouterIdKey
+	2 : i32 	VersionNumber
+	3 : bool 	AreaBdrRtrStatus
+	4 : i32 	ExternLsaCount
+	5 : i32 	ExternLsaCksumSum
+	6 : i32 	OriginateNewLsas
+	7 : i32 	RxNewLsas
+	8 : bool 	OpaqueLsaSupport
+	9 : i32 	RestartStatus
+	10 : i32 	RestartAge
+	11 : i32 	RestartExitReason
+	12 : i32 	AsLsaCount
+	13 : i32 	AsLsaCksumSum
+	14 : bool 	StubRouterSupport
+	15 : i32 	DiscontinuityTime
+}
+struct OspfGlobalStateGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<OspfGlobalState> OspfGlobalStateList
 }
 service OSPFDServices {
 	bool CreateOspfAreaEntryConfig(1: OspfAreaEntryConfig config);
@@ -328,4 +338,5 @@ service OSPFDServices {
 	bool UpdateOspfGlobalConfig(1: OspfGlobalConfig origconfig, 2: OspfGlobalConfig newconfig, 3: list<bool> attrset);
 	bool DeleteOspfGlobalConfig(1: OspfGlobalConfig config);
 
+	OspfGlobalStateGetInfo GetBulkOspfGlobalState(1: int fromIndex, 2: int count);
 }
