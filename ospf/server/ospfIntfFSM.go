@@ -111,6 +111,7 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
             if exist {
                 oldTwoWayStatus := neighborEntry.TwoWayStatus
                 delete(ent.NeighborMap, nbrKey)
+                server.logger.Info(fmt.Sprintln("Deleting", nbrKey))
                 server.IntfConfMap[key] = ent
                 if ent.IfFSMState > config.Waiting {
                     // RFC2328 Section 9.2 (Neighbor Change Event)
@@ -119,6 +120,7 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
                     }
                 }
             }
+            server.logger.Info(fmt.Sprintln("Hello", server.IntfConfMap))
         case state := <-ent.PktSendCh:
             if state == false {
                 server.StopSendHelloPkt(key)
@@ -129,7 +131,7 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
     }
 }
 
-func (server *OSPFServer)ElectBDR(key IntfConfKey) ([]byte) {
+func (server *OSPFServer)ElectBDR(key IntfConfKey) ([]byte, uint32) {
     ent, _ := server.IntfConfMap[key]
     electedBDR := []byte {0, 0, 0, 0}
     var electedRtrPrio uint8
@@ -176,8 +178,8 @@ func (server *OSPFServer)ElectBDR(key IntfConfKey) ([]byte) {
 
     if ent.IfRtrPriority != 0 &&
         bytesEqual(ent.IfIpAddr.To4(), []byte {0, 0, 0, 0}) == false {
-        if bytesEqual(ent.IfIpAddr.To4(), ent.IfDR) == false {
-            if bytesEqual(ent.IfIpAddr.To4(), ent.IfBDR) == true {
+        if bytesEqual(ent.IfIpAddr.To4(), ent.IfDRIp) == false {
+            if bytesEqual(ent.IfIpAddr.To4(), ent.IfBDRIp) == true {
                 rtrId := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
                 if ent.IfRtrPriority > electedRtrPrio {
                     electedRtrPrio = ent.IfRtrPriority
@@ -209,16 +211,17 @@ func (server *OSPFServer)ElectBDR(key IntfConfKey) ([]byte) {
     }
     if bytesEqual(electedBDR, []byte{0, 0, 0, 0}) == true {
         binary.BigEndian.PutUint32(electedBDR, NbrIPWithMaxPrio)
+        electedRtrId = RtrIdWithMaxPrio
     }
 
-    return electedBDR
+    return electedBDR, electedRtrId
 }
 
-func (server *OSPFServer)ElectDR(key IntfConfKey, electedBDR []byte) ([]byte) {
+func (server *OSPFServer)ElectDR(key IntfConfKey, electedBDR []byte, electedBDRtrId  uint32) ([]byte, uint32) {
     ent, _ := server.IntfConfMap[key]
     electedDR := []byte {0, 0, 0, 0}
     var electedRtrPrio uint8
-    var electedRtrId uint32
+    var electedDRtrId uint32
 
     for key, nbrEntry := range ent.NeighborMap {
         if nbrEntry.TwoWayStatus == true &&
@@ -228,12 +231,12 @@ func (server *OSPFServer)ElectDR(key IntfConfKey, electedBDR []byte) ([]byte) {
             if tempDR == nbrEntry.NbrIP {
                 if nbrEntry.RtrPrio > electedRtrPrio {
                     electedRtrPrio = nbrEntry.RtrPrio
-                    electedRtrId = key.RouterId
+                    electedDRtrId = key.RouterId
                     electedDR = nbrEntry.DRtr
                 } else if nbrEntry.RtrPrio == electedRtrPrio {
-                    if electedRtrId < key.RouterId {
+                    if electedDRtrId < key.RouterId {
                         electedRtrPrio = nbrEntry.RtrPrio
-                        electedRtrId = key.RouterId
+                        electedDRtrId = key.RouterId
                         electedDR = nbrEntry.DRtr
                     }
                 }
@@ -243,16 +246,16 @@ func (server *OSPFServer)ElectDR(key IntfConfKey, electedBDR []byte) ([]byte) {
 
     if ent.IfRtrPriority > 0 &&
         bytesEqual(ent.IfIpAddr.To4(), []byte {0, 0, 0, 0}) == false {
-        if bytesEqual(ent.IfIpAddr.To4(), ent.IfDR) == true {
+        if bytesEqual(ent.IfIpAddr.To4(), ent.IfDRIp) == true {
             rtrId := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
             if ent.IfRtrPriority > electedRtrPrio {
                 electedRtrPrio = ent.IfRtrPriority
-                electedRtrId = rtrId
+                electedDRtrId = rtrId
                 electedDR = ent.IfIpAddr.To4()
             } else if ent.IfRtrPriority == electedRtrPrio {
-                if electedRtrId < rtrId {
+                if electedDRtrId < rtrId {
                     electedRtrPrio = ent.IfRtrPriority
-                    electedRtrId = rtrId
+                    electedDRtrId = rtrId
                     electedDR = ent.IfIpAddr.To4()
                 }
             }
@@ -261,56 +264,61 @@ func (server *OSPFServer)ElectDR(key IntfConfKey, electedBDR []byte) ([]byte) {
 
     if bytesEqual(electedDR, []byte{0, 0, 0, 0}) == true {
         electedDR = electedBDR
+        electedDRtrId = electedBDRtrId
     }
-    return electedDR
+    return electedDR, electedDRtrId
 }
 
 func (server *OSPFServer)ElectBDRAndDR(key IntfConfKey) {
     ent, _ := server.IntfConfMap[key]
     server.logger.Info(fmt.Sprintln("Election of BDR andDR", ent.IfFSMState))
 
-    //oldDR := ent.IfDR
-    //oldBDR := ent.IfBDR
+    //oldDR := ent.IfDRIp
+    //oldBDR := ent.IfBDRIp
     oldState := ent.IfFSMState
     var newState config.IfState
 
-    electedBDR := server.ElectBDR(key)
-    ent.IfBDR = electedBDR
-    electedDR := server.ElectDR(key, electedBDR)
-    ent.IfDR = electedDR
-    if bytesEqual(ent.IfDR, ent.IfIpAddr.To4()) == true {
+    electedBDR, electedBDRtrId := server.ElectBDR(key)
+    ent.IfBDRIp = electedBDR
+    ent.IfBDRtrId = electedBDRtrId
+    electedDR, electedDRtrId := server.ElectDR(key, electedBDR, electedBDRtrId)
+    ent.IfDRIp = electedDR
+    ent.IfDRtrId = electedDRtrId
+    if bytesEqual(ent.IfDRIp, ent.IfIpAddr.To4()) == true {
         newState = config.DesignatedRouter
-    } else if bytesEqual(ent.IfBDR, ent.IfIpAddr.To4()) == true {
+    } else if bytesEqual(ent.IfBDRIp, ent.IfIpAddr.To4()) == true {
         newState = config.BackupDesignatedRouter
     } else {
         newState = config.OtherDesignatedRouter
     }
 
-    server.logger.Info(fmt.Sprintln("1. Election of BDR:", ent.IfBDR, " and DR:", ent.IfDR, "new State:", newState))
+    server.logger.Info(fmt.Sprintln("1. Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState, "DR Id:", ent.IfDRtrId, "BDR Id:", ent.IfBDRtrId))
     server.IntfConfMap[key] = ent
 
     if (newState != oldState &&
         !(newState == config.OtherDesignatedRouter &&
             oldState < config.OtherDesignatedRouter)) {
         ent, _ = server.IntfConfMap[key]
-        electedBDR = server.ElectBDR(key)
-        ent.IfBDR = electedBDR
-        electedDR = server.ElectDR(key, electedBDR)
-        ent.IfDR = electedDR
-        if bytesEqual(ent.IfDR, ent.IfIpAddr.To4()) == true {
+        electedBDR, electedBDRtrId = server.ElectBDR(key)
+        ent.IfBDRIp = electedBDR
+        ent.IfBDRtrId = electedBDRtrId
+        electedDR, electedDRtrId = server.ElectDR(key, electedBDR, electedBDRtrId)
+        ent.IfDRIp = electedDR
+        ent.IfDRtrId = electedDRtrId
+        if bytesEqual(ent.IfDRIp, ent.IfIpAddr.To4()) == true {
             newState = config.DesignatedRouter
-        } else if bytesEqual(ent.IfBDR, ent.IfIpAddr.To4()) == true {
+        } else if bytesEqual(ent.IfBDRIp, ent.IfIpAddr.To4()) == true {
             newState = config.BackupDesignatedRouter
         } else {
             newState = config.OtherDesignatedRouter
         }
-        server.logger.Info(fmt.Sprintln("2. Election of BDR:", ent.IfBDR, " and DR:", ent.IfDR, "new State:", newState))
+        server.logger.Info(fmt.Sprintln("2. Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState, "DR Id:", ent.IfDRtrId, "BDR Id:", ent.IfBDRtrId))
         server.IntfConfMap[key] = ent
     }
 
     ent, _ = server.IntfConfMap[key]
     ent.IfFSMState = newState
-    server.logger.Info(fmt.Sprintln("Final Election of BDR:", ent.IfBDR, " and DR:", ent.IfDR, "new State:", newState))
+    server.logger.Info(fmt.Sprintln("Final Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState))
     server.IntfConfMap[key] = ent
 }
 

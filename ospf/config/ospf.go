@@ -333,9 +333,9 @@ type InterfaceState struct {
 	IfState                    IfState
 	IfDesignatedRouter         IpAddress
 	IfBackupDesignatedRouter   IpAddress
-	IfEvents                   int
-	IfLsaCount                 int
-	IfLsaCksumSum              uint32
+	IfEvents                   int32
+	IfLsaCount                 int32
+	IfLsaCksumSum              int32
 	IfDesignatedRouterId       RouterId
 	IfBackupDesignatedRouterId RouterId
 }

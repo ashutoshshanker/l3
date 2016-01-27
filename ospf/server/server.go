@@ -67,6 +67,12 @@ type OSPFServer struct {
 	AreaStateMap             map[AreaConfKey]AreaState
 	AreaStateSlice           []AreaConfKey
 	AreaConfKeyToSliceIdxMap map[AreaConfKey]int
+        IntfKeySlice                    []IntfConfKey
+        IntfKeyToSliceIdxMap            map[IntfConfKey]bool
+        IntfStateTimer                  *time.Timer
+        IntfSliceRefreshCh              chan bool
+        IntfSliceRefreshDoneCh          chan bool
+
 	RefreshDuration          time.Duration
 }
 
@@ -92,6 +98,11 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.AreaStateMap = make(map[AreaConfKey]AreaState)
 	ospfServer.AreaStateSlice = []AreaConfKey{}
 	ospfServer.AreaConfKeyToSliceIdxMap = make(map[AreaConfKey]int)
+        ospfServer.IntfKeySlice = []IntfConfKey{}
+        ospfServer.IntfKeyToSliceIdxMap = make(map[IntfConfKey]bool)
+        ospfServer.IntfSliceRefreshCh = make(chan bool)
+        ospfServer.IntfSliceRefreshDoneCh = make(chan bool)
+
 	ospfServer.RefreshDuration = time.Duration(10) * time.Minute
 
 	/*
@@ -154,6 +165,7 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("GlobalConf:", server.ospfGlobalConf))
 	server.initAreaConfDefault()
 	server.logger.Info(fmt.Sprintln("AreaConf:", server.AreaConfMap))
+	server.initIntfStateSlice()
 	/*
 	   server.logger.Info("Listen for RIBd updates")
 	   server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
@@ -194,6 +206,12 @@ func (server *OSPFServer) StartServer(paramFile string) {
 			   case <-server.ribSubSocketErrCh:
 			       ;
 			*/
+                case msg := <-server.IntfSliceRefreshCh:
+                        if msg == true {
+                                server.refreshIntfKeySlice()
+                                server.IntfSliceRefreshDoneCh<-true
+                        }
+
 		}
 	}
 }

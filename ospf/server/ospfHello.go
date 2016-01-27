@@ -68,8 +68,8 @@ func (server *OSPFServer)BuildHelloPkt(ent IntfConf) ([]byte) {
         options:                uint8(2), // Need to revisit
         rtrPrio:                ent.IfRtrPriority,
         rtrDeadInterval:        ent.IfRtrDeadInterval,
-        designatedRtr:          ent.IfDR,
-        backupDesignatedRtr:    ent.IfBDR,
+        designatedRtr:          ent.IfDRIp,
+        backupDesignatedRtr:    ent.IfBDRIp,
         //designatedRtr:          []byte {0, 0, 0, 0},
         //backupDesignatedRtr:    []byte {0, 0, 0, 0},
         //neighbor:               []byte {1, 1, 1, 1},
