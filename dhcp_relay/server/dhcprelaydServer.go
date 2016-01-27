@@ -25,6 +25,20 @@ import (
 type DhcpRelayServiceHandler struct {
 }
 
+// type is similar to typedef in c
+type DhcpOptionCode byte
+type OpCode byte
+type MessageType byte // Option 53
+
+// For Debugging if_name, mac_address, dhcp server ip
+type MacAddrServerIpKey string
+
+// Map of DHCP options
+type DhcpRelayAgentOptions map[DhcpOptionCode][]byte
+
+// A DHCP packet
+type DhcpRelayAgentPacket []byte
+
 /*
  * DhcpRelayAgentStateInfo will maintain state from when a packet was recieved
  * until it is out
@@ -40,7 +54,6 @@ type DhcpRelayAgentStateInfo struct {
  */
 type DhcpRelayAgentGlobalInfo struct {
 	IntfConfig           dhcprelayd.DhcpRelayIntfConfig
-	StateDebugInfo       DhcpRelayAgentStateInfo
 	dhcprelayConfigMutex sync.RWMutex
 }
 type Option struct {
@@ -48,18 +61,13 @@ type Option struct {
 	Value []byte
 }
 
-type DhcpOptionCode byte
-type OpCode byte
-type MessageType byte // Option 53
-// Map of DHCP options
-type DhcpRelayAgentOptions map[DhcpOptionCode][]byte
-
-// A DHCP packet
-type DhcpRelayAgentPacket []byte
-
 var (
 	// map key would be if_name
-	dhcprelayGblInfo    map[string]DhcpRelayAgentGlobalInfo
+	//dhcprelayGblInfo    map[string]DhcpRelayAgentGlobalInfo
+	// When we receive a udp packet... we will get interface id and that can
+	// be used to collect the global info...
+	dhcprelayGblInfo    map[int]DhcpRelayAgentGlobalInfo
+	StateDebugInfo      map[MacAddrServerIpKey]DhcpRelayAgentStateInfo
 	dhcprelayClientConn *ipv4.PacketConn
 	logger              *syslog.Writer
 	// PadddingToMinimumSize pads a packet so that when sent over UDP,
@@ -74,10 +82,12 @@ func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 }
 
 func DhcpRelayAgentUpdateStats(input string, info *DhcpRelayAgentGlobalInfo) {
-	info.StateDebugInfo.stats = append(info.StateDebugInfo.stats, input)
-	info.dhcprelayConfigMutex.RLock()
-	dhcprelayGblInfo[info.IntfConfig.IfIndex] = *info
-	info.dhcprelayConfigMutex.RUnlock()
+	/*
+		info.StateDebugInfo.stats = append(info.StateDebugInfo.stats, input)
+		info.dhcprelayConfigMutex.RLock()
+		dhcprelayGblInfo[info.IntfConfig.IfIndex] = *info
+		info.dhcprelayConfigMutex.RUnlock()
+	*/
 }
 
 /*
@@ -166,7 +176,7 @@ func DhcpRelayAgentOSSignalHandle() {
  */
 func InitDhcpRelayPortPktHandler() error {
 	// Init port configs
-	portInfoMap = make(map[int]portInfo)
+	portInfoMap = make(map[string]int, 30) //map[]portInfo)
 
 	// connecting to asicd
 	params_dir := flag.String("params", "",
@@ -189,6 +199,26 @@ func InitDhcpRelayPortPktHandler() error {
 	}
 
 	return nil
+}
+
+func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
+	logger.Info("DRA: Initializaing Global Info for " + ifName + " " +
+		strconv.Itoa(ifNum))
+	// Created a global Entry for Interface
+	//	gblEntry := dhcprelayGblInfo[ifName]
+	gblEntry := dhcprelayGblInfo[ifNum]
+	// Setting up default values for globalEntry
+	gblEntry.IntfConfig.IpSubnet = ""
+	gblEntry.IntfConfig.Netmask = ""
+	gblEntry.IntfConfig.IfIndex = ifName
+	gblEntry.IntfConfig.AgentSubType = 0
+	gblEntry.IntfConfig.Enable = false
+	gblEntry.dhcprelayConfigMutex = sync.RWMutex{}
+	// Stats information
+	//gblEntry.StateDebugInfo = make(map[MacAddrServerIpKey]DhcpRelayAgentStateInfo, 150)
+	dhcprelayGblInfo[ifNum] = gblEntry
+	//dhcprelayGblInfo[ifName] = gblEntry
+
 }
 
 func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr string) error {

@@ -8,10 +8,6 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 )
 
-type portInfo struct {
-	Name string // Port Name used for configuration
-}
-
 type ClientJson struct {
 	Name string `json:Name`
 	Port int    `json:Port`
@@ -33,7 +29,7 @@ type AsicdClient struct {
  * Global Variable
  */
 var (
-	portInfoMap map[int]portInfo // PORT NAME
+	portInfoMap map[string]int
 	asicdClient AsicdClient
 )
 
@@ -55,7 +51,8 @@ func DhcpRelayInitPortParams() error {
 	logger.Info("DRA calling asicd for port config")
 	count := 10
 	// for optimization initializing 25 interfaces map...
-	dhcprelayGblInfo = make(map[string]DhcpRelayAgentGlobalInfo, 25)
+	//dhcprelayGblInfo = make(map[string]DhcpRelayAgentGlobalInfo, 25)
+	dhcprelayGblInfo = make(map[int]DhcpRelayAgentGlobalInfo, 25)
 	for {
 		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortConfig(
 			int64(currMarker), int64(count))
@@ -77,19 +74,18 @@ func DhcpRelayInitPortParams() error {
 			currMarker = int64(bulkInfo.NextMarker)
 		}
 		for i := 0; i < objCount; i++ {
-			var entry portInfo
+			//var entry portInfo
+			var ifName string
 			if hack == true {
 				portNum = 1
-				entry = portInfoMap[portNum]
-				entry.Name = "wlp2s0" //"enp1s0f0"
+				ifName = "wlp2s0" //"enp1s0f0"
 			} else {
 				portNum = int(bulkInfo.PortConfigList[i].IfIndex)
-				entry = portInfoMap[portNum]
-				entry.Name = bulkInfo.PortConfigList[i].Name
+				ifName = bulkInfo.PortConfigList[i].Name
 			}
-			portInfoMap[portNum] = entry
+			portInfoMap[ifName] = portNum
 			// Init DRA Global Handling for all interfaces....
-			DhcpRelayAgentInitGblHandling(entry.Name, portNum)
+			DhcpRelayAgentInitGblHandling(ifName, portNum)
 		}
 		if hack {
 			logger.Info("DRA: HACK and hence creating clien/server right away")
