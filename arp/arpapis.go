@@ -149,6 +149,8 @@ var (
 	timeout_counter        int           = 600 // The value of timeout_counter = (config_refresh_timeout/timer_granularity)
 	retry_cnt              int           = 5   // Number of retries before entry in deleted
 	min_cnt                int           = 1   // Counter value at which entry will be deleted
+        one_minute_cnt         int           = (60/timer_granularity)
+        thirty_sec_cnt         int           = (30/timer_granularity)
 	handle                 *pcap.Handle        // handle for pcap connection
 	logWriter              *syslog.Writer
 	log_err                error
@@ -945,8 +947,12 @@ func updateArpCache() {
 						rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(ip,
 							"00:00:00:00:00:00", 0, 0)
 						logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
-					} else if (arp.counter <= (min_cnt+retry_cnt+1) &&
-						arp.counter >= (min_cnt+1)) &&
+					} else if ((arp.counter <= (min_cnt+retry_cnt+1) &&
+						arp.counter >= (min_cnt+1)) ||
+                                                arp.counter == (timeout_counter/2) ||
+                                                arp.counter == (timeout_counter/4) ||
+                                                arp.counter == one_minute_cnt ||
+                                                arp.counter == thirty_sec_cnt) &&
 						arp.valid == true {
 						ent := arp_cache.arpMap[ip]
 						cnt = arp.counter
