@@ -4,7 +4,6 @@ import (
 	"arpd"
 	"asicd/asicdConstDefs"
 	"asicdServices"
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -15,7 +14,6 @@ import (
 	"github.com/google/gopacket/pcap"
 	_ "github.com/mattn/go-sqlite3"
 	nanomsg "github.com/op/go-nanomsg"
-	"github.com/vishvananda/netlink"
 	"io/ioutil"
 	"log/syslog"
 	"math/rand"
@@ -149,6 +147,8 @@ var (
 	timeout_counter        int           = 600 // The value of timeout_counter = (config_refresh_timeout/timer_granularity)
 	retry_cnt              int           = 5   // Number of retries before entry in deleted
 	min_cnt                int           = 1   // Counter value at which entry will be deleted
+        one_minute_cnt         int           = (60/timer_granularity)
+        thirty_sec_cnt         int           = (30/timer_granularity)
 	handle                 *pcap.Handle        // handle for pcap connection
 	logWriter              *syslog.Writer
 	log_err                error
@@ -514,12 +514,14 @@ func sendArpReq(targetIp string, handle *pcap.Handle, myMac string, localIp stri
 	return ARP_REQ_SUCCESS
 }
 
+
 //ToDo: This function need to cleaned up
 /*
  *@fn receiveArpResponse
  * Process ARP response from the interface for ARP
  * req sent for targetIp
  */
+/*
 func receiveArpResponse(rec_handle *pcap.Handle,
 	myMac net.HardwareAddr, port_id int, if_Name string) {
 	var src_Mac net.HardwareAddr
@@ -601,8 +603,10 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 					} else {
 						port_map_ent, exists := port_property_map[port_id]
 						var vlan_id arpd.Int
+                                                var ifType arpd.Int
 						if exists {
 							vlan_id = arpd.Int(port_map_ent.untagged_vlanid)
+                                                        ifType = arpd.Int(commonDefs.L2RefTypeVlan)
 						} else {
 							// vlan_id = 1
 							continue
@@ -615,7 +619,7 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 								valid:   true,
 								port:    port_id,
 								ifName:  if_Name,
-								ifType:  1,
+								ifType:  ifType,
 								localIP: dest_ip_addr,
 								counter: timeout_counter,
 							},
@@ -633,8 +637,10 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 					if !exist {
 						port_map_ent, exists := port_property_map[port_id]
 						var vlan_id arpd.Int
+                                                var ifType arpd.Int
 						if exists {
 							vlan_id = arpd.Int(port_map_ent.untagged_vlanid)
+                                                        ifType = arpd.Int(commonDefs.L2RefTypeVlan)
 						} else {
 							// vlan_id = 1
 							continue
@@ -676,7 +682,7 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 								valid:   true,
 								port:    port_id,
 								ifName:  if_Name,
-								ifType:  1,
+								ifType:  ifType,
 								localIP: dest_ip_addr,
 								counter: timeout_counter,
 							},
@@ -691,36 +697,24 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 					dst_ip_addr := dst_ip.String()
 					//dstip := net.ParseIP(dst_ip_addr)
 					src_ip_addr := src_ip.String()
-					/*
-					   if src_ip_addr == localIP || dst_ip_addr == localIP {
-					       continue
-					   }
-					*/
+                                        port_map_ent, exists := port_property_map[port_id]
+                                        var vlan_id arpd.Int
+                                        var ifType arpd.Int
+                                        if exists {
+                                                vlan_id = arpd.Int(port_map_ent.untagged_vlanid)
+                                                ifType = arpd.Int(commonDefs.L2RefTypeVlan)
+                                        } else {
+                                                // vlan_id = 1
+                                                continue
+                                        }
 					_, exist := arp_cache.arpMap[dst_ip_addr]
 					if !exist {
 						ifName, ret := isInLocalSubnet(dst_ip_addr)
 						if ret == false {
 							continue
 						}
-						/*
-						   //dst_ip_addr := src_ip.String()
-						   route, err := netlink.RouteGet(dstip)
-						   var ifName string
-						   for _, rt := range route {
-						       if rt.LinkIndex > 1 {
-						           ifName, err = getInterfaceNameByIndex(rt.LinkIndex)
-						           if err != nil || ifName == "" {
-						               logWriter.Err(fmt.Sprintf("Unable to get the outgoing interface", err))
-						               continue
-						           }
-						       }
-						   }
-						   if ifName == "" {
-						       continue
-						   }
-						*/
 						logWriter.Info(fmt.Sprintln("Sending ARP for dst_ip:", dst_ip_addr, "Outgoing Interface:", ifName))
-						go createAndSendArpReuqest(dst_ip_addr, ifName)
+						go createAndSendArpReuqest(dst_ip_addr, ifName, vlan_id, ifType)
 					}
 					_, exist = arp_cache.arpMap[src_ip_addr]
 					if !exist {
@@ -729,13 +723,14 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 							continue
 						}
 						logWriter.Info(fmt.Sprintln("Sending ARP for src_ip:", src_ip_addr, "Outgoing Interface:", ifName))
-						go createAndSendArpReuqest(src_ip_addr, ifName)
+						go createAndSendArpReuqest(src_ip_addr, ifName, vlan_id, ifType)
 					}
 				}
 			}
 		}
 	}
 }
+*/
 
 func isInLocalSubnet(ipaddr string) (ifName string, ret bool) {
 	var flag bool = false
@@ -782,7 +777,7 @@ func isInLocalSubnet(ipaddr string) (ifName string, ret bool) {
 	return ifName, true
 }
 
-func createAndSendArpReuqest(targetIP string, outgoingIfName string) {
+func createAndSendArpReuqest(targetIP string, outgoingIfName string, vlan_id arpd.Int, ifType arpd.Int) {
 	localIp, err := getIPv4ForInterfaceName(outgoingIfName)
 	if err != nil || localIp == "" {
 		logWriter.Err(fmt.Sprintf("Unable to get the ip address of ", outgoingIfName))
@@ -805,11 +800,11 @@ func createAndSendArpReuqest(targetIP string, outgoingIfName string) {
 		ip: targetIP,
 		ent: arpEntry{
 			macAddr: []byte{0, 0, 0, 0, 0, 0},
-			vlanid:  -1,
+			vlanid:  vlan_id,
 			valid:   false,
 			port:    -2,
 			ifName:  outgoingIfName,
-			ifType:  1,
+			ifType:  ifType,
 			localIP: localIp,
 			counter: timeout_counter,
 		},
@@ -945,8 +940,12 @@ func updateArpCache() {
 						rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(ip,
 							"00:00:00:00:00:00", 0, 0)
 						logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
-					} else if (arp.counter <= (min_cnt+retry_cnt+1) &&
-						arp.counter >= (min_cnt+1)) &&
+					} else if ((arp.counter <= (min_cnt+retry_cnt+1) &&
+						arp.counter >= (min_cnt+1)) ||
+                                                arp.counter == (timeout_counter/2) ||
+                                                arp.counter == (timeout_counter/4) ||
+                                                arp.counter == one_minute_cnt ||
+                                                arp.counter == thirty_sec_cnt) &&
 						arp.valid == true {
 						ent := arp_cache.arpMap[ip]
 						cnt = arp.counter

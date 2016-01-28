@@ -10,6 +10,7 @@ import (
 )
 
 var logger *log.Logger
+var routeServiceHandler *RouteServiceHandler
 
 func main() {
 	var transport thrift.TServerTransport
@@ -33,6 +34,11 @@ func main() {
 		logger.Println("Failed to create Socket with:", addr)
 	}
 	handler := NewRouteServiceHandler(*paramsDir)
+	if handler == nil {
+		logger.Println("handler nill")
+		return
+	} 
+	routeServiceHandler = handler
 	processor := ribd.NewRouteServiceProcessor(handler)
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()

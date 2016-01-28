@@ -1,75 +1,163 @@
 package rpc
 
 import (
-    "ospfd"
-    "fmt"
-    "l3/ospf/config"
-//    "l3/ospf/server"
-//    "log/syslog"
-//    "net"
+	"errors"
+	"fmt"
+	"l3/ospf/config"
+	"ospfd"
+	//    "l3/ospf/server"
+	//    "log/syslog"
+	//    "net"
 )
 
 func (h *OSPFHandler) convertAreaEntryStateToThrift(ent config.AreaState) *ospfd.OspfAreaEntryState {
-        areaEntry := ospfd.NewOspfAreaEntryState()
-        areaEntry.AreaIdKey = string(ent.AreaId)
-        areaEntry.SpfRuns = ent.SpfRuns
-        areaEntry.AreaBdrRtrCount = ent.AreaBdrRtrCount
-        areaEntry.AsBdrRtrCount = ent.AsBdrRtrCount
-        areaEntry.AreaLsaCount = ent.AreaLsaCount
-        areaEntry.AreaLsaCksumSum = ent.AreaLsaCksumSum
-        areaEntry.AreaNssaTranslatorState = int32(ent.AreaNssaTranslatorState)
-        areaEntry.AreaNssaTranslatorEvents = ent.AreaNssaTranslatorEvents
+	areaEntry := ospfd.NewOspfAreaEntryState()
+	areaEntry.AreaIdKey = string(ent.AreaId)
+	areaEntry.SpfRuns = ent.SpfRuns
+	areaEntry.AreaBdrRtrCount = ent.AreaBdrRtrCount
+	areaEntry.AsBdrRtrCount = ent.AsBdrRtrCount
+	areaEntry.AreaLsaCount = ent.AreaLsaCount
+	areaEntry.AreaLsaCksumSum = ent.AreaLsaCksumSum
+	areaEntry.AreaNssaTranslatorState = int32(ent.AreaNssaTranslatorState)
+	areaEntry.AreaNssaTranslatorEvents = ent.AreaNssaTranslatorEvents
 
-        return areaEntry
+	return areaEntry
+}
+
+func (h *OSPFHandler) convertIfEntryStateToThrift(ent config.InterfaceState) *ospfd.OspfIfEntryState {
+	ifEntry := ospfd.NewOspfIfEntryState()
+	ifEntry.IfIpAddressKey = string(ent.IfIpAddress)
+	ifEntry.AddressLessIfKey = int32(ent.AddressLessIf)
+	ifEntry.IfState = int32(ent.IfState)
+	ifEntry.IfDesignatedRouter = string(ent.IfDesignatedRouter)
+	ifEntry.IfBackupDesignatedRouter = string(ent.IfBackupDesignatedRouter)
+	ifEntry.IfEvents = int32(ent.IfEvents)
+	ifEntry.IfLsaCount = int32(ent.IfLsaCount)
+	ifEntry.IfLsaCksumSum = int32(ent.IfLsaCksumSum)
+	ifEntry.IfDesignatedRouterId = string(ent.IfDesignatedRouterId)
+	ifEntry.IfBackupDesignatedRouterId = string(ent.IfBackupDesignatedRouter)
+
+	return ifEntry
+}
+
+func (h *OSPFHandler) convertGlobalStateToThrift(ent config.GlobalState) *ospfd.OspfGlobalState {
+	gState := ospfd.NewOspfGlobalState()
+	gState.RouterIdKey = string(ent.RouterId)
+	gState.VersionNumber = ent.VersionNumber
+	gState.AreaBdrRtrStatus = ent.AreaBdrRtrStatus
+	gState.ExternLsaCount = ent.ExternLsaCount
+	gState.ExternLsaCksumSum = ent.ExternLsaChecksum
+	gState.OriginateNewLsas = ent.OriginateNewLsas
+	gState.RxNewLsas = ent.RxNewLsas
+	gState.OpaqueLsaSupport = ent.OpaqueLsaSupport
+	gState.RestartStatus = int32(ent.RestartStatus)
+	gState.RestartAge = ent.RestartAge
+	gState.RestartExitReason = int32(ent.RestartExitReason)
+	gState.AsLsaCount = ent.AsLsaCount
+	gState.AsLsaCksumSum = ent.AsLsaCksumSum
+	gState.StubRouterSupport = ent.StubRouterSupport
+	gState.DiscontinuityTime = ent.DiscontinuityTime
+
+	return gState
+}
+
+func (h *OSPFHandler) convertNbrEntryStateToThrift(nbr config.NeighborState) *ospfd.OspfNbrEntryState {
+	nbrEntry := ospfd.NewOspfNbrEntryState()
+	nbrEntry.NbrIpAddrKey = string(nbr.NbrIpAddress)
+	nbrEntry.NbrAddressLessIndexKey = int32(nbr.NbrAddressLessIndex)
+	nbrEntry.NbrRtrId = string(nbr.NbrRtrId)
+	nbrEntry.NbrOptions = int32(nbr.NbrOptions)
+	nbrEntry.NbrState = int32(nbr.NbrState)
+	nbrEntry.NbrEvents = int32(nbr.NbrEvents)
+	nbrEntry.NbrLsRetransQLen = int32(nbr.NbrLsRetransQLen)
+	nbrEntry.NbmaNbrPermanence = int32(nbr.NbmaNbrPermanence)
+	nbrEntry.NbrHelloSuppressed = bool(nbr.NbrHelloSuppressed)
+	nbrEntry.NbrRestartHelperStatus = int32(nbr.NbrRestartHelperStatus)
+	nbrEntry.NbrRestartHelperAge = int32(nbr.NbrRestartHelperAge)
+	nbrEntry.NbrRestartHelperExitReason = int32(nbr.NbrRestartHelperExitReason)
+
+	return nbrEntry
 
 }
 
-
 func (h *OSPFHandler) GetBulkOspfAreaEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfAreaEntryStateGetInfo, error) {
-        h.logger.Info(fmt.Sprintln("Get Area attrs"))
+	h.logger.Info(fmt.Sprintln("Get Area attrs"))
 
-        nextIdx, currCount, ospfAreaEntryStates := h.server.GetBulkOspfAreaEntryState(int(fromIdx), int(count))
-        ospfAreaEntryStateResponse := make([]*ospfd.OspfAreaEntryState, len(ospfAreaEntryStates))
-        for idx, item := range ospfAreaEntryStates {
-                ospfAreaEntryStateResponse[idx] = h.convertAreaEntryStateToThrift(item)
-        }
-        ospfAreaEntryStateGetInfo := ospfd.NewOspfAreaEntryStateGetInfo()
-        ospfAreaEntryStateGetInfo.Count = ospfd.Int(currCount)
-        ospfAreaEntryStateGetInfo.StartIdx = ospfd.Int(fromIdx)
-        ospfAreaEntryStateGetInfo.EndIdx = ospfd.Int(nextIdx)
-        ospfAreaEntryStateGetInfo.More = (nextIdx != 0)
-        ospfAreaEntryStateGetInfo.OspfAreaEntryStateList = ospfAreaEntryStateResponse
-        return ospfAreaEntryStateGetInfo, nil
+	nextIdx, currCount, ospfAreaEntryStates := h.server.GetBulkOspfAreaEntryState(int(fromIdx), int(count))
+	if ospfAreaEntryStates == nil {
+		err := errors.New("Ospf is busy refreshing the cache")
+		return nil, err
+	}
+	ospfAreaEntryStateResponse := make([]*ospfd.OspfAreaEntryState, len(ospfAreaEntryStates))
+	for idx, item := range ospfAreaEntryStates {
+		ospfAreaEntryStateResponse[idx] = h.convertAreaEntryStateToThrift(item)
+	}
+	ospfAreaEntryStateGetInfo := ospfd.NewOspfAreaEntryStateGetInfo()
+	ospfAreaEntryStateGetInfo.Count = ospfd.Int(currCount)
+	ospfAreaEntryStateGetInfo.StartIdx = ospfd.Int(fromIdx)
+	ospfAreaEntryStateGetInfo.EndIdx = ospfd.Int(nextIdx)
+	ospfAreaEntryStateGetInfo.More = (nextIdx != 0)
+	ospfAreaEntryStateGetInfo.OspfAreaEntryStateList = ospfAreaEntryStateResponse
+	return ospfAreaEntryStateGetInfo, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfLsdbEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Link State Database attrs"))
-    ospfLsdbResponse := ospfd.NewOspfLsdbEntryStateGetInfo()
-    return ospfLsdbResponse, nil
+	h.logger.Info(fmt.Sprintln("Get Link State Database attrs"))
+	ospfLsdbResponse := ospfd.NewOspfLsdbEntryStateGetInfo()
+	return ospfLsdbResponse, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfIfEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfIfEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Interface attrs"))
-    ospfIfResponse := ospfd.NewOspfIfEntryStateGetInfo()
-    return ospfIfResponse, nil
+	h.logger.Info(fmt.Sprintln("Get Interface attrs"))
+
+	nextIdx, currCount, ospfIfEntryStates := h.server.GetBulkOspfIfEntryState(int(fromIdx), int(count))
+	if ospfIfEntryStates == nil {
+		err := errors.New("Ospf is busy refreshing the cache")
+		return nil, err
+	}
+	ospfIfEntryStateResponse := make([]*ospfd.OspfIfEntryState, len(ospfIfEntryStates))
+	for idx, item := range ospfIfEntryStates {
+		ospfIfEntryStateResponse[idx] = h.convertIfEntryStateToThrift(item)
+	}
+	ospfIfEntryStateGetInfo := ospfd.NewOspfIfEntryStateGetInfo()
+	ospfIfEntryStateGetInfo.Count = ospfd.Int(currCount)
+	ospfIfEntryStateGetInfo.StartIdx = ospfd.Int(fromIdx)
+	ospfIfEntryStateGetInfo.EndIdx = ospfd.Int(nextIdx)
+	ospfIfEntryStateGetInfo.More = (nextIdx != 0)
+	ospfIfEntryStateGetInfo.OspfIfEntryStateList = ospfIfEntryStateResponse
+	return ospfIfEntryStateGetInfo, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfNbrEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfNbrEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Neighbor attrs"))
-    ospfNbrResponse := ospfd.NewOspfNbrEntryStateGetInfo()
-    return ospfNbrResponse, nil
+	h.logger.Info(fmt.Sprintln("Get Neighbor attrs"))
+	nextIdx, currCount, ospfNbrEntryStates := h.server.GetBulkOspfNbrEntryState(int(fromIdx), int(count))
+	if ospfNbrEntryStates == nil {
+		err := errors.New("Ospf NBR is busy refreshing the cache")
+		return nil, err
+	}
+	ospfNbrEntryResponse := make([]*ospfd.OspfNbrEntryState, len(ospfNbrEntryStates))
+	for idx, item := range ospfNbrEntryStates {
+		ospfNbrEntryResponse[idx] = h.convertNbrEntryStateToThrift(item)
+	}
+	OspfNbrEntryStateGetInfo := ospfd.NewOspfNbrEntryStateGetInfo()
+	OspfNbrEntryStateGetInfo.Count = ospfd.Int(currCount)
+	OspfNbrEntryStateGetInfo.StartIdx = ospfd.Int(fromIdx)
+	OspfNbrEntryStateGetInfo.EndIdx = ospfd.Int(nextIdx)
+	OspfNbrEntryStateGetInfo.More = (nextIdx != 0)
+	OspfNbrEntryStateGetInfo.OspfNbrEntryStateList = ospfNbrEntryResponse
+	return OspfNbrEntryStateGetInfo, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfVirtNbrEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfVirtNbrEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Virtual Neighbor attrs"))
-    ospfVirtNbrResponse := ospfd.NewOspfVirtNbrEntryStateGetInfo()
-    return ospfVirtNbrResponse, nil
+	h.logger.Info(fmt.Sprintln("Get Virtual Neighbor attrs"))
+	ospfVirtNbrResponse := ospfd.NewOspfVirtNbrEntryStateGetInfo()
+	return ospfVirtNbrResponse, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfExtLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfExtLsdbEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get External LSA Link State attrs"))
-    ospfExtLsdbResponse := ospfd.NewOspfExtLsdbEntryStateGetInfo()
-    return ospfExtLsdbResponse, nil
+	h.logger.Info(fmt.Sprintln("Get External LSA Link State attrs"))
+	ospfExtLsdbResponse := ospfd.NewOspfExtLsdbEntryStateGetInfo()
+	return ospfExtLsdbResponse, nil
 }
 
 /*
@@ -81,27 +169,44 @@ func (h *OSPFHandler) GetOspfAreaAggregateEntryState(fromIdx ospfd.Int, count os
 */
 
 func (h *OSPFHandler) GetBulkOspfLocalLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfLocalLsdbEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Local Link State for non virtual links attrs"))
-    ospfLocalLsdbResponse := ospfd.NewOspfLocalLsdbEntryStateGetInfo()
-    return ospfLocalLsdbResponse, nil
+	h.logger.Info(fmt.Sprintln("Get Local Link State for non virtual links attrs"))
+	ospfLocalLsdbResponse := ospfd.NewOspfLocalLsdbEntryStateGetInfo()
+	return ospfLocalLsdbResponse, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfVirtLocalLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfVirtLocalLsdbEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Local Link State for virtual links attrs"))
-    ospfVirtLocalLsdbResponse := ospfd.NewOspfVirtLocalLsdbEntryStateGetInfo()
-    return ospfVirtLocalLsdbResponse, nil
+	h.logger.Info(fmt.Sprintln("Get Local Link State for virtual links attrs"))
+	ospfVirtLocalLsdbResponse := ospfd.NewOspfVirtLocalLsdbEntryStateGetInfo()
+	return ospfVirtLocalLsdbResponse, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfAsLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfAsLsdbEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Local Link State for AS attrs"))
-    ospfAsLsdbResponse := ospfd.NewOspfAsLsdbEntryStateGetInfo()
-    return ospfAsLsdbResponse, nil
+	h.logger.Info(fmt.Sprintln("Get Local Link State for AS attrs"))
+	ospfAsLsdbResponse := ospfd.NewOspfAsLsdbEntryStateGetInfo()
+	return ospfAsLsdbResponse, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfAreaLsaCountEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfAreaLsaCountEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Area LSA Counter"))
-    ospfAreaLsaCountResponse := ospfd.NewOspfAreaLsaCountEntryStateGetInfo()
-    return ospfAreaLsaCountResponse, nil
+	h.logger.Info(fmt.Sprintln("Get Area LSA Counter"))
+	ospfAreaLsaCountResponse := ospfd.NewOspfAreaLsaCountEntryStateGetInfo()
+	return ospfAreaLsaCountResponse, nil
 }
 
+func (h *OSPFHandler) GetBulkOspfGlobalState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfGlobalStateGetInfo, error) {
+	h.logger.Info(fmt.Sprintln("Get OSPF global state"))
 
+	if fromIdx != 0 {
+		err := errors.New("Invalid range")
+		return nil, err
+	}
+	ospfGlobalState := h.server.GetOspfGlobalState()
+	ospfGlobalStateResponse := make([]*ospfd.OspfGlobalState, 1)
+	ospfGlobalStateResponse[0] = h.convertGlobalStateToThrift(*ospfGlobalState)
+	ospfGlobalStateGetInfo := ospfd.NewOspfGlobalStateGetInfo()
+	ospfGlobalStateGetInfo.Count = ospfd.Int(1)
+	ospfGlobalStateGetInfo.StartIdx = ospfd.Int(0)
+	ospfGlobalStateGetInfo.EndIdx = ospfd.Int(0)
+	ospfGlobalStateGetInfo.More = false
+	ospfGlobalStateGetInfo.OspfGlobalStateList = ospfGlobalStateResponse
+	return ospfGlobalStateGetInfo, nil
+}

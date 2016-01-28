@@ -147,3 +147,14 @@ func convertIPv4ToUint32(ip []byte) (uint32) {
 
     return val
 }
+
+func convertUint32ToIPv4(val uint32) (string) {
+        p0 := int(val & 0xFF)
+        p1 := int((val >> 8) & 0xFF)
+        p2 := int((val >> 16) & 0xFF)
+        p3 := int((val >> 24) & 0xFF)
+        str := strconv.Itoa(p3) + "." + strconv.Itoa(p2) + "." +
+                strconv.Itoa(p1) + "." + strconv.Itoa(p0)
+
+        return str
+}

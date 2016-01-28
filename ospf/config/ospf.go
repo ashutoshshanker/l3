@@ -1,7 +1,7 @@
 package config
 
 import (
-//"net"
+	"net"
 )
 
 type AreaId string
@@ -199,34 +199,22 @@ type GlobalConf struct {
 }
 
 type GlobalState struct {
-	RouterId                 RouterId
-	AdminStat                Status
-	VersionNumber            int
-	AreaBdrRtrStatus         bool
-	ASBdrRtrStatus           bool
-	ExternLsaCount           int
-	ExternLsaChecksum        int
-	TOSSupport               bool
-	OriginateNewLsas         int
-	RxNewLsas                int
-	ExtLsdbLimit             int
-	MulticastExtension       int
-	ExitOverflowInterval     PositiveInteger
-	DemandExtensions         bool
-	RFC1583Compatibility     bool
-	OpaqueLsaSupport         bool
-	ReferenceBandwidth       int32
-	RestartSupport           RestartSupport
-	RestartInterval          int32
-	RestartStrictLsaChecking bool
-	RestartStatus            RestartStatus
-	RestartAge               int
-	RestartExitReason        RestartExitReason
-	AsLsaCount               int
-	AsLsaCksumSum            int
-	StubRouterSupport        bool
-	StubRouterAdvertisement  AdvertiseAction
-	DiscontinuityTime        string
+	RouterId          RouterId
+	VersionNumber     int32
+	AreaBdrRtrStatus  bool
+	ExternLsaCount    int32
+	ExternLsaChecksum int32
+	OriginateNewLsas  int32
+	RxNewLsas         int32
+	OpaqueLsaSupport  bool
+	RestartStatus     RestartStatus
+	RestartAge        int32
+	RestartExitReason RestartExitReason
+	AsLsaCount        int32
+	AsLsaCksumSum     int32
+	StubRouterSupport bool
+	//DiscontinuityTime        string
+	DiscontinuityTime int32 //This should be string
 }
 
 // Indexed By AreaId
@@ -240,14 +228,14 @@ type AreaConf struct {
 }
 
 type AreaState struct {
-	AreaId                              AreaId
-	SpfRuns                             int32
-	AreaBdrRtrCount                     int32
-	AsBdrRtrCount                       int32
-	AreaLsaCount                        int32
-	AreaLsaCksumSum                     int32
-	AreaNssaTranslatorState             NssaTranslatorState
-	AreaNssaTranslatorEvents            int32
+	AreaId                   AreaId
+	SpfRuns                  int32
+	AreaBdrRtrCount          int32
+	AsBdrRtrCount            int32
+	AreaLsaCount             int32
+	AreaLsaCksumSum          int32
+	AreaNssaTranslatorState  NssaTranslatorState
+	AreaNssaTranslatorEvents int32
 }
 
 // Indexed by StubAreaId and StubTOS
@@ -333,9 +321,9 @@ type InterfaceState struct {
 	IfState                    IfState
 	IfDesignatedRouter         IpAddress
 	IfBackupDesignatedRouter   IpAddress
-	IfEvents                   int
-	IfLsaCount                 int
-	IfLsaCksumSum              uint32
+	IfEvents                   int32
+	IfLsaCount                 int32
+	IfLsaCksumSum              int32
 	IfDesignatedRouterId       RouterId
 	IfBackupDesignatedRouterId RouterId
 }
@@ -390,19 +378,19 @@ type NbrConf struct {
 }
 
 type NeighborState struct {
-	NbrIpAddress               IpAddress
-	NbrAddressLessIndex        InterfaceIndexOrZero
-	NbrRtrId                   RouterId
+	NbrIpAddress               net.IP
+	NbrAddressLessIndex        int
+	NbrRtrId                   string
 	NbrOptions                 int
-	NbrPriority                DesignatedRouterPriority
+	NbrPriority                uint8
 	NbrState                   NbrState
 	NbrEvents                  int
 	NbrLsRetransQLen           int
-	NbmaNbrPermanence          NbmaNbrPermanence
+	NbmaNbrPermanence          int
 	NbrHelloSuppressed         bool
-	NbrRestartHelperStatus     NbrRestartHelperStatus
+	NbrRestartHelperStatus     int
 	NbrRestartHelperAge        uint32
-	NbrRestartHelperExitReason RestartExitReason
+	NbrRestartHelperExitReason int
 }
 
 // Virtual Neighbor Table (Read Only)

@@ -6,18 +6,71 @@ import (
 	"errors"
 	"l3/rib/ribdCommonDefs"
 	"utils/patriciaDB"
+	"strconv"
 )
 var PolicyDB = patriciaDB.NewTrie()
 
 type PolicyStmt struct {				//policy engine uses this
 	name               string
+	matchConditions    string
 	conditions         []string
 	actions            []string
-	localDBSliceIdx        int8       
+	localDBSliceIdx        int8  
+	importPolicy       bool
+	exportPolicy       bool  
+	hitCounter         int   
+	routeList         []string
 }
 var ProtocolPolicyListDB = make(map[int][]string)//policystmt names assoociated with every protocol type
 var localPolicyStmtDB []localDB
 
+func addPolicyRouteMap(route ribd.Routes, policyStmt PolicyStmt) {
+	logger.Println("addPolicyRouteMap")
+	policyStmt.hitCounter++
+	ipPrefix,err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
+	if err != nil {
+		logger.Println("Invalid ip prefix")
+		return
+	}
+	maskIp, err := getIP(route.Mask)
+	if err != nil {
+		return
+	}
+	prefixLen,err := getPrefixLen(maskIp)
+	if err != nil {
+		return
+	}
+	logger.Println("prefixLen= ", prefixLen)
+	var newRoute string
+	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
+//	newRoute := string(ipPrefix[:])
+	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
+	if policyStmt.routeList == nil {
+		policyStmt.routeList = make([]string, 0)
+	}
+    policyStmt.routeList = append(policyStmt.routeList, newRoute)
+	PolicyDB.Set(patriciaDB.Prefix(policyStmt.name), policyStmt)
+}
+func deletePolicyRouteMap(route ribd.Routes, policyStmt PolicyStmt) {
+	logger.Println("deletePolicyRouteMap")
+}
+func updatePolicyRouteMap(route ribd.Routes, policyStmt PolicyStmt, op int) {
+	logger.Println("updatePolicyRouteMap")
+	if op == add {
+		addPolicyRouteMap(route, policyStmt)
+	} else if op == del {
+		deletePolicyRouteMap(route, policyStmt)
+	}
+	
+}
+func validMatchConditions(matchConditionStr string) (valid bool) {
+    logger.Println("validMatchConditions for string ", matchConditionStr)
+	if matchConditionStr == "any" || matchConditionStr == "all "{
+		logger.Println("valid")
+		valid = true
+	}
+	return valid
+}
 func updateProtocolPolicyTable(protoType int, name string, op int) {
 	logger.Printf("updateProtocolPolicyTable for protocol %d policy name %s op %d\n", protoType, name, op)
     var i int
@@ -64,10 +117,29 @@ func updateConditions(policyStmt PolicyStmt, conditionName string, op int) {
 			   logger.Println("PolicyConditionTypePrefixMatch")
 			   break
 		}
+		if condition.policyList == nil {
+			condition.policyList = make([]string,0)
+		}
+        condition.policyList = append(condition.policyList, policyStmt.name)
+		logger.Println("Adding policy ", policyStmt.name, "to condition ", conditionName)
+		PolicyConditionsDB.Set(patriciaDB.Prefix(conditionName), condition)
 	}
 }
 
-func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStatement) (val bool, err error) {
+func updateActions(policyStmt PolicyStmt, actionName string, op int) {
+	logger.Println("updateActions for action ", actionName)
+	actionItem := PolicyActionsDB.Get(patriciaDB.Prefix(actionName))
+	if(actionItem != nil) {
+		action := actionItem.(PolicyAction)
+		if action.policyList == nil {
+			action.policyList = make([]string,0)
+		}
+        action.policyList = append(action.policyList, policyStmt.name)
+		PolicyActionsDB.Set(patriciaDB.Prefix(actionName), action)
+	}
+}
+
+func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStmtConfig) (val bool, err error) {
 	logger.Println("CreatePolicyDefinitionStatement")
 
 	policyStmt := PolicyDB.Get(patriciaDB.Prefix(cfg.Name))
@@ -76,6 +148,14 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 	   logger.Println("Defining a new policy statement with name ", cfg.Name)
 	   var newPolicyStmt PolicyStmt
 	   newPolicyStmt.name = cfg.Name
+	   if !validMatchConditions(cfg.MatchConditions) {
+	      logger.Println("Invalid match conditions - try any/all")
+		  err = errors.New("Invalid match conditions - try any/all")	
+		  return val, err
+	   }
+	   newPolicyStmt.matchConditions = cfg.MatchConditions
+	   newPolicyStmt.importPolicy = cfg.Import
+	   newPolicyStmt.exportPolicy = cfg.Export
 	   if len(cfg.Conditions) > 0 {
 	      logger.Println("Policy Statement has %d ", len(cfg.Conditions)," number of conditions")	
 		  newPolicyStmt.conditions = make([] string, 0)
@@ -89,6 +169,7 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 		  newPolicyStmt.actions = make([] string, 0)
 		  for i=0;i<len(cfg.Actions);i++ {
 			newPolicyStmt.actions = append(newPolicyStmt.actions,cfg.Actions[i])
+			updateActions(newPolicyStmt, cfg.Actions[i], add)
 		}
 	   }
 		if ok := PolicyDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyStmt); ok != true {
@@ -109,7 +190,7 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 	return val, err
 }
 
-func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStatement) (val bool, err error) {
+func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStmtConfig) (val bool, err error) {
 	logger.Println("DeletePolicyDefinitionStatement for name ", cfg.Name)
 	ok := PolicyDB.Match(patriciaDB.Prefix(cfg.Name))
 	if !ok {
@@ -124,6 +205,7 @@ func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDe
           logger.Println("local DB slice index for this policy stmt is ", policyStmtInfo.localDBSliceIdx)
 		  localPolicyStmtDB[policyStmtInfo.localDBSliceIdx].isValid = false		
 	   }
+	   PolicyEngineTraverseAndReverse(policyStmtInfo)
 	   logger.Println("Deleting policy statement with name ", cfg.Name)
 		if ok := PolicyDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
 			logger.Println(" return value not ok for delete PolicyDB")
@@ -135,17 +217,22 @@ func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDe
 			updateConditions(policyStmtInfo, policyStmtInfo.conditions[i],del)
 		}	
 	   }
+	   if len(policyStmtInfo.conditions) > 0 {
+	      for i:=0;i<len(policyStmtInfo.conditions);i++ {
+			updateActions(policyStmtInfo, policyStmtInfo.actions[i],del)
+		}	
+	   }
 	} 
 	return val, err
 }
 
-func (m RouteServiceHandler) GetBulkPolicyStmts( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStatementGetInfo, err error){//(routes []*ribd.Routes, err error) {
-	logger.Println("getBulkPolicyStmts")
+func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtState( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStmtStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
+	logger.Println("GetBulkPolicyDefinitionStmtState")
     var i, validCount, toIndex ribd.Int
-	var tempNode []ribd.PolicyDefinitionStatement = make ([]ribd.PolicyDefinitionStatement, rcount)
-	var nextNode *ribd.PolicyDefinitionStatement
-    var returnNodes []*ribd.PolicyDefinitionStatement
-	var returnGetInfo ribd.PolicyDefinitionStatementGetInfo
+	var tempNode []ribd.PolicyDefinitionStmtState = make ([]ribd.PolicyDefinitionStmtState, rcount)
+	var nextNode *ribd.PolicyDefinitionStmtState
+    var returnNodes []*ribd.PolicyDefinitionStmtState
+	var returnGetInfo ribd.PolicyDefinitionStmtStateGetInfo
 	i = 0
 	policyStmts = &returnGetInfo
 	more := true
@@ -176,16 +263,20 @@ func (m RouteServiceHandler) GetBulkPolicyStmts( fromIndex ribd.Int, rcount ribd
 		    nextNode.Name = prefixNode.name
 			nextNode.Conditions = prefixNode.conditions
 			nextNode.Actions = prefixNode.actions
+	        nextNode.Import = prefixNode.importPolicy
+	        nextNode.Export = prefixNode.exportPolicy
+			nextNode.HitCounter = ribd.Int(prefixNode.hitCounter)
+			nextNode.IpPrefixList = prefixNode.routeList
 			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
 			if(len(returnNodes) == 0){
-				returnNodes = make([]*ribd.PolicyDefinitionStatement, 0)
+				returnNodes = make([]*ribd.PolicyDefinitionStmtState, 0)
 			}
 			returnNodes = append(returnNodes, nextNode)
 			validCount++
 		}
 	}
 	logger.Printf("Returning %d list of policyStmts", validCount)
-	policyStmts.PolicyDefinitionStatementList = returnNodes
+	policyStmts.PolicyDefinitionStmtStateList = returnNodes
 	policyStmts.StartIdx = fromIndex
 	policyStmts.EndIdx = toIndex+1
 	policyStmts.More = more

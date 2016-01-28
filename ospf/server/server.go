@@ -6,8 +6,6 @@ import (
 	"container/list"
 	"encoding/json"
 	"fmt"
-        "sync"
-        "time"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
@@ -15,6 +13,8 @@ import (
 	"log/syslog"
 	"ribd"
 	"strconv"
+	"sync"
+	"time"
 	"utils/ipcutils"
 )
 
@@ -31,39 +31,51 @@ type OspfClientBase struct {
 }
 
 type OSPFServer struct {
-	logger                  *syslog.Writer
-	ribdClient              RibdClient
-	asicdClient             AsicdClient
-	portPropertyMap         map[int32]PortProperty
-	vlanPropertyMap         map[uint16]VlanProperty
-	IPIntfPropertyMap       map[string]IPIntfProperty
-	ospfGlobalConf          GlobalConf
-	GlobalConfigCh          chan config.GlobalConf
-	AreaConfigCh            chan config.AreaConf
-	IntfConfigCh            chan config.InterfaceConf
+	logger            *syslog.Writer
+	ribdClient        RibdClient
+	asicdClient       AsicdClient
+	portPropertyMap   map[int32]PortProperty
+	vlanPropertyMap   map[uint16]VlanProperty
+	IPIntfPropertyMap map[string]IPIntfProperty
+	ospfGlobalConf    GlobalConf
+	GlobalConfigCh    chan config.GlobalConf
+	AreaConfigCh      chan config.AreaConf
+	IntfConfigCh      chan config.InterfaceConf
+
 	/*
 	   connRoutesTimer         *time.Timer
 	   ribSubSocket        *nanomsg.SubSocket
 	   ribSubSocketCh      chan []byte
 	   ribSubSocketErrCh   chan error
 	*/
-	asicdSubSocket                  *nanomsg.SubSocket
-	asicdSubSocketCh                chan []byte
-	asicdSubSocketErrCh             chan error
-	AreaConfMap                     map[AreaConfKey]AreaConf
-	IntfConfMap                     map[IntfConfKey]IntfConf
-	NeighborConfigMap               map[uint32]OspfNeighborEntry
-	NeighborListMap                 map[IntfConfKey]list.List
-	neighborConfMutex               sync.Mutex
-	neighborHelloEventCh            chan IntfToNeighMsg
-        nbrFSMCtrlCh                    chan bool
+	asicdSubSocket       *nanomsg.SubSocket
+	asicdSubSocketCh     chan []byte
+	asicdSubSocketErrCh  chan error
+	AreaConfMap          map[AreaConfKey]AreaConf
+	IntfConfMap          map[IntfConfKey]IntfConf
+	NeighborConfigMap    map[uint32]OspfNeighborEntry
+	NeighborListMap      map[IntfConfKey]list.List
+	neighborConfMutex    sync.Mutex
+	neighborHelloEventCh chan IntfToNeighMsg
+	neighborFSMCtrlCh    chan bool
+	neighborConfCh       chan ospfNeighborConfMsg
+	neighborConfStopCh   chan bool
+	nbrFSMCtrlCh         chan bool
+	neighborSliceRefCh   *time.Ticker
+	neighborBulkSlice    []uint32
 
-        AreaStateTimer                  *time.Timer
-        AreaStateMutex                  sync.RWMutex
-	AreaStateMap                    map[AreaConfKey]AreaState
-        AreaStateSlice                  []AreaConfKey
-        AreaConfKeyToSliceIdxMap        map[AreaConfKey]int
-        RefreshDuration                 time.Duration
+	AreaStateTimer           *time.Timer
+	AreaStateMutex           sync.RWMutex
+	AreaStateMap             map[AreaConfKey]AreaState
+	AreaStateSlice           []AreaConfKey
+	AreaConfKeyToSliceIdxMap map[AreaConfKey]int
+	IntfKeySlice             []IntfConfKey
+	IntfKeyToSliceIdxMap     map[IntfConfKey]bool
+	IntfStateTimer           *time.Timer
+	IntfSliceRefreshCh       chan bool
+	IntfSliceRefreshDoneCh   chan bool
+
+	RefreshDuration time.Duration
 }
 
 func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
@@ -80,13 +92,19 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
 	ospfServer.neighborHelloEventCh = make(chan IntfToNeighMsg)
-	ospfServer.nbrFSMCtrlCh = make(chan bool)
-
-        ospfServer.AreaStateMutex = sync.RWMutex{}
+	ospfServer.neighborConfCh = make(chan ospfNeighborConfMsg)
+	ospfServer.neighborConfStopCh = make(chan bool)
+	ospfServer.neighborSliceRefCh = time.NewTicker(time.Minute * 10)
+	ospfServer.AreaStateMutex = sync.RWMutex{}
 	ospfServer.AreaStateMap = make(map[AreaConfKey]AreaState)
-        ospfServer.AreaStateSlice = []AreaConfKey{}
-        ospfServer.AreaConfKeyToSliceIdxMap = make(map[AreaConfKey]int)
-        ospfServer.RefreshDuration = time.Duration(10) * time.Minute
+	ospfServer.AreaStateSlice = []AreaConfKey{}
+	ospfServer.AreaConfKeyToSliceIdxMap = make(map[AreaConfKey]int)
+	ospfServer.IntfKeySlice = []IntfConfKey{}
+	ospfServer.IntfKeyToSliceIdxMap = make(map[IntfConfKey]bool)
+	ospfServer.IntfSliceRefreshCh = make(chan bool)
+	ospfServer.IntfSliceRefreshDoneCh = make(chan bool)
+	ospfServer.nbrFSMCtrlCh = make(chan bool)
+	ospfServer.RefreshDuration = time.Duration(10) * time.Minute
 
 	/*
 	   ospfServer.ribSubSocketCh = make(chan []byte)
@@ -148,6 +166,7 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("GlobalConf:", server.ospfGlobalConf))
 	server.initAreaConfDefault()
 	server.logger.Info(fmt.Sprintln("AreaConf:", server.AreaConfMap))
+	server.initIntfStateSlice()
 	/*
 	   server.logger.Info("Listen for RIBd updates")
 	   server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
@@ -188,6 +207,12 @@ func (server *OSPFServer) StartServer(paramFile string) {
 			   case <-server.ribSubSocketErrCh:
 			       ;
 			*/
+		case msg := <-server.IntfSliceRefreshCh:
+			if msg == true {
+				server.refreshIntfKeySlice()
+				server.IntfSliceRefreshDoneCh <- true
+			}
+
 		}
 	}
 }
