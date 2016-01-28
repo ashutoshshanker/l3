@@ -68,6 +68,7 @@ var (
 	dhcprelayGblInfo    map[int]DhcpRelayAgentGlobalInfo
 	StateDebugInfo      map[MacAddrServerIpKey]DhcpRelayAgentStateInfo
 	dhcprelayClientConn *ipv4.PacketConn
+	dhcprelayServerConn *ipv4.PacketConn
 	logger              *syslog.Writer
 	// PadddingToMinimumSize pads a packet so that when sent over UDP,
 	// the entire packet, is 300 bytes (which is BOOTP/DHCP min)

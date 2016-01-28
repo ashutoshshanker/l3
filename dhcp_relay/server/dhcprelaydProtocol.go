@@ -453,7 +453,7 @@ func DhcpRelayAgentReceiveDhcpPktFromClient(clientHandler *net.UDPConn) {
 		//Decode the packet...
 		inReq, reqOptions, mType := DhcpRelayAgentDecodeInPkt(buf, bytesRead)
 		if inReq == nil || reqOptions == nil {
-			logger.Warning("Couldn't decode dhcp packet...continue")
+			logger.Warning("DRA: Couldn't decode dhcp packet...continue")
 			continue
 		}
 		//logger.Info(fmt.Sprintln("DRA: bytesread is ", bytesRead))
@@ -462,6 +462,25 @@ func DhcpRelayAgentReceiveDhcpPktFromClient(clientHandler *net.UDPConn) {
 		//logger.Info(fmt.Sprintln("DRA: buffer is ", buf))
 		// Send Packet
 		DhcpRelayAgentSendPacketToDhcpServer(clientHandler, cm, buf, inReq, reqOptions, mType)
+	}
+}
+
+func DhcpRelayAgentReceiveDhcpPktFromServer(serverHandler *net.UDPConn) {
+	var buf []byte = make([]byte, 1500)
+	for {
+		bytesRead, cm, srcAddr, err := dhcprelayServerConn.ReadFrom(buf)
+		if err != nil {
+			logger.Err("DRA: reading buffer failed")
+			continue
+		}
+		inReq, reqOptions, mType := DhcpRelayAgentDecodeInPkt(buf, bytesRead)
+		if inReq == nil || reqOptions == nil {
+			logger.Warning("DRA: Couldn't decode dhcp packet....continue")
+			continue
+		}
+		logger.Info(fmt.Sprintln("DRA: control message is ", cm))
+		logger.Info(fmt.Sprintln("DRA: srcAddr is ", srcAddr))
+		logger.Info(fmt.Sprintln("DRA: MessageType is ", mType))
 	}
 }
 
@@ -484,10 +503,32 @@ func DhcpRelayAgentCreateClientServerConn() {
 	controlFlag := ipv4.FlagTTL | ipv4.FlagSrc | ipv4.FlagDst | ipv4.FlagInterface
 	err = dhcprelayClientConn.SetControlMessage(controlFlag, true)
 	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: Setting control flag failed..", err))
+		logger.Err(fmt.Sprintln("DRA: Setting control flag for client failed..", err))
 		return
 	}
-	logger.Info("DRA: Connection opened successfully")
+	logger.Info("DRA: Client Connection opened successfully")
 	go DhcpRelayAgentReceiveDhcpPktFromClient(dhcprelayClientHandler)
 
+	// Server sends dhcp packet from port 67 to client port 68
+	// so create a filter for udp:68 for message coming from server
+	logger.Info("DRA: creating listenPacket for udp port 68")
+	caddr := net.UDPAddr{
+		Port: DHCP_CLIENT_PORT,
+		IP:   net.ParseIP(""),
+	}
+	dhcprelayServerHandler, err := net.ListenUDP("udp", &caddr)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: Opening udp port for server --> client failed", err))
+		// do we need to close the client server communication??? ask
+		// Hari/Adam
+		return
+	}
+	dhcprelayServerConn = ipv4.NewPacketConn(dhcprelayServerHandler)
+	err = dhcprelayServerConn.SetControlMessage(controlFlag, true)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA:Setting control flag for server failed..", err))
+		return
+	}
+	logger.Info("DRA: Server Connection opened successfully")
+	go DhcpRelayAgentReceiveDhcpPktFromServer(dhcprelayServerHandler)
 }
