@@ -54,6 +54,7 @@ const (
 const (
 	add = iota
 	del
+	delAll
 	invalidate
 )
 const (
@@ -82,6 +83,8 @@ type RouteInfoRecord struct {
 type RouteInfoRecordList struct {
 	selectedRouteIdx int8
 	routeInfoList    []RouteInfoRecord //map[int]RouteInfoRecord
+	policyHitCounter  ribd.Int
+	policyList       []string
 }
 
 type ClientJson struct {

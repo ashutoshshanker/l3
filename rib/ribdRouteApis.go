@@ -182,6 +182,10 @@ func (m RouteServiceHandler) GetBulkRoutes(fromIndex ribd.Int, rcount ribd.Int) 
 			nextRoute.Metric = prefixNodeRoute.metric
 			nextRoute.Prototype = ribd.Int(prefixNodeRoute.protocol)
 			nextRoute.IsValid = destNetSlice[i+fromIndex].isValid
+			nextRoute.PolicyList = make([]string,0)
+			for i:=0;i<len(prefixNodeRouteList.policyList);i++ {
+				nextRoute.PolicyList = append(nextRoute.PolicyList, prefixNodeRouteList.policyList[i])
+			}
 			toIndex = ribd.Int(prefixNodeRoute.sliceIdx)
 			if len(returnRoutes) == 0 {
 				returnRoutes = make([]*ribd.Routes, 0)
@@ -343,6 +347,7 @@ func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 			params.createType = Invalid
 			params.destNetIp = routeInfoRecord.destNetIp.String()
 			params.networkMask = routeInfoRecord.networkMask.String()
+			policyRoute.PolicyList = routeInfoRecordList.policyList
 	        PolicyEngineFilter(policyRoute, ribdCommonDefs.PolicyPath_Export,params )
 		    return nil
 		}
@@ -403,6 +408,7 @@ func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 		params.createType = Invalid
 		params.destNetIp = routeInfoRecord.destNetIp.String()
 		params.networkMask = routeInfoRecord.networkMask.String()
+		policyRoute.PolicyList = routeInfoRecordList.policyList
 	    PolicyEngineFilter(policyRoute, ribdCommonDefs.PolicyPath_Export,params )
 	}
 	if routeInfoRecordNew.protocol != PROTOCOL_NONE {
