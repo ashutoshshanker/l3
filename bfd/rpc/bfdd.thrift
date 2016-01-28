@@ -7,10 +7,11 @@ struct BfdGlobalConfig{
 }
 struct BfdGlobalState{
 	1 : bool 	Enable
-	2 : i32 	NumTotalSessions
-	3 : i32 	NumUpSessions
-	4 : i32 	NumDownSessions
-	5 : i32 	NumAdminDownSessions
+	2 : i32 	NumInterfaces
+	3 : i32 	NumTotalSessions
+	4 : i32 	NumUpSessions
+	5 : i32 	NumDownSessions
+	6 : i32 	NumAdminDownSessions
 }
 struct BfdGlobalStateGetInfo {
 	1: int StartIdx
@@ -27,7 +28,7 @@ struct BfdIntfConfig{
 	5 : i32 	RequiredMinEchoRxInterval
 	6 : bool 	DemandEnabled
 	7 : bool 	AuthenticationEnabled
-	8 : i32 	Type
+	8 : i32 	AuthType
 	9 : i32 	AuthKeyId
 	10 : i32 	SequenceNumber
 	11 : string 	AuthData
