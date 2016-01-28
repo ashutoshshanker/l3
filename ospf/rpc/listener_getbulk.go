@@ -40,6 +40,28 @@ func (h *OSPFHandler) convertIfEntryStateToThrift(ent config.InterfaceState) *os
         return ifEntry
 }
 
+func (h *OSPFHandler) convertGlobalStateToThrift(ent config.GlobalState) *ospfd.OspfGlobalState {
+        gState := ospfd.NewOspfGlobalState()
+        gState.RouterIdKey = string(ent.RouterId)
+        gState.VersionNumber = ent.VersionNumber
+        gState.AreaBdrRtrStatus = ent.AreaBdrRtrStatus
+        gState.ExternLsaCount = ent.ExternLsaCount
+        gState.ExternLsaCksumSum = ent.ExternLsaChecksum
+        gState.OriginateNewLsas = ent.OriginateNewLsas
+        gState.RxNewLsas = ent.RxNewLsas
+        gState.OpaqueLsaSupport = ent.OpaqueLsaSupport
+        gState.RestartStatus = int32(ent.RestartStatus)
+        gState.RestartAge = ent.RestartAge
+        gState.RestartExitReason = int32(ent.RestartExitReason)
+        gState.AsLsaCount = ent.AsLsaCount
+        gState.AsLsaCksumSum = ent.AsLsaCksumSum
+        gState.StubRouterSupport = ent.StubRouterSupport
+        gState.DiscontinuityTime = ent.DiscontinuityTime
+
+        return gState
+}
+
+
 
 func (h *OSPFHandler) GetBulkOspfAreaEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfAreaEntryStateGetInfo, error) {
         h.logger.Info(fmt.Sprintln("Get Area attrs"))
@@ -140,7 +162,20 @@ func (h *OSPFHandler) GetBulkOspfAreaLsaCountEntryState(fromIdx ospfd.Int, count
 }
 
 func (h *OSPFHandler) GetBulkOspfGlobalState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfGlobalStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get OSPF global state"))
-    ospfGlobalStateResponse := ospfd.NewOspfGlobalStateGetInfo()
-    return ospfGlobalStateResponse, nil
+        h.logger.Info(fmt.Sprintln("Get OSPF global state"))
+
+        if fromIdx != 0 {
+                err := errors.New("Invalid range")
+                return nil, err
+        }
+        ospfGlobalState := h.server.GetOspfGlobalState()
+        ospfGlobalStateResponse := make([]*ospfd.OspfGlobalState, 1)
+        ospfGlobalStateResponse[0] = h.convertGlobalStateToThrift(*ospfGlobalState)
+        ospfGlobalStateGetInfo := ospfd.NewOspfGlobalStateGetInfo()
+        ospfGlobalStateGetInfo.Count = ospfd.Int(1)
+        ospfGlobalStateGetInfo.StartIdx = ospfd.Int(0)
+        ospfGlobalStateGetInfo.EndIdx = ospfd.Int(0)
+        ospfGlobalStateGetInfo.More = false
+        ospfGlobalStateGetInfo.OspfGlobalStateList = ospfGlobalStateResponse
+        return ospfGlobalStateGetInfo, nil
 }
