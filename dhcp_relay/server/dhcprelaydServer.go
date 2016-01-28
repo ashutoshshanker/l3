@@ -176,7 +176,7 @@ func DhcpRelayAgentOSSignalHandle() {
  */
 func InitDhcpRelayPortPktHandler() error {
 	// Init port configs
-	portInfoMap = make(map[string]int, 30) //map[]portInfo)
+	//portInfoMap = make(map[string]int, 30) //map[]portInfo)
 
 	// connecting to asicd
 	params_dir := flag.String("params", "",
@@ -202,23 +202,21 @@ func InitDhcpRelayPortPktHandler() error {
 	return nil
 }
 
-func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
-	logger.Info("DRA: Initializaing Global Info for " + ifName + " " +
-		strconv.Itoa(ifNum))
+//func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
+func DhcpRelayAgentInitGblHandling(ifNum int) {
+	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(ifNum))
 	// Created a global Entry for Interface
-	//	gblEntry := dhcprelayGblInfo[ifName]
 	gblEntry := dhcprelayGblInfo[ifNum]
 	// Setting up default values for globalEntry
 	gblEntry.IntfConfig.IpSubnet = ""
 	gblEntry.IntfConfig.Netmask = ""
-	gblEntry.IntfConfig.IfIndex = ifName
+	gblEntry.IntfConfig.IfIndex = strconv.Itoa(ifNum) //ifName
 	gblEntry.IntfConfig.AgentSubType = 0
 	gblEntry.IntfConfig.Enable = false
 	gblEntry.dhcprelayConfigMutex = sync.RWMutex{}
 	// Stats information
 	//gblEntry.StateDebugInfo = make(map[MacAddrServerIpKey]DhcpRelayAgentStateInfo, 150)
 	dhcprelayGblInfo[ifNum] = gblEntry
-	//dhcprelayGblInfo[ifName] = gblEntry
 
 }
 

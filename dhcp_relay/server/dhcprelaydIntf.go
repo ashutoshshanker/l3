@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	nanomsg "github.com/op/go-nanomsg"
+	"net"
 )
 
 type ClientJson struct {
@@ -31,7 +32,7 @@ type AsicdClient struct {
  * Global Variable
  */
 var (
-	portInfoMap    map[string]int
+	//portInfoMap    map[string]int
 	asicdClient    AsicdClient
 	asicdSubSocket *nanomsg.SubSocket
 )
@@ -64,19 +65,30 @@ func DhcpRelayAgentListenAsicUpdate(address string) error {
 }
 
 func DhcpRelayAgentUpdateIntfPortMap(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
-	// @TODO: wait for vikram to add if_name to IPv4IntfNotifyMsg... until that
-	// time we cannot listen to update notification
-	//intfId := asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)
-	logger.Info(fmt.Sprintln("DRA: Got a ipv4 interface notification for:", msgType))
+	intfId := asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)
+	logger.Info(fmt.Sprintln("DRA: Got a ipv4 interface notification for:", msgType,
+		"for If Id:", intfId))
 	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
-		//portInfoMap[msg.IfIndex] = intfId
+		// @TODO: fix netmask later on...
 		// Init DRA Global Handling for new interface....
-		//DhcpRelayAgentInitGblHandling(msg.IfIndex, intfId)
+		// 192.168.1.1/24 -> ip: 192.168.1.1  net: 192.168.1.0/24
+		DhcpRelayAgentInitGblHandling(intfId)
+		gblEntry := dhcprelayGblInfo[intfId]
+		ip, ipnet, err := net.ParseCIDR(msg.IpAddr)
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: Parsing ipadd and netmask failed:", err))
+			return
+		}
+		gblEntry.IntfConfig.IpSubnet = ip.String()      //string(ip[:]) // 192.168.1.1
+		gblEntry.IntfConfig.Netmask = ipnet.IP.String() // 192.168.1.0
+		dhcprelayGblInfo[intfId] = gblEntry
+		logger.Info(fmt.Sprintln("DRA: Added interface:", intfId, " Ip address:",
+			gblEntry.IntfConfig.IpSubnet, " netmask:", gblEntry.IntfConfig.IpSubnet))
 	} else {
 		// @TODO: jgheewala do we need to disable relay agent for the
-		// interface which is deleted... or remove the entry from
-		// portInfoMap??
-		//delete(portInfoMap, msg.IfIndex)
+		// interface which is deleted...
+		logger.Info("deleteing interface")
+		delete(dhcprelayGblInfo, intfId)
 	}
 }
 
@@ -181,9 +193,11 @@ func DhcpRelayInitPortParams() error {
 				portNum = int(bulkInfo.PortConfigList[i].IfIndex)
 				ifName = bulkInfo.PortConfigList[i].Name
 			}
-			portInfoMap[ifName] = portNum
+			logger.Info("DRA: interface global init for " + ifName)
+			//portInfoMap[ifName] = portNum
 			// Init DRA Global Handling for all interfaces....
-			DhcpRelayAgentInitGblHandling(ifName, portNum)
+			//DhcpRelayAgentInitGblHandling(ifName, portNum)
+			DhcpRelayAgentInitGblHandling(portNum)
 		}
 		if hack {
 			logger.Info("DRA: HACK and hence creating clien/server right away")
