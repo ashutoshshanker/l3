@@ -63,7 +63,6 @@ type Option struct {
 
 var (
 	// map key would be if_name
-	//dhcprelayGblInfo    map[string]DhcpRelayAgentGlobalInfo
 	// When we receive a udp packet... we will get interface id and that can
 	// be used to collect the global info...
 	dhcprelayGblInfo    map[int]DhcpRelayAgentGlobalInfo
@@ -191,6 +190,7 @@ func InitDhcpRelayPortPktHandler() error {
 	}
 	// OS signal channel listener thread
 	DhcpRelayAgentOSSignalHandle()
+
 	// Initialize port parameters
 	err = DhcpRelayInitPortParams()
 	if err != nil {
@@ -239,16 +239,13 @@ func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr stri
 			"failed with error:", err))
 		return err
 	}
-	fmt.Println("%T", transport)
 	processor := dhcprelayd.NewDHCPRELAYDServicesProcessor(handler)
-	fmt.Printf("%T\n", transportFactory)
-	fmt.Printf("%T\n", protocolFactory)
 	fmt.Printf("Starting DHCP-RELAY daemon at %s\n", addr)
 	server := thrift.NewTSimpleServer4(processor, transport,
 		transportFactory, protocolFactory)
 	err = server.Serve()
 	if err != nil {
-		logger.Info(fmt.Sprintln("DRA: Failed to start the listener, err:", err))
+		logger.Err(fmt.Sprintln("DRA: Failed to start the listener, err:", err))
 		return err
 	}
 
