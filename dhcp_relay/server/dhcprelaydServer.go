@@ -119,12 +119,14 @@ func DhcpRelayAgentConnectToClients(paramsFile string) error {
 			asicdClient.Address = "localhost:" +
 				strconv.Itoa(client.Port)
 			asicdClient.Transport,
-				asicdClient.PtrProtocolFactory, _ =
+				asicdClient.PtrProtocolFactory, err =
 				ipcutils.CreateIPCHandles(asicdClient.Address)
 			if asicdClient.Transport == nil ||
-				asicdClient.PtrProtocolFactory == nil {
+				asicdClient.PtrProtocolFactory == nil ||
+				err != nil {
 				logger.Err(fmt.Sprintln("DRA: Connecting to",
-					client.Name+"failed"))
+					client.Name, "failed ", err))
+				return err
 			}
 			asicdClient.ClientHdl =
 				asicdServices.NewASICDServicesClientFactory(
