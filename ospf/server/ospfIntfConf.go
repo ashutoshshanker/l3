@@ -321,6 +321,8 @@ func (server *OSPFServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
 	server.StopOspfRecvPkts(intfConfKey)
 	ent, _ := server.IntfConfMap[intfConfKey]
         ent.NeighborMap = nil
+        ent.IfEvents = ent.IfEvents + 1
+        ent.IfFSMState = config.Down
 	server.IntfConfMap[intfConfKey] = ent
 }
 
@@ -332,6 +334,7 @@ func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
 	ent.HelloIntervalTicker = time.NewTicker(helloInterval)
 	ent.WaitTimer = time.NewTimer(waitTime)
         ent.NeighborMap = make(map[NeighborKey]NeighborData)
+        ent.IfEvents = ent.IfEvents + 1
         ent.IfFSMState = config.Waiting
 	server.IntfConfMap[intfConfKey] = ent
 	server.logger.Info("Start Sending Hello Pkt")
