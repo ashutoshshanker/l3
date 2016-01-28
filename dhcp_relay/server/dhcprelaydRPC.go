@@ -70,14 +70,17 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	logger.Info(fmt.Sprintln("DRA: Enable:", config.Enable))
 	logger.Info("DRA: ServerIp:" + config.ServerIp)
 	// Copy over configuration into globalInfo
-	gblEntry := dhcprelayGblInfo[config.IfIndex]
+	//gblEntry := dhcprelayGblInfo[config.IfIndex]
+	ifNum := portInfoMap[config.IfIndex]
+	gblEntry := dhcprelayGblInfo[ifNum]
 	// Acquire lock for updating configuration.
 	gblEntry.dhcprelayConfigMutex.RLock()
 	gblEntry.IntfConfig.IpSubnet = config.IpSubnet
 	gblEntry.IntfConfig.Netmask = config.Netmask
 	gblEntry.IntfConfig.AgentSubType = config.AgentSubType
 	gblEntry.IntfConfig.Enable = config.Enable
-	dhcprelayGblInfo[config.IfIndex] = gblEntry
+	//dhcprelayGblInfo[config.IfIndex] = gblEntry
+	dhcprelayGblInfo[ifNum] = gblEntry
 	// Release lock after updation is done
 	gblEntry.dhcprelayConfigMutex.RUnlock()
 	//@TODO: FIXME jgheewala
@@ -89,9 +92,11 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	} else {
 		logger.Info("DRA: len of global entries is " + string(len(dhcprelayGblInfo)))
 		// Stats information
-		DhcpRelayAgentUpdateStats("dhcp relay config create request",
-			&gblEntry)
+		//DhcpRelayAgentUpdateStats("dhcp relay config create request",
+		//	&gblEntry)
 		DhcpRelayAgentCreateClientServerConn()
+		// Stats information
+		StateDebugInfo = make(map[MacAddrServerIpKey]DhcpRelayAgentStateInfo, 150)
 	}
 	return true, nil
 }

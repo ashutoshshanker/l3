@@ -21,6 +21,20 @@ type GlobalConf struct {
 	RestartStrictLsaChecking bool
 	StubRouterAdvertisement  config.AdvertiseAction
 	Version                  uint8
+        AreaBdrRtrStatus         bool
+        ExternLsaCount           int32
+        ExternLsaChecksum        int32
+        OriginateNewLsas         int32
+        RxNewLsas                int32
+        OpaqueLsaSupport         bool
+        RestartStatus            config.RestartStatus
+        RestartAge               int32
+        RestartExitReason        config.RestartExitReason
+        AsLsaCount               int32
+        AsLsaCksumSum            int32
+        StubRouterSupport        bool
+        //DiscontinuityTime        string
+        DiscontinuityTime        int32 // This should be string
 }
 
 func (server *OSPFServer) updateGlobalConf(gConf config.GlobalConf) {
@@ -65,6 +79,20 @@ func (server *OSPFServer) initOspfGlobalConfDefault() {
 	server.ospfGlobalConf.RestartStrictLsaChecking = false
 	server.ospfGlobalConf.StubRouterAdvertisement = config.DoNotAdvertise
 	server.ospfGlobalConf.Version = uint8(OSPF_VERSION_2)
+        server.ospfGlobalConf.AreaBdrRtrStatus = false
+        server.ospfGlobalConf.ExternLsaCount = 0
+        server.ospfGlobalConf.ExternLsaChecksum = 0
+        server.ospfGlobalConf.OriginateNewLsas = 0
+        server.ospfGlobalConf.RxNewLsas = 0
+        server.ospfGlobalConf.OpaqueLsaSupport = false
+        server.ospfGlobalConf.RestartStatus = config.NotRestarting
+        server.ospfGlobalConf.RestartAge = 0
+        server.ospfGlobalConf.RestartExitReason = config.NoAttempt
+        server.ospfGlobalConf.AsLsaCount = 0
+        server.ospfGlobalConf.AsLsaCksumSum = 0
+        server.ospfGlobalConf.StubRouterSupport = false
+        //server.ospfGlobalConf.DiscontinuityTime = "0"
+        server.ospfGlobalConf.DiscontinuityTime = 0 //This should be string
 	server.logger.Err("Global configuration initialized")
 }
 

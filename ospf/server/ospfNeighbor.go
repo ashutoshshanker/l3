@@ -77,17 +77,19 @@ func (server *OSPFServer) UpdateNeighborConf() {
 			if nbrMsg.nbrMsgType == NBRADD {
 				//	nbrConf.NbrDeadTimer = time.NewTimer(nbrMsg.ospfNbrEntry.OspfNbrDeadTimer)
 				neighborBulkSlice = append(neighborBulkSlice, nbrMsg.ospfNbrConfKey)
-				go server.neighborDeadTimerEvent(nbrMsg.ospfNbrConfKey)
+                                server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
+				server.neighborDeadTimerEvent(nbrMsg.ospfNbrConfKey)
 			} else if nbrMsg.nbrMsgType == NBRDEL {
 				neighborBulkSlice = append(neighborBulkSlice, INVALID_NEIGHBOR_CONF_KEY)
 				delete(server.NeighborConfigMap, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
 			}
 
-			server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
+			//server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 			server.logger.Info(fmt.Sprintln("Updated neighbor with nbr id - ",
 				nbrMsg.ospfNbrConfKey.OspfNbrRtrId))
 			nbrConf = server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId]
 			if nbrMsg.nbrMsgType == NBRUPD {
+                                server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				nbrConf.NbrDeadTimer.Stop()
 				nbrConf.NbrDeadTimer.Reset(nbrMsg.ospfNbrEntry.OspfNbrDeadTimer)
 			}

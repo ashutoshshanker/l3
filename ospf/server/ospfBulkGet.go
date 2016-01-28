@@ -75,7 +75,6 @@ func (server *OSPFServer) GetBulkOspfIfEntryState(idx int, cnt int) (int, int, [
                 result[i].IfIpAddress = key.IPAddr
                 result[i].AddressLessIf = key.IntfIdx
                 if server.IntfKeyToSliceIdxMap[key] == true {
-                        server.logger.Info("Hello3")
                 //if exist {
                         ent, _:= server.IntfConfMap[key]
                         result[i].IfState = ent.IfFSMState
@@ -103,4 +102,28 @@ func (server *OSPFServer) GetBulkOspfIfEntryState(idx int, cnt int) (int, int, [
         server.IntfStateTimer.Reset(server.RefreshDuration)
         server.logger.Info(fmt.Sprintln("length:", length, "count:", count, "nextIdx:", nextIdx, "result:", result))
         return nextIdx, count, result
+}
+
+func (server *OSPFServer) GetOspfGlobalState() (*config.GlobalState) {
+        result := new(config.GlobalState)
+        ent := server.ospfGlobalConf
+
+        ip := net.IPv4(ent.RouterId[0], ent.RouterId[1], ent.RouterId[2], ent.RouterId[3])
+        result.RouterId = config.RouterId(ip.String())
+        result.VersionNumber = int32(ent.Version)
+        result.AreaBdrRtrStatus = ent.AreaBdrRtrStatus
+        result.ExternLsaCount = ent.ExternLsaCount
+        result.ExternLsaChecksum = ent.ExternLsaChecksum
+        result.OriginateNewLsas = ent.OriginateNewLsas
+        result.RxNewLsas = ent.RxNewLsas
+        result.OpaqueLsaSupport = ent.OpaqueLsaSupport
+        result.RestartStatus = ent.RestartStatus
+        result.RestartAge = ent.RestartAge
+        result.RestartExitReason = ent.RestartExitReason
+        result.AsLsaCount = ent.AsLsaCount
+        result.AsLsaCksumSum = ent.AsLsaCksumSum
+        result.StubRouterSupport = ent.StubRouterSupport
+        result.DiscontinuityTime = ent.DiscontinuityTime
+        server.logger.Info(fmt.Sprintln("Global State:", result))
+        return result
 }

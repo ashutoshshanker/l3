@@ -200,33 +200,21 @@ type GlobalConf struct {
 
 type GlobalState struct {
 	RouterId                 RouterId
-	AdminStat                Status
-	VersionNumber            int
+	VersionNumber            int32
 	AreaBdrRtrStatus         bool
-	ASBdrRtrStatus           bool
-	ExternLsaCount           int
-	ExternLsaChecksum        int
-	TOSSupport               bool
-	OriginateNewLsas         int
-	RxNewLsas                int
-	ExtLsdbLimit             int
-	MulticastExtension       int
-	ExitOverflowInterval     PositiveInteger
-	DemandExtensions         bool
-	RFC1583Compatibility     bool
+	ExternLsaCount           int32
+	ExternLsaChecksum        int32
+	OriginateNewLsas         int32
+	RxNewLsas                int32
 	OpaqueLsaSupport         bool
-	ReferenceBandwidth       int32
-	RestartSupport           RestartSupport
-	RestartInterval          int32
-	RestartStrictLsaChecking bool
 	RestartStatus            RestartStatus
-	RestartAge               int
+	RestartAge               int32
 	RestartExitReason        RestartExitReason
-	AsLsaCount               int
-	AsLsaCksumSum            int
+	AsLsaCount               int32
+	AsLsaCksumSum            int32
 	StubRouterSupport        bool
-	StubRouterAdvertisement  AdvertiseAction
-	DiscontinuityTime        string
+	//DiscontinuityTime        string
+	DiscontinuityTime        int32 //This should be string
 }
 
 // Indexed By AreaId
