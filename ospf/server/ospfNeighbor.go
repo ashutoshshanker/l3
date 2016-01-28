@@ -36,7 +36,7 @@ type NeighborConfKey struct {
 	OspfNbrRtrId uint32
 }
 
-var INVALID_NEIGHBOR_CONF_KEY NeighborConfKey
+var INVALID_NEIGHBOR_CONF_KEY uint32
 var neighborBulkSlice []NeighborConfKey
 
 type OspfNeighborEntry struct {
@@ -49,7 +49,6 @@ type OspfNeighborEntry struct {
 	OspfNbrInactivityTimer time.Time
 	OspfNbrDeadTimer       time.Duration
 	NbrDeadTimer           *time.Timer
-	OspfNbrSliceIdx        int
 }
 
 type ospfNeighborConfMsg struct {
@@ -76,12 +75,9 @@ func (server *OSPFServer) UpdateNeighborConf() {
 
 			if nbrMsg.nbrMsgType == NBRADD {
 				//	nbrConf.NbrDeadTimer = time.NewTimer(nbrMsg.ospfNbrEntry.OspfNbrDeadTimer)
-				neighborBulkSlice = append(neighborBulkSlice, nbrMsg.ospfNbrConfKey)
-                                server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
+				server.neighborBulkSlice = append(server.neighborBulkSlice, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
+				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				server.neighborDeadTimerEvent(nbrMsg.ospfNbrConfKey)
-			} else if nbrMsg.nbrMsgType == NBRDEL {
-				neighborBulkSlice = append(neighborBulkSlice, INVALID_NEIGHBOR_CONF_KEY)
-				delete(server.NeighborConfigMap, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
 			}
 
 			//server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
@@ -89,9 +85,18 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				nbrMsg.ospfNbrConfKey.OspfNbrRtrId))
 			nbrConf = server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId]
 			if nbrMsg.nbrMsgType == NBRUPD {
-                                server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
+				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				nbrConf.NbrDeadTimer.Stop()
 				nbrConf.NbrDeadTimer.Reset(nbrMsg.ospfNbrEntry.OspfNbrDeadTimer)
+				server.logger.Info(fmt.Sprintln("UPDATE neighbor with nbr id - ",
+					nbrMsg.ospfNbrConfKey.OspfNbrRtrId))
+			}
+			if nbrMsg.nbrMsgType == NBRDEL {
+				server.neighborBulkSlice = append(server.neighborBulkSlice, INVALID_NEIGHBOR_CONF_KEY)
+				delete(server.NeighborConfigMap, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
+				//delete(server.neighborKeyToIdxMap, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
+				server.logger.Info(fmt.Sprintln("DELETE neighbor with nbr id - ",
+					nbrMsg.ospfNbrConfKey.OspfNbrRtrId))
 			}
 
 		case state := <-(server.neighborConfStopCh):
@@ -104,11 +109,11 @@ func (server *OSPFServer) UpdateNeighborConf() {
 }
 
 func (server *OSPFServer) InitNeighborStateMachine() {
-	neighborBulkSlice = []NeighborConfKey{}
-	INVALID_NEIGHBOR_CONF_KEY = NeighborConfKey{
-		OspfNbrRtrId: 0,
-	}
 
+	server.neighborBulkSlice = []uint32{}
+	INVALID_NEIGHBOR_CONF_KEY = 0
+
+	go server.refreshNeighborSlice()
 	server.logger.Info("NBRINIT: Neighbor FSM init done..")
 }
 
@@ -172,7 +177,6 @@ func (server *OSPFServer) ProcessHelloPktEvent() {
 						OspfNbrState:           nbrState,
 						OspfNbrInactivityTimer: time.Now(),
 						OspfNbrDeadTimer:       nbrData.nbrDeadTimer,
-						OspfNbrSliceIdx:        len(neighborBulkSlice),
 					},
 					nbrMsgType: NBRADD,
 				}
@@ -246,7 +250,21 @@ func (server *OSPFServer) printIntfNeighbors(nbrId uint32) {
 
 }
 
-/*
-func (server *OSPFServer) GetBulkNeighborEntry(fromIndex int, count int) (nbrStateEntry *OspfNbrEntryState, err error) {
+func (server *OSPFServer) refreshNeighborSlice() {
+	go func() {
+		for t := range server.neighborSliceRefCh.C {
+
+			server.neighborBulkSlice = []uint32{}
+			//server.neighborKeyToIdxMap = make(map[uint32]uint32)
+			idx := 0
+			for nbrKey, _ := range server.NeighborConfigMap {
+				server.neighborBulkSlice[idx] = nbrKey
+				//server.neighborKeyToIdxMap[nbrKey] = uint32(idx)
+				idx++
+			}
+
+			fmt.Println("Tick at", t)
+		}
+	}()
+
 }
-*/
