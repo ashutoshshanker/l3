@@ -49,7 +49,7 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
                 server.IntfConfMap[key] = ent
                 server.logger.Info(fmt.Sprintln("1 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap, "neighborKey:", neighborKey))
                 if createMsg.TwoWayStatus == true &&
-                    ent.IfFSMState != config.Waiting {
+                    ent.IfFSMState > config.Waiting {
                     server.ElectBDRAndDR(key)
                 }
             }
@@ -318,6 +318,9 @@ func (server *OSPFServer)ElectBDRAndDR(key IntfConfKey) {
 
     ent, _ = server.IntfConfMap[key]
     ent.IfFSMState = newState
+    // Need to Check: do we need to add events even when we
+    // come back to same state after DR or BDR Election
+    ent.IfEvents = ent.IfEvents + 1
     server.logger.Info(fmt.Sprintln("Final Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState))
     server.IntfConfMap[key] = ent
 }
