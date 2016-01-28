@@ -384,7 +384,6 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.
 	data []byte, inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
 	mt MessageType) {
 	logger.Info("DRA: Creating Send Pkt")
-
 	/*
 			// get global interface object for stats and list of server ip addresses
 			intfObj := dhcprelayGblInfo[controlMessage.IfIndex]
