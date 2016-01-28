@@ -16,7 +16,8 @@ struct Routes {
 	7: int Prototype,
 	8: bool IsValid,
 	9: int SliceIdx,
-	10: int PolicyCounter,
+	10: int PolicyHitCounter,
+	11: list<string>PolicyList
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -119,7 +120,8 @@ struct PolicyDefinitionStmtRouteDispositionActionsGetInfo {
 
 struct PolicyDefinitionStmtRedistributionAction{
 	1 : string  Name
-	2 : string 	RedistributeTargetProtocol
+	2 : bool    Redistribute
+	3 : string 	RedistributeTargetProtocol
 }
 
 struct PolicyDefinitionStmtRedistributionActionsGetInfo {
@@ -148,6 +150,8 @@ struct PolicyDefinitionStmtState{
 	6 : list<string> 	Actions
 	7 : bool     Export
 	8 : bool     Import
+	9 : int      HitCounter
+	10: list<string> IpPrefixList
 }
 struct PolicyDefinitionStmtStateGetInfo {
 	1: int StartIdx

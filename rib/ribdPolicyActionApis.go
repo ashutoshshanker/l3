@@ -9,6 +9,10 @@ import (
 )
 
 var PolicyActionsDB = patriciaDB.NewTrie()
+type RedistributeActionInfo struct {
+	redistribute bool
+	redistributeTargetProtocol int
+}
 type PolicyAction struct {
 	name          string
 	actionType int
@@ -33,8 +37,13 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStmtRedistributionAction(cfg 
 	   }
 	   targetProtoType = retProto
 	   logger.Printf("target protocol for RedistributeTargetProtocol %s is %d\n", cfg.RedistributeTargetProtocol, targetProtoType)
-	   newPolicyAction := PolicyAction{name:cfg.Name,actionType:ribdCommonDefs.PolicyActionTypeRouteRedistribute,actionInfo:targetProtoType ,localDBSliceIdx:(len(localPolicyActionsDB))}
-       newPolicyAction.actionGetBulkInfo = "Redistribute to Target Protocol " + cfg.RedistributeTargetProtocol
+	   redistributeActionInfo := RedistributeActionInfo{redistribute:cfg.Redistribute, redistributeTargetProtocol:targetProtoType}
+	   newPolicyAction := PolicyAction{name:cfg.Name,actionType:ribdCommonDefs.PolicyActionTypeRouteRedistribute,actionInfo:redistributeActionInfo ,localDBSliceIdx:(len(localPolicyActionsDB))}
+       redistributeAction := " "
+	   if redistributeActionInfo.redistribute == false {
+          redistributeAction = "Don't"		
+	   }
+       newPolicyAction.actionGetBulkInfo = redistributeAction + " Redistribute to Target Protocol " + cfg.RedistributeTargetProtocol
 		if ok := PolicyActionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyAction); ok != true {
 			logger.Println(" return value not ok")
 			return val, err

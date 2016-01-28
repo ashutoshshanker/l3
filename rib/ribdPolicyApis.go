@@ -6,6 +6,7 @@ import (
 	"errors"
 	"l3/rib/ribdCommonDefs"
 	"utils/patriciaDB"
+	"strconv"
 )
 var PolicyDB = patriciaDB.NewTrie()
 
@@ -16,11 +17,60 @@ type PolicyStmt struct {				//policy engine uses this
 	actions            []string
 	localDBSliceIdx        int8  
 	importPolicy       bool
-	exportPolicy       bool     
+	exportPolicy       bool  
+	hitCounter         int   
+	routeList         []string
 }
 var ProtocolPolicyListDB = make(map[int][]string)//policystmt names assoociated with every protocol type
 var localPolicyStmtDB []localDB
 
+func addPolicyRouteMap(route ribd.Routes, policyStmt PolicyStmt) {
+	logger.Println("addPolicyRouteMap")
+	policyStmt.hitCounter++
+	ipPrefix,err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
+	if err != nil {
+		logger.Println("Invalid ip prefix")
+		return
+	}
+	maskIp, err := getIP(route.Mask)
+	if err != nil {
+		return
+	}
+	prefixLen,err := getPrefixLen(maskIp)
+	if err != nil {
+		return
+	}
+	logger.Println("prefixLen= ", prefixLen)
+	var newRoute string
+	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
+//	newRoute := string(ipPrefix[:])
+	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
+	if policyStmt.routeList == nil {
+		policyStmt.routeList = make([]string, 0)
+	}
+    policyStmt.routeList = append(policyStmt.routeList, newRoute)
+	PolicyDB.Set(patriciaDB.Prefix(policyStmt.name), policyStmt)
+}
+func deletePolicyRouteMap(route ribd.Routes, policyStmt PolicyStmt) {
+	logger.Println("deletePolicyRouteMap")
+}
+func updatePolicyRouteMap(route ribd.Routes, policyStmt PolicyStmt, op int) {
+	logger.Println("updatePolicyRouteMap")
+	if op == add {
+		addPolicyRouteMap(route, policyStmt)
+	} else if op == del {
+		deletePolicyRouteMap(route, policyStmt)
+	}
+	
+}
+func validMatchConditions(matchConditionStr string) (valid bool) {
+    logger.Println("validMatchConditions for string ", matchConditionStr)
+	if matchConditionStr == "any" || matchConditionStr == "all "{
+		logger.Println("valid")
+		valid = true
+	}
+	return valid
+}
 func updateProtocolPolicyTable(protoType int, name string, op int) {
 	logger.Printf("updateProtocolPolicyTable for protocol %d policy name %s op %d\n", protoType, name, op)
     var i int
@@ -98,7 +148,12 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 	   logger.Println("Defining a new policy statement with name ", cfg.Name)
 	   var newPolicyStmt PolicyStmt
 	   newPolicyStmt.name = cfg.Name
-	   newPolicyStmt.matchConditions = "any"	//temporary should be coming from cfg
+	   if !validMatchConditions(cfg.MatchConditions) {
+	      logger.Println("Invalid match conditions - try any/all")
+		  err = errors.New("Invalid match conditions - try any/all")	
+		  return val, err
+	   }
+	   newPolicyStmt.matchConditions = cfg.MatchConditions
 	   newPolicyStmt.importPolicy = cfg.Import
 	   newPolicyStmt.exportPolicy = cfg.Export
 	   if len(cfg.Conditions) > 0 {
@@ -150,6 +205,7 @@ func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDe
           logger.Println("local DB slice index for this policy stmt is ", policyStmtInfo.localDBSliceIdx)
 		  localPolicyStmtDB[policyStmtInfo.localDBSliceIdx].isValid = false		
 	   }
+	   PolicyEngineTraverseAndReverse(policyStmtInfo)
 	   logger.Println("Deleting policy statement with name ", cfg.Name)
 		if ok := PolicyDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
 			logger.Println(" return value not ok for delete PolicyDB")
@@ -209,6 +265,8 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtState( fromIndex ribd.In
 			nextNode.Actions = prefixNode.actions
 	        nextNode.Import = prefixNode.importPolicy
 	        nextNode.Export = prefixNode.exportPolicy
+			nextNode.HitCounter = ribd.Int(prefixNode.hitCounter)
+			nextNode.IpPrefixList = prefixNode.routeList
 			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
 			if(len(returnNodes) == 0){
 				returnNodes = make([]*ribd.PolicyDefinitionStmtState, 0)

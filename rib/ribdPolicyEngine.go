@@ -24,26 +24,98 @@ func policyEngineActionAcceptRoute(route ribd.Routes, params interface{}) {
 		return
 	}
 }
-func policyEngineActionRedistribute(route ribd.Routes, targetProtocol int, params interface {}) {
+func policyEngineActionRedistribute(route ribd.Routes, redistributeActionInfo RedistributeActionInfo, params interface {}) {
 	logger.Println("policyEngineActionRedistribute")
 	//Send a event based on target protocol
     RouteInfo := params.(RouteParams) 
+	if ((RouteInfo.createType != Invalid || RouteInfo.deleteType != Invalid ) && redistributeActionInfo.redistribute == false) {
+		logger.Println("Don't redistribute action set for a route create/delete, return")
+		return
+	}
 	var evt int
-    switch targetProtocol {
-      case ribdCommonDefs.BGP:
-        logger.Println("Redistribute to BGP")
-		if RouteInfo.createType != Invalid {
-			logger.Println("Create type not invalid")
+	if RouteInfo.createType != Invalid {
+		logger.Println("Create type not invalid")
+		evt = ribdCommonDefs.NOTIFY_ROUTE_CREATED
+	} else if RouteInfo.deleteType != Invalid {
+		logger.Println("Delete type not invalid")
+		evt = ribdCommonDefs.NOTIFY_ROUTE_DELETED
+	} else {
+		logger.Println("Create/Delete invalid, redistributeAction set to ", redistributeActionInfo.redistribute)
+		if redistributeActionInfo.redistribute == true {
+			logger.Println("evt = NOTIFY_ROUTE_CREATED")
 			evt = ribdCommonDefs.NOTIFY_ROUTE_CREATED
-		} else if RouteInfo.deleteType != Invalid {
-			logger.Println("Delete type not invalid")
+		} else
+		{
+			logger.Println("evt = NOTIFY_ROUTE_DELETED")
 			evt = ribdCommonDefs.NOTIFY_ROUTE_DELETED
 		}
+	}
+    switch redistributeActionInfo.redistributeTargetProtocol {
+      case ribdCommonDefs.BGP:
+        logger.Println("Redistribute to BGP")
         RouteNotificationSend(RIBD_BGPD_PUB, route, evt)
         break
       default:
         logger.Println("Unknown target protocol")	
     }
+}
+func policyEngineActionUndoRedistribute(route ribd.Routes, redistributeActionInfo RedistributeActionInfo, params interface {}) {
+	logger.Println("policyEngineActionUndoRedistribute")
+	//Send a event based on target protocol
+	var evt int
+	logger.Println("redistributeAction set to ", redistributeActionInfo.redistribute)
+	if redistributeActionInfo.redistribute == true {
+	   logger.Println("evt = NOTIFY_ROUTE_DELETED")
+	   evt = ribdCommonDefs.NOTIFY_ROUTE_DELETED
+	} else {
+		logger.Println("evt = NOTIFY_ROUTE_CREATED")
+		evt = ribdCommonDefs.NOTIFY_ROUTE_CREATED
+	}
+    switch redistributeActionInfo.redistributeTargetProtocol {
+      case ribdCommonDefs.BGP:
+        logger.Println("Redistribute to BGP")
+        RouteNotificationSend(RIBD_BGPD_PUB, route, evt)
+        break
+      default:
+        logger.Println("Unknown target protocol")	
+    }
+}
+
+func policyEngineUndoActions(route ribd.Routes, policyStmt PolicyStmt, params interface{}) {
+	logger.Println("policyEngineUndoActions")
+	if policyStmt.actions == nil {
+		logger.Println("No actions")
+		return
+	}
+	var i int
+	for i=0;i<len(policyStmt.actions);i++ {
+	  logger.Printf("Find policy action number %d name %s in the action database\n", i, policyStmt.actions[i])
+	  actionItem := PolicyActionsDB.Get(patriciaDB.Prefix(policyStmt.actions[i]))
+	  if actionItem == nil {
+	     logger.Println("Did not find action ", policyStmt.actions[i], " in the action database")	
+		 continue
+	  }
+	  action := actionItem.(PolicyAction)
+	  logger.Printf("policy action number %d type %d\n", i, action.actionType)
+		switch action.actionType {
+		   case ribdCommonDefs.PolicyActionTypeRouteDisposition:
+		      logger.Println("PolicyActionTypeRouteDisposition action to be applied")
+			  logger.Println("RouteDisposition action = ", action.actionInfo)
+			  if action.actionInfo.(string) == "Accept" {
+                 logger.Println("Accept action - undoing it by deleting")
+				 policyEngineActionRejectRoute(route, params)
+				 return
+			  }
+			  break
+		   case ribdCommonDefs.PolicyActionTypeRouteRedistribute:
+		      logger.Println("PolicyActionTypeRouteRedistribute action to be applied")
+			  policyEngineActionUndoRedistribute(route, action.actionInfo.(RedistributeActionInfo), params)
+			  break
+		   default:
+		      logger.Println("Unknown type of action")
+			  return
+		}
+	}
 }
 func policyEngineImplementActions(route ribd.Routes, policyStmt PolicyStmt, params interface {}) {
 	logger.Println("policyEngineImplementActions")
@@ -75,8 +147,7 @@ func policyEngineImplementActions(route ribd.Routes, policyStmt PolicyStmt, para
 			  break
 		   case ribdCommonDefs.PolicyActionTypeRouteRedistribute:
 		      logger.Println("PolicyActionTypeRouteRedistribute action to be applied")
-			  logger.Println("Redistribute target protocol = %d %s ", action.actionInfo, ReverseRouteProtoTypeMapDB[action.actionInfo.(int)])
-			  policyEngineActionRedistribute(route, action.actionInfo.(int), params)
+			  policyEngineActionRedistribute(route, action.actionInfo.(RedistributeActionInfo), params)
 			  break
 		   default:
 		      logger.Println("Unknown type of action")
@@ -143,8 +214,17 @@ func policyEngineApplyPolicy(route *ribd.Routes, policyStmt PolicyStmt, params i
 		logger.Println("Conditions do not match")
 		return
 	}
-	route.PolicyCounter++
 	policyEngineImplementActions(*route, policyStmt, params)
+    routeInfo := params.(RouteParams)
+	var op int
+	if routeInfo.deleteType != Invalid {
+		op = del
+	} else {
+		op = add
+	    route.PolicyHitCounter++
+	    updateRoutePolicyState(*route, op, policyStmt.name)
+	}
+	updatePolicyRouteMap(*route, policyStmt, op)
 }
 func policyEngineCheckPolicy(route *ribd.Routes, params interface {}) {
 	logger.Println("policyEngineCheckPolicy")
@@ -166,14 +246,58 @@ func policyEngineCheckPolicy(route *ribd.Routes, params interface {}) {
 func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 	logger.Println("PolicyEngineFilter")
 	var policyPath_Str string
+	idx :=0
+	var policyInfo interface{}
 //	policyEngineCheckPolicy(route, policyPath, funcName, params)
     routeInfo := params.(RouteParams)
 	logger.Println("Beginning createType = ", routeInfo.createType, " deleteType = ", routeInfo.deleteType)
-	if localPolicyStmtDB == nil {
+	for ;; {
+       if route.PolicyList != nil {
+		  if idx >= len(route.PolicyList) {
+			break
+		  }
+		  logger.Println("getting policy stmt ", idx, " from route.PolicyList")
+	      policyInfo = 	PolicyDB.Get(patriciaDB.Prefix(route.PolicyList[idx]))
+		  idx++
+	   } else if routeInfo.deleteType != Invalid {
+		  logger.Println("route.PolicyList empty and this is a delete operation for the route, so break")
+          break
+	   } else if localPolicyStmtDB == nil {
+		  logger.Println("localPolicyStmt nil")
+			//case when no policies have been applied to the route
+			//need to apply the default policy
+		   break	   
+		} else {
+            if idx >= len(localPolicyStmtDB) {
+				break
+			}		
+		    logger.Println("getting policy stmt ", idx, " from localPolicyStmtDB")
+            policyInfo = PolicyDB.Get(localPolicyStmtDB[idx].prefix)
+			idx++
+	   }
+	   if policyInfo == nil {
+	      logger.Println("Nil policy")
+		  continue
+	   }
+	   policyStmt := policyInfo.(PolicyStmt)
+	   if policyPath == ribdCommonDefs.PolicyPath_Import {
+	      policyPath_Str = "Import"
+	   } else {
+	        policyPath_Str = "Export"
+	   }
+	   if policyPath == ribdCommonDefs.PolicyPath_Import && policyStmt.importPolicy == false || 
+	      policyPath == ribdCommonDefs.PolicyPath_Export && policyStmt.exportPolicy == false {
+	         logger.Println("Cannot apply the policy ", policyStmt.name, " as ", policyPath_Str, " policy")
+			 continue
+	   }
+	   policyEngineApplyPolicy(&route, policyStmt, params)
+	}
+/*	if localPolicyStmtDB == nil {
 		logger.Println("No policies configured, so accept the route")
         //should be replaced by default import policy action
 	} else {
 		for idx :=0;idx < len(localPolicyStmtDB);idx++ {
+		//for idx :=0;idx < len(policList);idx++ {
 			if localPolicyStmtDB[idx].isValid == false {
 				continue
 			}
@@ -195,21 +319,27 @@ func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 			}
 		    policyEngineApplyPolicy(&route, policyStmt, params)
         }
-	}
-	logger.Println("After policyEngineApply createType = ", routeInfo.createType, " deleteType = ", routeInfo.deleteType)
-	if route.PolicyCounter == 0{
+	}*/
+	logger.Println("After policyEngineApply policyCounter = ", route.PolicyHitCounter)
+	if route.PolicyHitCounter == 0{
 		logger.Println("Need to apply default policy, policyPath = ", policyPath, "policyPath_Str= ", policyPath_Str)
 		if policyPath == ribdCommonDefs.PolicyPath_Import {
 		   logger.Println("Applying default import policy")
+		    //TO-DO: Need to add the default policy to policyList of the route
            policyEngineActionAcceptRoute(route , params ) 
 		} else if policyPath == ribdCommonDefs.PolicyPath_Export {
 			logger.Println("Applying default export policy")
 		}
 	}
+	var op int
+	if routeInfo.deleteType != Invalid {
+		op = delAll		//wipe out the policyList
+	    updateRoutePolicyState(route, op, "")
+	} 
 }
 
 func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, handle patriciaDB.Item) (err error) {
-   logger.Println("policyEngpolicyEngineApplyForRouteineCheckAndApply")	
+   logger.Println("policyEngineApplyForRoute %v", prefix)	
    policy := handle.(PolicyStmt)
    rmapInfoRecordList := item.(RouteInfoRecordList)
    if len(rmapInfoRecordList.routeInfoList) == 0 {
@@ -219,7 +349,7 @@ func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, h
    logger.Println("Selected route index = ", rmapInfoRecordList.selectedRouteIdx)
    selectedRouteInfoRecord := rmapInfoRecordList.routeInfoList[rmapInfoRecordList.selectedRouteIdx]
    policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol)}
-   params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:FIBAndRIB}
+   params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
    policyEngineApplyPolicy(&policyRoute, policy, params)
    return err
 }
@@ -227,7 +357,23 @@ func PolicyEngineTraverseAndApply(policy PolicyStmt) {
 	logger.Println("PolicyEngineTraverseAndApply - traverse routing table and apply policy ", policy.name)
     RouteInfoMap.VisitAndUpdate(policyEngineApplyForRoute, policy)
 }
-/*func PolicyEngineTraverseAndReverse(policy PolicyStmt) {
+func PolicyEngineTraverseAndReverse(policy PolicyStmt) {
 	logger.Println("PolicyEngineTraverseAndReverse - traverse routing table and inverse policy actions", policy.name)
-    RouteInfoMap.VisitAndUpdate(policyEngineCheck, policy)
-}*/
+	if policy.routeList == nil {
+		logger.Println("No route affected by this policy, so nothing to do")
+		return
+	}
+	for idx:=0;idx<len(policy.routeList);idx++ {
+		routeInfoRecordListItem := RouteInfoMap.Get(patriciaDB.Prefix(policy.routeList[idx]))
+		if routeInfoRecordListItem == nil {
+			logger.Println("routeInfoRecordListItem nil for prefix ", policy.routeList[idx])
+			continue
+		}
+		routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
+        selectedRouteInfoRecord := routeInfoRecordList.routeInfoList[routeInfoRecordList.selectedRouteIdx]
+        policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol)}
+        params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
+		policyEngineUndoActions(policyRoute, policy, params)
+		deleteRoutePolicyState(patriciaDB.Prefix(policy.routeList[idx]), policy.name)
+	}
+}
