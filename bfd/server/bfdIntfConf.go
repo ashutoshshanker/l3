@@ -214,7 +214,7 @@ func (server *BFDServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 }
 */
 
-func (server *BFDServer) processIntfConfig(ifConf config.InterfaceConf) {
+func (server *BFDServer) processIntfConfig(ifConf config.IntfConfig) {
 	/*
 		intfConfKey := IntfConfKey{
 			IPAddr:  ifConf.IfIpAddress,

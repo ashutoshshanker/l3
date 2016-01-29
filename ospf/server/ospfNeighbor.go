@@ -57,6 +57,11 @@ type ospfNeighborConfMsg struct {
 	nbrMsgType     NbrMsgType
 }
 
+type ospfNeighborDBDMsg struct {
+	ospfNbrConfKey NeighborConfKey
+	ospfNbrDBDData ospfDatabaseDescriptionData
+}
+
 func (server *OSPFServer) UpdateNeighborConf() {
 	for {
 		select {
@@ -120,6 +125,9 @@ func (server *OSPFServer) InitNeighborStateMachine() {
 func (server *OSPFServer) ProcessHelloPktEvent() {
 	for {
 		select {
+		case nbrDbPkt := <-(server.neighborDBDEventCh):
+			server.logger.Info(fmt.Sprintln("NBREVENT: DBD received  ", nbrDbPkt))
+
 		case nbrData := <-(server.neighborHelloEventCh):
 			server.logger.Info(fmt.Sprintln("NBREVENT: Received hellopkt event for nbrId ", nbrData.RouterId))
 			var nbrConf OspfNeighborEntry
@@ -258,7 +266,7 @@ func (server *OSPFServer) refreshNeighborSlice() {
 			//server.neighborKeyToIdxMap = make(map[uint32]uint32)
 			idx := 0
 			for nbrKey, _ := range server.NeighborConfigMap {
-				server.neighborBulkSlice[idx] = nbrKey
+				server.neighborBulkSlice = append(server.neighborBulkSlice, nbrKey)
 				//server.neighborKeyToIdxMap[nbrKey] = uint32(idx)
 				idx++
 			}

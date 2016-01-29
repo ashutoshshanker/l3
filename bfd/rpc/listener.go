@@ -14,7 +14,7 @@ type BFDHandler struct {
 	logger *syslog.Writer
 }
 
-func NewBFDHandler(server *server.BFDServer, logger *syslog.Writer) *BFDHandler {
+func NewBFDHandler(logger *syslog.Writer, server *server.BFDServer) *BFDHandler {
 	h := new(BFDHandler)
 	h.server = server
 	h.logger = logger

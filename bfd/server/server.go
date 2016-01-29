@@ -41,8 +41,8 @@ type BFDServer struct {
 	logger         *syslog.Writer
 	ribdClient     RibdClient
 	asicdClient    AsicdClient
-	GlobalConfigCh chan config.GlobalConf
-	IntfConfigCh   chan config.InterfaceConf
+	GlobalConfigCh chan config.GlobalConfig
+	IntfConfigCh   chan config.IntfConfig
 	/*
 		bfdGlobalConf       GlobalConf
 		portPropertyMap     map[int32]PortProperty
@@ -62,8 +62,8 @@ type BFDServer struct {
 func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer := &BFDServer{}
 	bfdServer.logger = logger
-	bfdServer.GlobalConfigCh = make(chan config.GlobalConf)
-	bfdServer.IntfConfigCh = make(chan config.InterfaceConf)
+	bfdServer.GlobalConfigCh = make(chan config.GlobalConfig)
+	bfdServer.IntfConfigCh = make(chan config.IntfConfig)
 	/*
 		bfdServer.portPropertyMap = make(map[int32]PortProperty)
 		bfdServer.vlanPropertyMap = make(map[uint16]VlanProperty)
