@@ -732,7 +732,7 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 }
 */
 
-func isInLocalSubnet(ipaddr string) (ifName string, ret bool) {
+func isInLocalSubnet(ipaddr string) (ifName string, vlanId int, ifType int, ret bool) {
 	var flag bool = false
 	var ipv4IntfProp ipv4IntfProperty
 	var ipAddr string
@@ -745,7 +745,7 @@ func isInLocalSubnet(ipaddr string) (ifName string, ret bool) {
 		}
 		if ip.Equal(ipIn) {
 			// IP Address of local interface
-			return "", false
+			return "", 0, 0, false
 		}
 		net1 := ipIn.Mask(ipNet.Mask)
 		net2 := ip.Mask(ipNet.Mask)
@@ -756,25 +756,29 @@ func isInLocalSubnet(ipaddr string) (ifName string, ret bool) {
 	}
 
 	if flag == false {
-		return "", false
+		return "", 0, 0, false
 	}
 
 	if ipv4IntfProp.ifType == commonDefs.L2RefTypeVlan { // VLAN
 		ent, exist := vlanPropertyMap[ipv4IntfProp.ifIdx]
 		if !exist {
-			return "", false
+			return "", 0, 0, false
 		}
 		ifName = ent.vlanName
+                vlanId = ipv4IntfProp.ifIdx
+                ifType = commonDefs.L2RefTypeVlan
 	} else if ipv4IntfProp.ifType == commonDefs.L2RefTypePort { //PHY
 		ent, exist := portConfigMap[ipv4IntfProp.ifIdx]
 		if !exist {
-			return "", false
+			return "", 0, 0, false
 		}
 		ifName = ent.Name
+                vlanId = ipv4IntfProp.ifIdx
+                ifType = commonDefs.L2RefTypePort
 	} else {
-		return "", false
+		return "", 0, 0, false
 	}
-	return ifName, true
+	return ifName, vlanId, ifType, true
 }
 
 func createAndSendArpReuqest(targetIP string, outgoingIfName string, vlan_id arpd.Int, ifType arpd.Int) {

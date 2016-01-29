@@ -184,34 +184,23 @@ func processIpPackets(packet gopacket.Packet, port_id int, myMac net.HardwareAdd
                 //dstip := net.ParseIP(dst_ip_addr)
                 src_ip_addr := src_ip.String()
 
-                port_map_ent, exists := port_property_map[port_id]
-                var vlan_id arpd.Int
-                var ifType arpd.Int
-                if exists {
-                        vlan_id = arpd.Int(port_map_ent.untagged_vlanid)
-                        ifType = arpd.Int(commonDefs.L2RefTypeVlan)
-                } else {
-                        // vlan_id = 1
-                        return
-                }
-
                 _, exist := arp_cache.arpMap[dst_ip_addr]
                 if !exist {
-                        ifName, ret := isInLocalSubnet(dst_ip_addr)
+                        ifName, vlan_id, ifType, ret := isInLocalSubnet(dst_ip_addr)
                         if ret == false {
                                 return
                         }
-                        logWriter.Info(fmt.Sprintln("Sending ARP for dst_ip:", dst_ip_addr, "Outgoing Interface:", ifName))
-                        go createAndSendArpReuqest(dst_ip_addr, ifName, vlan_id, ifType)
+                        logWriter.Info(fmt.Sprintln("Sending ARP for dst_ip:", dst_ip_addr, "Outgoing Interface:", ifName, "vlanId:", vlan_id, "ifType:", ifType))
+                        go createAndSendArpReuqest(dst_ip_addr, ifName, arpd.Int(vlan_id), arpd.Int(ifType))
                 }
                 _, exist = arp_cache.arpMap[src_ip_addr]
                 if !exist {
-                        ifName, ret := isInLocalSubnet(src_ip_addr)
+                        ifName, vlan_id, ifType, ret := isInLocalSubnet(src_ip_addr)
                         if ret == false {
                                 return
                         }
-                        logWriter.Info(fmt.Sprintln("Sending ARP for src_ip:", src_ip_addr, "Outgoing Interface:", ifName))
-                        go createAndSendArpReuqest(src_ip_addr, ifName, vlan_id, ifType)
+                        logWriter.Info(fmt.Sprintln("Sending ARP for src_ip:", src_ip_addr, "Outgoing Interface:", ifName, "vlanId:", vlan_id, "ifType:", ifType))
+                        go createAndSendArpReuqest(src_ip_addr, ifName, arpd.Int(vlan_id), arpd.Int(ifType))
                 }
         }
 }
