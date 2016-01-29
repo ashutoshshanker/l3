@@ -305,9 +305,9 @@ func (msg *BGPCapabilityBase) GetCode() BGPCapabilityType {
 
 type BGPCapMPExt struct {
 	BGPCapabilityBase
-	AFI      uint16
+	AFI      AFI
 	Reserved uint8
-	SAFI     uint8
+	SAFI     SAFI
 }
 
 func (mp *BGPCapMPExt) Encode() ([]byte, error) {
@@ -316,9 +316,9 @@ func (mp *BGPCapMPExt) Encode() ([]byte, error) {
 		return nil, err
 	}
 
-	binary.BigEndian.PutUint16(pkt[2:], mp.AFI)
+	binary.BigEndian.PutUint16(pkt[2:], uint16(mp.AFI))
 	pkt[4] = 0
-	pkt[5] = mp.SAFI
+	pkt[5] = uint8(mp.SAFI)
 	return pkt, nil
 }
 
@@ -328,13 +328,13 @@ func (mp *BGPCapMPExt) Decode(pkt []byte) error {
 		return err
 	}
 
-	mp.AFI = binary.BigEndian.Uint16(pkt[2:])
+	mp.AFI = AFI(binary.BigEndian.Uint16(pkt[2:]))
 	mp.Reserved = 0
-	mp.SAFI = pkt[5]
+	mp.SAFI = SAFI(pkt[5])
 	return nil
 }
 
-func NewBGPCapMPExt(afi uint16, safi uint8) *BGPCapMPExt {
+func NewBGPCapMPExt(afi AFI, safi SAFI) *BGPCapMPExt {
 	return &BGPCapMPExt{
 		BGPCapabilityBase: BGPCapabilityBase{
 			Type: BGPCapTypeMPExt,
@@ -507,7 +507,7 @@ func (msg *BGPOptParamCapability) Decode(pkt []byte) error {
 func NewBGPOptParamCapability(capabilities []BGPCapability) *BGPOptParamCapability {
 	paramsLen := uint8(0)
 	for _, capability := range capabilities {
-		paramsLen = capability.TotalLen()
+		paramsLen += capability.TotalLen()
 	}
 
 	return &BGPOptParamCapability{
@@ -1635,8 +1635,8 @@ func NewBGPPathAttrClusterList() *BGPPathAttrClusterList {
 
 type BGPPathAttrMPReachNLRI struct {
 	BGPPathAttrBase
-	AFI      uint16
-	SAFI     uint8
+	AFI      AFI
+	SAFI     SAFI
 	Length   uint8
 	NextHop  []byte
 	Reserved byte
@@ -1663,9 +1663,9 @@ func (r *BGPPathAttrMPReachNLRI) Encode() ([]byte, error) {
 	}
 	idx := int(r.BGPPathAttrBase.BGPPathAttrLen)
 
-	binary.BigEndian.PutUint16(pkt[idx:idx+2], r.AFI)
+	binary.BigEndian.PutUint16(pkt[idx:idx+2], uint16(r.AFI))
 	idx += 2
-	pkt[idx] = r.SAFI
+	pkt[idx] = uint8(r.SAFI)
 	idx++
 
 	pkt[idx] = uint8(len(r.NextHop))
@@ -1689,8 +1689,8 @@ func (r *BGPPathAttrMPReachNLRI) Decode(pkt []byte, data interface{}) error {
 	}
 
 	idx := int(r.BGPPathAttrBase.BGPPathAttrLen)
-	r.AFI = binary.BigEndian.Uint16(pkt[idx : idx+2])
-	r.SAFI = pkt[idx+2]
+	r.AFI = AFI(binary.BigEndian.Uint16(pkt[idx : idx+2]))
+	r.SAFI = SAFI(pkt[idx+2])
 	r.Length = pkt[idx+3]
 	idx += 3
 

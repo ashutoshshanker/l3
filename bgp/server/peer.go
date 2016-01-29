@@ -19,6 +19,7 @@ type Peer struct {
 	fsmManager *FSMManager
 	BGPId      net.IP
 	ASSize     uint8
+	afiSafiMap map[uint32]bool
 }
 
 func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.NeighborConfig) *Peer {
@@ -30,7 +31,8 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 			NeighborAddress: peerConf.NeighborAddress,
 			Config:          peerConf,
 		},
-		BGPId: net.IP{},
+		BGPId:      net.IP{},
+		afiSafiMap: make(map[uint32]bool),
 	}
 
 	peer.Neighbor.State = config.NeighborState{
@@ -52,6 +54,7 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 		peer.Neighbor.State.PeerType = config.PeerTypeExternal
 	}
 
+	peer.afiSafiMap, _ = packet.GetProtocolFromConfig(&peer.Neighbor.AfiSafis)
 	peer.fsmManager = NewFSMManager(&peer, &globalConf, &peerConf)
 	return &peer
 }

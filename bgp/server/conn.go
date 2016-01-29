@@ -117,6 +117,10 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 				buf = make([]byte, 0)
 			}
 
+			if header.Type != packet.BGPMsgTypeKeepAlive {
+				p.logger.Info(fmt.Sprintf("Received BGP packet %x", buf))
+			}
+
 			msg := &packet.BGPMessage{}
 			err = msg.Decode(&header, buf, p.peerAttrs)
 			bgpPktInfo := packet.NewBGPPktInfo(msg, nil)
