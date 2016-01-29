@@ -100,6 +100,48 @@ type Transport struct {
 	State  TransportState
 }
 
+type PrefixLimit struct {
+	MaxPrefixes          uint32
+	ShutdownThresholdPct uint8
+	RestartTimer         float64
+}
+
+type IPUnicast struct {
+	PrefixLimit      PrefixLimit
+	SendDefaultRoute bool
+}
+
+type IPLabelledUnicast struct {
+	PrefixLimit PrefixLimit
+}
+
+type L2L3VPN struct {
+	PrefixLimit PrefixLimit
+}
+
+type UseMultiplePaths struct {
+	Enabled             bool
+	EBGPAllowMultipleAS bool
+	EBGPMaximumPaths    uint32
+	IBGPMaximumPaths    uint32
+}
+
+type AfiSafiConfig struct {
+	AfiSafiName         string
+	AfiSafiEnabled      bool
+	IPv4Unicast         IPUnicast
+	IPv6Unicast         IPUnicast
+	IPv4LabelledUnicast IPLabelledUnicast
+	IPv6LabelledUnicast IPLabelledUnicast
+	L3VPNIPv4Unicast    L2L3VPN
+	L3VPNIPv6Unicast    L2L3VPN
+	L3VPNIPv4Multicast  L2L3VPN
+	L3VPNIPv6Multicast  L2L3VPN
+	L2VPNVPLS           L2L3VPN
+	L2VPNEVPN           L2L3VPN
+	UseMultiplePaths    UseMultiplePaths
+}
+
 type PeerCommand struct {
 	IP      net.IP
 	Command int
@@ -110,6 +152,7 @@ type Neighbor struct {
 	Config          NeighborConfig
 	State           NeighborState
 	Transport       Transport
+	AfiSafis        []AfiSafiConfig
 }
 
 type Neighbors struct {
