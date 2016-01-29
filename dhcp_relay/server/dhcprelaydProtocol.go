@@ -397,7 +397,7 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.
 	*/
 	// @FIXME: jgheewala HACK for all server ips...
 
-	serverIpPort := "11.11.1.1" + ":" + strconv.Itoa(DHCP_SERVER_PORT)
+	serverIpPort := "40.0.1.2" + ":" + strconv.Itoa(DHCP_SERVER_PORT)
 	logger.Info("DRA: server info is " + serverIpPort)
 	serverAddr, err := net.ResolveUDPAddr("udp", serverIpPort)
 	if err != nil {
@@ -407,7 +407,7 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.
 	outPacket := DhcpRelayAgentCreateNewPacket(Request, inReq)
 	// @FIXME: jgheewala HACK for agent ip address
 	// ip address should be interface ip address
-	outPacket.SetGIAddr(net.IP{33, 1, 10, 1})
+	outPacket.SetGIAddr(net.IP{20, 0, 1, 1})
 	outPacket.AddDhcpOptions(OptionDHCPMessageType, []byte{byte(mt)})
 
 	// Add Relay Agent Info....
