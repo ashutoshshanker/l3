@@ -63,6 +63,8 @@ type OSPFServer struct {
 	nbrFSMCtrlCh         chan bool
 	neighborSliceRefCh   *time.Ticker
 	neighborBulkSlice    []uint32
+	neighborDBDEventCh   chan ospfNeighborDBDMsg
+	//neighborDBDEventCh   chan IntfToNeighDbdMsg
 
 	AreaStateTimer           *time.Timer
 	AreaStateMutex           sync.RWMutex
@@ -105,6 +107,7 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.IntfSliceRefreshDoneCh = make(chan bool)
 	ospfServer.nbrFSMCtrlCh = make(chan bool)
 	ospfServer.RefreshDuration = time.Duration(10) * time.Minute
+	ospfServer.neighborDBDEventCh = make(chan ospfNeighborDBDMsg)
 
 	/*
 	   ospfServer.ribSubSocketCh = make(chan []byte)
