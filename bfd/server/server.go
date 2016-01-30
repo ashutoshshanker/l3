@@ -13,6 +13,7 @@ import (
 	"net"
 	"ribd"
 	"strconv"
+	"time"
 	"utils/ipcutils"
 )
 
@@ -45,12 +46,17 @@ type BfdInterface struct {
 	property IpIntfProperty
 }
 
+type BfdSession struct {
+	state config.SessionState
+	timer *time.Ticker
+}
+
 type BfdGlobal struct {
 	Enabled              bool
 	NumInterfaces        uint32
 	Interfaces           map[int32]BfdInterface
 	NumSessions          uint32
-	Sessions             map[int32]config.SessionState
+	Sessions             map[int32]BfdSession
 	NumUpSessions        uint32
 	NumDownSessions      uint32
 	NumAdminDownSessions uint32
@@ -84,7 +90,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]BfdInterface)
 	bfdServer.bfdGlobal.NumSessions = 0
-	bfdServer.bfdGlobal.Sessions = make(map[int32]config.SessionState)
+	bfdServer.bfdGlobal.Sessions = make(map[int32]BfdSession)
 	bfdServer.bfdGlobal.NumUpSessions = 0
 	bfdServer.bfdGlobal.NumDownSessions = 0
 	bfdServer.bfdGlobal.NumAdminDownSessions = 0

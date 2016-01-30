@@ -41,26 +41,18 @@ type SessionState struct {
 	InterfaceId           int32
 	ReqisteredProtocols   string
 	SessionState          protocol.BfdSessionState
-	RemoteSessionState    int
+	RemoteSessionState    protocol.BfdSessionState
 	LocalDicriminator     uint32
 	RemoteDiscriminator   uint32
-	LocalDiagType         int
+	LocalDiagType         protocol.BfdDiagnostic
 	DesiredMinTxInterval  int
 	RequiredMinRxInterval int
 	RemoteMinRxInterval   int
 	DetectionMultiplier   uint32
 	DemandMode            bool
 	RemoteDemandMode      bool
+	AuthType              protocol.AuthenticationType
 	AuthSeqKnown          bool
-	AuthType              uint32
 	ReceivedAuthSeq       uint32
 	SentAuthSeq           uint32
-}
-
-func createBfdInterface() error {
-	return nil
-}
-
-func createBfdSession() error {
-	return nil
 }
