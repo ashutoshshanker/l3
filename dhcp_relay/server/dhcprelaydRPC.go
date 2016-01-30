@@ -3,6 +3,7 @@ package relayServer
 import (
 	"dhcprelayd"
 	"fmt"
+	"net"
 	"strconv"
 )
 
@@ -72,13 +73,43 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	// Copy over configuration into globalInfo
 	//gblEntry := dhcprelayGblInfo[config.IfIndex]
 	ifNum, _ := strconv.Atoi(config.IfIndex) //portInfoMap[config.IfIndex]
-	gblEntry := dhcprelayGblInfo[ifNum]
+	var err error
+	var linuxInterface *net.Interface
+	//@TODO: hack for if_index
+	if ifNum == 33554441 {
+		logger.Info(fmt.Sprintln("DRA: jgheewal:::: hack for ifNUm", ifNum))
+		linuxInterface, err = net.InterfaceByName("SVI9")
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
+		} else {
+			//copy correct if_id
+			ifNum = linuxInterface.Index
+			logger.Info(fmt.Sprintln("DRA: jgheewal:::: Updated for ifNUm", ifNum))
+		}
+
+	} else if ifNum == 33554442 {
+		logger.Info(fmt.Sprintln("DRA: jgheewal:::: hack for ifNUm", ifNum))
+		linuxInterface, err = net.InterfaceByName("SVI10")
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
+		} else {
+			//copy correct if_id
+			ifNum = linuxInterface.Index
+			logger.Info(fmt.Sprintln("DRA: jgheewal:::: Updated for ifNUm", ifNum))
+		}
+	}
+	gblEntry, ok := dhcprelayGblInfo[ifNum]
+	if !ok {
+		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum, " doesn't exist.."))
+		return ok, nil
+	}
 	// Acquire lock for updating configuration.
 	gblEntry.dhcprelayConfigMutex.RLock()
 	gblEntry.IntfConfig.IpSubnet = config.IpSubnet
 	gblEntry.IntfConfig.Netmask = config.Netmask
 	gblEntry.IntfConfig.AgentSubType = config.AgentSubType
 	gblEntry.IntfConfig.Enable = config.Enable
+	gblEntry.IntfConfig.ServerIp = config.ServerIp
 	dhcprelayGblInfo[ifNum] = gblEntry
 	// Release lock after updation is done
 	gblEntry.dhcprelayConfigMutex.RUnlock()
@@ -95,7 +126,7 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 		//	&gblEntry)
 		DhcpRelayAgentCreateClientServerConn()
 		// Stats information
-		StateDebugInfo = make(map[MacAddrServerIpKey]DhcpRelayAgentStateInfo, 150)
+		StateDebugInfo = make(map[string]DhcpRelayAgentStateInfo, 150)
 	}
 	return true, nil
 }
