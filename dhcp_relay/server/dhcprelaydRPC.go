@@ -3,6 +3,7 @@ package relayServer
 import (
 	"dhcprelayd"
 	"fmt"
+	"strconv"
 )
 
 /*
@@ -19,10 +20,9 @@ type DhcpRelayGlobalConfig struct {
  * This DS will be used while adding/deleting Relay Agent.
  */
 type DhcpRelayIntfConfig struct {
-	IpSubnet string `SNAPROUTE: "KEY"`
-	Netmask  string `SNAPROUTE: "KEY"`
-	//@TODO: Need to check if_index type
-	IfIndex string `SNAPROUTE: "KEY"`
+	IpSubnet string `SNAPROUTE: "KEY"` // Ip Address of the interface
+	Netmask  string `SNAPROUTE: "KEY"` // NetMaks of the interface
+	IfIndex  string `SNAPROUTE: "KEY"` // Unique If Id of the interface
 	// Use below field for agent sub-type
 	AgentSubType int32
 	Enable       bool
@@ -71,7 +71,7 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	logger.Info("DRA: ServerIp:" + config.ServerIp)
 	// Copy over configuration into globalInfo
 	//gblEntry := dhcprelayGblInfo[config.IfIndex]
-	ifNum := portInfoMap[config.IfIndex]
+	ifNum, _ := strconv.Atoi(config.IfIndex) //portInfoMap[config.IfIndex]
 	gblEntry := dhcprelayGblInfo[ifNum]
 	// Acquire lock for updating configuration.
 	gblEntry.dhcprelayConfigMutex.RLock()
@@ -79,7 +79,6 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	gblEntry.IntfConfig.Netmask = config.Netmask
 	gblEntry.IntfConfig.AgentSubType = config.AgentSubType
 	gblEntry.IntfConfig.Enable = config.Enable
-	//dhcprelayGblInfo[config.IfIndex] = gblEntry
 	dhcprelayGblInfo[ifNum] = gblEntry
 	// Release lock after updation is done
 	gblEntry.dhcprelayConfigMutex.RUnlock()

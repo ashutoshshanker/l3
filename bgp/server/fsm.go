@@ -790,6 +790,7 @@ type FSM struct {
 	delayOpenTime  uint16
 	delayOpenTimer *time.Timer
 
+	afiSafiMap map[uint32]bool
 	pktTxCh    chan *packet.BGPMessage
 	pktRxCh    chan *packet.BGPPktInfo
 	eventRxCh  chan BGPFSMEvent
@@ -822,6 +823,7 @@ func NewFSM(fsmManager *FSMManager, id uint8, peer *Peer) *FSM {
 		passiveTcpEstCh:  make(chan bool),
 		dampPeerOscl:     false,
 		idleHoldTime:     BGPIdleHoldTimeDefault,
+		afiSafiMap:       make(map[uint32]bool),
 		cleanup:          false,
 	}
 
@@ -1062,11 +1064,28 @@ func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 		fsm.peerType = config.PeerTypeExternal
 	}
 
+	afiSafiMap := packet.GetProtocolFromOpenMsg(body)
+	for protoFamily, _ := range afiSafiMap {
+		if fsm.peer.afiSafiMap[protoFamily] {
+			fsm.afiSafiMap[protoFamily] = true
+		}
+	}
+
 	fsm.Manager.receivedBGPOpenMessage(fsm.id, fsm.peerConn.dir, body)
 }
 
 func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "ProcessUpdateMessage: send message to server"))
+	updateMsg := pkt.Body.(*packet.BGPUpdate)
+	for _, pa := range updateMsg.PathAttributes {
+		if mpReachNLRI, ok := pa.(*packet.BGPPathAttrMPReachNLRI); ok {
+			protoFamily := packet.GetProtocolFamily(mpReachNLRI.AFI, mpReachNLRI.SAFI)
+			if !fsm.afiSafiMap[protoFamily] {
+				fsm.logger.Warning(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress,
+					"Received MP_REACH_NLRI path attr for AFI", mpReachNLRI.AFI, "SAFI", mpReachNLRI.SAFI))
+			}
+		}
+	}
 	atomic.AddUint32(&fsm.peer.Neighbor.State.Queues.Input, 1)
 	go func() {
 		fsm.Manager.Peer.Server.BGPPktSrc <- packet.NewBGPPktSrc(fsm.Manager.Peer.Neighbor.NeighborAddress.String(), pkt)
@@ -1087,7 +1106,8 @@ func (fsm *FSM) sendUpdateMessage(bgpMsg *packet.BGPMessage) {
 }
 
 func (fsm *FSM) sendOpenMessage() {
-	optParams := packet.ConstructOptParams(uint32(fsm.pConf.LocalAS))
+	fsm.logger.Info(fmt.Sprintln("sendOpenMessage: send address family", fsm.peer.afiSafiMap))
+	optParams := packet.ConstructOptParams(uint32(fsm.pConf.LocalAS), fsm.peer.afiSafiMap)
 	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.LocalAS, uint16(fsm.holdTime), fsm.gConf.RouterId.To4().String(), optParams)
 	packet, _ := bgpOpenMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
@@ -1242,7 +1262,7 @@ func ConnectToPeer(fsm *FSM, seconds uint32, addr string, fsmConnCh chan net.Con
 			return
 
 		case err := <-errCh:
-			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "ConnectToPeer: Failed to connect to peer", addr))
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "ConnectToPeer: Failed to connect to peer with error:", addr, err))
 			if stopConn {
 				return
 			}
@@ -1251,7 +1271,6 @@ func ConnectToPeer(fsm *FSM, seconds uint32, addr string, fsmConnCh chan net.Con
 				fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Connect to peer timed out, retrying..."))
 				go Connect(fsm, 3, addr, connCh, errCh)
 			} else {
-				fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Connect to peer failed with error:", err))
 				fsmConnErrCh <- err
 			}
 

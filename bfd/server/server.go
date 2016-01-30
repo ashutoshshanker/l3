@@ -1,15 +1,16 @@
 package server
 
 import (
-	//"asicd/pluginManager/pluginCommon"
+	"asicd/pluginManager/pluginCommon"
 	"asicdServices"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	//nanomsg "github.com/op/go-nanomsg"
+	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
 	"l3/bfd/config"
 	"log/syslog"
+	"net"
 	"ribd"
 	"strconv"
 	"utils/ipcutils"
@@ -32,49 +33,61 @@ type RibdClient struct {
 	ClientHdl *ribd.RouteServiceClient
 }
 
-type AsicdClient struct {
-	BfdClientBase
-	ClientHdl *asicdServices.ASICDServicesClient
+type IpIntfProperty struct {
+	IfName  string
+	IpAddr  net.IP
+	NetMask []byte
+	MacAddr net.HardwareAddr
+}
+
+type BfdInterface struct {
+	conf     config.IntfConfig
+	property IpIntfProperty
+}
+
+type BfdGlobal struct {
+	Enabled              bool
+	NumInterfaces        uint32
+	Interfaces           map[int32]BfdInterface
+	NumSessions          uint32
+	Sessions             map[int32]config.SessionState
+	NumUpSessions        uint32
+	NumDownSessions      uint32
+	NumAdminDownSessions uint32
 }
 
 type BFDServer struct {
-	logger         *syslog.Writer
-	ribdClient     RibdClient
-	asicdClient    AsicdClient
-	GlobalConfigCh chan config.GlobalConf
-	IntfConfigCh   chan config.InterfaceConf
-	/*
-		bfdGlobalConf       GlobalConf
-		portPropertyMap     map[int32]PortProperty
-		vlanPropertyMap     map[uint16]VlanProperty
-		IPIntfPropertyMap   map[string]IPIntfProperty
-		connRoutesTimer     *time.Timer
-		ribSubSocket        *nanomsg.SubSocket
-		ribSubSocketCh      chan []byte
-		ribSubSocketErrCh   chan error
-		asicdSubSocket      *nanomsg.SubSocket
-		asicdSubSocketCh    chan []byte
-		asicdSubSocketErrCh chan error
-		IntfConfMap         map[IntfConfKey]IntfConf
-	*/
+	logger              *syslog.Writer
+	ribdClient          RibdClient
+	asicdClient         AsicdClient
+	GlobalConfigCh      chan config.GlobalConfig
+	IntfConfigCh        chan config.IntfConfig
+	asicdSubSocket      *nanomsg.SubSocket
+	asicdSubSocketCh    chan []byte
+	asicdSubSocketErrCh chan error
+	portPropertyMap     map[int32]PortProperty
+	vlanPropertyMap     map[uint16]VlanProperty
+	IPIntfPropertyMap   map[string]IPIntfProperty
+	bfdGlobal           BfdGlobal
 }
 
 func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer := &BFDServer{}
 	bfdServer.logger = logger
-	bfdServer.GlobalConfigCh = make(chan config.GlobalConf)
-	bfdServer.IntfConfigCh = make(chan config.InterfaceConf)
-	/*
-		bfdServer.portPropertyMap = make(map[int32]PortProperty)
-		bfdServer.vlanPropertyMap = make(map[uint16]VlanProperty)
-		bfdServer.IntfConfMap = make(map[IntfConfKey]IntfConf)
-		bfdServer.ribSubSocketCh = make(chan []byte)
-		bfdServer.ribSubSocketErrCh = make(chan error)
-		bfdServer.connRoutesTimer = time.NewTimer(time.Duration(10) * time.Second)
-		bfdServer.connRoutesTimer.Stop()
-		bfdServer.asicdSubSocketCh = make(chan []byte)
-		bfdServer.asicdSubSocketErrCh = make(chan error)
-	*/
+	bfdServer.GlobalConfigCh = make(chan config.GlobalConfig)
+	bfdServer.IntfConfigCh = make(chan config.IntfConfig)
+	bfdServer.asicdSubSocketCh = make(chan []byte)
+	bfdServer.asicdSubSocketErrCh = make(chan error)
+	bfdServer.portPropertyMap = make(map[int32]PortProperty)
+	bfdServer.vlanPropertyMap = make(map[uint16]VlanProperty)
+	bfdServer.bfdGlobal.Enabled = false
+	bfdServer.bfdGlobal.NumInterfaces = 0
+	bfdServer.bfdGlobal.Interfaces = make(map[int32]BfdInterface)
+	bfdServer.bfdGlobal.NumSessions = 0
+	bfdServer.bfdGlobal.Sessions = make(map[int32]config.SessionState)
+	bfdServer.bfdGlobal.NumUpSessions = 0
+	bfdServer.bfdGlobal.NumDownSessions = 0
+	bfdServer.bfdGlobal.NumAdminDownSessions = 0
 	return bfdServer
 }
 
@@ -119,18 +132,17 @@ func (server *BFDServer) ConnectToClients(paramsFile string) {
 func (server *BFDServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Bfd Server"))
 	server.ConnectToClients(paramFile)
-	//server.BuildPortPropertyMap()
-	//server.initBfdGlobalConfDefault()
-	//server.logger.Info(fmt.Sprintln("GlobalConf:", server.bfdGlobalConf))
+	server.BuildPortPropertyMap()
+	server.initBfdGlobalConfDefault()
 	/*
 		server.logger.Info("Listen for RIBd updates")
 		server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
 		go createRIBSubscriber()
 		server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
-		server.logger.Info("Listen for ASICd updates")
-		server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
-		go server.createASICdSubscriber()
 	*/
+	server.logger.Info("Listen for ASICd updates")
+	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
+	go server.createASICdSubscriber()
 }
 
 func (server *BFDServer) StartServer(paramFile string) {
@@ -143,11 +155,9 @@ func (server *BFDServer) StartServer(paramFile string) {
 		case ifConf := <-server.IntfConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Intf Configuration", ifConf))
 			server.processIntfConfig(ifConf)
-			/*
-				case asicdrxBuf := <-server.asicdSubSocketCh:
-					server.processAsicdNotification(asicdrxBuf)
-				case <-server.asicdSubSocketErrCh:
-			*/
+		case asicdrxBuf := <-server.asicdSubSocketCh:
+			server.processAsicdNotification(asicdrxBuf)
+		case <-server.asicdSubSocketErrCh:
 			/*
 				case ribrxBuf := <-server.ribSubSocketCh:
 					server.processRibdNotification(ribdrxBuf)

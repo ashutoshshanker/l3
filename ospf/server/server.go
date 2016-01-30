@@ -41,6 +41,7 @@ type OSPFServer struct {
 	GlobalConfigCh    chan config.GlobalConf
 	AreaConfigCh      chan config.AreaConf
 	IntfConfigCh      chan config.InterfaceConf
+
 	/*
 	   connRoutesTimer         *time.Timer
 	   ribSubSocket        *nanomsg.SubSocket
@@ -52,6 +53,8 @@ type OSPFServer struct {
 	asicdSubSocketErrCh  chan error
 	AreaConfMap          map[AreaConfKey]AreaConf
 	IntfConfMap          map[IntfConfKey]IntfConf
+        IntfTxMap            map[IntfConfKey]IntfTxHandle
+        IntfRxMap            map[IntfConfKey]IntfRxHandle
 	NeighborConfigMap    map[uint32]OspfNeighborEntry
 	NeighborListMap      map[IntfConfKey]list.List
 	neighborConfMutex    sync.Mutex
@@ -59,21 +62,24 @@ type OSPFServer struct {
 	neighborFSMCtrlCh    chan bool
 	neighborConfCh       chan ospfNeighborConfMsg
 	neighborConfStopCh   chan bool
-
-	nbrFSMCtrlCh chan bool
+	nbrFSMCtrlCh         chan bool
+	neighborSliceRefCh   *time.Ticker
+	neighborBulkSlice    []uint32
+	neighborDBDEventCh   chan ospfNeighborDBDMsg
+	//neighborDBDEventCh   chan IntfToNeighDbdMsg
 
 	AreaStateTimer           *time.Timer
 	AreaStateMutex           sync.RWMutex
 	AreaStateMap             map[AreaConfKey]AreaState
 	AreaStateSlice           []AreaConfKey
 	AreaConfKeyToSliceIdxMap map[AreaConfKey]int
-        IntfKeySlice                    []IntfConfKey
-        IntfKeyToSliceIdxMap            map[IntfConfKey]bool
-        IntfStateTimer                  *time.Timer
-        IntfSliceRefreshCh              chan bool
-        IntfSliceRefreshDoneCh          chan bool
+	IntfKeySlice             []IntfConfKey
+	IntfKeyToSliceIdxMap     map[IntfConfKey]bool
+	IntfStateTimer           *time.Timer
+	IntfSliceRefreshCh       chan bool
+	IntfSliceRefreshDoneCh   chan bool
 
-	RefreshDuration          time.Duration
+	RefreshDuration time.Duration
 }
 
 func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
@@ -86,24 +92,26 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.vlanPropertyMap = make(map[uint16]VlanProperty)
 	ospfServer.AreaConfMap = make(map[AreaConfKey]AreaConf)
 	ospfServer.IntfConfMap = make(map[IntfConfKey]IntfConf)
+        ospfServer.IntfTxMap = make(map[IntfConfKey]IntfTxHandle)
+        ospfServer.IntfRxMap = make(map[IntfConfKey]IntfRxHandle)
 	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
 	ospfServer.neighborHelloEventCh = make(chan IntfToNeighMsg)
-	ospfServer.nbrFSMCtrlCh = make(chan bool)
 	ospfServer.neighborConfCh = make(chan ospfNeighborConfMsg)
 	ospfServer.neighborConfStopCh = make(chan bool)
-
+	ospfServer.neighborSliceRefCh = time.NewTicker(time.Minute * 10)
 	ospfServer.AreaStateMutex = sync.RWMutex{}
 	ospfServer.AreaStateMap = make(map[AreaConfKey]AreaState)
 	ospfServer.AreaStateSlice = []AreaConfKey{}
 	ospfServer.AreaConfKeyToSliceIdxMap = make(map[AreaConfKey]int)
-        ospfServer.IntfKeySlice = []IntfConfKey{}
-        ospfServer.IntfKeyToSliceIdxMap = make(map[IntfConfKey]bool)
-        ospfServer.IntfSliceRefreshCh = make(chan bool)
-        ospfServer.IntfSliceRefreshDoneCh = make(chan bool)
-
+	ospfServer.IntfKeySlice = []IntfConfKey{}
+	ospfServer.IntfKeyToSliceIdxMap = make(map[IntfConfKey]bool)
+	ospfServer.IntfSliceRefreshCh = make(chan bool)
+	ospfServer.IntfSliceRefreshDoneCh = make(chan bool)
+	ospfServer.nbrFSMCtrlCh = make(chan bool)
 	ospfServer.RefreshDuration = time.Duration(10) * time.Minute
+	ospfServer.neighborDBDEventCh = make(chan ospfNeighborDBDMsg)
 
 	/*
 	   ospfServer.ribSubSocketCh = make(chan []byte)
@@ -206,11 +214,11 @@ func (server *OSPFServer) StartServer(paramFile string) {
 			   case <-server.ribSubSocketErrCh:
 			       ;
 			*/
-                case msg := <-server.IntfSliceRefreshCh:
-                        if msg == true {
-                                server.refreshIntfKeySlice()
-                                server.IntfSliceRefreshDoneCh<-true
-                        }
+		case msg := <-server.IntfSliceRefreshCh:
+			if msg == true {
+				server.refreshIntfKeySlice()
+				server.IntfSliceRefreshDoneCh <- true
+			}
 
 		}
 	}

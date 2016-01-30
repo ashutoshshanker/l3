@@ -31,6 +31,6 @@ func main() {
 	go bfdServer.StartServer(fileName)
 
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
-	confIface := rpc.NewBFDHandler(bfdServer, logger)
+	confIface := rpc.NewBFDHandler(logger, bfdServer)
 	rpc.StartServer(logger, confIface, fileName)
 }
