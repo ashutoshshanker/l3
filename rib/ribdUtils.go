@@ -37,9 +37,23 @@ func getNetowrkPrefixFromStrings(ipAddr string, mask string) (prefix patriciaDB.
 	}
 	prefix, err = getNetworkPrefix(destNetIpAddr, networkMaskAddr)
 	if err != nil {
+		logger.Println("err=", err)
 		return prefix, err
 	}
 	return prefix, err
+}
+func getNetworkPrefixFromCIDR(ipAddr string) (ipPrefix patriciaDB.Prefix, err error) {
+	var ipMask net.IP
+	ip, ipNet, err := net.ParseCIDR(ipAddr)
+	if err != nil {
+		return ipPrefix, err
+	}
+	ipMask = make(net.IP, 4)
+	copy(ipMask, ipNet.Mask)
+	ipAddrStr := ip.String()
+	ipMaskStr := net.IP(ipMask).String()
+	ipPrefix ,err= getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
+    return ipPrefix, err
 }
 func deleteRoutePolicyStateAll(route ribd.Routes) {
 	logger.Println("deleteRoutePolicyStateAll")
@@ -122,7 +136,13 @@ func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes, evt int) {
 	   logger.Println("Error in marshalling Json")
 	   return
 	}
-   	logger.Println("buf", buf)
+	var evtStr string
+	if evt == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
+		evtStr = "NOTIFY_ROUTE_CREATED"
+	} else if evt == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
+		evtStr = "NOTIFY_ROUTE_DELETED"
+	}
+   	logger.Println("Sending ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " ", buf)
    	PUB.Send(buf, nanomsg.DontWait)
 }
 
@@ -160,6 +180,7 @@ func getPrefixLen(networkMask net.IP) (prefixLen int, err error) {
 func getNetworkPrefix(destNetIp net.IP, networkMask net.IP) (destNet patriciaDB.Prefix, err error) {
 	prefixLen, err := getPrefixLen(networkMask)
 	if err != nil {
+		logger.Println("err when getting prefixLen, err= ", err)
 		return destNet, err
 	}
 	/*   ip, err := getIP(destNetIp)
@@ -182,5 +203,5 @@ func getNetworkPrefix(destNetIp net.IP, networkMask net.IP) (destNet patriciaDB.
 	for i := 0; i < numbytes; i++ {
 		destNet[i] = netIp[i]
 	}
-	return destNet, nil
+	return destNet, err
 }
