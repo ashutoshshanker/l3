@@ -5,25 +5,101 @@ import (
      "ribd"
 	 "utils/patriciaDB"
 	 "l3/rib/ribdCommonDefs"
+	 "reflect"
 )
 func policyEngineActionRejectRoute(route ribd.Routes, params interface{}) {
-    logger.Println("policyEngineActionRejectRoute")
+    logger.Println("policyEngineActionRejectRoute for route ", route.Ipaddr, " ", route.Mask)
 	routeInfo := params.(RouteParams)
-	_, err := routeServiceHandler.DeleteV4Route(routeInfo.destNetIp, routeInfo.networkMask, routeInfo.routeType)
-	if err != nil {
+  _, err := routeServiceHandler.DeleteV4Route(routeInfo.destNetIp, routeInfo.networkMask, routeInfo.routeType,)// FIBAndRIB)//,ribdCommonDefs.RoutePolicyStateChangetoInValid)
+	  if err != nil {
 		logger.Println("deleting v4 route failed with err ", err)
 		return
-	}
+	  }
+	
 }
-func policyEngineActionAcceptRoute(route ribd.Routes, params interface{}) {
-    logger.Println("policyEngineActionAcceptRoute")
+/*func policyEngineActionRejectRoute(route ribd.Routes, params interface{}) {
+    logger.Println("policyEngineActionRejectRoute for route ", route.Ipaddr, " ", route.Mask)
 	routeInfo := params.(RouteParams)
-	_, err := createV4Route(routeInfo.destNetIp, routeInfo.networkMask, routeInfo.metric, routeInfo.nextHopIp, routeInfo.nextHopIfType, routeInfo.nextHopIfIndex, routeInfo.routeType, routeInfo.createType, routeInfo.sliceIdx)
+	var delType ribd.Int
+	//check if route is present
+	ipPrefix, err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
 	if err != nil {
-		logger.Println("creating v4 route failed with err ", err)
+		logger.Println("Invalid prefix")
 		return
 	}
+	routeRecordInfoListItem := RouteInfoMap.Get(ipPrefix)
+	 //if not, create it with invalid policyBasedState
+	 if routeRecordInfoListItem==nil {
+		logger.Println("routeRecordInfoListItem nil route not present")
+		if routeInfo.routeType == ribdCommonDefs.CONNECTED || routeInfo.routeType == ribdCommonDefs.STATIC {
+		   logger.Println("Connected/Static Route not present for prefix ", ipPrefix, " install it")
+	       _, err := createV4Route(routeInfo.destNetIp, routeInfo.networkMask, route.Metric, route.NextHopIp, route.NextHopIfType, route.IfIndex, route.Prototype, RIBOnly, ribdCommonDefs.RoutePolicyStateChangetoInValid,routeInfo.sliceIdx)
+	       if err != nil {
+		     logger.Println("creating v4 route failed with err ", err)
+		     return
+	       }
+	    } else {
+			logger.Println("Route type ", ReverseRouteProtoTypeMapDB[int(route.Prototype)], " rejected because of reject policy")
+			return
+		}
+     } else { //if yes, invalidate its policyBasedState and delete from FIBOnly
+	  if routeInfo.routeType == ribdCommonDefs.CONNECTED || routeInfo.routeType == ribdCommonDefs.STATIC {
+		delType = FIBOnly
+	  } else {
+		delType = FIBAndRIB
+	  }
+	  _, err = deleteV4Route(routeInfo.destNetIp, routeInfo.networkMask, routeInfo.routeType, delType,ribdCommonDefs.RoutePolicyStateChangetoInValid)
+	  if err != nil {
+		logger.Println("deleting v4 route failed with err ", err)
+		return
+	  }
+	}
+}*/
+func policyEngineActionAcceptRoute(route ribd.Routes, params interface{}) {
+    logger.Println("policyEngineActionAcceptRoute for ip ", route.Ipaddr, " and mask ", route.Mask)
+	routeInfo := params.(RouteParams)
+	_, err := createV4Route(routeInfo.destNetIp, routeInfo.networkMask, route.Metric, route.NextHopIp, route.NextHopIfType, route.IfIndex, route.Prototype, routeInfo.createType, ribdCommonDefs.RoutePolicyStateChangetoValid,routeInfo.sliceIdx)
+	if err != nil {
+	   logger.Println("creating v4 route failed with err ", err)
+	   return
+	}
 }
+/*func policyEngineActionAcceptRoute(route ribd.Routes, params interface{}) {
+    logger.Println("policyEngineActionAcceptRoute for ip ", route.Ipaddr, " and mask ", route.Mask)
+	routeInfo := params.(RouteParams)
+	//check if route is present
+	ipPrefix, err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
+	if err != nil {
+		logger.Println("Invalid prefix returned with err ", err)
+		return
+	}
+	routeRecordInfoListItem := RouteInfoMap.Get(ipPrefix)
+	//if not, create route correctly
+	if routeRecordInfoListItem==nil {
+		logger.Println("Route not present, install it")
+	   _, err := createV4Route(routeInfo.destNetIp, routeInfo.networkMask, route.Metric, route.NextHopIp, route.NextHopIfType, route.IfIndex, route.Prototype, routeInfo.createType, ribdCommonDefs.RoutePolicyStateChangetoValid,routeInfo.sliceIdx)
+	   if err != nil {
+		  logger.Println("creating v4 route failed with err ", err)
+		  return
+	   }
+	} else {//if yes, validate its policyBasedState, call selectv4Route and install in ASICD
+	   if routeRecordInfoListItem.(RouteInfoRecordList).isPolicyBasedStateValid == false && (routeInfo.routeType == ribdCommonDefs.CONNECTED || routeInfo.routeType == ribdCommonDefs.STATIC){
+	     logger.Println("Route already present but invalid, validate and install it in FIB")
+	     _, err := createV4Route(routeInfo.destNetIp, routeInfo.networkMask, route.Metric, route.NextHopIp, route.NextHopIfType, route.IfIndex, route.Prototype, FIBOnly,ribdCommonDefs.RoutePolicyStateChangetoValid, routeInfo.sliceIdx)
+	     if err != nil {
+		    logger.Println("creating v4 route failed with err ", err)
+		    return
+	     }
+	   } else {
+		   logger.Println("Route present and valid and not a static/connected route - Install in FIB and RIB")
+	       _, err := createV4Route(routeInfo.destNetIp, routeInfo.networkMask, route.Metric, route.NextHopIp, route.NextHopIfType, route.IfIndex, route.Prototype, routeInfo.createType, ribdCommonDefs.RoutePolicyStateChangetoValid,routeInfo.sliceIdx)
+	       if err != nil {
+		     logger.Println("creating v4 route failed with err ", err)
+		     return
+	       }
+	   }
+	}
+}*/
 func policyEngineActionRedistribute(route ribd.Routes, redistributeActionInfo RedistributeActionInfo, params interface {}) {
 	logger.Println("policyEngineActionRedistribute")
 	//Send a event based on target protocol
@@ -50,6 +126,10 @@ func policyEngineActionRedistribute(route ribd.Routes, redistributeActionInfo Re
 			evt = ribdCommonDefs.NOTIFY_ROUTE_DELETED
 		}
 	}
+/*	if evt == ribdCommonDefs.NOTIFY_ROUTE_CREATED && route.IsPolicyBasedStateValid == false {
+		logger.Println("route.isPolicyBasedStateValid invalid, so cannot send NOTIFY_ROUTE_CREATED")
+		return
+	}*/
     switch redistributeActionInfo.redistributeTargetProtocol {
       case ribdCommonDefs.BGP:
         logger.Println("Redistribute to BGP")
@@ -176,6 +256,26 @@ func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (matc
       switch condition.conditionType {
 		case ribdCommonDefs.PolicyConditionTypePrefixMatch:
 		  logger.Println("PolicyConditionTypePrefixMatch case")
+		  ipPrefix,err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
+		  if err != nil {
+			logger.Println("Invalid ipPrefix for the route ", route.Ipaddr," ", route.Mask)
+		  }
+	      policyListItem:= PrefixPolicyListDB.Get(ipPrefix)
+		  if policyListItem == nil {
+			logger.Println("no policies configured for the prefix ", ipPrefix)
+			return match
+		  }
+	      if policyListItem != nil && reflect.TypeOf(policyListItem).Kind() != reflect.Slice {
+		     logger.Println("Incorrect data type for this prefix ")
+		     return match
+	      }
+		  policyListSlice := reflect.ValueOf(policyListItem)
+		  for idx :=0;idx < policyListSlice.Len();idx++ {
+			if policyListSlice.Index(idx).Interface().(string) == policyStmt.name {
+				logger.Println("Found a match for this prefix")
+				anyConditionsMatch = true
+			}
+		} 
 		break
 		case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 		  logger.Println("PolicyConditionTypeProtocolMatch case")
@@ -183,9 +283,6 @@ func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (matc
 		  if matchProto == int(route.Prototype) {
 			logger.Println("Protocol condition matches")
 			anyConditionsMatch = true
-		  } else {
-			logger.Println("Protocol condition does not match")
-			allConditionsMatch = false
 		  } 
 		break
 		default:
@@ -248,9 +345,13 @@ func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 	var policyPath_Str string
 	idx :=0
 	var policyInfo interface{}
+	if policyPath == ribdCommonDefs.PolicyPath_Import {
+	   policyPath_Str = "Import"
+	} else {
+	   policyPath_Str = "Export"
+	}
 //	policyEngineCheckPolicy(route, policyPath, funcName, params)
     routeInfo := params.(RouteParams)
-	logger.Println("Beginning createType = ", routeInfo.createType, " deleteType = ", routeInfo.deleteType)
 	for ;; {
        if route.PolicyList != nil {
 		  if idx >= len(route.PolicyList) {
@@ -280,11 +381,6 @@ func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 		  continue
 	   }
 	   policyStmt := policyInfo.(PolicyStmt)
-	   if policyPath == ribdCommonDefs.PolicyPath_Import {
-	      policyPath_Str = "Import"
-	   } else {
-	        policyPath_Str = "Export"
-	   }
 	   if policyPath == ribdCommonDefs.PolicyPath_Import && policyStmt.importPolicy == false || 
 	      policyPath == ribdCommonDefs.PolicyPath_Export && policyStmt.exportPolicy == false {
 	         logger.Println("Cannot apply the policy ", policyStmt.name, " as ", policyPath_Str, " policy")
@@ -348,7 +444,7 @@ func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, h
    }
    logger.Println("Selected route index = ", rmapInfoRecordList.selectedRouteIdx)
    selectedRouteInfoRecord := rmapInfoRecordList.routeInfoList[rmapInfoRecordList.selectedRouteIdx]
-   policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol)}
+   policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid:rmapInfoRecordList.isPolicyBasedStateValid}
    params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
    policyEngineApplyPolicy(&policyRoute, policy, params)
    return err

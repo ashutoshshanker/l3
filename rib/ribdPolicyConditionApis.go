@@ -9,6 +9,11 @@ import (
 )
 
 var PolicyConditionsDB = patriciaDB.NewTrie()
+type MatchPrefixConditionInfo struct {
+	usePrefixSet bool
+	prefixSet string
+	prefix ribd.PolicyDefinitionSetsPrefix
+}
 type PolicyCondition struct {
 	name          string
 	conditionType int
@@ -18,9 +23,53 @@ type PolicyCondition struct {
 	localDBSliceIdx int
 }
 var localPolicyConditionsDB []localDB
+func updateLocalConditionsDB(prefix patriciaDB.Prefix) {
+	localDBRecord := localDB{prefix:prefix, isValid:true}
+	if(localPolicyConditionsDB == nil) {
+		localPolicyConditionsDB = make([]localDB, 0)
+	} 
+	localPolicyConditionsDB = append(localPolicyConditionsDB, localDBRecord)
 
+}
 func (m RouteServiceHandler) CreatePolicyDefinitionStmtMatchPrefixSetCondition(cfg *ribd.PolicyDefinitionStmtMatchPrefixSetCondition) (val bool, err error) {
 	logger.Println("CreatePolicyDefinitionStmtMatchPrefixSetCondition")
+	var conditionInfo MatchPrefixConditionInfo
+	var conditionGetBulkInfo string
+    if len(cfg.PrefixSet) == 0 && cfg.Prefix == nil {
+		logger.Println("Empty prefix set")
+		err = errors.New("Empty prefix set")
+		return val, err
+	}
+    if len(cfg.PrefixSet) != 0 && cfg.Prefix != nil {
+		logger.Println("Cannot provide both prefix set and individual prefix")
+		err = errors.New("Cannot provide both prefix set and individual prefix")
+		return val, err
+	}
+    if cfg.Prefix != nil {
+	   conditionInfo.usePrefixSet = false
+       conditionInfo.prefix.IpPrefix = cfg.Prefix.IpPrefix
+	   conditionInfo.prefix.MasklengthRange = cfg.Prefix.MasklengthRange
+	   conditionGetBulkInfo = "match Prefix " + cfg.Prefix.IpPrefix + "MasklengthRange " + cfg.Prefix.MasklengthRange
+	} else if len(cfg.PrefixSet) != 0 {
+		conditionInfo.usePrefixSet = true
+		conditionInfo.prefixSet = cfg.PrefixSet
+	    conditionGetBulkInfo = "match Prefix " + cfg.PrefixSet
+	}
+	policyCondition := PolicyConditionsDB.Get(patriciaDB.Prefix(cfg.Name))
+	if(policyCondition == nil) {
+	   logger.Println("Defining a new policy condition with name ", cfg.Name)
+	   newPolicyCondition := PolicyCondition{name:cfg.Name,conditionType:ribdCommonDefs.PolicyConditionTypePrefixMatch,conditionInfo:conditionInfo ,localDBSliceIdx:(len(localPolicyConditionsDB))}
+       newPolicyCondition.conditionGetBulkInfo = conditionGetBulkInfo 
+	   if ok := PolicyConditionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyCondition); ok != true {
+	   logger.Println(" return value not ok")
+	   return val, err
+	}
+	updateLocalConditionsDB(patriciaDB.Prefix(cfg.Name))
+    } else {
+		logger.Println("Duplicate Condition name")
+		err = errors.New("Duplicate policy condition definition")
+		return val, err
+	}	
 	return val, err
 }
 
@@ -44,11 +93,7 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStmtMatchProtocolCondition(cf
 			logger.Println(" return value not ok")
 			return val, err
 		}
-        localDBRecord := localDB{prefix:patriciaDB.Prefix(cfg.Name), isValid:true}
-		if(localPolicyConditionsDB == nil) {
-			localPolicyConditionsDB = make([]localDB, 0)
-		} 
-	    localPolicyConditionsDB = append(localPolicyConditionsDB, localDBRecord)
+	    updateLocalConditionsDB(patriciaDB.Prefix(cfg.Name))
 	} else {
 		logger.Println("Duplicate Condition name")
 		err = errors.New("Duplicate policy condition definition")
