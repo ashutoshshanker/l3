@@ -3,6 +3,8 @@ package server
 import (
 	"net"
 	"time"
+        "github.com/google/gopacket/pcap"
+        "sync"
 )
 
 var ALLSPFROUTER string = "224.0.0.5"
@@ -81,3 +83,15 @@ const (
 	EAOption = 0x20
 	DCOption = 0x40
 )
+
+type IntfTxHandle struct {
+        SendPcapHdl             *pcap.Handle
+        SendMutex               *sync.Mutex
+}
+
+type IntfRxHandle struct {
+        RecvPcapHdl             *pcap.Handle
+        PktRecvCh               chan bool
+        PktRecvStatusCh         chan bool
+        //RecvMutex               *sync.Mutex
+}
