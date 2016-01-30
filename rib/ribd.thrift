@@ -18,6 +18,7 @@ struct Routes {
 	9: int SliceIdx,
 	10: int PolicyHitCounter,
 	11: list<string>PolicyList
+    12: 	bool IsPolicyBasedStateValid 
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -44,7 +45,7 @@ struct PolicyDefinitionSetsPrefixSetGetInfo {
 struct PolicyDefinitionStmtMatchPrefixSetCondition{
 	1 : string  Name
 	2 : string 	PrefixSet
-	3 : i32 	MatchSetOptions
+	3 : PolicyDefinitionSetsPrefix Prefix
 }
 struct PolicyDefinitionStmtMatchPrefixSetConditionsGetInfo {
 	1: int StartIdx
@@ -217,7 +218,7 @@ service RouteService
 //	bool UpdatePolicyDefinitionSetsPrefixSet(1: PolicyDefinitionSetsPrefixSet origconfig, 2: PolicyDefinitionSetsPrefixSet newconfig, 3: list<bool> attrset);
 //	bool DeletePolicyDefinitionSetsPrefixSet(1: PolicyDefinitionSetsPrefixSet config);
 
-//	bool CreatePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtMatchPrefixSetCondition config);
+	bool CreatePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtMatchPrefixSetCondition config);
 //	bool UpdatePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtMatchPrefixSetCondition origconfig, 2: PolicyDefinitionStmtMatchPrefixSetCondition newconfig, 3: list<bool> attrset);
 //	bool DeletePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtMatchPrefixSetCondition config);
 
@@ -238,7 +239,7 @@ service RouteService
 //	bool UpdatePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions origconfig, 2: PolicyDefinitionStmtIgpActions newconfig, 3: list<bool> attrset);
 //	bool DeletePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions config);
 
-//	bool CreatePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction config);
+	bool CreatePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction config);
 //	bool UpdatePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction origconfig, 2: PolicyDefinitionStmtRouteDispositionAction newconfig, 3: list<bool> attrset);
 //	bool DeletePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction config);
 

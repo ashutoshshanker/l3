@@ -7,8 +7,12 @@ import (
 	"l3/rib/ribdCommonDefs"
 	"utils/patriciaDB"
 	"strconv"
+	"strings"
+	"net"
+	"reflect"
 )
 var PolicyDB = patriciaDB.NewTrie()
+var PrefixPolicyListDB = patriciaDB.NewTrie()
 
 type PolicyStmt struct {				//policy engine uses this
 	name               string
@@ -96,6 +100,100 @@ func updateProtocolPolicyTable(protoType int, name string, op int) {
 	}
 	ProtocolPolicyListDB[protoType] = policyList
 }
+func updatePrefixPolicyTableWithPrefix(ipPrefix patriciaDB.Prefix, name string, op int){
+	logger.Println("updatePrefixPolicyTableWithPrefix %v", ipPrefix)
+	var i int
+	var policyList []string
+	policyListItem:= PrefixPolicyListDB.Get(ipPrefix)
+	if policyListItem != nil && reflect.TypeOf(policyListItem).Kind() != reflect.Slice {
+		logger.Println("Incorrect data type for this prefix ")
+		return
+	}
+	if(policyListItem == nil) {
+		if (op == del) {
+			logger.Println("Cannot find the policy map for this prefix, so cannot delete")
+			return
+		}
+		policyList = make([]string, 0)
+	} else {
+	   policyListSlice := reflect.ValueOf(policyListItem)
+	   policyList = make([]string,0)
+	   for i = 0;i<policyListSlice.Len();i++ {
+	      policyList = append(policyList, policyListSlice.Index(i).Interface().(string))	
+	   }
+	}
+    if op == add {
+	   policyList = append(policyList, name)
+	}
+	if op == del {
+		for i =0; i< len(policyList);i++ {
+			if policyList[i] == name {
+				logger.Println("Found the policy in the prefix policy table, deleting it")
+				break
+			}
+		}
+		policyList = append(policyList[:i], policyList[i+1:]...)
+	}
+	PrefixPolicyListDB.Set(ipPrefix, policyList)
+}
+func updatePrefixPolicyTableWithMaskRange(ipAddrStr string, masklength string, name string, op int){
+	logger.Println("updatePrefixPolicyTableWithMaskRange")
+	    maskList := strings.Split(masklength,"..")
+		if len(maskList) !=2 {
+			logger.Println("Invalid masklength range")
+			return 
+		}
+        lowRange,err := strconv.Atoi(maskList[0])
+		if err != nil {
+			logger.Println("maskList[0] not valid")
+			return
+		}
+		highRange,err := strconv.Atoi(maskList[1])
+		if err != nil {
+			logger.Println("maskList[1] not valid")
+			return
+		}
+		logger.Println("lowRange = ", lowRange, " highrange = ", highRange)
+		for idx := lowRange;idx<highRange;idx ++ {
+			ipMask:= net.CIDRMask(idx, 32)
+			ipMaskStr := net.IP(ipMask).String()
+			logger.Println("idx ", idx, "ipMaskStr = ", ipMaskStr)
+			ipPrefix, err := getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
+			if err != nil {
+				logger.Println("Invalid prefix")
+				return 
+			}
+			updatePrefixPolicyTableWithPrefix(ipPrefix, name, op)
+		}
+}
+func updatePrefixPolicyTableWithPrefixSet(prefixSet string, name string, op int) {
+	logger.Println("updatePrefixPolicyTableWithPrefixSet")
+}
+func updatePrefixPolicyTable(conditionInfo interface{}, name string, op int) {
+    condition := conditionInfo.(MatchPrefixConditionInfo)
+	logger.Printf("updatePrefixPolicyTable for prefixSet %s prefix %s policy name %s op %d\n", condition.prefixSet, condition.prefix, name, op)
+    if condition.usePrefixSet {
+		logger.Println("Need to look up Prefix set to get the prefixes")
+		updatePrefixPolicyTableWithPrefixSet(condition.prefixSet, name, op)
+	} else {
+	   if condition.prefix.MasklengthRange == "exact" {
+       ipPrefix, err := getNetworkPrefixFromCIDR(condition.prefix.IpPrefix)
+	   if err != nil {
+		logger.Println("ipPrefix invalid ")
+		return 
+	   }
+	   updatePrefixPolicyTableWithPrefix(ipPrefix, name, op)
+	 } else {
+		logger.Println("Masklength= ", condition.prefix.MasklengthRange)
+		ip, _, err := net.ParseCIDR(condition.prefix.IpPrefix)
+	    if err != nil {
+		   return 
+	    }
+	    ipAddrStr := ip.String()
+		updatePrefixPolicyTableWithMaskRange(ipAddrStr, condition.prefix.MasklengthRange, name, op)
+	 }
+   }
+}
 
 
 func (m RouteServiceHandler) CreatePolicyDefinitionSetsPrefixSet(cfg *ribd.PolicyDefinitionSetsPrefixSet ) (val bool, err error) {
@@ -115,6 +213,7 @@ func updateConditions(policyStmt PolicyStmt, conditionName string, op int) {
 			   break
 			case ribdCommonDefs.PolicyConditionTypePrefixMatch:
 			   logger.Println("PolicyConditionTypePrefixMatch")
+			   updatePrefixPolicyTable(condition.conditionInfo, policyStmt.name, op)
 			   break
 		}
 		if condition.policyList == nil {

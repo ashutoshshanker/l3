@@ -22,6 +22,33 @@ type PolicyAction struct {
 	localDBSliceIdx int
 }
 var localPolicyActionsDB []localDB
+func updateLocalActionsDB(prefix patriciaDB.Prefix) {
+    localDBRecord := localDB{prefix:prefix, isValid:true}
+    if(localPolicyActionsDB == nil) {
+		localPolicyActionsDB = make([]localDB, 0)
+	} 
+	localPolicyActionsDB = append(localPolicyActionsDB, localDBRecord)
+}
+func (m RouteServiceHandler) 	CreatePolicyDefinitionStmtRouteDispositionAction(cfg *ribd.PolicyDefinitionStmtRouteDispositionAction )(val bool, err error) {
+	logger.Println("CreatePolicyDefinitionStmtRouteDispositionAction")
+	policyAction := PolicyActionsDB.Get(patriciaDB.Prefix(cfg.Name))
+	if(policyAction == nil) {
+	   logger.Println("Defining a new policy action with name ", cfg.Name)
+	   newPolicyAction := PolicyAction{name:cfg.Name,actionType:ribdCommonDefs.PolicyActionTypeRouteDisposition,actionInfo:cfg.RouteDisposition ,localDBSliceIdx:(len(localPolicyActionsDB))}
+       newPolicyAction.actionGetBulkInfo =   cfg.RouteDisposition
+		if ok := PolicyActionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyAction); ok != true {
+			logger.Println(" return value not ok")
+			return val, err
+		}
+	  updateLocalActionsDB(patriciaDB.Prefix(cfg.Name))
+	} else {
+		logger.Println("Duplicate action name")
+		err = errors.New("Duplicate policy action definition")
+		return val, err
+	}
+	return val, err
+}
+
 
 func (m RouteServiceHandler) CreatePolicyDefinitionStmtRedistributionAction(cfg *ribd.PolicyDefinitionStmtRedistributionAction) (val bool, err error) {
 	logger.Println("CreatePolicyDefinitionStmtRedistributionAction")
@@ -48,11 +75,7 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStmtRedistributionAction(cfg 
 			logger.Println(" return value not ok")
 			return val, err
 		}
-        localDBRecord := localDB{prefix:patriciaDB.Prefix(cfg.Name), isValid:true}
-		if(localPolicyActionsDB == nil) {
-			localPolicyActionsDB = make([]localDB, 0)
-		} 
-	    localPolicyActionsDB = append(localPolicyActionsDB, localDBRecord)
+	    updateLocalActionsDB(patriciaDB.Prefix(cfg.Name))
 	} else {
 		logger.Println("Duplicate action name")
 		err = errors.New("Duplicate policy action definition")
