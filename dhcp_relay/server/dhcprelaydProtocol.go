@@ -430,19 +430,11 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.
 	data []byte, inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
 	mt MessageType) {
 	logger.Info("DRA: Creating Send Pkt")
-	/*
-			// get global interface object for stats and list of server ip addresses
-			intfObj := dhcprelayGblInfo[controlMessage.IfIndex]
-			// @FIXME: enable this check only when testing on live box....
-				if intfObj.IntfConfig.Enable == false {
-					// drop the packet???
-					logger.Err("DRA: Interface Config is disabled drop the packet")
-					return
-				}
-		serverIpPort := intfObj.IntfConfig.ServerIp + ":" + strconv.Itoa(DHCP_SERVER_PORT)
-	*/
-	// @FIXME: jgheewala HACK for all server ips...
 
+	// get logical interface id from dhcprelay
+	// dhcprelayGblInfo[dhcprelayLogicalIntfId2LinuxIntId[controlMessage.IfIndex]]
+	// @FIXME: when the api's are available properly then only remove
+	// this....
 	gblEntry, ok := dhcprelayGblInfo[controlMessage.IfIndex]
 	if !ok {
 		logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index ????",
