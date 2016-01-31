@@ -33,8 +33,9 @@ type AsicdClient struct {
  */
 var (
 	//portInfoMap    map[string]int
-	asicdClient    AsicdClient
-	asicdSubSocket *nanomsg.SubSocket
+	asicdClient                       AsicdClient
+	asicdSubSocket                    *nanomsg.SubSocket
+	dhcprelayLogicalIntfId2LinuxIntId map[int]int // Linux Intf Id ---> Logical ID
 )
 
 func DhcpRelayAgentListenAsicUpdate(address string) error {
@@ -65,29 +66,20 @@ func DhcpRelayAgentListenAsicUpdate(address string) error {
 }
 
 func DhcpRelayAgentUpdateVlanInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
-	/*
-	       if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
-
-	   		var linuxInterface *net.Interface
-	   		linuxInterface, err = net.InterfaceByName("SVI9")
-	   		if err != nil {
-	   			logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
-	   			return
-	   		}
-	   		for _, intfId := range vlanNotifyMsg.UntagPorts {
-	   			dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index] = intfId
-	   		}
-	   	} else { // Delete interface id
-	   		for _, intfId := range VlanNotifyMsg.UntagPorts {
-	   			delete(dhcprelayLogicalIntfId2LinuxIntId, intfId)
-	   		}
-	   		/*
-	   			delete(vlanPropertyMap, int(vlanNotifyMsg.VlanId))
-	   			for _, portNum := range vlanNotifyMsg.UntagPorts {
-	   				delete(port_property_map, int(portNum))
-	   			}
-	*/
-	//	}
+	logger.Info("DRA: Vlan update message for " + vlanNotifyMsg.VlanName)
+	var linuxInterface *net.Interface
+	var err error
+	linuxInterface, err = net.InterfaceByName(vlanNotifyMsg.VlanName)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
+		return
+	}
+	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
+		dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index] =
+			int(vlanNotifyMsg.VlanId)
+	} else { // Delete interface id
+		delete(dhcprelayLogicalIntfId2LinuxIntId, linuxInterface.Index)
+	}
 }
 
 func DhcpRelayAgentUpdateIntfPortMap(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
@@ -195,7 +187,10 @@ func DhcpRelayInitPortParams() error {
 	}
 	logger.Info("DRA calling asicd for port config")
 	count := 10
+	// Allocate memory for Global Info
 	dhcprelayGblInfo = make(map[int]DhcpRelayAgentGlobalInfo, 25)
+	// Allocate memory for Linux ID ---> Logical Id mapping
+	dhcprelayLogicalIntfId2LinuxIntId = make(map[int]int, 10)
 	for {
 		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortConfig(
 			int64(currMarker), int64(count))
