@@ -120,10 +120,6 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 		logger.Info("DRA: no need to create pcap as its already created")
 		return true, nil
 	} else {
-		logger.Info("DRA: len of global entries is " + string(len(dhcprelayGblInfo)))
-		// Stats information
-		//DhcpRelayAgentUpdateStats("dhcp relay config create request",
-		//	&gblEntry)
 		DhcpRelayAgentCreateClientServerConn()
 		// Stats information
 		StateDebugInfo = make(map[string]DhcpRelayAgentStateInfo, 150)

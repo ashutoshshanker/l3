@@ -70,6 +70,7 @@ var (
 	dhcprelayClientConn *ipv4.PacketConn
 	dhcprelayServerConn *ipv4.PacketConn
 	logger              *syslog.Writer
+	//map for mac_address to interface id for sending unicast packet
 	dhcprelayReverseMap map[string]int
 	// PadddingToMinimumSize pads a packet so that when sent over UDP,
 	// the entire packet, is 300 bytes (which is BOOTP/DHCP min)
