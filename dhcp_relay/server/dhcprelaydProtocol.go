@@ -16,7 +16,7 @@ const (
 )
 
 // DHCP Packet global constants
-const DHCP_PACKET_MIN_SIZE = 272
+const DHCP_PACKET_MIN_SIZE = 300 // 272?????? @TODO: fixme....jgheewala
 const DHCP_PACKET_HEADER_SIZE = 16
 const DHCP_PACKET_MIN_BYTES = 240
 const DHCP_SERVER_PORT = 67
@@ -478,7 +478,7 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.
 	//outPacket.AddDhcpOptions(OptionRelayAgentInformation, []byte{byte(1)})
 
 	// Decode outpacket...
-	logger.Info("DRA: Decoding out pkt")
+	logger.Info("DRA: Decoding out pkt for server")
 	logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
 	logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
 	logger.Info("DRA: YIAddr is " + outPacket.GetYIAddr().String())
@@ -490,7 +490,7 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.
 		logger.Info(fmt.Sprintln("DRA: WriteToUDP failed with error:", err))
 		return
 	}
-	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully"))
+	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to server"))
 }
 
 func DhcpRelayAgentReceiveDhcpPktFromClient(clientHandler *net.UDPConn) {
@@ -511,6 +511,7 @@ func DhcpRelayAgentReceiveDhcpPktFromClient(clientHandler *net.UDPConn) {
 			logger.Warning("DRA: Couldn't decode dhcp packet...continue")
 			continue
 		}
+		// Updating reverse mapping
 		dhcprelayReverseMap[inReq.GetCHAddr().String()] = cm.IfIndex
 		logger.Info(fmt.Sprintln("DRA: control message is ", cm))
 		logger.Info(fmt.Sprintln("DRA: srcAddr is ", srcAddr))
@@ -518,6 +519,36 @@ func DhcpRelayAgentReceiveDhcpPktFromClient(clientHandler *net.UDPConn) {
 		// Send Packet
 		DhcpRelayAgentSendPacketToDhcpServer(clientHandler, cm, buf, inReq, reqOptions, mType)
 	}
+}
+
+func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.ControlMessage,
+	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
+	gblEntry DhcpRelayAgentGlobalInfo, mt MessageType) {
+
+	clientIpPort := gblEntry.IntfConfig.IpSubnet + ":" + strconv.Itoa(DHCP_CLIENT_PORT)
+	logger.Info("DRA: Sending DHCP PACKET to client: " + clientIpPort)
+	clientAddr, err := net.ResolveUDPAddr("udp", clientIpPort)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: couldn't resolved udp addr for and err is", err))
+		return
+	}
+	outPacket := DhcpRelayAgentCreateNewPacket(Reply, inReq)
+	// subnet ip is the interface ip address
+	// copy the message... by creating new packet
+	// Decode outpacket...
+	logger.Info("DRA: Decoding out pkt for client")
+	logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
+	logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
+	logger.Info("DRA: YIAddr is " + outPacket.GetYIAddr().String())
+	logger.Info("DRA: GIAddr is " + outPacket.GetGIAddr().String())
+	logger.Info(fmt.Sprintln("DRA: Cookie is ", outPacket.GetCookie()))
+	outPacket.PadToMinSize()
+	_, err = ch.WriteToUDP(outPacket, clientAddr)
+	if err != nil {
+		logger.Info(fmt.Sprintln("DRA: WriteToUDP failed with error:", err))
+		return
+	}
+	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to client"))
 }
 
 func DhcpRelayAgentReceiveDhcpPktFromServer(serverHandler *net.UDPConn) {
@@ -537,6 +568,17 @@ func DhcpRelayAgentReceiveDhcpPktFromServer(serverHandler *net.UDPConn) {
 		logger.Info(fmt.Sprintln("DRA: control message is ", cm))
 		logger.Info(fmt.Sprintln("DRA: srcAddr is ", srcAddr))
 		logger.Info(fmt.Sprintln("DRA: MessageType is ", mType))
+		// Get the interface from reverse mapping to send the unicast
+		// packet...
+		outIfId := dhcprelayReverseMap[inReq.GetCHAddr().String()]
+		logger.Info(fmt.Sprintln("DRA: Send unicast packet to Interface Id:", outIfId))
+		gblEntry, ok := dhcprelayGblInfo[outIfId]
+		if !ok {
+			// dropping the packet??
+			logger.Err(fmt.Sprintln("DRA: dra is not enable on", outIfId, "??"))
+			continue
+		}
+		DhcpRelayAgentSendPacketToDhcpClient(serverHandler, cm, inReq, reqOptions, gblEntry, mType)
 	}
 }
 
