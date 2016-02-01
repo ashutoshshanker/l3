@@ -53,8 +53,8 @@ type OSPFServer struct {
 	asicdSubSocketErrCh  chan error
 	AreaConfMap          map[AreaConfKey]AreaConf
 	IntfConfMap          map[IntfConfKey]IntfConf
-        IntfTxMap            map[IntfConfKey]IntfTxHandle
-        IntfRxMap            map[IntfConfKey]IntfRxHandle
+	IntfTxMap            map[IntfConfKey]IntfTxHandle
+	IntfRxMap            map[IntfConfKey]IntfRxHandle
 	NeighborConfigMap    map[uint32]OspfNeighborEntry
 	NeighborListMap      map[IntfConfKey]list.List
 	neighborConfMutex    sync.Mutex
@@ -92,8 +92,8 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.vlanPropertyMap = make(map[uint16]VlanProperty)
 	ospfServer.AreaConfMap = make(map[AreaConfKey]AreaConf)
 	ospfServer.IntfConfMap = make(map[IntfConfKey]IntfConf)
-        ospfServer.IntfTxMap = make(map[IntfConfKey]IntfTxHandle)
-        ospfServer.IntfRxMap = make(map[IntfConfKey]IntfRxHandle)
+	ospfServer.IntfTxMap = make(map[IntfConfKey]IntfTxHandle)
+	ospfServer.IntfRxMap = make(map[IntfConfKey]IntfRxHandle)
 	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
