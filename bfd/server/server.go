@@ -8,7 +8,6 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
-	"l3/bfd/config"
 	"log/syslog"
 	"net"
 	"ribd"
@@ -42,13 +41,13 @@ type IpIntfProperty struct {
 }
 
 type BfdInterface struct {
-	conf     config.IntfConfig
+	conf     IntfConfig
 	property IpIntfProperty
 }
 
 type BfdSession struct {
-	state config.SessionState
-	timer *time.Ticker
+	state SessionState
+	timer *time.Timer
 }
 
 type BfdGlobal struct {
@@ -66,8 +65,8 @@ type BFDServer struct {
 	logger              *syslog.Writer
 	ribdClient          RibdClient
 	asicdClient         AsicdClient
-	GlobalConfigCh      chan config.GlobalConfig
-	IntfConfigCh        chan config.IntfConfig
+	GlobalConfigCh      chan GlobalConfig
+	IntfConfigCh        chan IntfConfig
 	asicdSubSocket      *nanomsg.SubSocket
 	asicdSubSocketCh    chan []byte
 	asicdSubSocketErrCh chan error
@@ -80,8 +79,8 @@ type BFDServer struct {
 func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer := &BFDServer{}
 	bfdServer.logger = logger
-	bfdServer.GlobalConfigCh = make(chan config.GlobalConfig)
-	bfdServer.IntfConfigCh = make(chan config.IntfConfig)
+	bfdServer.GlobalConfigCh = make(chan GlobalConfig)
+	bfdServer.IntfConfigCh = make(chan IntfConfig)
 	bfdServer.asicdSubSocketCh = make(chan []byte)
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)

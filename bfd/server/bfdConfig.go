@@ -1,8 +1,6 @@
-package config
+package server
 
-import (
-	"l3/bfd/protocol"
-)
+import ()
 
 type GlobalConfig struct {
 	Enable bool
@@ -39,19 +37,19 @@ type SessionState struct {
 	LocalIpAddr           string
 	RemoteIpAddr          string
 	InterfaceId           int32
-	ReqisteredProtocols   string
-	SessionState          protocol.BfdSessionState
-	RemoteSessionState    protocol.BfdSessionState
-	LocalDicriminator     uint32
+	RegisteredProtocols   string
+	SessionState          BfdSessionState
+	RemoteSessionState    BfdSessionState
+	LocalDiscriminator    uint32
 	RemoteDiscriminator   uint32
-	LocalDiagType         protocol.BfdDiagnostic
-	DesiredMinTxInterval  int
-	RequiredMinRxInterval int
-	RemoteMinRxInterval   int
-	DetectionMultiplier   uint32
+	LocalDiagType         BfdDiagnostic
+	DesiredMinTxInterval  int32
+	RequiredMinRxInterval int32
+	RemoteMinRxInterval   int32
+	DetectionMultiplier   int32
 	DemandMode            bool
 	RemoteDemandMode      bool
-	AuthType              protocol.AuthenticationType
+	AuthType              AuthenticationType
 	AuthSeqKnown          bool
 	ReceivedAuthSeq       uint32
 	SentAuthSeq           uint32

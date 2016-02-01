@@ -3,8 +3,6 @@ package server
 import (
 	"asicd/asicdConstDefs"
 	"fmt"
-	"l3/bfd/config"
-	"l3/bfd/protocol"
 	"net"
 	//"time"
 	//"l3/bfd/rpc"
@@ -16,10 +14,10 @@ func (server *BFDServer) initDefaultIntfConf(ifIndex int32, ipIntfProp IpIntfPro
 	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if !exist {
 		intf.conf.InterfaceId = ifIndex
-		intf.conf.LocalMultiplier = protocol.DEFAULT_DETECT_MULTI
-		intf.conf.DesiredMinTxInterval = protocol.DEFAULT_DESIRED_MIN_TX_INTERVAL
-		intf.conf.RequiredMinRxInterval = protocol.DEFAULT_REQUIRED_MIN_RX_INTERVAL
-		intf.conf.RequiredMinEchoRxInterval = protocol.DEFAULT_REQUIRED_MIN_ECHO_RX_INTERVAL
+		intf.conf.LocalMultiplier = DEFAULT_DETECT_MULTI
+		intf.conf.DesiredMinTxInterval = DEFAULT_DESIRED_MIN_TX_INTERVAL
+		intf.conf.RequiredMinRxInterval = DEFAULT_REQUIRED_MIN_RX_INTERVAL
+		intf.conf.RequiredMinEchoRxInterval = DEFAULT_REQUIRED_MIN_ECHO_RX_INTERVAL
 		intf.conf.DemandEnabled = false
 		intf.conf.AuthenticationEnabled = false
 		intf.conf.AuthenticationType = 0
@@ -86,7 +84,7 @@ func (server *BFDServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 	delete(server.bfdGlobal.Interfaces, ifIndex)
 }
 
-func (server *BFDServer) updateIPIntfConfMap(ifConf config.IntfConfig) {
+func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {
 	intf, exist := server.bfdGlobal.Interfaces[ifConf.InterfaceId]
 	//  we can update only when we already have entry
 	if exist {
@@ -104,7 +102,7 @@ func (server *BFDServer) updateIPIntfConfMap(ifConf config.IntfConfig) {
 	}
 }
 
-func (server *BFDServer) processIntfConfig(ifConf config.IntfConfig) {
+func (server *BFDServer) processIntfConfig(ifConf IntfConfig) {
 	intf, exist := server.bfdGlobal.Interfaces[ifConf.InterfaceId]
 	if !exist {
 		server.logger.Err("No such L3 interface exists")

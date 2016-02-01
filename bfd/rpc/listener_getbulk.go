@@ -4,13 +4,12 @@ import (
 	"bfdd"
 	"errors"
 	"fmt"
-	"l3/bfd/config"
-	//    "l3/bfd/server"
+	"l3/bfd/server"
 	//    "log/syslog"
 	//    "net"
 )
 
-func (h *BFDHandler) convertGlobalStateToThrift(ent config.GlobalState) *bfdd.BfdGlobalState {
+func (h *BFDHandler) convertGlobalStateToThrift(ent server.GlobalState) *bfdd.BfdGlobalState {
 	gState := bfdd.NewBfdGlobalState()
 	gState.Enable = ent.Enable
 	gState.NumInterfaces = int32(ent.NumInterfaces)

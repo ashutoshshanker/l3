@@ -1,4 +1,4 @@
-package protocol
+package server
 
 import (
 	"bytes"
@@ -60,6 +60,7 @@ type BfdControlPacket struct {
 	AuthHeader                *BfdAuthHeader
 }
 
+// Constants
 const (
 	DEFAULT_BFD_VERSION                   = 1
 	DEFAULT_DETECT_MULTI                  = 3
@@ -67,8 +68,10 @@ const (
 	DEFAULT_REQUIRED_MIN_RX_INTERVAL      = 1000000
 	DEFAULT_REQUIRED_MIN_ECHO_RX_INTERVAL = 0
 	DEFAULT_CONTROL_PACKET_LEN            = 24
+	MAX_NUM_SESSIONS                      = 1024
 )
 
+// Flags in BFD Control packet
 const (
 	BFD_MP             = 0x01 // Multipoint
 	BFD_DEMAND         = 0x02 // Demand mode

@@ -2,11 +2,10 @@ package server
 
 import (
 	"fmt"
-	"l3/bfd/config"
 )
 
-func (server *BFDServer) GetBfdGlobalState() *config.GlobalState {
-	result := new(config.GlobalState)
+func (server *BFDServer) GetBfdGlobalState() *GlobalState {
+	result := new(GlobalState)
 	ent := server.bfdGlobal
 
 	result.Enable = ent.Enabled
