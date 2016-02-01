@@ -431,14 +431,20 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.
 	mt MessageType) {
 	logger.Info("DRA: Creating Send Pkt")
 
-	// get logical interface id from dhcprelay
-	// dhcprelayGblInfo[dhcprelayLogicalIntfId2LinuxIntId[controlMessage.IfIndex]]
-	// @FIXME: when the api's are available properly then only remove
-	// this....
-	gblEntry, ok := dhcprelayGblInfo[controlMessage.IfIndex]
+	// get logical interface id from linux id...
+	logicalId, ok := dhcprelayLogicalIntfId2LinuxIntId[controlMessage.IfIndex]
+	if !ok {
+		logger.Err(fmt.Sprintln("DRA: linux id", controlMessage.IfIndex,
+			" has no mapping...did we miss any notification?"))
+		return
+	}
+	// Use obtained logical id to find the global interface object
+	logger.Info(fmt.Sprintln("DRA: linux id ----> logical id is success for", logicalId))
+	//gblEntry, ok := dhcprelayGblInfo[controlMessage.IfIndex]
+	gblEntry, ok := dhcprelayGblInfo[logicalId]
 	if !ok {
 		logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index ????",
-			controlMessage.IfIndex))
+			logicalId))
 		logger.Err("DRA: not sending packet.... :(")
 		return
 	}
@@ -450,24 +456,8 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.
 		return
 	}
 	outPacket := DhcpRelayAgentCreateNewPacket(Request, inReq)
-	// @FIXME: jgheewala HACK for agent ip address
-	// ip address should be interface ip address
-	//	outPacket.SetGIAddr(net.IP{20, 0, 1, 1})
 	outPacket.SetGIAddr(net.ParseIP(gblEntry.IntfConfig.IpSubnet))
 	outPacket.AddDhcpOptions(OptionDHCPMessageType, []byte{byte(mt)})
-
-	// Add Relay Agent Info....
-	/*
-		USE ip address of the if_index
-		reqOptions := inRequest.ParseDhcpOptions()
-		if reqOptions[OptionRelayAgentInformation] {
-			logger.Info("DRA: Adding Relay Agent Info")
-
-		}
-	*/
-	// hard-coded suboption type to 1
-	// @TODO: length from client is 300 relay agent is sending 272...fixit
-	//outPacket.AddDhcpOptions(OptionRelayAgentInformation, []byte{byte(1)})
 
 	// Decode outpacket...
 	logger.Info("DRA: Decoding out pkt for server")
