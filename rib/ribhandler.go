@@ -87,6 +87,8 @@ type RouteInfoRecordList struct {
 	policyHitCounter  ribd.Int
 	policyList       []string
 	isPolicyBasedStateValid bool
+	routeCreatedTime string
+	routeUpdatedTime string
 }
 
 type ClientJson struct {
@@ -107,6 +109,7 @@ type IPRoute struct {
 type localDB struct {
 	prefix  patriciaDB.Prefix
 	isValid bool
+	precedence int
 }
 
 var RouteInfoMap = patriciaDB.NewTrie()
