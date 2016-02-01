@@ -4,14 +4,13 @@ import (
 	"bfdd"
 	"errors"
 	"fmt"
-	"l3/bfd/config"
-	//"l3/bfd/server"
+	"l3/bfd/server"
 	//"log/syslog"
 	//"net"
 )
 
 func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobalConfig) bool {
-	gConf := config.GlobalConfig{
+	gConf := server.GlobalConfig{
 		Enable: bfdGlobalConfig.Enable,
 	}
 	h.server.GlobalConfigCh <- gConf
@@ -19,7 +18,7 @@ func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobalConfig) 
 }
 
 func (h *BFDHandler) SendBfdIntfConfig(bfdIntfConfig *bfdd.BfdIntfConfig) bool {
-	ifConf := config.IntfConfig{
+	ifConf := server.IntfConfig{
 		InterfaceId:               bfdIntfConfig.Interface,
 		LocalMultiplier:           bfdIntfConfig.LocalMultiplier,
 		DesiredMinTxInterval:      bfdIntfConfig.DesiredMinTxInterval,
