@@ -187,6 +187,8 @@ func (m RouteServiceHandler) GetBulkRoutes(fromIndex ribd.Int, rcount ribd.Int) 
 			nextRoute.Prototype = ribd.Int(prefixNodeRoute.protocol)
 			nextRoute.IsValid = destNetSlice[i+fromIndex].isValid
 			nextRoute.PolicyList = make([]string,0)
+			nextRoute.RouteCreated = prefixNodeRouteList.routeCreatedTime
+			nextRoute.RouteUpdated = prefixNodeRouteList.routeUpdatedTime
 			for i:=0;i<len(prefixNodeRouteList.policyList);i++ {
 				nextRoute.PolicyList = append(nextRoute.PolicyList, prefixNodeRouteList.policyList[i])
 			}
@@ -243,6 +245,8 @@ func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIn
 			nextHopIntf.NextHopIfIndex = v.nextHopIfIndex
 			nextHopIntf.NextHopIp = v.nextHopIp.String()
 			nextHopIntf.Metric = v.metric
+			nextHopIntf.Ipaddr = v.destNetIp.String()
+			nextHopIntf.Mask = v.networkMask.String()
 		}
 	}
 
@@ -395,6 +399,8 @@ func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 		}
 	}
 	//update the patriciaDB trie with the updated route info record list
+	t1 := time.Now()
+	routeInfoRecordList.routeUpdatedTime = t1.String()
 	RouteInfoMap.Set(patriciaDB.Prefix(destNetPrefix), routeInfoRecordList)
 
 	if deleteRoute == true || routeInfoRecordOld.protocol != PROTOCOL_NONE {
@@ -501,6 +507,8 @@ func createV4Route(destNetIp string,
 	   } else if  policyStateChange == ribdCommonDefs.RoutePolicyStateChangetoValid {
 	      newRouteInfoRecordList.isPolicyBasedStateValid = true
     }
+	    t1 := time.Now()
+		newRouteInfoRecordList.routeCreatedTime = t1.String()
 		if ok := RouteInfoMap.Insert(destNet, newRouteInfoRecordList); ok != true {
 			logger.Println(" return value not ok")
 		}

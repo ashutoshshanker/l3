@@ -11,26 +11,39 @@ import (
 	"net"
 	"reflect"
 )
-var PolicyDB = patriciaDB.NewTrie()
-var PrefixPolicyListDB = patriciaDB.NewTrie()
 
 type PolicyStmt struct {				//policy engine uses this
 	name               string
+	precedence         ribd.Int
 	matchConditions    string
 	conditions         []string
 	actions            []string
 	localDBSliceIdx        int8  
 	importPolicy       bool
 	exportPolicy       bool  
+}
+
+type Policy struct {
+	name              string
+	precedence        ribd.Int
+	matchType         string
+	policyStmtPrecedenceMap map[int]string
 	hitCounter         int   
 	routeList         []string
+	localDBSliceIdx        int8  
 }
-var ProtocolPolicyListDB = make(map[int][]string)//policystmt names assoociated with every protocol type
-var localPolicyStmtDB []localDB
 
-func addPolicyRouteMap(route ribd.Routes, policyStmt PolicyStmt) {
+var PolicyDB = patriciaDB.NewTrie()
+var PolicyStmtDB = patriciaDB.NewTrie()
+var PrefixPolicyListDB = patriciaDB.NewTrie()
+var ProtocolPolicyListDB = make(map[int][]string)//policystmt names assoociated with every protocol type
+var PolicyPrecedenceMap = make(map[int] string)
+var localPolicyStmtDB []localDB
+var localPolicyDB []localDB
+
+func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	logger.Println("addPolicyRouteMap")
-	policyStmt.hitCounter++
+	policy.hitCounter++
 	ipPrefix,err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
 	if err != nil {
 		logger.Println("Invalid ip prefix")
@@ -49,21 +62,21 @@ func addPolicyRouteMap(route ribd.Routes, policyStmt PolicyStmt) {
 	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
 //	newRoute := string(ipPrefix[:])
 	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
-	if policyStmt.routeList == nil {
-		policyStmt.routeList = make([]string, 0)
+	if policy.routeList == nil {
+		policy.routeList = make([]string, 0)
 	}
-    policyStmt.routeList = append(policyStmt.routeList, newRoute)
-	PolicyDB.Set(patriciaDB.Prefix(policyStmt.name), policyStmt)
+    policy.routeList = append(policy.routeList, newRoute)
+	PolicyDB.Set(patriciaDB.Prefix(policy.name), policy)
 }
-func deletePolicyRouteMap(route ribd.Routes, policyStmt PolicyStmt) {
+func deletePolicyRouteMap(route ribd.Routes, policy Policy) {
 	logger.Println("deletePolicyRouteMap")
 }
-func updatePolicyRouteMap(route ribd.Routes, policyStmt PolicyStmt, op int) {
+func updatePolicyRouteMap(route ribd.Routes, policy Policy, op int) {
 	logger.Println("updatePolicyRouteMap")
 	if op == add {
-		addPolicyRouteMap(route, policyStmt)
+		addPolicyRouteMap(route, policy)
 	} else if op == del {
-		deletePolicyRouteMap(route, policyStmt)
+		deletePolicyRouteMap(route, policy)
 	}
 	
 }
@@ -241,7 +254,7 @@ func updateActions(policyStmt PolicyStmt, actionName string, op int) {
 func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStmtConfig) (val bool, err error) {
 	logger.Println("CreatePolicyDefinitionStatement")
 
-	policyStmt := PolicyDB.Get(patriciaDB.Prefix(cfg.Name))
+	policyStmt := PolicyStmtDB.Get(patriciaDB.Prefix(cfg.Name))
 	var i int
 	if(policyStmt == nil) {
 	   logger.Println("Defining a new policy statement with name ", cfg.Name)
@@ -271,7 +284,7 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 			updateActions(newPolicyStmt, cfg.Actions[i], add)
 		}
 	   }
-		if ok := PolicyDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyStmt); ok != true {
+		if ok := PolicyStmtDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyStmt); ok != true {
 			logger.Println(" return value not ok")
 			return val, err
 		}
@@ -280,7 +293,7 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 			localPolicyStmtDB = make([]localDB, 0)
 		} 
 	    localPolicyStmtDB = append(localPolicyStmtDB, localDBRecord)
-	    PolicyEngineTraverseAndApply(newPolicyStmt)
+	    //PolicyEngineTraverseAndApply(newPolicyStmt)
 	} else {
 		logger.Println("Duplicate Policy definition name")
 		err = errors.New("Duplicate policy definition")
@@ -291,12 +304,12 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 
 func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStmtConfig) (val bool, err error) {
 	logger.Println("DeletePolicyDefinitionStatement for name ", cfg.Name)
-	ok := PolicyDB.Match(patriciaDB.Prefix(cfg.Name))
+	ok := PolicyStmtDB.Match(patriciaDB.Prefix(cfg.Name))
 	if !ok {
 		err = errors.New("No policy statement with this name found")
 		return val, err
 	}
-	policyStmtInfoGet := PolicyDB.Get(patriciaDB.Prefix(cfg.Name))
+	policyStmtInfoGet := PolicyStmtDB.Get(patriciaDB.Prefix(cfg.Name))
 	if(policyStmtInfoGet != nil) {
        //invalidate localPolicyStmt 
 	   policyStmtInfo := policyStmtInfoGet.(PolicyStmt)
@@ -304,9 +317,9 @@ func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDe
           logger.Println("local DB slice index for this policy stmt is ", policyStmtInfo.localDBSliceIdx)
 		  localPolicyStmtDB[policyStmtInfo.localDBSliceIdx].isValid = false		
 	   }
-	   PolicyEngineTraverseAndReverse(policyStmtInfo)
+	  // PolicyEngineTraverseAndReverse(policyStmtInfo)
 	   logger.Println("Deleting policy statement with name ", cfg.Name)
-		if ok := PolicyDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
+		if ok := PolicyStmtDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
 			logger.Println(" return value not ok for delete PolicyDB")
 			return val, err
 		}
@@ -355,7 +368,7 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtState( fromIndex ribd.In
 			break
 		}
 		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyStmtDB[i+fromIndex].prefix))
-		prefixNodeGet := PolicyDB.Get(localPolicyStmtDB[i+fromIndex].prefix)
+		prefixNodeGet := PolicyStmtDB.Get(localPolicyStmtDB[i+fromIndex].prefix)
 		if(prefixNodeGet != nil) {
 			prefixNode := prefixNodeGet.(PolicyStmt)
 			nextNode = &tempNode[validCount]
@@ -364,8 +377,6 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtState( fromIndex ribd.In
 			nextNode.Actions = prefixNode.actions
 	        nextNode.Import = prefixNode.importPolicy
 	        nextNode.Export = prefixNode.exportPolicy
-			nextNode.HitCounter = ribd.Int(prefixNode.hitCounter)
-			nextNode.IpPrefixList = prefixNode.routeList
 			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
 			if(len(returnNodes) == 0){
 				returnNodes = make([]*ribd.PolicyDefinitionStmtState, 0)
@@ -383,7 +394,98 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtState( fromIndex ribd.In
 	return policyStmts, err
 }
 
-func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinition) (val bool, err error) {
+func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Println("CreatePolicyDefinition")
+	policy := PolicyDB.Get(patriciaDB.Prefix(cfg.Name))
+	var i int
+	if(policy == nil) {
+	   logger.Println("Defining a new policy with name ", cfg.Name)
+	   var newPolicy Policy
+	   newPolicy.name = cfg.Name
+	   newPolicy.precedence = cfg.Precedence
+	   newPolicy.matchType = cfg.MatchType
+	   logger.Println("Policy has %d ", len(cfg.PolicyDefinitionStatements)," number of statements")
+	   newPolicy.policyStmtPrecedenceMap = make(map[int]string)	
+	   for i=0;i<len(cfg.PolicyDefinitionStatements);i++ {
+		  logger.Println("Adding statement ", cfg.PolicyDefinitionStatements[i].Statement, " at precedence id ", cfg.PolicyDefinitionStatements[i].Precedence)
+          newPolicy.policyStmtPrecedenceMap[int(cfg.PolicyDefinitionStatements[i].Precedence)] = cfg.PolicyDefinitionStatements[i].Statement 
+	   }
+       for k:=range newPolicy.policyStmtPrecedenceMap {
+		logger.Println("key k = ", k)
+	   }
+
+	   if ok := PolicyDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicy); ok != true {
+			logger.Println(" return value not ok")
+			return val, err
+		}
+        localDBRecord := localDB{prefix:patriciaDB.Prefix(cfg.Name), isValid:true}
+		if(localPolicyDB == nil) {
+			localPolicyDB = make([]localDB, 0)
+		} 
+	    localPolicyDB = append(localPolicyDB, localDBRecord)
+		if PolicyPrecedenceMap == nil {
+	       PolicyPrecedenceMap = make(map[int]string)	
+		}
+		PolicyPrecedenceMap[int(cfg.Precedence)]=cfg.Name
+	    PolicyEngineTraverseAndApply(newPolicy)
+	} else {
+		logger.Println("Duplicate Policy definition name")
+		err = errors.New("Duplicate policy definition")
+		return val, err
+	}
 	return val, err
+}
+
+func (m RouteServiceHandler) GetBulkPolicyDefinitionState( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
+	logger.Println("GetBulkPolicyDefinitionState")
+    var i, validCount, toIndex ribd.Int
+	var tempNode []ribd.PolicyDefinitionState = make ([]ribd.PolicyDefinitionState, rcount)
+	var nextNode *ribd.PolicyDefinitionState
+    var returnNodes []*ribd.PolicyDefinitionState
+	var returnGetInfo ribd.PolicyDefinitionStateGetInfo
+	i = 0
+	policyStmts = &returnGetInfo
+	more := true
+    if(localPolicyDB == nil) {
+		logger.Println("localPolicyDB not initialized")
+		return policyStmts, err
+	}
+	for ;;i++ {
+		logger.Printf("Fetching trie record for index %d\n", i+fromIndex)
+		if(i+fromIndex >= ribd.Int(len(localPolicyDB))) {
+			logger.Println("All the policies fetched")
+			more = false
+			break
+		}
+		if(localPolicyDB[i+fromIndex].isValid == false) {
+			logger.Println("Invalid policy")
+			continue
+		}
+		if(validCount==rcount) {
+			logger.Println("Enough policies fetched")
+			break
+		}
+		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyStmtDB[i+fromIndex].prefix))
+		prefixNodeGet := PolicyDB.Get(localPolicyDB[i+fromIndex].prefix)
+		if(prefixNodeGet != nil) {
+			prefixNode := prefixNodeGet.(Policy)
+			nextNode = &tempNode[validCount]
+		    nextNode.Name = prefixNode.name
+			nextNode.HitCounter = ribd.Int(prefixNode.hitCounter)
+			nextNode.IpPrefixList = prefixNode.routeList
+			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
+			if(len(returnNodes) == 0){
+				returnNodes = make([]*ribd.PolicyDefinitionState, 0)
+			}
+			returnNodes = append(returnNodes, nextNode)
+			validCount++
+		}
+	}
+	logger.Printf("Returning %d list of policies", validCount)
+	policyStmts.PolicyDefinitionStateList = returnNodes
+	policyStmts.StartIdx = fromIndex
+	policyStmts.EndIdx = toIndex+1
+	policyStmts.More = more
+	policyStmts.Count = validCount
+	return policyStmts, err
 }

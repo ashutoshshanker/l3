@@ -5,6 +5,8 @@ struct NextHopInfo {
     2: string NextHopIp,
     3: int NextHopIfIndex,
 	4: int Metric,
+	5: string Ipaddr,
+	6: string Mask
 }
 struct Routes {
 	1: string Ipaddr,
@@ -17,8 +19,10 @@ struct Routes {
 	8: bool IsValid,
 	9: int SliceIdx,
 	10: int PolicyHitCounter,
-	11: list<string>PolicyList
-    12: 	bool IsPolicyBasedStateValid 
+	11: list<string>PolicyList,
+    12: 	bool IsPolicyBasedStateValid,
+	13: string RouteCreated,
+	14: string RouteUpdated
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -186,16 +190,34 @@ struct PolicyDefinitionActionStateGetInfo {
 	5: list<PolicyDefinitionActionState> PolicyDefinitionActionStateList
 }
 
-struct PolicyDefinition{
+struct PolicyDefinitionStmtPrecedence  {
+	1: int Precedence
+	2: string Statement
+}
+struct PolicyDefinitionConfig{
 	1: string Name
-	2: list<string> PolicyDefinitionStatements
+	2: int Precedence
+	3: string MatchType
+	4: list<PolicyDefinitionStmtPrecedence> PolicyDefinitionStatements
 }
 struct PolicyDefinitionGetInfo {
 	1: int StartIdx
 	2: int EndIdx
 	3: int Count
 	4: bool More
-	5: list<PolicyDefinition> PolicyDefinitionList
+	5: list<PolicyDefinitionConfig> PolicyDefinitionList
+}
+struct PolicyDefinitionState{
+	1 : string  Name
+	2 : int      HitCounter
+	3: list<string> IpPrefixList
+}
+struct PolicyDefinitionStateGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<PolicyDefinitionState> PolicyDefinitionStateList
 }
 
 //typedef RouteList  list<Routes>
@@ -256,7 +278,8 @@ service RouteService
 	PolicyDefinitionConditionStateGetInfo GetBulkPolicyDefinitionConditionState(1: int fromIndex, 2: int count);
 	PolicyDefinitionActionStateGetInfo GetBulkPolicyDefinitionActionState(1: int fromIndex, 2: int count);
 
-	bool CreatePolicyDefinition(1: PolicyDefinition config);
-//	bool UpdatePolicyDefinition(1: PolicyDefinition origconfig, 2: PolicyDefinition newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyDefinition(1: PolicyDefinition config);
+	bool CreatePolicyDefinition(1: PolicyDefinitionConfig config);
+//	bool UpdatePolicyDefinition(1: PolicyDefinitionConfig origconfig, 2: PolicyDefinitionConfig newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinition(1: PolicyDefinitionConfig config);
+	PolicyDefinitionStateGetInfo GetBulkPolicyDefinitionState(1: int fromIndex, 2: int count);
 }
