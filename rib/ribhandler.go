@@ -77,6 +77,7 @@ type RouteInfoRecord struct {
 	metric         ribd.Int
 	sliceIdx       int
 	protocol       int8
+	isPolicyBasedStateValid bool
 }
 
 //implement priority queue of the routes
@@ -85,6 +86,9 @@ type RouteInfoRecordList struct {
 	routeInfoList    []RouteInfoRecord //map[int]RouteInfoRecord
 	policyHitCounter  ribd.Int
 	policyList       []string
+	isPolicyBasedStateValid bool
+	routeCreatedTime string
+	routeUpdatedTime string
 }
 
 type ClientJson struct {
@@ -105,6 +109,7 @@ type IPRoute struct {
 type localDB struct {
 	prefix  patriciaDB.Prefix
 	isValid bool
+	precedence int
 }
 
 var RouteInfoMap = patriciaDB.NewTrie()
@@ -169,7 +174,7 @@ func processL3IntfDownEvent(ipAddr string) {
 			RIBD_PUB.Send(buf, nanomsg.DontWait)
 */
 			//Delete this route
-			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, 0, FIBOnly)
+			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, 0, FIBOnly,ribdCommonDefs.RoutePolicyStateChangeNoChange)
 		}
 	}
 }
@@ -232,7 +237,7 @@ func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int) {
 			RIBD_PUB.Send(buf, nanomsg.DontWait)
 
 			//Delete this route
-			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, 0, FIBOnly)
+			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, 0, FIBOnly,ribdCommonDefs.RoutePolicyStateChangeNoChange)
 		}
 	}
 }
@@ -257,7 +262,7 @@ func processLinkUpEvent(ifType ribd.Int, ifIndex ribd.Int) {
 			RIBD_PUB.Send(buf, nanomsg.DontWait)
 
 			//Add this route
-			createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ConnectedRoutes[i].Metric, ConnectedRoutes[i].NextHopIp, ConnectedRoutes[i].NextHopIfType, ConnectedRoutes[i].IfIndex, ConnectedRoutes[i].Prototype, FIBOnly, ConnectedRoutes[i].SliceIdx)
+			createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ConnectedRoutes[i].Metric, ConnectedRoutes[i].NextHopIp, ConnectedRoutes[i].NextHopIfType, ConnectedRoutes[i].IfIndex, ConnectedRoutes[i].Prototype, FIBOnly, ribdCommonDefs.RoutePolicyStateChangeNoChange,ConnectedRoutes[i].SliceIdx)
 		}
 	}
 }
@@ -454,7 +459,7 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			ipAddrStr := ip.String()
 			ipMaskStr := net.IP(ipMask).String()
 			logger.Printf("Calling createv4Route with ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
-			_, err = createV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED, FIBAndRIB, ribd.Int(len(destNetSlice)))
+			_, err = createV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 			if err != nil {
 				logger.Printf("Route create failed with err %s\n", err)
 				return
@@ -527,6 +532,6 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	//CreateRoutes("RouteSetup.json")
-	UpdateRoutesFromDB(paramsDir)
+	UpdateFromDB(paramsDir)
 	return &RouteServiceHandler{}
 }

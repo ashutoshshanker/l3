@@ -33,8 +33,9 @@ type AsicdClient struct {
  */
 var (
 	//portInfoMap    map[string]int
-	asicdClient    AsicdClient
-	asicdSubSocket *nanomsg.SubSocket
+	asicdClient                       AsicdClient
+	asicdSubSocket                    *nanomsg.SubSocket
+	dhcprelayLogicalIntfId2LinuxIntId map[int]int // Linux Intf Id ---> Logical ID
 )
 
 func DhcpRelayAgentListenAsicUpdate(address string) error {
@@ -62,6 +63,23 @@ func DhcpRelayAgentListenAsicUpdate(address string) error {
 	}
 	logger.Info("DRA: asicd update listener is set")
 	return nil
+}
+
+func DhcpRelayAgentUpdateVlanInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
+	logger.Info("DRA: Vlan update message for " + vlanNotifyMsg.VlanName)
+	var linuxInterface *net.Interface
+	var err error
+	linuxInterface, err = net.InterfaceByName(vlanNotifyMsg.VlanName)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
+		return
+	}
+	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
+		dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index] =
+			int(vlanNotifyMsg.VlanId)
+	} else { // Delete interface id
+		delete(dhcprelayLogicalIntfId2LinuxIntId, linuxInterface.Index)
+	}
 }
 
 func DhcpRelayAgentUpdateIntfPortMap(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
@@ -116,7 +134,17 @@ func DhcpRelayAsicdSubscriber() {
 			logger.Err(fmt.Sprintln("DRA: Unable to Unmarshal asicd msg:", msg.Msg))
 			continue
 		}
-		if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE ||
+		if msg.MsgType == asicdConstDefs.NOTIFY_VLAN_CREATE ||
+			msg.MsgType == asicdConstDefs.NOTIFY_VLAN_DELETE {
+			//Vlan Create Msg
+			var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
+			err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
+			if err != nil {
+				logger.Err(fmt.Sprintln("DRA: Unable to unmashal vlanNotifyMsg:", msg.Msg))
+				return
+			}
+			DhcpRelayAgentUpdateVlanInfo(vlanNotifyMsg, msg.MsgType)
+		} else if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE ||
 			msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_DELETE {
 			var ipv4IntfNotifyMsg asicdConstDefs.IPv4IntfNotifyMsg
 			err = json.Unmarshal(msg.Msg, &ipv4IntfNotifyMsg)
@@ -146,7 +174,6 @@ func DhcpRelayInitPortParams() error {
 	logger.Info("DRA: initializing Port Parameters & Global Init")
 	// constructing port configs...
 	currMarker := int64(asicdConstDefs.MIN_SYS_PORTS)
-	hack := false // dra hack for running the code on localhost
 	more := false
 	objCount := 0
 	portNum := 0
@@ -160,48 +187,27 @@ func DhcpRelayInitPortParams() error {
 	}
 	logger.Info("DRA calling asicd for port config")
 	count := 10
-	// for optimization initializing 25 interfaces map...
-	//dhcprelayGblInfo = make(map[string]DhcpRelayAgentGlobalInfo, 25)
+	// Allocate memory for Global Info
 	dhcprelayGblInfo = make(map[int]DhcpRelayAgentGlobalInfo, 25)
+	// Allocate memory for Linux ID ---> Logical Id mapping
+	dhcprelayLogicalIntfId2LinuxIntId = make(map[int]int, 10)
 	for {
-		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortConfig(
-			int64(currMarker), int64(count))
+		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortState(
+			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
 			logger.Err(fmt.Sprintln("DRA: getting bulk port config"+
 				" from asicd failed with reason", err))
-			//return err <--- DRA doesn't start as no bulk port
-			//
-			logger.Info("DRA: HACK For interface is invoked")
-			hack = true
-			//return nil
+			return nil // relay agent will update the info with asicd subscriber
 		}
-		if hack == true {
-			objCount = 1
-			portNum = 1
-		} else {
-			objCount = int(bulkInfo.ObjCount)
-			more = bool(bulkInfo.More)
-			currMarker = int64(bulkInfo.NextMarker)
-		}
+		objCount = int(bulkInfo.Count)
+		more = bool(bulkInfo.More)
+		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			//var entry portInfo
 			var ifName string
-			if hack == true {
-				portNum = 1
-				ifName = "wlp2s0" //"enp1s0f0"
-			} else {
-				portNum = int(bulkInfo.PortConfigList[i].IfIndex)
-				ifName = bulkInfo.PortConfigList[i].Name
-			}
+			portNum = int(bulkInfo.PortStateList[i].IfIndex)
+			ifName = bulkInfo.PortStateList[i].Name
 			logger.Info("DRA: interface global init for " + ifName)
-			//portInfoMap[ifName] = portNum
-			// Init DRA Global Handling for all interfaces....
-			//DhcpRelayAgentInitGblHandling(ifName, portNum)
 			DhcpRelayAgentInitGblHandling(portNum)
-		}
-		if hack {
-			logger.Info("DRA: HACK and hence creating clien/server right away")
-			DhcpRelayAgentCreateClientServerConn()
 		}
 		if more == false {
 			break

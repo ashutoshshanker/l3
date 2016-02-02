@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"l3/ospf/config"
 	"time"
+        "sync"
 	//"l3/ospf/rpc"
 	//    "l3/rib/ribdCommonDefs"
 	"github.com/google/gopacket/pcap"
@@ -65,12 +66,8 @@ type IntfConf struct {
 	IfMulticastForwarding   config.MulticastForwarding
 	IfDemand                bool
 	IfAuthType              uint16
-	PktSendCh               chan bool
-	PktSendStatusCh         chan bool
-	PktRecvCh               chan bool
-	PktRecvStatusCh         chan bool
-	SendPcapHdl             *pcap.Handle
-	RecvPcapHdl             *pcap.Handle
+	FSMCtrlCh               chan bool
+	FSMCtrlStatusCh         chan bool
 	HelloIntervalTicker     *time.Ticker
         BackupSeenCh            chan BackupSeenMsg
         NeighborMap             map[NeighborKey]NeighborData
@@ -118,10 +115,8 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		ent.IfMulticastForwarding = config.Blocked
 		ent.IfDemand = false
 		ent.IfAuthType = uint16(config.NoAuth)
-		ent.PktSendCh = make(chan bool)
-		ent.PktSendStatusCh = make(chan bool)
-		ent.PktRecvCh = make(chan bool)
-		ent.PktRecvStatusCh = make(chan bool)
+		ent.FSMCtrlCh = make(chan bool)
+		ent.FSMCtrlStatusCh = make(chan bool)
                 ent.BackupSeenCh = make(chan BackupSeenMsg)
                 ent.NeighCreateCh = make(chan NeighCreateMsg)
                 ent.NeighChangeCh = make(chan NeighChangeMsg)
@@ -141,28 +136,39 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
                 ent.IfEvents = 0
                 ent.IfLsaCount = 0
                 ent.IfLsaCksumSum = 0
-		sendHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
-		if sendHdl == nil {
-			server.logger.Err(fmt.Sprintln("SendHdl: No device found.", ent.IfName, err))
-			return
-		}
-		ent.SendPcapHdl = sendHdl
-		recvHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
-		if recvHdl == nil {
-			server.logger.Err(fmt.Sprintln("RecvHdl: No device found.", ent.IfName, err))
-			return
-		}
+                txEntry, exist := server.IntfTxMap[key]
+                if !exist {
+                        sendHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
+                        if sendHdl == nil {
+                                server.logger.Err(fmt.Sprintln("SendHdl: No device found.", ent.IfName, err))
+                                return
+                        }
+                        txEntry.SendPcapHdl = sendHdl
+                        txEntry.SendMutex = &sync.Mutex{}
+                        server.IntfTxMap[key] = txEntry
+                }
+                rxEntry, exist := server.IntfRxMap[key]
+                if !exist {
+                        recvHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
+                        if recvHdl == nil {
+                                server.logger.Err(fmt.Sprintln("RecvHdl: No device found.", ent.IfName, err))
+                                return
+                        }
 
-		filter := fmt.Sprintln("proto ospf and not src host", ipIntfProp.IpAddr.String())
-		server.logger.Info(fmt.Sprintln("Filter is : ", filter))
-		// Setting Pcap filter for Ospf Pkt
-		err = recvHdl.SetBPFFilter(filter)
-		if err != nil {
-			server.logger.Err(fmt.Sprintln("Unable to set filter on", ent.IfName))
-			return
-		}
+                        filter := fmt.Sprintln("proto ospf and not src host", ipIntfProp.IpAddr.String())
+                        server.logger.Info(fmt.Sprintln("Filter is : ", filter))
+                        // Setting Pcap filter for Ospf Pkt
+                        err = recvHdl.SetBPFFilter(filter)
+                        if err != nil {
+                                server.logger.Err(fmt.Sprintln("Unable to set filter on", ent.IfName))
+                                return
+                        }
 
-		ent.RecvPcapHdl = recvHdl
+                        rxEntry.RecvPcapHdl = recvHdl
+                        rxEntry.PktRecvCh = make(chan bool)
+                        rxEntry.PktRecvStatusCh = make(chan bool)
+                        server.IntfRxMap[key] = rxEntry
+                }
 		server.IntfConfMap[key] = ent
 		server.logger.Info(fmt.Sprintln("Intf Conf initialized", key))
 	} else {
@@ -316,13 +322,21 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
 
 func (server *OSPFServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
 	server.logger.Info("Stop Sending Hello Pkt")
-	server.StopOspfTransPkts(intfConfKey)
+	server.StopOspfIntfFSM(intfConfKey)
 	server.logger.Info("Stop Receiving Hello Pkt")
 	server.StopOspfRecvPkts(intfConfKey)
 	ent, _ := server.IntfConfMap[intfConfKey]
         ent.NeighborMap = nil
         ent.IfEvents = ent.IfEvents + 1
+        oldState := ent.IfFSMState
         ent.IfFSMState = config.Down
+        areaId := convertIPv4ToUint32(ent.IfAreaId)
+        if oldState > config.Waiting {
+                msg := IntfStateChangeMsg {
+                        areaId: areaId,
+                }
+                server.IntfStateChangeCh <- msg
+        }
 	server.IntfConfMap[intfConfKey] = ent
 }
 
@@ -338,7 +352,7 @@ func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
         ent.IfFSMState = config.Waiting
 	server.IntfConfMap[intfConfKey] = ent
 	server.logger.Info("Start Sending Hello Pkt")
-	go server.StartOspfTransPkts(intfConfKey)
+	go server.StartOspfIntfFSM(intfConfKey)
 	server.logger.Info("Start Receiving Hello Pkt")
 	go server.StartOspfRecvPkts(intfConfKey)
 }

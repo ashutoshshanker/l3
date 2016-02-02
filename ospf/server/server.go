@@ -30,6 +30,10 @@ type OspfClientBase struct {
 	IsConnected        bool
 }
 
+type LsdbKey struct {
+        AreaId          uint32
+}
+
 type OSPFServer struct {
 	logger            *syslog.Writer
 	ribdClient        RibdClient
@@ -41,6 +45,10 @@ type OSPFServer struct {
 	GlobalConfigCh    chan config.GlobalConf
 	AreaConfigCh      chan config.AreaConf
 	IntfConfigCh      chan config.InterfaceConf
+        AreaLsdb          map[LsdbKey]LSDatabase
+        LsdbUpdateCh      chan LsdbUpdateMsg
+        IntfStateChangeCh chan IntfStateChangeMsg
+        NetworkDRChangeCh chan NetworkDRChangeMsg
 
 	/*
 	   connRoutesTimer         *time.Timer
@@ -53,6 +61,8 @@ type OSPFServer struct {
 	asicdSubSocketErrCh  chan error
 	AreaConfMap          map[AreaConfKey]AreaConf
 	IntfConfMap          map[IntfConfKey]IntfConf
+	IntfTxMap            map[IntfConfKey]IntfTxHandle
+	IntfRxMap            map[IntfConfKey]IntfRxHandle
 	NeighborConfigMap    map[uint32]OspfNeighborEntry
 	NeighborListMap      map[IntfConfKey]list.List
 	neighborConfMutex    sync.Mutex
@@ -63,6 +73,8 @@ type OSPFServer struct {
 	nbrFSMCtrlCh         chan bool
 	neighborSliceRefCh   *time.Ticker
 	neighborBulkSlice    []uint32
+	neighborDBDEventCh   chan ospfNeighborDBDMsg
+	//neighborDBDEventCh   chan IntfToNeighDbdMsg
 
 	AreaStateTimer           *time.Timer
 	AreaStateMutex           sync.RWMutex
@@ -88,6 +100,12 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.vlanPropertyMap = make(map[uint16]VlanProperty)
 	ospfServer.AreaConfMap = make(map[AreaConfKey]AreaConf)
 	ospfServer.IntfConfMap = make(map[IntfConfKey]IntfConf)
+	ospfServer.IntfTxMap = make(map[IntfConfKey]IntfTxHandle)
+	ospfServer.IntfRxMap = make(map[IntfConfKey]IntfRxHandle)
+        ospfServer.AreaLsdb = make(map[LsdbKey]LSDatabase)
+        ospfServer.IntfStateChangeCh = make(chan IntfStateChangeMsg)
+        ospfServer.NetworkDRChangeCh = make(chan NetworkDRChangeMsg)
+        ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
 	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
@@ -105,6 +123,7 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.IntfSliceRefreshDoneCh = make(chan bool)
 	ospfServer.nbrFSMCtrlCh = make(chan bool)
 	ospfServer.RefreshDuration = time.Duration(10) * time.Minute
+	ospfServer.neighborDBDEventCh = make(chan ospfNeighborDBDMsg)
 
 	/*
 	   ospfServer.ribSubSocketCh = make(chan []byte)

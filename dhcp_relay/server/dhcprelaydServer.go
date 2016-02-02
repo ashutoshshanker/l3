@@ -11,11 +11,14 @@ import (
 	"golang.org/x/net/ipv4"
 	"io/ioutil"
 	"log/syslog"
+	"net"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"utils/ipcutils"
 )
 
@@ -29,9 +32,6 @@ type DhcpRelayServiceHandler struct {
 type DhcpOptionCode byte
 type OpCode byte
 type MessageType byte // Option 53
-
-// For Debugging if_name, mac_address, dhcp server ip
-type MacAddrServerIpKey string
 
 // Map of DHCP options
 type DhcpRelayAgentOptions map[DhcpOptionCode][]byte
@@ -66,10 +66,12 @@ var (
 	// When we receive a udp packet... we will get interface id and that can
 	// be used to collect the global info...
 	dhcprelayGblInfo    map[int]DhcpRelayAgentGlobalInfo
-	StateDebugInfo      map[MacAddrServerIpKey]DhcpRelayAgentStateInfo
+	StateDebugInfo      map[string]DhcpRelayAgentStateInfo
 	dhcprelayClientConn *ipv4.PacketConn
 	dhcprelayServerConn *ipv4.PacketConn
 	logger              *syslog.Writer
+	//map for mac_address to interface id for sending unicast packet
+	dhcprelayReverseMap map[string]int
 	// PadddingToMinimumSize pads a packet so that when sent over UDP,
 	// the entire packet, is 300 bytes (which is BOOTP/DHCP min)
 	dhcprelayPadder [DHCP_PACKET_MIN_SIZE]byte
@@ -81,13 +83,22 @@ func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 	return &DhcpRelayServiceHandler{}
 }
 
-func DhcpRelayAgentUpdateStats(input string, info *DhcpRelayAgentGlobalInfo) {
-	/*
-		info.StateDebugInfo.stats = append(info.StateDebugInfo.stats, input)
-		info.dhcprelayConfigMutex.RLock()
-		dhcprelayGblInfo[info.IntfConfig.IfIndex] = *info
-		info.dhcprelayConfigMutex.RUnlock()
-	*/
+func DhcpRelayAgentUpdateStats(input string, key string) {
+	elem, ok := StateDebugInfo[key]
+	ctime := time.Now()
+	mac := strings.Split(key, "_")
+	if ok == false {
+		// first time entry is being populated....
+		insert := "(" + ctime.String() + "): Stats Started for Host: " + mac[0] +
+			" Server: " + mac[1]
+		var statString DhcpRelayAgentStateInfo
+		statString.stats = make([]string, 10)
+		statString.stats = append(statString.stats, insert)
+		StateDebugInfo[key] = statString
+	} else {
+		elem.stats = append(elem.stats, input)
+		StateDebugInfo[key] = elem
+	}
 }
 
 /*
@@ -177,9 +188,6 @@ func DhcpRelayAgentOSSignalHandle() {
  *	    is needed by relay agent to perform its operation
  */
 func InitDhcpRelayPortPktHandler() error {
-	// Init port configs
-	//portInfoMap = make(map[string]int, 30) //map[]portInfo)
-
 	// connecting to asicd
 	params_dir := flag.String("params", "",
 		"Directory Location for config files")
@@ -208,6 +216,31 @@ func InitDhcpRelayPortPktHandler() error {
 func DhcpRelayAgentInitGblHandling(ifNum int) {
 	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(ifNum))
 	// Created a global Entry for Interface
+	// @HACK HACK HACK TODO jgheewala remove this
+	var err error
+	var linuxInterface *net.Interface
+	if ifNum == 9 {
+		logger.Info(fmt.Sprintln("DRA: jgheewal:::: hack for ifNUm", ifNum))
+		linuxInterface, err = net.InterfaceByName("SVI9")
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
+		} else {
+			//copy correct if_id
+			ifNum = linuxInterface.Index
+			logger.Info(fmt.Sprintln("DRA: jgheewal:::: Updated for ifNUm", ifNum))
+		}
+
+	} else if ifNum == 10 {
+		logger.Info(fmt.Sprintln("DRA: jgheewal:::: hack for ifNUm", ifNum))
+		linuxInterface, err = net.InterfaceByName("SVI10")
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
+		} else {
+			//copy correct if_id
+			ifNum = linuxInterface.Index
+			logger.Info(fmt.Sprintln("DRA: jgheewal:::: Updated for ifNUm", ifNum))
+		}
+	}
 	gblEntry := dhcprelayGblInfo[ifNum]
 	// Setting up default values for globalEntry
 	gblEntry.IntfConfig.IpSubnet = ""
@@ -216,8 +249,6 @@ func DhcpRelayAgentInitGblHandling(ifNum int) {
 	gblEntry.IntfConfig.AgentSubType = 0
 	gblEntry.IntfConfig.Enable = false
 	gblEntry.dhcprelayConfigMutex = sync.RWMutex{}
-	// Stats information
-	//gblEntry.StateDebugInfo = make(map[MacAddrServerIpKey]DhcpRelayAgentStateInfo, 150)
 	dhcprelayGblInfo[ifNum] = gblEntry
 
 }

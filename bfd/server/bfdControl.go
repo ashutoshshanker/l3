@@ -1,4 +1,4 @@
-package protocol
+package server
 
 import (
 	"bytes"
@@ -15,6 +15,16 @@ const (
 	STATE_DOWN       BfdSessionState = 1
 	STATE_INIT       BfdSessionState = 2
 	STATE_UP         BfdSessionState = 3
+)
+
+type BfdSessionEvent int
+
+const (
+	REMOTE_DOWN BfdSessionEvent = 1
+	REMOTE_INIT BfdSessionEvent = 2
+	REMOTE_UP   BfdSessionEvent = 3
+	TIMEOUT     BfdSessionEvent = 4
+	ADMIN_DOWN  BfdSessionEvent = 5
 )
 
 type BfdDiagnostic int
@@ -40,7 +50,7 @@ type BfdControlPacket struct {
 	ControlPlaneIndependent   bool
 	AuthPresent               bool
 	Demand                    bool
-	Multipoint                bool // Must always be zero
+	Multipoint                bool // Must always be false
 	DetectMult                uint8
 	MyDiscriminator           uint32
 	YourDiscriminator         uint32
@@ -50,6 +60,7 @@ type BfdControlPacket struct {
 	AuthHeader                *BfdAuthHeader
 }
 
+// Constants
 const (
 	DEFAULT_BFD_VERSION                   = 1
 	DEFAULT_DETECT_MULTI                  = 3
@@ -57,15 +68,17 @@ const (
 	DEFAULT_REQUIRED_MIN_RX_INTERVAL      = 1000000
 	DEFAULT_REQUIRED_MIN_ECHO_RX_INTERVAL = 0
 	DEFAULT_CONTROL_PACKET_LEN            = 24
+	MAX_NUM_SESSIONS                      = 1024
 )
 
+// Flags in BFD Control packet
 const (
-	BFD_MP             = 0x01
-	BFD_DEMAND         = 0x02
-	BFD_AUTH_PRESENT   = 0x04
-	BFD_CP_INDEPENDENT = 0x08
-	BFD_FINAL          = 0x10
-	BFD_POLL           = 0x20
+	BFD_MP             = 0x01 // Multipoint
+	BFD_DEMAND         = 0x02 // Demand mode
+	BFD_AUTH_PRESENT   = 0x04 // Authentication present
+	BFD_CP_INDEPENDENT = 0x08 // Control plane independent
+	BFD_FINAL          = 0x10 // Final message, response to Poll
+	BFD_POLL           = 0x20 // Poll message
 )
 
 var BfdControlPacketDefaults = BfdControlPacket{

@@ -1,7 +1,9 @@
 package server
 
 import (
+	"github.com/google/gopacket/pcap"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -45,6 +47,7 @@ var (
 
 const (
 	OSPF_HELLO_MIN_SIZE = 20
+	OSPF_DBD_MIN_SIZE   = 8
 	OSPF_HEADER_SIZE    = 24
 	IP_HEADER_MIN_LEN   = 20
 	OSPF_PROTO_ID       = 89
@@ -81,3 +84,15 @@ const (
 	EAOption = 0x20
 	DCOption = 0x40
 )
+
+type IntfTxHandle struct {
+	SendPcapHdl *pcap.Handle
+	SendMutex   *sync.Mutex
+}
+
+type IntfRxHandle struct {
+	RecvPcapHdl     *pcap.Handle
+	PktRecvCh       chan bool
+	PktRecvStatusCh chan bool
+	//RecvMutex               *sync.Mutex
+}

@@ -5,18 +5,10 @@ import (
     "time"
     "l3/ospf/config"
     "encoding/binary"
-    "github.com/google/gopacket"
-    "github.com/google/gopacket/layers"
 )
 
 
-func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
-/*
-    waitTimerCb := func() {
-        server.logger.Info("Wait timer expired")
-        ent.WaitTimerExpired <- true
-    }
-*/
+func (server *OSPFServer)StartOspfIntfFSM(key IntfConfKey) {
     for {
         ent, _ := server.IntfConfMap[key]
         select {
@@ -29,9 +21,6 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
             server.ElectBDRAndDR(key)
         case msg := <-ent.BackupSeenCh:
             server.logger.Info(fmt.Sprintf("Transit to action state because of backup seen", msg))
-/*
-            ent.IfFSMState = config.OtherDesignatedRouter
-*/
             server.ElectBDRAndDR(key)
         case createMsg := <-ent.NeighCreateCh:
             neighborKey := NeighborKey {
@@ -121,10 +110,10 @@ func (server *OSPFServer)StartOspfTransPkts(key IntfConfKey) {
                 }
             }
             server.logger.Info(fmt.Sprintln("Hello", server.IntfConfMap))
-        case state := <-ent.PktSendCh:
+        case state := <-ent.FSMCtrlCh:
             if state == false {
                 server.StopSendHelloPkt(key)
-                ent.PktSendStatusCh<-false
+                ent.FSMCtrlStatusCh<-false
                 return
             }
         }
@@ -270,69 +259,84 @@ func (server *OSPFServer)ElectDR(key IntfConfKey, electedBDR []byte, electedBDRt
 }
 
 func (server *OSPFServer)ElectBDRAndDR(key IntfConfKey) {
-    ent, _ := server.IntfConfMap[key]
-    server.logger.Info(fmt.Sprintln("Election of BDR andDR", ent.IfFSMState))
+        ent, _ := server.IntfConfMap[key]
+        server.logger.Info(fmt.Sprintln("Election of BDR andDR", ent.IfFSMState))
 
-    //oldDR := ent.IfDRIp
-    //oldBDR := ent.IfBDRIp
-    oldState := ent.IfFSMState
-    var newState config.IfState
+        oldDRtrId := ent.IfDRtrId
+        //oldBDR := ent.IfBDRIp
+        oldState := ent.IfFSMState
+        var newState config.IfState
 
-    electedBDR, electedBDRtrId := server.ElectBDR(key)
-    ent.IfBDRIp = electedBDR
-    ent.IfBDRtrId = electedBDRtrId
-    electedDR, electedDRtrId := server.ElectDR(key, electedBDR, electedBDRtrId)
-    ent.IfDRIp = electedDR
-    ent.IfDRtrId = electedDRtrId
-    if bytesEqual(ent.IfDRIp, ent.IfIpAddr.To4()) == true {
-        newState = config.DesignatedRouter
-    } else if bytesEqual(ent.IfBDRIp, ent.IfIpAddr.To4()) == true {
-        newState = config.BackupDesignatedRouter
-    } else {
-        newState = config.OtherDesignatedRouter
-    }
-
-    server.logger.Info(fmt.Sprintln("1. Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState, "DR Id:", ent.IfDRtrId, "BDR Id:", ent.IfBDRtrId))
-    server.IntfConfMap[key] = ent
-
-    if (newState != oldState &&
-        !(newState == config.OtherDesignatedRouter &&
-            oldState < config.OtherDesignatedRouter)) {
-        ent, _ = server.IntfConfMap[key]
-        electedBDR, electedBDRtrId = server.ElectBDR(key)
+        electedBDR, electedBDRtrId := server.ElectBDR(key)
         ent.IfBDRIp = electedBDR
         ent.IfBDRtrId = electedBDRtrId
-        electedDR, electedDRtrId = server.ElectDR(key, electedBDR, electedBDRtrId)
+        electedDR, electedDRtrId := server.ElectDR(key, electedBDR, electedBDRtrId)
         ent.IfDRIp = electedDR
         ent.IfDRtrId = electedDRtrId
         if bytesEqual(ent.IfDRIp, ent.IfIpAddr.To4()) == true {
-            newState = config.DesignatedRouter
+                newState = config.DesignatedRouter
         } else if bytesEqual(ent.IfBDRIp, ent.IfIpAddr.To4()) == true {
-            newState = config.BackupDesignatedRouter
+                newState = config.BackupDesignatedRouter
         } else {
-            newState = config.OtherDesignatedRouter
+                newState = config.OtherDesignatedRouter
         }
-        server.logger.Info(fmt.Sprintln("2. Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState, "DR Id:", ent.IfDRtrId, "BDR Id:", ent.IfBDRtrId))
-        server.IntfConfMap[key] = ent
-    }
 
-    ent, _ = server.IntfConfMap[key]
-    ent.IfFSMState = newState
-    // Need to Check: do we need to add events even when we
-    // come back to same state after DR or BDR Election
-    ent.IfEvents = ent.IfEvents + 1
-    server.logger.Info(fmt.Sprintln("Final Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState))
-    server.IntfConfMap[key] = ent
+        server.logger.Info(fmt.Sprintln("1. Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState, "DR Id:", ent.IfDRtrId, "BDR Id:", ent.IfBDRtrId))
+        server.IntfConfMap[key] = ent
+
+        if (newState != oldState &&
+                !(newState == config.OtherDesignatedRouter &&
+                    oldState < config.OtherDesignatedRouter)) {
+                ent, _ = server.IntfConfMap[key]
+                electedBDR, electedBDRtrId = server.ElectBDR(key)
+                ent.IfBDRIp = electedBDR
+                ent.IfBDRtrId = electedBDRtrId
+                electedDR, electedDRtrId = server.ElectDR(key, electedBDR, electedBDRtrId)
+                ent.IfDRIp = electedDR
+                ent.IfDRtrId = electedDRtrId
+                if bytesEqual(ent.IfDRIp, ent.IfIpAddr.To4()) == true {
+                    newState = config.DesignatedRouter
+                } else if bytesEqual(ent.IfBDRIp, ent.IfIpAddr.To4()) == true {
+                    newState = config.BackupDesignatedRouter
+                } else {
+                    newState = config.OtherDesignatedRouter
+                }
+                server.logger.Info(fmt.Sprintln("2. Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState, "DR Id:", ent.IfDRtrId, "BDR Id:", ent.IfBDRtrId))
+                server.IntfConfMap[key] = ent
+        }
+
+        ent, _ = server.IntfConfMap[key]
+        ent.IfFSMState = newState
+        // Need to Check: do we need to add events even when we
+        // come back to same state after DR or BDR Election
+        ent.IfEvents = ent.IfEvents + 1
+        server.logger.Info(fmt.Sprintln("Final Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState))
+
+        areaId := convertIPv4ToUint32(ent.IfAreaId)
+        if oldState != newState {
+                msg := IntfStateChangeMsg {
+                        areaId: areaId,
+                }
+                server.IntfStateChangeCh <- msg
+                if newState == config.DesignatedRouter {
+                        // Todo: Construct Network LSA
+                }
+        } else if oldDRtrId == ent.IfDRtrId {
+                msg := NetworkDRChangeMsg {
+                        areaId: areaId,
+                }
+                server.NetworkDRChangeCh <- msg
+        }
+        server.IntfConfMap[key] = ent
 }
 
-func (server *OSPFServer)StopOspfTransPkts(key IntfConfKey) {
-   // server.StopSendHelloPkt(key)
+func (server *OSPFServer)StopOspfIntfFSM(key IntfConfKey) {
     ent, _ := server.IntfConfMap[key]
-    ent.PktSendCh<-false
+    ent.FSMCtrlCh<-false
     cnt := 0
     for {
         select {
-        case status := <-ent.PktSendStatusCh:
+        case status := <-ent.FSMCtrlStatusCh:
             if status == false { // False Means Trans Pkt Thread Stopped
                 server.logger.Info("Stopped Sending Hello Pkt")
                 return
@@ -348,46 +352,3 @@ func (server *OSPFServer)StopOspfTransPkts(key IntfConfKey) {
     }
 }
 
-func (server *OSPFServer)StopOspfRecvPkts(key IntfConfKey) {
-    ent, _ := server.IntfConfMap[key]
-    ent.PktRecvCh<-false
-    cnt := 0
-    for {
-        select {
-        case status := <-ent.PktRecvStatusCh:
-            if status == false { // False Means Recv Pkt Thread Stopped
-                server.logger.Info("Stopped Recv Pkt thread")
-                return
-            }
-        default:
-            time.Sleep(time.Duration(10) * time.Millisecond)
-            cnt = cnt + 1
-            if cnt == 100 {
-                server.logger.Err("Unable to stop the Rx thread")
-                return
-            }
-        }
-    }
-}
-
-func (server *OSPFServer)StartOspfRecvPkts(key IntfConfKey) {
-    ent, _ := server.IntfConfMap[key]
-    handle := ent.RecvPcapHdl
-    recv := gopacket.NewPacketSource(handle, layers.LayerTypeEthernet)
-    in := recv.Packets()
-    for {
-        select {
-        case packet, ok := <-in:
-            if ok {
-                server.logger.Info("Got Some Ospf Packet on the Recv Thread")
-                go server.ProcessOspfRecvPkt(key, packet)
-            }
-        case state := <-ent.PktRecvCh:
-            if state == false {
-                server.logger.Info("Stopping the Recv Ospf packet thread")
-                ent.PktRecvStatusCh<-false
-                return
-            }
-        }
-    }
-}

@@ -1,109 +1,35 @@
 package server
 
 import (
-	//"fmt"
-	"l3/bfd/config"
+	"asicd/asicdConstDefs"
+	"fmt"
+	"net"
 	//"time"
-	//"l3/ospf/rpc"
+	//"l3/bfd/rpc"
 	//"l3/rib/ribdCommonDefs"
 	//"github.com/google/gopacket/pcap"
-	//"net"
 )
 
-type IntfConf struct {
-	/*
-		IfAreaId              []byte
-		IfType                config.IfType
-		IfAdminStat           config.Status
-		IfRtrPriority         uint8
-		IfTransitDelay        config.UpToMaxAge
-		IfRetransInterval     config.UpToMaxAge
-		IfHelloInterval       uint16
-		IfRtrDeadInterval     uint32
-		IfPollInterval        config.PositiveInteger
-		IfAuthKey             []byte
-		IfMulticastForwarding config.MulticastForwarding
-		IfDemand              bool
-		IfAuthType            uint16
-		PktSendCh             chan bool
-		PktSendStatusCh       chan bool
-		PktRecvCh             chan bool
-		PktRecvStatusCh       chan bool
-		SendPcapHdl           *pcap.Handle
-		RecvPcapHdl           *pcap.Handle
-		HelloIntervalTicker   *time.Ticker
-		//RtrDeadIntervalTimer    *time.Timer
-		WaitTimer *time.Timer
-		IfName    string
-		IfIpAddr  net.IP
-		IfMacAddr net.HardwareAddr
-		IfNetmask []byte
-	*/
-}
-
-/*
-func (server *BFDServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfProperty) {
-	ent, exist := server.IntfConfMap[key]
+func (server *BFDServer) initDefaultIntfConf(ifIndex int32, ipIntfProp IpIntfProperty) {
+	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if !exist {
-		areaId := convertAreaOrRouterId("0.0.0.0")
-		if areaId == nil {
-			return
-		}
-		ent.IfAreaId = areaId
-		ent.IfType = config.Broadcast
-		ent.IfAdminStat = config.Enabled
-		ent.IfRtrPriority = uint8(config.DesignatedRouterPriority(1))
-		ent.IfTransitDelay = config.UpToMaxAge(1)
-		ent.IfRetransInterval = config.UpToMaxAge(5)
-		ent.IfHelloInterval = uint16(config.HelloRange(10))
-		ent.IfRtrDeadInterval = uint32(config.PositiveInteger(40))
-		ent.IfPollInterval = config.PositiveInteger(120)
-		authKey := convertAuthKey("0.0.0.0.0.0.0.0")
-		if authKey == nil {
-			return
-		}
-		ent.IfAuthKey = authKey
-		ent.IfMulticastForwarding = config.Blocked
-		ent.IfDemand = false
-		ent.IfAuthType = uint16(config.NoAuth)
-		ent.PktSendCh = make(chan bool)
-		ent.PktSendStatusCh = make(chan bool)
-		ent.PktRecvCh = make(chan bool)
-		ent.PktRecvStatusCh = make(chan bool)
-		//ent.WaitTimerExpired = make(chan bool)
-		ent.WaitTimer = nil
-		ent.HelloIntervalTicker = nil
-		//ent.RtrDeadIntervalTimer = nil
-		ent.IfNetmask = ipIntfProp.NetMask
-		ent.IfName = ipIntfProp.IfName
-		ent.IfIpAddr = ipIntfProp.IpAddr
-		ent.IfMacAddr = ipIntfProp.MacAddr
-		sendHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
-		if sendHdl == nil {
-			server.logger.Err(fmt.Sprintln("SendHdl: No device found.", ent.IfName, err))
-			return
-		}
-		ent.SendPcapHdl = sendHdl
-		recvHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
-		if recvHdl == nil {
-			server.logger.Err(fmt.Sprintln("RecvHdl: No device found.", ent.IfName, err))
-			return
-		}
-
-		filter := fmt.Sprintln("proto ospf and not src host", ipIntfProp.IpAddr.String())
-		server.logger.Info(fmt.Sprintln("Filter is : ", filter))
-		// Setting Pcap filter for Ospf Pkt
-		err = recvHdl.SetBPFFilter(filter)
-		if err != nil {
-			server.logger.Err(fmt.Sprintln("Unable to set filter on", ent.IfName))
-			return
-		}
-
-		ent.RecvPcapHdl = recvHdl
-		server.IntfConfMap[key] = ent
-		server.logger.Info(fmt.Sprintln("Intf Conf initialized", key))
+		intf.conf.InterfaceId = ifIndex
+		intf.conf.LocalMultiplier = DEFAULT_DETECT_MULTI
+		intf.conf.DesiredMinTxInterval = DEFAULT_DESIRED_MIN_TX_INTERVAL
+		intf.conf.RequiredMinRxInterval = DEFAULT_REQUIRED_MIN_RX_INTERVAL
+		intf.conf.RequiredMinEchoRxInterval = DEFAULT_REQUIRED_MIN_ECHO_RX_INTERVAL
+		intf.conf.DemandEnabled = false
+		intf.conf.AuthenticationEnabled = false
+		intf.conf.AuthenticationType = 0
+		intf.conf.AuthenticationKeyId = 0
+		intf.conf.SequenceNumber = 0
+		intf.conf.AuthenticationData = ""
+		intf.property.IfName = ipIntfProp.IfName
+		intf.property.IpAddr = ipIntfProp.IpAddr
+		intf.property.NetMask = ipIntfProp.NetMask
+		intf.property.MacAddr = ipIntfProp.MacAddr
 	} else {
-		server.logger.Info(fmt.Sprintln("Intf Conf is not initialized", key))
+		server.logger.Info(fmt.Sprintln("Intf Conf is not initialized ", ifIndex))
 	}
 }
 
@@ -118,149 +44,84 @@ func (server *BFDServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		server.logger.Err("No Such Interface exists")
 		return
 	}
-	server.logger.Info(fmt.Sprintln("create IPIntfConfMap for ", msg))
+	server.logger.Info(fmt.Sprintln("create IPIntf for ", msg))
 
-	// Set ifIdx = 0 for time being --- Need to be revisited
-	intfConfKey := IntfConfKey{
-		IPAddr: config.IpAddress(ip.String()),
-		//IntfIdx:    int(msg.IfIdx),
-		IntfIdx: config.InterfaceIndexOrZero(0),
-	}
 	macAddr, err := getMacAddrIntfName(ifName)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to get MacAddress of Interface exists", ifName))
 		return
 	}
-	ipIntfProp := IPIntfProperty{
+	ipIntfProp := IpIntfProperty{
 		IfName:  ifName,
 		IpAddr:  ip,
-		MacAddr: macAddr,
 		NetMask: ipNet.Mask,
+		MacAddr: macAddr,
 	}
-	server.initDefaultIntfConf(intfConfKey, ipIntfProp)
-	_, exist := server.IntfConfMap[intfConfKey]
+	ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(msg.IfId), int(msg.IfType))
+	server.initDefaultIntfConf(ifIndex, ipIntfProp)
+	_, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if !exist {
 		server.logger.Err("No such inteface exists")
 		return
 	}
-	if server.ospfGlobalConf.AdminStat == config.Enabled {
-		server.StartSendRecvPkts(intfConfKey)
+	if server.bfdGlobal.Enabled {
+		server.StartSendRecvPkts(ifIndex)
 	}
 }
 
 func (server *BFDServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
-	ip, _, err := net.ParseCIDR(msg.IpAddr)
-	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to parse IP address", msg.IpAddr))
-		return
-	}
-
 	server.logger.Info(fmt.Sprintln("delete IPIntfConfMap for ", msg))
 
-	// Set ifIdx = 0 for time being --- Need to be revisited
-	intfConfKey := IntfConfKey{
-		IPAddr: config.IpAddress(ip.String()),
-		//IntfIdx:    int(msg.IfIdx),
-		IntfIdx: config.InterfaceIndexOrZero(0),
-	}
-	ent, exist := server.IntfConfMap[intfConfKey]
+	ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(msg.IfId), int(msg.IfType))
+	_, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if !exist {
 		server.logger.Err("No such inteface exists")
 		return
 	}
-	if server.ospfGlobalConf.AdminStat == config.Enabled &&
-		ent.IfAdminStat == config.Enabled {
-		server.StopSendRecvPkts(intfConfKey)
+	if server.bfdGlobal.Enabled {
+		server.StopSendRecvPkts(ifIndex)
 	}
-	server.logger.Info(fmt.Sprintln("1:delete IPIntfConfMap for ", intfConfKey))
-	delete(server.IntfConfMap, intfConfKey)
+	delete(server.bfdGlobal.Interfaces, ifIndex)
 }
 
-func (server *BFDServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
-	intfConfKey := IntfConfKey{
-		IPAddr:  ifConf.IfIpAddress,
-		IntfIdx: config.InterfaceIndexOrZero(ifConf.AddressLessIf),
-	}
-
-	ent, exist := server.IntfConfMap[intfConfKey]
+func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {
+	intf, exist := server.bfdGlobal.Interfaces[ifConf.InterfaceId]
 	//  we can update only when we already have entry
 	if exist {
-		areaId := convertAreaOrRouterId(string(ifConf.IfAreaId))
-		if areaId == nil {
-			server.logger.Err("Invalid areaId")
-			return
-		}
-		ent.IfAreaId = areaId
-		ent.IfType = ifConf.IfType
-		ent.IfAdminStat = ifConf.IfAdminStat
-		ent.IfRtrPriority = uint8(ifConf.IfRtrPriority)
-		ent.IfTransitDelay = ifConf.IfTransitDelay
-		ent.IfRetransInterval = ifConf.IfRetransInterval
-		ent.IfHelloInterval = uint16(ifConf.IfHelloInterval)
-		ent.IfRtrDeadInterval = uint32(ifConf.IfRtrDeadInterval)
-		ent.IfPollInterval = ifConf.IfPollInterval
-		authKey := convertAuthKey(string(ifConf.IfAuthKey))
-		if authKey == nil {
-			server.logger.Err("Invalid authKey")
-			return
-		}
-		ent.IfAuthKey = authKey
-		ent.IfMulticastForwarding = ifConf.IfMulticastForwarding
-		ent.IfDemand = ifConf.IfDemand
-		ent.IfAuthType = uint16(ifConf.IfAuthType)
-		server.IntfConfMap[intfConfKey] = ent
-		server.logger.Info(fmt.Sprintln("1:Update IPIntfConfMap for ", intfConfKey))
+		intf.conf.InterfaceId = ifConf.InterfaceId
+		intf.conf.LocalMultiplier = ifConf.LocalMultiplier
+		intf.conf.DesiredMinTxInterval = ifConf.DesiredMinTxInterval
+		intf.conf.RequiredMinRxInterval = ifConf.RequiredMinRxInterval
+		intf.conf.RequiredMinEchoRxInterval = ifConf.RequiredMinEchoRxInterval
+		intf.conf.DemandEnabled = ifConf.DemandEnabled
+		intf.conf.AuthenticationEnabled = ifConf.AuthenticationEnabled
+		intf.conf.AuthenticationType = ifConf.AuthenticationType
+		intf.conf.AuthenticationKeyId = ifConf.AuthenticationKeyId
+		intf.conf.SequenceNumber = ifConf.SequenceNumber
+		intf.conf.AuthenticationData = ifConf.AuthenticationData
 	}
 }
-*/
 
-func (server *BFDServer) processIntfConfig(ifConf config.IntfConfig) {
-	/*
-		intfConfKey := IntfConfKey{
-			IPAddr:  ifConf.IfIpAddress,
-			IntfIdx: config.InterfaceIndexOrZero(ifConf.AddressLessIf),
-		}
-		ent, exist := server.IntfConfMap[intfConfKey]
-		if !exist {
-			server.logger.Err("No such L3 interface exists")
-			return
-		}
-		if ent.IfAdminStat == config.Enabled &&
-			server.ospfGlobalConf.AdminStat == config.Enabled {
-			server.StopSendRecvPkts(intfConfKey)
-		}
+func (server *BFDServer) processIntfConfig(ifConf IntfConfig) {
+	intf, exist := server.bfdGlobal.Interfaces[ifConf.InterfaceId]
+	if !exist {
+		server.logger.Err("No such L3 interface exists")
+		return
+	}
+	if server.bfdGlobal.Enabled {
+		server.StopSendRecvPkts(ifConf.InterfaceId)
+	}
 
-		server.updateIPIntfConfMap(ifConf)
+	server.updateIPIntfConfMap(ifConf)
 
-		server.logger.Info(fmt.Sprintln("InterfaceConf:", server.IntfConfMap))
-		ent, _ = server.IntfConfMap[intfConfKey]
-		if ent.IfAdminStat == config.Enabled &&
-			server.ospfGlobalConf.AdminStat == config.Enabled {
-			server.StartSendRecvPkts(intfConfKey)
-		}
-	*/
+	intf, _ = server.bfdGlobal.Interfaces[ifConf.InterfaceId]
+	if server.bfdGlobal.Enabled {
+		server.StartSendRecvPkts(intf.conf.InterfaceId)
+	}
 }
 
-/*
-func (server *BFDServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
-	server.logger.Info("Stop Sending Hello Pkt")
-	server.StopOspfTransPkts(intfConfKey)
-	server.logger.Info("Stop Receiving Hello Pkt")
-	server.StopOspfRecvPkts(intfConfKey)
+func (server *BFDServer) StopSendRecvPkts(ifIndex int32) {
 }
 
-func (server *BFDServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
-	ent, _ := server.IntfConfMap[intfConfKey]
-	helloInterval := time.Duration(ent.IfHelloInterval) * time.Second
-	waitTime := time.Duration(ent.IfRtrDeadInterval) * time.Second
-	// rtrDeadInterval := time.Duration(ent.IfRtrDeadInterval * time.Second)
-	ent.HelloIntervalTicker = time.NewTicker(helloInterval)
-	ent.WaitTimer = time.NewTimer(waitTime)
-	//ent.RtrDeadIntervalTimer := time.NewTicker(rtrDeadInterval)
-	server.logger.Info("Start Sending Hello Pkt")
-	server.IntfConfMap[intfConfKey] = ent
-	go server.StartOspfTransPkts(intfConfKey)
-	server.logger.Info("Start Receiving Hello Pkt")
-	go server.StartOspfRecvPkts(intfConfKey)
+func (server *BFDServer) StartSendRecvPkts(ifIndex int32) {
 }
-*/

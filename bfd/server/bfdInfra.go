@@ -35,7 +35,7 @@ type IPv4IntfNotifyMsg struct {
 	IfType uint8
 }
 
-func (server *OSPFServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
+func (server *BFDServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
 	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
 		ent := server.vlanPropertyMap[msg.IfId]
 		ip, _, _ := net.ParseCIDR(msg.IpAddr)
@@ -48,7 +48,7 @@ func (server *OSPFServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgTy
 	}
 }
 
-func (server *OSPFServer) updateIpInPortPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
+func (server *BFDServer) updateIpInPortPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
 	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
 		ent := server.portPropertyMap[int32(msg.IfId)]
 		ip, _, _ := net.ParseCIDR(msg.IpAddr)
@@ -61,7 +61,7 @@ func (server *OSPFServer) updateIpInPortPropertyMap(msg IPv4IntfNotifyMsg, msgTy
 	}
 }
 
-func (server *OSPFServer) updateVlanPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
+func (server *BFDServer) updateVlanPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
 	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
 		ent := server.vlanPropertyMap[vlanNotifyMsg.VlanId]
 		ent.Name = vlanNotifyMsg.VlanName
@@ -72,7 +72,7 @@ func (server *OSPFServer) updateVlanPropertyMap(vlanNotifyMsg asicdConstDefs.Vla
 	}
 }
 
-func (server *OSPFServer) updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
+func (server *BFDServer) updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
 	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
 		for _, portNum := range vlanNotifyMsg.UntagPorts {
 			ent := server.portPropertyMap[portNum]
@@ -90,7 +90,7 @@ func (server *OSPFServer) updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.Vla
 	}
 }
 
-func (server *OSPFServer) BuildPortPropertyMap() {
+func (server *BFDServer) BuildPortPropertyMap() {
 	currMarker := asicdServices.Int(asicdConstDefs.MIN_SYS_PORTS)
 	if server.asicdClient.IsConnected {
 		server.logger.Info("Calling asicd for port property")
@@ -118,7 +118,7 @@ func (server *OSPFServer) BuildPortPropertyMap() {
 	}
 }
 
-func (server *OSPFServer) getLinuxIntfName(ifId uint16, ifType uint8) (ifName string, err error) {
+func (server *BFDServer) getLinuxIntfName(ifId uint16, ifType uint8) (ifName string, err error) {
 	if ifType == commonDefs.L2RefTypeVlan { // Vlan
 		ifName = server.vlanPropertyMap[ifId].Name
 	} else if ifType == commonDefs.L2RefTypePort { // PHY

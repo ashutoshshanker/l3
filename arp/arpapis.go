@@ -96,7 +96,7 @@ type portProperty struct {
 }
 
 type portLagProperty struct {
-        IfIndex int32
+	IfIndex int32
 }
 
 type vlanProperty struct {
@@ -147,9 +147,9 @@ var (
 	timeout_counter        int           = 600 // The value of timeout_counter = (config_refresh_timeout/timer_granularity)
 	retry_cnt              int           = 5   // Number of retries before entry in deleted
 	min_cnt                int           = 1   // Counter value at which entry will be deleted
-        one_minute_cnt         int           = (60/timer_granularity)
-        thirty_sec_cnt         int           = (30/timer_granularity)
-	handle                 *pcap.Handle        // handle for pcap connection
+	one_minute_cnt         int           = (60 / timer_granularity)
+	thirty_sec_cnt         int           = (30 / timer_granularity)
+	handle                 *pcap.Handle  // handle for pcap connection
 	logWriter              *syslog.Writer
 	log_err                error
 	dbHdl                  *sql.DB
@@ -384,18 +384,18 @@ func constructPortConfigMap() {
 		logger.Println("Calling asicd for port config")
 		count := 10
 		for {
-			bulkInfo, err := asicdClient.ClientHdl.GetBulkPortConfig(int64(currMarker), int64(count))
+			bulkInfo, err := asicdClient.ClientHdl.GetBulkPortState(asicdServices.Int(currMarker), asicdServices.Int(count))
 			if err != nil {
 				logger.Println("Error: ", err)
 				return
 			}
-			objCount := int(bulkInfo.ObjCount)
+			objCount := int(bulkInfo.Count)
 			more := bool(bulkInfo.More)
-			currMarker = int64(bulkInfo.NextMarker)
+			currMarker = int64(bulkInfo.EndIdx)
 			for i := 0; i < objCount; i++ {
-				portNum := int(bulkInfo.PortConfigList[i].IfIndex)
+				portNum := int(bulkInfo.PortStateList[i].PortNum)
 				ent := portConfigMap[portNum]
-				ent.Name = bulkInfo.PortConfigList[i].Name
+				ent.Name = bulkInfo.PortStateList[i].Name
 				//logger.Println("Port Num:", portNum, "Name:", ent.Name)
 				portConfigMap[portNum] = ent
 			}
@@ -513,7 +513,6 @@ func sendArpReq(targetIp string, handle *pcap.Handle, myMac string, localIp stri
 	}
 	return ARP_REQ_SUCCESS
 }
-
 
 //ToDo: This function need to cleaned up
 /*
@@ -732,7 +731,7 @@ func receiveArpResponse(rec_handle *pcap.Handle,
 }
 */
 
-func isInLocalSubnet(ipaddr string) (ifName string, ret bool) {
+func isInLocalSubnet(ipaddr string) (ifName string, vlanId int, ifType int, ret bool) {
 	var flag bool = false
 	var ipv4IntfProp ipv4IntfProperty
 	var ipAddr string
@@ -745,7 +744,7 @@ func isInLocalSubnet(ipaddr string) (ifName string, ret bool) {
 		}
 		if ip.Equal(ipIn) {
 			// IP Address of local interface
-			return "", false
+			return "", 0, 0, false
 		}
 		net1 := ipIn.Mask(ipNet.Mask)
 		net2 := ip.Mask(ipNet.Mask)
@@ -756,25 +755,29 @@ func isInLocalSubnet(ipaddr string) (ifName string, ret bool) {
 	}
 
 	if flag == false {
-		return "", false
+		return "", 0, 0, false
 	}
 
 	if ipv4IntfProp.ifType == commonDefs.L2RefTypeVlan { // VLAN
 		ent, exist := vlanPropertyMap[ipv4IntfProp.ifIdx]
 		if !exist {
-			return "", false
+			return "", 0, 0, false
 		}
 		ifName = ent.vlanName
+		vlanId = ipv4IntfProp.ifIdx
+		ifType = commonDefs.L2RefTypeVlan
 	} else if ipv4IntfProp.ifType == commonDefs.L2RefTypePort { //PHY
 		ent, exist := portConfigMap[ipv4IntfProp.ifIdx]
 		if !exist {
-			return "", false
+			return "", 0, 0, false
 		}
 		ifName = ent.Name
+		vlanId = ipv4IntfProp.ifIdx
+		ifType = commonDefs.L2RefTypePort
 	} else {
-		return "", false
+		return "", 0, 0, false
 	}
-	return ifName, true
+	return ifName, vlanId, ifType, true
 }
 
 func createAndSendArpReuqest(targetIP string, outgoingIfName string, vlan_id arpd.Int, ifType arpd.Int) {
@@ -879,7 +882,7 @@ func updateArpCache() {
 				if asicdClient.IsConnected {
 					//logger.Println("1. Updating an entry in asic for ", msg.ip)
 					logWriter.Info(fmt.Sprintln("1. Updating an entry in asic for ", msg.ip))
-                                        ifIndex := getIfIndex(msg.ent.port)
+					ifIndex := getIfIndex(msg.ent.port)
 					rv, error := asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.ip,
 						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), ifIndex)
 					if rv < 0 {
@@ -942,10 +945,10 @@ func updateArpCache() {
 						logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
 					} else if ((arp.counter <= (min_cnt+retry_cnt+1) &&
 						arp.counter >= (min_cnt+1)) ||
-                                                arp.counter == (timeout_counter/2) ||
-                                                arp.counter == (timeout_counter/4) ||
-                                                arp.counter == one_minute_cnt ||
-                                                arp.counter == thirty_sec_cnt) &&
+						arp.counter == (timeout_counter/2) ||
+						arp.counter == (timeout_counter/4) ||
+						arp.counter == one_minute_cnt ||
+						arp.counter == thirty_sec_cnt) &&
 						arp.valid == true {
 						ent := arp_cache.arpMap[ip]
 						cnt = arp.counter
@@ -1047,7 +1050,7 @@ func updateArpCache() {
 					logWriter.Info(fmt.Sprintln("2. Creating an entry in asic for IP:", msg.ip, "MAC:",
 						(msg.ent.macAddr).String(), "VLAN:",
 						(int32)(arp_cache.arpMap[msg.ip].vlanid)))
-                                        ifIndex := getIfIndex(msg.ent.port)
+					ifIndex := getIfIndex(msg.ent.port)
 					rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
 						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), ifIndex)
 					if rv < 0 {
@@ -1097,7 +1100,7 @@ func updateArpCache() {
 					logWriter.Info(fmt.Sprintln("3. Creating an entry in asic for IP:", msg.ip, "MAC:",
 						(msg.ent.macAddr).String(), "VLAN:",
 						(int32)(arp_cache.arpMap[msg.ip].vlanid)))
-                                        ifIndex := getIfIndex(msg.ent.port)
+					ifIndex := getIfIndex(msg.ent.port)
 					rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
 						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), ifIndex)
 					if rv < 0 {
@@ -1147,7 +1150,7 @@ func updateArpCache() {
 				if asicdClient.IsConnected {
 					logger.Println("6. Creating an entry in asic for ", msg.ip)
 					logWriter.Info(fmt.Sprintln("6. Creating an entry in asic for ", msg.ip))
-                                        ifIndex := getIfIndex(msg.ent.port)
+					ifIndex := getIfIndex(msg.ent.port)
 					rv, error := asicdClient.ClientHdl.CreateIPv4Neighbor(msg.ip,
 						(msg.ent.macAddr).String(), (int32)(arp_cache.arpMap[msg.ip].vlanid), ifIndex)
 					if rv < 0 {
@@ -1255,15 +1258,15 @@ func processAsicdNotification(rxBuf []byte) {
 		}
 		processL3StateChange(l3IntfStateNotifyMsg)
 	} else if msg.MsgType == asicdConstDefs.NOTIFY_LAG_CREATE ||
-                msg.MsgType == asicdConstDefs.NOTIFY_LAG_DELETE {
-                var lagNotifyMsg asicdConstDefs.LagNotifyMsg
-               err = json.Unmarshal(msg.Msg, &lagNotifyMsg)
-               if err != nil {
-                       logWriter.Err(fmt.Sprintln("Unable to unmashal lagNotifyMsg:", msg.Msg))
-                        return
-                }
-                updatePortLagPropertyMap(lagNotifyMsg, msg.MsgType)
-        }
+		msg.MsgType == asicdConstDefs.NOTIFY_LAG_DELETE {
+		var lagNotifyMsg asicdConstDefs.LagNotifyMsg
+		err = json.Unmarshal(msg.Msg, &lagNotifyMsg)
+		if err != nil {
+			logWriter.Err(fmt.Sprintln("Unable to unmashal lagNotifyMsg:", msg.Msg))
+			return
+		}
+		updatePortLagPropertyMap(lagNotifyMsg, msg.MsgType)
+	}
 }
 
 func updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
