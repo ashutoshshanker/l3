@@ -172,7 +172,7 @@ func (server *OSPFServer) processOspfData(data []byte, ipHdrMd *IpHdrMetadata, o
 	case HelloType:
 		err = server.processRxHelloPkt(data, ospfHdrMd, ipHdrMd, key)
 	case DBDescriptionType:
-		//err = server.processRxDbdPkt(data, ospfHdrMd, ipHdrMd, key)
+		err = server.processRxDbdPkt(data, ospfHdrMd, ipHdrMd, key)
 
 	case LSRequestType:
 
