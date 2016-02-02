@@ -199,12 +199,12 @@ func DhcpRelayInitPortParams() error {
 				" from asicd failed with reason", err))
 			return nil // relay agent will update the info with asicd subscriber
 		}
-		objCount = int(bulkInfo.ObjCount)
+		objCount = int(bulkInfo.Count)
 		more = bool(bulkInfo.More)
-		currMarker = int64(bulkInfo.NextMarker)
+		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
 			var ifName string
-			portNum = int(bulkInfo.PortConfigList[i].IfIndex)
+			portNum = int(bulkInfo.PortStateList[i].IfIndex)
 			ifName = bulkInfo.PortStateList[i].Name
 			logger.Info("DRA: interface global init for " + ifName)
 			DhcpRelayAgentInitGblHandling(portNum)
