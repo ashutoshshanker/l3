@@ -164,8 +164,8 @@ func DhcpRelayInitPortParams() error {
 	//dhcprelayGblInfo = make(map[string]DhcpRelayAgentGlobalInfo, 25)
 	dhcprelayGblInfo = make(map[int]DhcpRelayAgentGlobalInfo, 25)
 	for {
-		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortConfig(
-			int64(currMarker), int64(count))
+		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortState(
+			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
 			logger.Err(fmt.Sprintln("DRA: getting bulk port config"+
 				" from asicd failed with reason", err))
@@ -179,9 +179,9 @@ func DhcpRelayInitPortParams() error {
 			objCount = 1
 			portNum = 1
 		} else {
-			objCount = int(bulkInfo.ObjCount)
+			objCount = int(bulkInfo.Count)
 			more = bool(bulkInfo.More)
-			currMarker = int64(bulkInfo.NextMarker)
+			currMarker = int64(bulkInfo.EndIdx)
 		}
 		for i := 0; i < objCount; i++ {
 			//var entry portInfo
@@ -190,8 +190,8 @@ func DhcpRelayInitPortParams() error {
 				portNum = 1
 				ifName = "wlp2s0" //"enp1s0f0"
 			} else {
-				portNum = int(bulkInfo.PortConfigList[i].IfIndex)
-				ifName = bulkInfo.PortConfigList[i].Name
+				portNum = int(bulkInfo.PortStateList[i].IfIndex)
+				ifName = bulkInfo.PortStateList[i].Name
 			}
 			logger.Info("DRA: interface global init for " + ifName)
 			//portInfoMap[ifName] = portNum
