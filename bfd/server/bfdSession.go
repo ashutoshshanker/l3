@@ -90,5 +90,44 @@ func (server *BFDServer) HandleNextHopChange(DestIp string) error {
 */
 // EventHandler is called after receiving a BFD packet from remote.
 func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
+	switch session.state.SessionState {
+	case STATE_ADMIN_DOWN, STATE_DOWN:
+		switch event {
+		case REMOTE_DOWN:
+			session.MoveToInitState()
+		case REMOTE_INIT:
+			session.MoveToUpState()
+		case ADMIN_DOWN, TIMEOUT, REMOTE_UP:
+			fmt.Printf("Received %d event in DOWN state. No change in state", event)
+		}
+	case STATE_INIT:
+		switch event {
+		case REMOTE_INIT, REMOTE_UP:
+			session.MoveToUpState()
+		case ADMIN_DOWN, TIMEOUT:
+			session.MoveToDownState()
+		case REMOTE_DOWN:
+			fmt.Printf("Received %d event in INIT state. No change in state", event)
+		}
+	case STATE_UP:
+		switch event {
+		case REMOTE_DOWN, ADMIN_DOWN, TIMEOUT:
+			session.MoveToDownState()
+		case REMOTE_INIT, REMOTE_UP:
+			fmt.Printf("Received %d event in UP state. No change in state", event)
+		}
+	}
+	return nil
+}
+
+func (session *BfdSession) MoveToDownState() error {
+	return nil
+}
+
+func (session *BfdSession) MoveToInitState() error {
+	return nil
+}
+
+func (session *BfdSession) MoveToUpState() error {
 	return nil
 }
