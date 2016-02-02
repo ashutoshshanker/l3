@@ -561,7 +561,7 @@ func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.
 	*/
 	logger.Info("DRA: Creating Payload server -----> client")
 	outPacket := DhcpRelayAgentCreateNewPacket(Reply, inReq)
-	opt := reqOptions.SelectOrder(reqOptions[OptionParameterRequestList])
+	opt := reqOptions.SelectOrderOrAll(reqOptions[OptionParameterRequestList])
 	for _, option := range opt {
 		outPacket.AddDhcpOptions(option.Code, option.Value)
 	}
@@ -611,7 +611,7 @@ func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.
 				" failed with Error:", err))
 			return
 		}
-		defer pHandle.Close()
+		//defer pHandle.Close()
 		gblEntry.PcapHandle = pHandle
 		dhcprelayGblInfo[outIfId] = gblEntry
 	} else {
