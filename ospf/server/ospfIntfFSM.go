@@ -259,59 +259,75 @@ func (server *OSPFServer)ElectDR(key IntfConfKey, electedBDR []byte, electedBDRt
 }
 
 func (server *OSPFServer)ElectBDRAndDR(key IntfConfKey) {
-    ent, _ := server.IntfConfMap[key]
-    server.logger.Info(fmt.Sprintln("Election of BDR andDR", ent.IfFSMState))
+        ent, _ := server.IntfConfMap[key]
+        server.logger.Info(fmt.Sprintln("Election of BDR andDR", ent.IfFSMState))
 
-    //oldDR := ent.IfDRIp
-    //oldBDR := ent.IfBDRIp
-    oldState := ent.IfFSMState
-    var newState config.IfState
+        oldDRtrId := ent.IfDRtrId
+        //oldBDR := ent.IfBDRIp
+        oldState := ent.IfFSMState
+        var newState config.IfState
 
-    electedBDR, electedBDRtrId := server.ElectBDR(key)
-    ent.IfBDRIp = electedBDR
-    ent.IfBDRtrId = electedBDRtrId
-    electedDR, electedDRtrId := server.ElectDR(key, electedBDR, electedBDRtrId)
-    ent.IfDRIp = electedDR
-    ent.IfDRtrId = electedDRtrId
-    if bytesEqual(ent.IfDRIp, ent.IfIpAddr.To4()) == true {
-        newState = config.DesignatedRouter
-    } else if bytesEqual(ent.IfBDRIp, ent.IfIpAddr.To4()) == true {
-        newState = config.BackupDesignatedRouter
-    } else {
-        newState = config.OtherDesignatedRouter
-    }
-
-    server.logger.Info(fmt.Sprintln("1. Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState, "DR Id:", ent.IfDRtrId, "BDR Id:", ent.IfBDRtrId))
-    server.IntfConfMap[key] = ent
-
-    if (newState != oldState &&
-        !(newState == config.OtherDesignatedRouter &&
-            oldState < config.OtherDesignatedRouter)) {
-        ent, _ = server.IntfConfMap[key]
-        electedBDR, electedBDRtrId = server.ElectBDR(key)
+        electedBDR, electedBDRtrId := server.ElectBDR(key)
         ent.IfBDRIp = electedBDR
         ent.IfBDRtrId = electedBDRtrId
-        electedDR, electedDRtrId = server.ElectDR(key, electedBDR, electedBDRtrId)
+        electedDR, electedDRtrId := server.ElectDR(key, electedBDR, electedBDRtrId)
         ent.IfDRIp = electedDR
         ent.IfDRtrId = electedDRtrId
         if bytesEqual(ent.IfDRIp, ent.IfIpAddr.To4()) == true {
-            newState = config.DesignatedRouter
+                newState = config.DesignatedRouter
         } else if bytesEqual(ent.IfBDRIp, ent.IfIpAddr.To4()) == true {
-            newState = config.BackupDesignatedRouter
+                newState = config.BackupDesignatedRouter
         } else {
-            newState = config.OtherDesignatedRouter
+                newState = config.OtherDesignatedRouter
         }
-        server.logger.Info(fmt.Sprintln("2. Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState, "DR Id:", ent.IfDRtrId, "BDR Id:", ent.IfBDRtrId))
-        server.IntfConfMap[key] = ent
-    }
 
-    ent, _ = server.IntfConfMap[key]
-    ent.IfFSMState = newState
-    // Need to Check: do we need to add events even when we
-    // come back to same state after DR or BDR Election
-    ent.IfEvents = ent.IfEvents + 1
-    server.logger.Info(fmt.Sprintln("Final Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState))
-    server.IntfConfMap[key] = ent
+        server.logger.Info(fmt.Sprintln("1. Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState, "DR Id:", ent.IfDRtrId, "BDR Id:", ent.IfBDRtrId))
+        server.IntfConfMap[key] = ent
+
+        if (newState != oldState &&
+                !(newState == config.OtherDesignatedRouter &&
+                    oldState < config.OtherDesignatedRouter)) {
+                ent, _ = server.IntfConfMap[key]
+                electedBDR, electedBDRtrId = server.ElectBDR(key)
+                ent.IfBDRIp = electedBDR
+                ent.IfBDRtrId = electedBDRtrId
+                electedDR, electedDRtrId = server.ElectDR(key, electedBDR, electedBDRtrId)
+                ent.IfDRIp = electedDR
+                ent.IfDRtrId = electedDRtrId
+                if bytesEqual(ent.IfDRIp, ent.IfIpAddr.To4()) == true {
+                    newState = config.DesignatedRouter
+                } else if bytesEqual(ent.IfBDRIp, ent.IfIpAddr.To4()) == true {
+                    newState = config.BackupDesignatedRouter
+                } else {
+                    newState = config.OtherDesignatedRouter
+                }
+                server.logger.Info(fmt.Sprintln("2. Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState, "DR Id:", ent.IfDRtrId, "BDR Id:", ent.IfBDRtrId))
+                server.IntfConfMap[key] = ent
+        }
+
+        ent, _ = server.IntfConfMap[key]
+        ent.IfFSMState = newState
+        // Need to Check: do we need to add events even when we
+        // come back to same state after DR or BDR Election
+        ent.IfEvents = ent.IfEvents + 1
+        server.logger.Info(fmt.Sprintln("Final Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState))
+
+        areaId := convertIPv4ToUint32(ent.IfAreaId)
+        if oldState != newState {
+                msg := IntfStateChangeMsg {
+                        areaId: areaId,
+                }
+                server.IntfStateChangeCh <- msg
+                if newState == config.DesignatedRouter {
+                        // Todo: Construct Network LSA
+                }
+        } else if oldDRtrId == ent.IfDRtrId {
+                msg := NetworkDRChangeMsg {
+                        areaId: areaId,
+                }
+                server.NetworkDRChangeCh <- msg
+        }
+        server.IntfConfMap[key] = ent
 }
 
 func (server *OSPFServer)StopOspfIntfFSM(key IntfConfKey) {
