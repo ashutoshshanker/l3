@@ -110,6 +110,7 @@ func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {
 		server.nbrFSMCtrlCh <- false
 		server.neighborConfStopCh <- true
 		//server.NeighborListMap = nil
+                server.StopLSDatabase()
 	}
 	server.logger.Info(fmt.Sprintln("Received call for performing Global Configuration", gConf))
 	server.updateGlobalConf(gConf)
@@ -119,6 +120,7 @@ func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {
 		server.InitNeighborStateMachine()
 		go server.ProcessHelloPktEvent()
 		go server.UpdateNeighborConf()
+                server.StartLSDatabase()
 	}
 
 	for key, ent := range localIntfStateMap {

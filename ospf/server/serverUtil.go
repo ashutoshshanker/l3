@@ -75,6 +75,10 @@ func convertAreaOrRouterId(str string) ([]byte) {
     return parseIntFmt(str)
 }
 
+func convertAreaOrRouterIdUint32(str string) (uint32) {
+        return convertIPv4ToUint32(convertAreaOrRouterId(str))
+}
+
 func convertAuthKey(s string) ([]byte) {
     var p [8]byte
     i := 0
@@ -158,3 +162,4 @@ func convertUint32ToIPv4(val uint32) (string) {
 
         return str
 }
+
