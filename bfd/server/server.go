@@ -8,11 +8,11 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
-	"l3/bfd/config"
 	"log/syslog"
 	"net"
 	"ribd"
 	"strconv"
+	"time"
 	"utils/ipcutils"
 )
 
@@ -41,8 +41,13 @@ type IpIntfProperty struct {
 }
 
 type BfdInterface struct {
-	conf     config.IntfConfig
+	conf     IntfConfig
 	property IpIntfProperty
+}
+
+type BfdSession struct {
+	state SessionState
+	timer *time.Timer
 }
 
 type BfdGlobal struct {
@@ -50,7 +55,7 @@ type BfdGlobal struct {
 	NumInterfaces        uint32
 	Interfaces           map[int32]BfdInterface
 	NumSessions          uint32
-	Sessions             map[int32]config.SessionState
+	Sessions             map[int32]BfdSession
 	NumUpSessions        uint32
 	NumDownSessions      uint32
 	NumAdminDownSessions uint32
@@ -60,8 +65,8 @@ type BFDServer struct {
 	logger              *syslog.Writer
 	ribdClient          RibdClient
 	asicdClient         AsicdClient
-	GlobalConfigCh      chan config.GlobalConfig
-	IntfConfigCh        chan config.IntfConfig
+	GlobalConfigCh      chan GlobalConfig
+	IntfConfigCh        chan IntfConfig
 	asicdSubSocket      *nanomsg.SubSocket
 	asicdSubSocketCh    chan []byte
 	asicdSubSocketErrCh chan error
@@ -74,8 +79,8 @@ type BFDServer struct {
 func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer := &BFDServer{}
 	bfdServer.logger = logger
-	bfdServer.GlobalConfigCh = make(chan config.GlobalConfig)
-	bfdServer.IntfConfigCh = make(chan config.IntfConfig)
+	bfdServer.GlobalConfigCh = make(chan GlobalConfig)
+	bfdServer.IntfConfigCh = make(chan IntfConfig)
 	bfdServer.asicdSubSocketCh = make(chan []byte)
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)
@@ -84,7 +89,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]BfdInterface)
 	bfdServer.bfdGlobal.NumSessions = 0
-	bfdServer.bfdGlobal.Sessions = make(map[int32]config.SessionState)
+	bfdServer.bfdGlobal.Sessions = make(map[int32]BfdSession)
 	bfdServer.bfdGlobal.NumUpSessions = 0
 	bfdServer.bfdGlobal.NumDownSessions = 0
 	bfdServer.bfdGlobal.NumAdminDownSessions = 0
