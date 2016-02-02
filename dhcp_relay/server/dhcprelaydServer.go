@@ -12,6 +12,7 @@ import (
 	"golang.org/x/net/ipv4"
 	"io/ioutil"
 	"log/syslog"
+	"net"
 	"os"
 	"os/signal"
 	"strconv"
@@ -62,6 +63,11 @@ type Option struct {
 	Value []byte
 }
 
+type DhcpRelayAgentIntfInfo struct {
+	linuxInterface *net.Interface
+	logicalId      int
+}
+
 var (
 	// map key would be if_name
 	// When we receive a udp packet... we will get interface id and that can
@@ -72,7 +78,7 @@ var (
 	dhcprelayServerConn *ipv4.PacketConn
 	logger              *syslog.Writer
 	//map for mac_address to interface id for sending unicast packet
-	dhcprelayReverseMap map[string]int
+	dhcprelayReverseMap map[string]*net.Interface
 	// PadddingToMinimumSize pads a packet so that when sent over UDP,
 	// the entire packet, is 300 bytes (which is BOOTP/DHCP min)
 	dhcprelayPadder [DHCP_PACKET_MIN_SIZE]byte

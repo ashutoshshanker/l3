@@ -536,26 +536,26 @@ func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.
 
 	// Get the interface from reverse mapping to send the unicast
 	// packet...
-	outIfId := dhcprelayReverseMap[inReq.GetCHAddr().String()]
-	logger.Info(fmt.Sprintln("DRA: Send unicast packet to Interface Id:", outIfId))
-	gblEntry, ok := dhcprelayGblInfo[outIfId]
+	//logicalId := dhcprelayReverseMap[inReq.GetCHAddr().String()]
+	linuxInterface := dhcprelayReverseMap[inReq.GetCHAddr().String()]
+	logger.Info(fmt.Sprintln("DRA: using cached linuxInterface", linuxInterface))
+	logicalId, ok := dhcprelayLogicalIntfId2LinuxIntId[controlMessage.IfIndex]
 	if !ok {
-		// dropping the packet??
-		logger.Err(fmt.Sprintln("DRA: dra is not enable on", outIfId, "??"))
-		return //continue
-	}
-	linuxInterface, err := net.InterfaceByIndex(controlMessage.IfIndex)
-	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: getting interface by id failed", err))
+		logger.Err(fmt.Sprintln("DRA: linux id", controlMessage.IfIndex,
+			" has no mapping...drop packet"))
 		return
 	}
+	logger.Info(fmt.Sprintln("DRA: Send unicast packet to Interface Id:", logicalId))
+	gblEntry, ok := dhcprelayGblInfo[logicalId]
+	if !ok {
+		// dropping the packet??
+		logger.Err(fmt.Sprintln("DRA: dra is not enable on", logicalId, "??"))
+		return //continue
+	}
 	/*
-		clientIpPort := controlMessage.Dst.String() + ":" + strconv.Itoa(DHCP_CLIENT_PORT)
-		//clientIpPort := gblEntry.IntfConfig.IpSubnet + ":" + strconv.Itoa(DHCP_CLIENT_PORT)
-		logger.Info("DRA: Sending DHCP PACKET to client: " + clientIpPort)
-		clientAddr, err := net.ResolveUDPAddr("udp", clientIpPort)
+		linuxInterface, err := net.InterfaceByIndex(controlMessage.IfIndex)
 		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: couldn't resolved udp addr for and err is", err))
+			logger.Err(fmt.Sprintln("DRA: getting interface by id failed", err))
 			return
 		}
 	*/
@@ -604,18 +604,23 @@ func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.
 	buffer := gopacket.NewSerializeBuffer()
 	gopacket.SerializeLayers(buffer, goOpts, eth, ipv4, udp, gopacket.Payload(outPacket))
 	var pHandle *pcap.Handle
+	var err error
 	if gblEntry.PcapHandle == nil {
+		logger.Info(fmt.Sprintln("DRA: opening pcap handle for", linuxInterface.Name))
 		pHandle, err = pcap.OpenLive(linuxInterface.Name, snapshot_len, promiscuous, timeout)
 		if err != nil {
 			logger.Err(fmt.Sprintln("DRA: opening pcap for", linuxInterface.Name,
 				" failed with Error:", err))
 			return
 		}
-		//defer pHandle.Close()
 		gblEntry.PcapHandle = pHandle
-		dhcprelayGblInfo[outIfId] = gblEntry
+		dhcprelayGblInfo[logicalId] = gblEntry
 	} else {
 		pHandle = gblEntry.PcapHandle
+	}
+
+	if gblEntry.PcapHandle == nil {
+		logger.Info("DRA: jgheewala...pcap handler is nul....")
 	}
 	err = pHandle.WritePacketData(buffer.Bytes())
 	if err != nil {
@@ -623,13 +628,6 @@ func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.
 		return
 	}
 
-	/*
-		_, err = ch.WriteTo(outPacket, clientAddr)
-		if err != nil {
-			logger.Info(fmt.Sprintln("DRA: WriteToUDP failed with error:", err))
-			return
-		}
-	*/
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to client"))
 }
 
@@ -667,9 +665,13 @@ func DhcpRelayAgentReceiveDhcpPktFromClient(clientHandler *net.UDPConn) {
 		switch mType {
 		case 1, 3, 4, 7, 8:
 			// Updating reverse mapping with logical interface id
-			dhcprelayReverseMap[inReq.GetCHAddr().String()] =
-				dhcprelayLogicalIntfId2LinuxIntId[cm.IfIndex]
-
+			linuxInterface, err := net.InterfaceByIndex(cm.IfIndex)
+			if err != nil {
+				logger.Err(fmt.Sprintln("DRA: getting interface by id failed", err))
+				return
+			}
+			dhcprelayReverseMap[inReq.GetCHAddr().String()] = linuxInterface
+			logger.Info(fmt.Sprintln("DRA: cached linux interface is", linuxInterface))
 			// Send Packet
 			DhcpRelayAgentSendPacketToDhcpServer(clientHandler, cm, buf, inReq, reqOptions, mType)
 			break
@@ -681,39 +683,6 @@ func DhcpRelayAgentReceiveDhcpPktFromClient(clientHandler *net.UDPConn) {
 		}
 	}
 }
-
-/*
-func DhcpRelayAgentReceiveDhcpPktFromServer(serverHandler *net.UDPConn) {
-	var buf []byte = make([]byte, 1500)
-	for {
-		bytesRead, cm, srcAddr, err := dhcprelayServerConn.ReadFrom(buf)
-		if err != nil {
-			logger.Err("DRA: reading buffer failed")
-			continue
-		}
-		logger.Info("DRA: Received PACKET FROM SERVER")
-		inReq, reqOptions, mType := DhcpRelayAgentDecodeInPkt(buf, bytesRead)
-		if inReq == nil || reqOptions == nil {
-			logger.Warning("DRA: Couldn't decode dhcp packet....continue")
-			continue
-		}
-		logger.Info(fmt.Sprintln("DRA: control message is ", cm))
-		logger.Info(fmt.Sprintln("DRA: srcAddr is ", srcAddr))
-		logger.Info(fmt.Sprintln("DRA: MessageType is ", mType))
-		// Get the interface from reverse mapping to send the unicast
-		// packet...
-		outIfId := dhcprelayReverseMap[inReq.GetCHAddr().String()]
-		logger.Info(fmt.Sprintln("DRA: Send unicast packet to Interface Id:", outIfId))
-		gblEntry, ok := dhcprelayGblInfo[outIfId]
-		if !ok {
-			// dropping the packet??
-			logger.Err(fmt.Sprintln("DRA: dra is not enable on", outIfId, "??"))
-			continue
-		}
-		DhcpRelayAgentSendPacketToDhcpClient(serverHandler, cm, inReq, reqOptions, gblEntry, mType)
-	}
-}
-*/
 
 func DhcpRelayAgentCreateClientServerConn() {
 
@@ -738,30 +707,6 @@ func DhcpRelayAgentCreateClientServerConn() {
 		return
 	}
 	logger.Info("DRA: Client Connection opened successfully")
-	dhcprelayReverseMap = make(map[string]int, 30)
+	dhcprelayReverseMap = make(map[string]*net.Interface, 30)
 	go DhcpRelayAgentReceiveDhcpPktFromClient(dhcprelayClientHandler)
-	/*
-		// Server sends dhcp packet from port 67 to client port 68
-		// so create a filter for udp:68 for message coming from server
-		logger.Info("DRA: creating listenPacket for udp port 68")
-		caddr := net.UDPAddr{
-			Port: DHCP_CLIENT_PORT,
-			IP:   net.ParseIP(""),
-		}
-		dhcprelayServerHandler, err := net.ListenUDP("udp", &caddr)
-		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: Opening udp port for server --> client failed", err))
-			// do we need to close the client server communication??? ask
-			// Hari/Adam
-			return
-		}
-		dhcprelayServerConn = ipv4.NewPacketConn(dhcprelayServerHandler)
-		err = dhcprelayServerConn.SetControlMessage(controlFlag, true)
-		if err != nil {
-			logger.Err(fmt.Sprintln("DRA:Setting control flag for server failed..", err))
-			return
-		}
-		logger.Info("DRA: Server Connection opened successfully")
-		go DhcpRelayAgentReceiveDhcpPktFromServer(dhcprelayServerHandler)
-	*/
 }
