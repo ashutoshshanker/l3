@@ -436,6 +436,31 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
 	return val, err
 }
 
+func (m RouteServiceHandler) 	DeletePolicyDefinition(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
+	logger.Println("DeletePolicyDefinition for name ", cfg.Name)
+	ok := PolicyDB.Match(patriciaDB.Prefix(cfg.Name))
+	if !ok {
+		err = errors.New("No policy with this name found")
+		return val, err
+	}
+	policyInfoGet := PolicyDB.Get(patriciaDB.Prefix(cfg.Name))
+	if(policyInfoGet != nil) {
+       //invalidate localPolicy 
+	   policyInfo := policyInfoGet.(Policy)
+	   if policyInfo.localDBSliceIdx < int8(len(localPolicyDB)) {
+          logger.Println("local DB slice index for this policy is ", policyInfo.localDBSliceIdx)
+		  localPolicyDB[policyInfo.localDBSliceIdx].isValid = false		
+	   }
+	   PolicyEngineTraverseAndReverse(policyInfo)
+	   logger.Println("Deleting policy with name ", cfg.Name)
+		if ok := PolicyDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
+			logger.Println(" return value not ok for delete PolicyDB")
+			return val, err
+		}
+	} 
+	return val, err
+}
+
 func (m RouteServiceHandler) GetBulkPolicyDefinitionState( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkPolicyDefinitionState")
     var i, validCount, toIndex ribd.Int
