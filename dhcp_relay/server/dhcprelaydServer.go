@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/google/gopacket/pcap"
 	"golang.org/x/net/ipv4"
 	"io/ioutil"
 	"log/syslog"
@@ -54,6 +55,7 @@ type DhcpRelayAgentStateInfo struct {
 type DhcpRelayAgentGlobalInfo struct {
 	IntfConfig           dhcprelayd.DhcpRelayIntfConfig
 	dhcprelayConfigMutex sync.RWMutex
+	PcapHandle           *pcap.Handle
 }
 type Option struct {
 	Code  DhcpOptionCode
