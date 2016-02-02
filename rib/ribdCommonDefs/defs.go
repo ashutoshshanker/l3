@@ -18,6 +18,7 @@ const (
 	  DEFAULT_NOTIFICATION_SIZE = 128
 	  PolicyPath_Import = 1
 	  PolicyPath_Export = 2
+	  PolicyPath_All = 3
 	  RoutePolicyStateChangetoValid=1
 	  RoutePolicyStateChangetoInValid = 2
 	  RoutePolicyStateChangeNoChange=3

@@ -6,6 +6,7 @@ import (
 	 "utils/patriciaDB"
 	 "l3/rib/ribdCommonDefs"
 	 "reflect"
+	 "sort"
 )
 func policyEngineActionRejectRoute(route ribd.Routes, params interface{}) {
     logger.Println("policyEngineActionRejectRoute for route ", route.Ipaddr, " ", route.Mask)
@@ -161,8 +162,8 @@ func policyEngineActionUndoRedistribute(route ribd.Routes, redistributeActionInf
     }
 }
 
-func policyEngineUndoActions(route ribd.Routes, policyStmt PolicyStmt, params interface{}) {
-	logger.Println("policyEngineUndoActions")
+func policyEngineUndoActionsPolicyStmt(route ribd.Routes, policy Policy, policyStmt PolicyStmt, params interface{}) {
+	logger.Println("policyEngineUndoActionsPolicyStmt")
 	if policyStmt.actions == nil {
 		logger.Println("No actions")
 		return
@@ -196,6 +197,9 @@ func policyEngineUndoActions(route ribd.Routes, policyStmt PolicyStmt, params in
 			  return
 		}
 	}
+}
+func policyEngineUndoActionsPolicy(route ribd.Routes, policy Policy, params interface{}) {
+	logger.Println("policyEngineUndoActionsPolicy")
 }
 func policyEngineImplementActions(route ribd.Routes, policyStmt PolicyStmt, params interface {}) {
 	logger.Println("policyEngineImplementActions")
@@ -299,8 +303,21 @@ func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (matc
    return match
 }
 
-func policyEngineApplyPolicy(route *ribd.Routes, policyStmt PolicyStmt, params interface{}) {
-	logger.Println("PolicyEngineApplyPolicy - ", policyStmt.name)
+func policyEngineApplyPolicyStmt(route *ribd.Routes, policy Policy, policyStmt PolicyStmt, policyPath int, params interface{}) {
+	logger.Println("policyEngineApplyPolicyStmt - ", policyStmt.name)
+	var policyPath_Str string
+	if policyPath == ribdCommonDefs.PolicyPath_Import {
+	   policyPath_Str = "Import"
+	} else if policyPath == ribdCommonDefs.PolicyPath_Export {
+	   policyPath_Str = "Export"
+	} else if policyPath == ribdCommonDefs.PolicyPath_All {
+		policyPath_Str = "ALL"
+	}
+	if policyPath == ribdCommonDefs.PolicyPath_Import && policyStmt.importPolicy == false || 
+	   policyPath == ribdCommonDefs.PolicyPath_Export && policyStmt.exportPolicy == false {
+	   logger.Println("Cannot apply the policy ", policyStmt.name, " as ", policyPath_Str, " policy")
+	   return
+	}
 	if policyStmt.conditions == nil {
 		logger.Println("No policy conditions")
 		return
@@ -319,9 +336,27 @@ func policyEngineApplyPolicy(route *ribd.Routes, policyStmt PolicyStmt, params i
 	} else {
 		op = add
 	    route.PolicyHitCounter++
-	    updateRoutePolicyState(*route, op, policyStmt.name)
+	    updateRoutePolicyState(*route, op, policy.name)
 	}
-	updatePolicyRouteMap(*route, policyStmt, op)
+	updatePolicyRouteMap(*route, policy, op)
+}
+func policyEngineApplyPolicy(route *ribd.Routes, policy Policy, policyPath int,params interface{}) {
+	logger.Println("policyEngineApplyPolicy - ", policy.name)
+     var policyStmtKeys []int
+	 for k:=range policy.policyStmtPrecedenceMap {
+		logger.Println("key k = ", k)
+		policyStmtKeys = append(policyStmtKeys,k)
+	}
+	sort.Ints(policyStmtKeys)
+	for i:=0;i<len(policyStmtKeys);i++ {
+		logger.Println("Key: ", policyStmtKeys[i], " policyStmtName ", policy.policyStmtPrecedenceMap[policyStmtKeys[i]])
+		policyStmt := PolicyStmtDB.Get((patriciaDB.Prefix(policy.policyStmtPrecedenceMap[policyStmtKeys[i]])))
+        if policyStmt == nil {
+			logger.Println("Invalid policyStmt")
+			continue
+		}
+		policyEngineApplyPolicyStmt(route,policy,policyStmt.(PolicyStmt),policyPath, params)
+	}
 }
 func policyEngineCheckPolicy(route *ribd.Routes, params interface {}) {
 	logger.Println("policyEngineCheckPolicy")
@@ -342,6 +377,72 @@ func policyEngineCheckPolicy(route *ribd.Routes, params interface {}) {
 }
 func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 	logger.Println("PolicyEngineFilter")
+    routeInfo := params.(RouteParams)
+    var policyKeys []int
+	idx :=0
+	var policyInfo interface{}
+	for k:=range PolicyPrecedenceMap {
+	   policyKeys = append(policyKeys,k)
+	}
+	sort.Ints(policyKeys)
+	for ;; {
+       if route.PolicyList != nil {
+		  if idx >= len(route.PolicyList) {
+			break
+		  }
+		  logger.Println("getting policy ", idx, " from route.PolicyList")
+	      policyInfo = 	PolicyDB.Get(patriciaDB.Prefix(route.PolicyList[idx]))
+		  idx++
+	   } else if routeInfo.deleteType != Invalid {
+		  logger.Println("route.PolicyList empty and this is a delete operation for the route, so break")
+          break
+	   } else if localPolicyDB == nil {
+		  logger.Println("localPolicy nil")
+			//case when no policies have been applied to the route
+			//need to apply the default policy
+		   break	   
+		} else {
+            if idx >= len(policyKeys) {
+				break
+			}		
+		    logger.Println("getting policy  ", idx, " from localPolicyDB")
+            policyInfo = PolicyDB.Get((patriciaDB.Prefix(PolicyPrecedenceMap[idx])))
+			idx++
+	   }
+	   if policyInfo == nil {
+	      logger.Println("Nil policy")
+		  continue
+	   }
+	   policy := policyInfo.(Policy)
+	   policyEngineApplyPolicy(&route, policy, policyPath, params)
+	}
+	var policyPath_Str string
+	if policyPath == ribdCommonDefs.PolicyPath_Import {
+	   policyPath_Str = "Import"
+	} else if policyPath == ribdCommonDefs.PolicyPath_Export {
+	   policyPath_Str = "Export"
+	} else if policyPath == ribdCommonDefs.PolicyPath_All {
+		policyPath_Str = "ALL"
+	}
+	if route.PolicyHitCounter == 0{
+		logger.Println("Need to apply default policy, policyPath = ", policyPath, "policyPath_Str= ", policyPath_Str)
+		if policyPath == ribdCommonDefs.PolicyPath_Import {
+		   logger.Println("Applying default import policy")
+		    //TO-DO: Need to add the default policy to policyList of the route
+           policyEngineActionAcceptRoute(route , params ) 
+		} else if policyPath == ribdCommonDefs.PolicyPath_Export {
+			logger.Println("Applying default export policy")
+		}
+	}
+	var op int
+	if routeInfo.deleteType != Invalid {
+		op = delAll		//wipe out the policyList
+	    updateRoutePolicyState(route, op, "")
+	} 
+}
+/*
+func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
+	logger.Println("PolicyEngineFilter")
 	var policyPath_Str string
 	idx :=0
 	var policyInfo interface{}
@@ -358,7 +459,7 @@ func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 			break
 		  }
 		  logger.Println("getting policy stmt ", idx, " from route.PolicyList")
-	      policyInfo = 	PolicyDB.Get(patriciaDB.Prefix(route.PolicyList[idx]))
+	      policyInfo = 	PolicyStmtDB.Get(patriciaDB.Prefix(route.PolicyList[idx]))
 		  idx++
 	   } else if routeInfo.deleteType != Invalid {
 		  logger.Println("route.PolicyList empty and this is a delete operation for the route, so break")
@@ -373,7 +474,7 @@ func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 				break
 			}		
 		    logger.Println("getting policy stmt ", idx, " from localPolicyStmtDB")
-            policyInfo = PolicyDB.Get(localPolicyStmtDB[idx].prefix)
+            policyInfo = PolicyStmtDB.Get(localPolicyStmtDB[idx].prefix)
 			idx++
 	   }
 	   if policyInfo == nil {
@@ -416,7 +517,7 @@ func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 		    policyEngineApplyPolicy(&route, policyStmt, params)
         }
 	}*/
-	logger.Println("After policyEngineApply policyCounter = ", route.PolicyHitCounter)
+/*	logger.Println("After policyEngineApply policyCounter = ", route.PolicyHitCounter)
 	if route.PolicyHitCounter == 0{
 		logger.Println("Need to apply default policy, policyPath = ", policyPath, "policyPath_Str= ", policyPath_Str)
 		if policyPath == ribdCommonDefs.PolicyPath_Import {
@@ -433,10 +534,10 @@ func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 	    updateRoutePolicyState(route, op, "")
 	} 
 }
-
+*/
 func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, handle patriciaDB.Item) (err error) {
    logger.Println("policyEngineApplyForRoute %v", prefix)	
-   policy := handle.(PolicyStmt)
+   policy := handle.(Policy)
    rmapInfoRecordList := item.(RouteInfoRecordList)
    if len(rmapInfoRecordList.routeInfoList) == 0 {
       logger.Println("len(rmapInfoRecordList.routeInfoList) == 0")
@@ -446,14 +547,32 @@ func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, h
    selectedRouteInfoRecord := rmapInfoRecordList.routeInfoList[rmapInfoRecordList.selectedRouteIdx]
    policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid:rmapInfoRecordList.isPolicyBasedStateValid}
    params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
-   policyEngineApplyPolicy(&policyRoute, policy, params)
+   policyEngineApplyPolicy(&policyRoute, policy, ribdCommonDefs.PolicyPath_All,params)
    return err
 }
-func PolicyEngineTraverseAndApply(policy PolicyStmt) {
+func PolicyEngineTraverseAndApply(policy Policy) {
 	logger.Println("PolicyEngineTraverseAndApply - traverse routing table and apply policy ", policy.name)
     RouteInfoMap.VisitAndUpdate(policyEngineApplyForRoute, policy)
 }
-func PolicyEngineTraverseAndReverse(policy PolicyStmt) {
+func PolicyEngineTraverseAndApplyPolicy(policy Policy) {
+	logger.Println("PolicyEngineTraverseAndApplyPolicy -  apply policy ", policy.name)
+	PolicyEngineTraverseAndApply(policy)
+/*     var policyStmtKeys []int
+	 for k:=range policy.policyStmtPrecedenceMap {
+		policyStmtKeys = append(policyStmtKeys,k)
+	}
+	sort.Ints(policyStmtKeys)
+	for k:=range policyStmtKeys {
+		logger.Println("Key: ", k, " policyStmtName ", policy.policyStmtPrecedenceMap[k])
+		policyStmt := PolicyStmtDB.Get((patriciaDB.Prefix(policy.policyStmtPrecedenceMap[k])))
+        if policyStmt == nil {
+			logger.Println("Invalid policyStmt")
+			continue
+		}
+		PolicyEngineTraverseAndApply(policyStmt.(PolicyStmt))
+	}*/
+}
+func PolicyEngineTraverseAndReverse(policy Policy) {
 	logger.Println("PolicyEngineTraverseAndReverse - traverse routing table and inverse policy actions", policy.name)
 	if policy.routeList == nil {
 		logger.Println("No route affected by this policy, so nothing to do")
@@ -469,7 +588,7 @@ func PolicyEngineTraverseAndReverse(policy PolicyStmt) {
         selectedRouteInfoRecord := routeInfoRecordList.routeInfoList[routeInfoRecordList.selectedRouteIdx]
         policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol)}
         params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
-		policyEngineUndoActions(policyRoute, policy, params)
+		policyEngineUndoActionsPolicy(policyRoute, policy, params)
 		deleteRoutePolicyState(patriciaDB.Prefix(policy.routeList[idx]), policy.name)
 	}
 }

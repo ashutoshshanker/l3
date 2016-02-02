@@ -3,7 +3,6 @@ package rpc
 import (
 	"bfdd"
 	"fmt"
-	//    "l3/bfd/config"
 	//    "l3/bfd/server"
 	//    "log/syslog"
 	//    "net"
