@@ -74,9 +74,10 @@ func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptio
 }
 
 func encodeDatabaseDescriptionData(dd_data ospfDatabaseDescriptionData) []byte {
-	pkt := make([]byte, INTF_MTU_MIN)
+	pkt := make([]byte, OSPF_DBD_MIN_SIZE)
 	binary.BigEndian.PutUint16(pkt[0:2], dd_data.interface_mtu)
-	pkt[2] = dd_data.options
+	//pkt[3] = dd_data.options
+	pkt[2] = 0x2
 	imms := 0x07
 	if !dd_data.ibit {
 		imms = imms & 0x04
@@ -136,12 +137,12 @@ func (server *OSPFServer) BuildAndSendDBDPkt(intfKey IntfConfKey, ent IntfConf, 
 		TTL:      uint8(1),
 		Protocol: layers.IPProtocol(OSPF_PROTO_ID),
 		SrcIP:    ent.IfIpAddr,
-		DstIP:    net.IP{224, 0, 0, 5},
+		DstIP:    net.IP{30, 0, 1, 3},
 	}
 
 	ethLayer := layers.Ethernet{
 		SrcMAC:       ent.IfMacAddr,
-		DstMAC:       net.HardwareAddr{0x01, 0x00, 0x5e, 0x00, 0x00, 0x05},
+		DstMAC:       net.HardwareAddr{0x62, 0x01, 0x0b, 0xca, 0x68, 0x90},
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 
@@ -157,8 +158,15 @@ func (server *OSPFServer) BuildAndSendDBDPkt(intfKey IntfConfKey, ent IntfConf, 
 	/*
 		TODO get retransmit value from INtfconf
 	*/
+	go func() {
+		for t := range nbrConf.ospfNbrDBDTicker.C {
+			server.SendDBDPkt(intfKey, dbdPkt)
+			server.logger.Info(fmt.Sprintln("Sent DBD at ", t))
 
-	go server.SendDBDPkt(intfKey, dbdPkt)
+		}
+	}()
+
+	server.SendDBDPkt(intfKey, dbdPkt)
 	//return ospfPkt
 }
 
