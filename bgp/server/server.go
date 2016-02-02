@@ -26,6 +26,11 @@ type PeerUpdate struct {
 	NewPeer config.NeighborConfig
 }
 
+type PeerGroupUpdate struct {
+	OldGroup config.PeerGroup
+	NewGroup config.PeerGroup
+}
+
 type BGPServer struct {
 	logger           *syslog.Writer
 	ribdClient       *ribd.RouteServiceClient
@@ -33,6 +38,8 @@ type BGPServer struct {
 	GlobalConfigCh   chan config.GlobalConfig
 	AddPeerCh        chan PeerUpdate
 	RemPeerCh        chan string
+	AddPeerGroupCh   chan PeerGroupUpdate
+	RemPeerGroupCh   chan string
 	PeerConnEstCh    chan string
 	PeerConnBrokenCh chan string
 	PeerCommandCh    chan config.PeerCommand
@@ -52,6 +59,8 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
 	bgpServer.AddPeerCh = make(chan PeerUpdate)
 	bgpServer.RemPeerCh = make(chan string)
+	bgpServer.AddPeerGroupCh = make(chan PeerGroupUpdate)
+	bgpServer.RemPeerGroupCh = make(chan string)
 	bgpServer.PeerConnEstCh = make(chan string)
 	bgpServer.PeerConnBrokenCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
@@ -354,6 +363,14 @@ func (server *BGPServer) StartServer() {
 			delete(server.PeerMap, remPeer)
 			peer.Cleanup()
 			server.ProcessRemoveNeighbor(remPeer, peer)
+
+		case groupUpdate := <-server.AddPeerGroupCh:
+			oldGroup := groupUpdate.OldGroup
+			newGroup := groupUpdate.NewGroup
+			server.logger.Info(fmt.Sprintln("Peer group update old:", oldGroup, "new:", newGroup))
+
+		case groupName := <-server.RemPeerGroupCh:
+			server.logger.Info(fmt.Sprintln("Remove Peer group:", groupName))
 
 		case tcpConn := <-acceptCh:
 			server.logger.Info(fmt.Sprintln("Connected to", tcpConn.RemoteAddr().String()))

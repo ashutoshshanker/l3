@@ -44,12 +44,11 @@ type Queues struct {
 	Output uint32
 }
 
-type NeighborConfig struct {
+type BaseConfig struct {
 	PeerAS                  uint32
 	LocalAS                 uint32
 	AuthPassword            string
 	Description             string
-	NeighborAddress         net.IP
 	RouteReflectorClusterId uint32
 	RouteReflectorClient    bool
 	MultiHopEnable          bool
@@ -57,6 +56,17 @@ type NeighborConfig struct {
 	ConnectRetryTime        uint32
 	HoldTime                uint32
 	KeepaliveTime           uint32
+}
+
+type NeighborConfig struct {
+	BaseConfig
+	NeighborAddress net.IP
+	PeerGroup       string
+}
+
+type PeerGroup struct {
+	BaseConfig
+	Name string
 }
 
 type NeighborState struct {

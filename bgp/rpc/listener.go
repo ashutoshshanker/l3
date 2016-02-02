@@ -180,18 +180,21 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 	}
 
 	pConf := config.NeighborConfig{
-		PeerAS:                  uint32(bgpNeighbor.PeerAS),
-		LocalAS:                 uint32(bgpNeighbor.LocalAS),
-		AuthPassword:            bgpNeighbor.AuthPassword,
-		Description:             bgpNeighbor.Description,
-		NeighborAddress:         ip,
-		RouteReflectorClusterId: uint32(bgpNeighbor.RouteReflectorClusterId),
-		RouteReflectorClient:    bgpNeighbor.RouteReflectorClient,
-		MultiHopEnable:          bgpNeighbor.MultiHopEnable,
-		MultiHopTTL:             uint8(bgpNeighbor.MultiHopTTL),
-		ConnectRetryTime:        uint32(bgpNeighbor.ConnectRetryTime),
-		HoldTime:                uint32(bgpNeighbor.HoldTime),
-		KeepaliveTime:           uint32(bgpNeighbor.KeepaliveTime),
+		BaseConfig: config.BaseConfig{
+			PeerAS:                  uint32(bgpNeighbor.PeerAS),
+			LocalAS:                 uint32(bgpNeighbor.LocalAS),
+			AuthPassword:            bgpNeighbor.AuthPassword,
+			Description:             bgpNeighbor.Description,
+			RouteReflectorClusterId: uint32(bgpNeighbor.RouteReflectorClusterId),
+			RouteReflectorClient:    bgpNeighbor.RouteReflectorClient,
+			MultiHopEnable:          bgpNeighbor.MultiHopEnable,
+			MultiHopTTL:             uint8(bgpNeighbor.MultiHopTTL),
+			ConnectRetryTime:        uint32(bgpNeighbor.ConnectRetryTime),
+			HoldTime:                uint32(bgpNeighbor.HoldTime),
+			KeepaliveTime:           uint32(bgpNeighbor.KeepaliveTime),
+		},
+		NeighborAddress: ip,
+		PeerGroup:       bgpNeighbor.PeerGroup,
 	}
 	return pConf, true
 }
@@ -295,4 +298,59 @@ func (h *BGPHandler) PeerCommand(in *PeerConfigCommands, out *bool) error {
 	h.logger.Info(fmt.Sprintln("Good peer command:", in))
 	*out = true
 	return nil
+}
+
+func (h *BGPHandler) ValidateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (config.PeerGroup, bool) {
+	if peerGroup == nil {
+		return config.PeerGroup{}, false
+	}
+
+	group := config.PeerGroup{
+		BaseConfig: config.BaseConfig{
+			PeerAS:                  uint32(peerGroup.PeerAS),
+			LocalAS:                 uint32(peerGroup.LocalAS),
+			AuthPassword:            peerGroup.AuthPassword,
+			Description:             peerGroup.Description,
+			RouteReflectorClusterId: uint32(peerGroup.RouteReflectorClusterId),
+			RouteReflectorClient:    peerGroup.RouteReflectorClient,
+			MultiHopEnable:          peerGroup.MultiHopEnable,
+			MultiHopTTL:             uint8(peerGroup.MultiHopTTL),
+			ConnectRetryTime:        uint32(peerGroup.ConnectRetryTime),
+			HoldTime:                uint32(peerGroup.HoldTime),
+			KeepaliveTime:           uint32(peerGroup.KeepaliveTime),
+		},
+		Name: peerGroup.Name,
+	}
+	return group, true
+}
+
+func (h *BGPHandler) SendBGPPeerGroup(oldGroup *bgpd.BGPPeerGroup, newGroup *bgpd.BGPPeerGroup) bool {
+	oldGroupConf, err := h.ValidateBGPPeerGroup(oldGroup)
+	if !err {
+		return false
+	}
+
+	newGroupConf, err := h.ValidateBGPPeerGroup(newGroup)
+	if !err {
+		return false
+	}
+
+	h.server.AddPeerGroupCh <- server.PeerGroupUpdate{oldGroupConf, newGroupConf}
+	return true
+}
+
+func (h *BGPHandler) CreateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Create BGP neighbor attrs:", peerGroup))
+	return h.SendBGPPeerGroup(nil, peerGroup), nil
+}
+
+func (h *BGPHandler) UpdateBGPPeerGroup(origG *bgpd.BGPPeerGroup, updatedG *bgpd.BGPPeerGroup, attrSet []bool) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Update peer attrs:", updatedG))
+	return h.SendBGPPeerGroup(origG, updatedG), nil
+}
+
+func (h *BGPHandler) DeleteBGPPeerGroup(name string) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Delete BGP peer group:", name))
+	h.server.RemPeerGroupCh <- name
+	return true, nil
 }
