@@ -68,29 +68,6 @@ const (
 	SUB_ASICD = 1
 )
 
-type RouteInfoRecord struct {
-	destNetIp      net.IP //string
-	networkMask    net.IP //string
-	nextHopIp      net.IP
-	nextHopIfType  int8
-	nextHopIfIndex ribd.Int
-	metric         ribd.Int
-	sliceIdx       int
-	protocol       int8
-	isPolicyBasedStateValid bool
-}
-
-//implement priority queue of the routes
-type RouteInfoRecordList struct {
-	selectedRouteIdx int8
-	routeInfoList    []RouteInfoRecord //map[int]RouteInfoRecord
-	policyHitCounter  ribd.Int
-	policyList       []string
-	isPolicyBasedStateValid bool
-	routeCreatedTime string
-	routeUpdatedTime string
-}
-
 type ClientJson struct {
 	Name string `json:Name`
 	Port int    `json:Port`
@@ -112,13 +89,10 @@ type localDB struct {
 	precedence int
 }
 
-var RouteInfoMap = patriciaDB.NewTrie()
-var DummyRouteInfoRecord RouteInfoRecord //{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
 var asicdclnt AsicdClient
 var arpdclnt ArpdClient
 var count int
 var ConnectedRoutes []*ribd.Routes
-var destNetSlice []localDB
 var acceptConfig bool
 var AsicdSub *nanomsg.SubSocket
 var RIBD_PUB *nanomsg.PubSocket
@@ -459,7 +433,8 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			ipAddrStr := ip.String()
 			ipMaskStr := net.IP(ipMask).String()
 			logger.Printf("Calling createv4Route with ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
-			_, err = createV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
+			_,err = routeServiceHandler.CreateV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED)
+			//_, err = createV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 			if err != nil {
 				logger.Printf("Route create failed with err %s\n", err)
 				return
@@ -524,6 +499,7 @@ func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 
 func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
+	localRouteEventsDB = make([]RouteEventInfo,0)
 	configFile := paramsDir + "/clients.json"
 	logger.Println("configfile = ", configFile)
 	ConnectToClients(configFile)
