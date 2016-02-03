@@ -80,6 +80,17 @@ func NewBfdControlPacketDefault() *BfdControlPacket {
 	return bfdControlPacket
 }
 
+func (session *BfdSession) UpdateBfdSessionControlPacket() error {
+	session.bfdPacket.Diagnostic = session.state.LocalDiagType
+	session.bfdPacket.State = session.state.SessionState
+	session.bfdPacket.DetectMult = uint8(session.state.DetectionMultiplier)
+	session.bfdPacket.MyDiscriminator = session.state.LocalDiscriminator
+	session.bfdPacket.YourDiscriminator = session.state.RemoteDiscriminator
+	session.bfdPacket.DesiredMinTxInterval = time.Duration(session.state.DesiredMinTxInterval)
+	session.bfdPacket.RequiredMinRxInterval = time.Duration(session.state.RequiredMinRxInterval)
+	return nil
+}
+
 // CreateBfdSession initializes a session and starts cpntrol packets exchange.
 // This function is called when a protocol registers with BFD to monitor a destination IP.
 func (server *BFDServer) CreateBfdSession(DestIp, protocol string) error {
@@ -201,6 +212,7 @@ func (session *BfdSession) StartSessionClient() error {
 	}
 	defer Conn.Close()
 	for {
+		session.UpdateBfdSessionControlPacket()
 		buf, err := session.bfdPacket.createBfdControlPacket()
 		if err != nil {
 			fmt.Println("Failed to create control packet for session ", session.state.SessionId)
