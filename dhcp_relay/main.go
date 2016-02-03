@@ -29,7 +29,6 @@ func main() {
 	if err != nil {
 		logger.Err(fmt.Sprintln("DRA: Cannot start dhcp server", err))
 		return
-		//panic(err)
 	}
 	logger.Info(fmt.Sprintln("Dhcp Relay started successfully"))
 }
