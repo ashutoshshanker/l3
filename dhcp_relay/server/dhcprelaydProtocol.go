@@ -240,10 +240,6 @@ func (p DhcpRelayAgentPacket) ParseDhcpOptions() DhcpRelayAgentOptions {
 		if len(opts) < 2+size {
 			break
 		}
-		dup, ok := doptions[DhcpOptionCode(opts[0])]
-		if ok {
-			logger.Info(fmt.Sprintln("DRA: jgheewala entry already exists", dup))
-		}
 		doptions[DhcpOptionCode(opts[0])] = opts[2 : 2+size]
 		opts = opts[2+size:]
 	}
@@ -344,8 +340,6 @@ func DhcpRelayAgentAddOptionsToPacket(reqOptions DhcpRelayAgentOptions, mt Messa
 		for _, option := range opt {
 			_, ok := dummyDup[option.Code]
 			if ok {
-				logger.Err(fmt.Sprintln("DRA: jgheewala duplicate entry",
-					option.Code))
 				continue
 			}
 			outPacket.AddDhcpOptions(option.Code, option.Value)
@@ -356,7 +350,7 @@ func DhcpRelayAgentAddOptionsToPacket(reqOptions DhcpRelayAgentOptions, mt Messa
 func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, gblEntry DhcpRelayAgentGlobalInfo,
 	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
 	mt MessageType) {
-	logger.Info("DRA: Creating Send Pkt client ----> server")
+	logger.Info("DRA: Creating Send Pkt")
 
 	serverIpPort := gblEntry.IntfConfig.ServerIp + ":" + strconv.Itoa(DHCP_SERVER_PORT)
 	logger.Info("DRA: Sending DHCP PACKET to server: " + serverIpPort)
@@ -385,20 +379,10 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, gblEntry DhcpRelayAge
 }
 
 func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
-	logicalId int, inReq DhcpRelayAgentPacket,
+	logicalId int, inReq DhcpRelayAgentPacket, linuxInterface *net.Interface,
 	reqOptions DhcpRelayAgentOptions, mt MessageType) {
 
-	// Get the interface from reverse mapping to send the unicast
-	// packet...
-	linuxInterface, ok := dhcprelayReverseMap[inReq.GetCHAddr().String()]
-	if !ok {
-		logger.Err("DRA: rever map didn't cache linux interface for " +
-			inReq.GetCHAddr().String())
-		return
-	}
-	logger.Info(fmt.Sprintln("DRA: using cached linuxInterface",
-		linuxInterface))
-	logger.Info("DRA: Creating Payload server -----> client")
+	logger.Info("DRA: Creating Payload")
 	outPacket := DhcpRelayAgentCreateNewPacket(Reply, inReq)
 	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
 	// subnet ip is the interface ip address copy the message...
@@ -410,7 +394,7 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 	logger.Info("DRA: GIAddr is " + outPacket.GetGIAddr().String())
 	logger.Info(fmt.Sprintln("DRA: Cookie is ", outPacket.GetCookie()))
 	outPacket.PadToMinSize()
-	logger.Info("DRA: Creating go packet server ------> client")
+	logger.Info("DRA: Creating go packet")
 	eth := &layers.Ethernet{
 		SrcMAC:       linuxInterface.HardwareAddr,
 		DstMAC:       outPacket.GetCHAddr(),
@@ -456,7 +440,8 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 	}
 
 	if gblEntry.PcapHandle == nil {
-		logger.Info("DRA: jgheewala...pcap handler is nul....")
+		logger.Info("DRA: pcap handler is nul....")
+		return
 	}
 	err = pHandle.WritePacketData(buffer.Bytes())
 	if err != nil {
@@ -469,24 +454,25 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 
 func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessage,
 	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions, mType MessageType) {
-	logicalId, ok := dhcprelayLogicalIntfId2LinuxIntId[cm.IfIndex]
-	if !ok {
-		logger.Err(fmt.Sprintln("DRA: linux id", cm.IfIndex,
-			" has no mapping...drop packet"))
-		return
-	}
-	// Use obtained logical id to find the global interface object
-	logger.Info(fmt.Sprintln("DRA: linux id ----> logical id is success for", logicalId))
-	gblEntry, ok := dhcprelayGblInfo[logicalId]
-	if !ok {
-		logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index ????",
-			logicalId))
-		logger.Err("DRA: not sending packet.... :(")
-		return
-	}
 	switch mType {
 	case 1, 3, 4, 7, 8:
+		logger.Info("DRA: Handling for CLIENT -----> SERVER")
 		// Updating reverse mapping with logical interface id
+		logicalId, ok := dhcprelayLogicalIntfId2LinuxIntId[cm.IfIndex]
+		if !ok {
+			logger.Err(fmt.Sprintln("DRA: linux id", cm.IfIndex,
+				" has no mapping...drop packet"))
+			return
+		}
+		// Use obtained logical id to find the global interface object
+		logger.Info(fmt.Sprintln("DRA: logical id is", logicalId))
+		gblEntry, ok := dhcprelayGblInfo[logicalId]
+		if !ok {
+			logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index ????",
+				logicalId))
+			logger.Err("DRA: not sending packet.... :(")
+			return
+		}
 		linuxInterface, err := net.InterfaceByIndex(cm.IfIndex)
 		if err != nil {
 			logger.Err(fmt.Sprintln("DRA: getting interface by id failed", err))
@@ -501,8 +487,35 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 			inReq, reqOptions, mType)
 		break
 	case 2, 5, 6:
+		logger.Info("DRA: Handling for SERVER -----> CLIENT")
+		// Get the interface from reverse mapping to send the unicast
+		// packet...
+		linuxInterface, ok := dhcprelayReverseMap[inReq.GetCHAddr().String()]
+		if !ok {
+			logger.Err("DRA: rever map didn't cache linux interface for " +
+				inReq.GetCHAddr().String())
+			return
+		}
+		// Updating reverse mapping with logical interface id
+		logicalId, ok := dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index]
+		if !ok {
+			logger.Err(fmt.Sprintln("DRA: linux id", cm.IfIndex,
+				" has no mapping...drop packet"))
+			return
+		}
+		// Use obtained logical id to find the global interface object
+		logger.Info(fmt.Sprintln("DRA: logical id is", logicalId))
+		gblEntry, ok := dhcprelayGblInfo[logicalId]
+		if !ok {
+			logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index ????",
+				logicalId))
+			logger.Err("DRA: not sending packet.... :(")
+			return
+		}
+		logger.Info(fmt.Sprintln("DRA: using cached linuxInterface",
+			linuxInterface))
 		DhcpRelayAgentSendPacketToDhcpClient(gblEntry, logicalId, inReq,
-			reqOptions, mType)
+			linuxInterface, reqOptions, mType)
 		break
 	default:
 		logger.Info("DRA: any new message type")
