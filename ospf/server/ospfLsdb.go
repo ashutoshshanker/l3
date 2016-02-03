@@ -136,6 +136,9 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
                 if areaId != AreaId {
                         continue
                 }
+                if ent.IfFSMState <= config.Waiting {
+                        continue
+                }
                 var linkDetail LinkDetail
                 if ent.IfType == config.Broadcast {
                         if len(ent.NeighborMap) == 0 { // Stub Network
@@ -165,15 +168,10 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
                 } else if ent.IfType == config.PointToPoint {
                        // linkDetial.LinkId = NBRs Router ID
                 }
-                server.logger.Info(fmt.Sprintln("Linkdetail", linkDetail))
                 linkDetails = append(linkDetails, linkDetail)
         }
 
-        server.logger.Info(fmt.Sprintln("Linkdetails", linkDetails))
         numOfLinks := len(linkDetails)
-        if numOfLinks == 0 {
-                return
-        }
 
         LSType := RouterLSA
         LSId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
@@ -193,6 +191,11 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
         }
         lsDbEnt, _ := server.AreaLsdb[lsdbKey]
 
+        if numOfLinks == 0 {
+                delete(lsDbEnt.RouterLsaMap, lsaKey)
+                server.AreaLsdb[lsdbKey] = lsDbEnt
+                return
+        }
         ent, _ := lsDbEnt.RouterLsaMap[lsaKey]
         ent.LSAge = uint16(LSAge)
         ent.Options = Options

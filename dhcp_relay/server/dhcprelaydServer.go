@@ -8,80 +8,15 @@ import (
 	"flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	"github.com/google/gopacket/pcap"
-	"golang.org/x/net/ipv4"
 	"io/ioutil"
 	"log/syslog"
-	"net"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 	"utils/ipcutils"
-)
-
-/*
- * Global DS local to DHCP RELAY AGENT
- */
-type DhcpRelayServiceHandler struct {
-}
-
-// type is similar to typedef in c
-type DhcpOptionCode byte
-type OpCode byte
-type MessageType byte // Option 53
-
-// Map of DHCP options
-type DhcpRelayAgentOptions map[DhcpOptionCode][]byte
-
-// A DHCP packet
-type DhcpRelayAgentPacket []byte
-
-/*
- * DhcpRelayAgentStateInfo will maintain state from when a packet was recieved
- * until it is out
- */
-type DhcpRelayAgentStateInfo struct {
-	stats []string
-}
-
-/*
- * Global DRA Data Structure:
- *	    IntfConfig Info
- *	    PCAP Handler specific to Interface
- */
-type DhcpRelayAgentGlobalInfo struct {
-	IntfConfig           dhcprelayd.DhcpRelayIntfConfig
-	dhcprelayConfigMutex sync.RWMutex
-	PcapHandle           *pcap.Handle
-}
-type Option struct {
-	Code  DhcpOptionCode
-	Value []byte
-}
-
-type DhcpRelayAgentIntfInfo struct {
-	linuxInterface *net.Interface
-	logicalId      int
-}
-
-var (
-	// map key would be if_name
-	// When we receive a udp packet... we will get interface id and that can
-	// be used to collect the global info...
-	dhcprelayGblInfo    map[int]DhcpRelayAgentGlobalInfo
-	StateDebugInfo      map[string]DhcpRelayAgentStateInfo
-	dhcprelayClientConn *ipv4.PacketConn
-	dhcprelayServerConn *ipv4.PacketConn
-	logger              *syslog.Writer
-	//map for mac_address to interface id for sending unicast packet
-	dhcprelayReverseMap map[string]*net.Interface
-	// PadddingToMinimumSize pads a packet so that when sent over UDP,
-	// the entire packet, is 300 bytes (which is BOOTP/DHCP min)
-	dhcprelayPadder [DHCP_PACKET_MIN_SIZE]byte
 )
 
 /******* Local API Calls. *******/
@@ -230,7 +165,6 @@ func DhcpRelayAgentInitGblHandling(ifNum int) {
 	gblEntry.IntfConfig.IfIndex = strconv.Itoa(ifNum) //ifName
 	gblEntry.IntfConfig.AgentSubType = 0
 	gblEntry.IntfConfig.Enable = false
-	gblEntry.dhcprelayConfigMutex = sync.RWMutex{}
 	dhcprelayGblInfo[ifNum] = gblEntry
 
 }
@@ -238,7 +172,7 @@ func DhcpRelayAgentInitGblHandling(ifNum int) {
 func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr string) error {
 	logger = log
 	// Initialize port information and packet handler for dhcp
-
+	logger.Info("DRA: initializing Port Pkt Handler")
 	err := InitDhcpRelayPortPktHandler()
 	if err != nil {
 		return err
