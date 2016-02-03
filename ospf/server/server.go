@@ -30,6 +30,10 @@ type OspfClientBase struct {
 	IsConnected        bool
 }
 
+type LsdbKey struct {
+        AreaId          uint32
+}
+
 type OSPFServer struct {
 	logger            *syslog.Writer
 	ribdClient        RibdClient
@@ -41,6 +45,10 @@ type OSPFServer struct {
 	GlobalConfigCh    chan config.GlobalConf
 	AreaConfigCh      chan config.AreaConf
 	IntfConfigCh      chan config.InterfaceConf
+        AreaLsdb          map[LsdbKey]LSDatabase
+        LsdbUpdateCh      chan LsdbUpdateMsg
+        IntfStateChangeCh chan IntfStateChangeMsg
+        NetworkDRChangeCh chan NetworkDRChangeMsg
 
 	/*
 	   connRoutesTimer         *time.Timer
@@ -94,6 +102,10 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.IntfConfMap = make(map[IntfConfKey]IntfConf)
 	ospfServer.IntfTxMap = make(map[IntfConfKey]IntfTxHandle)
 	ospfServer.IntfRxMap = make(map[IntfConfKey]IntfRxHandle)
+        ospfServer.AreaLsdb = make(map[LsdbKey]LSDatabase)
+        ospfServer.IntfStateChangeCh = make(chan IntfStateChangeMsg)
+        ospfServer.NetworkDRChangeCh = make(chan NetworkDRChangeMsg)
+        ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
 	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}

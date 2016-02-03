@@ -40,6 +40,8 @@ func (server *OSPFServer)processAreaConfig(areaConf config.AreaConf) {
         ent.AreaNssaTranslatorStabilityInterval = areaConf.AreaNssaTranslatorStabilityInterval
         server.AreaConfMap[areaConfKey] = ent
         server.initAreaStateSlice(areaConfKey)
+        areaId := convertAreaOrRouterIdUint32(string(areaConf.AreaId))
+        server.initLSDatabase(areaId)
 }
 
 func (server *OSPFServer)initAreaConfDefault() {

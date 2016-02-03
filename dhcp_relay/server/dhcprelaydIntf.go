@@ -192,20 +192,20 @@ func DhcpRelayInitPortParams() error {
 	// Allocate memory for Linux ID ---> Logical Id mapping
 	dhcprelayLogicalIntfId2LinuxIntId = make(map[int]int, 10)
 	for {
-		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortConfig(
-			int64(currMarker), int64(count))
+		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortState(
+			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
 			logger.Err(fmt.Sprintln("DRA: getting bulk port config"+
 				" from asicd failed with reason", err))
 			return nil // relay agent will update the info with asicd subscriber
 		}
-		objCount = int(bulkInfo.ObjCount)
+		objCount = int(bulkInfo.Count)
 		more = bool(bulkInfo.More)
-		currMarker = int64(bulkInfo.NextMarker)
+		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
 			var ifName string
-			portNum = int(bulkInfo.PortConfigList[i].IfIndex)
-			ifName = bulkInfo.PortConfigList[i].Name
+			portNum = int(bulkInfo.PortStateList[i].IfIndex)
+			ifName = bulkInfo.PortStateList[i].Name
 			logger.Info("DRA: interface global init for " + ifName)
 			DhcpRelayAgentInitGblHandling(portNum)
 		}

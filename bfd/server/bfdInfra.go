@@ -2,6 +2,7 @@ package server
 
 import (
 	"asicd/asicdConstDefs"
+	"asicdServices"
 	"errors"
 	"net"
 	"utils/commonDefs"
@@ -90,22 +91,22 @@ func (server *BFDServer) updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.Vlan
 }
 
 func (server *BFDServer) BuildPortPropertyMap() {
-	currMarker := int64(asicdConstDefs.MIN_SYS_PORTS)
+	currMarker := asicdServices.Int(asicdConstDefs.MIN_SYS_PORTS)
 	if server.asicdClient.IsConnected {
 		server.logger.Info("Calling asicd for port property")
 		count := 10
 		for {
-			bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPortConfig(int64(currMarker), int64(count))
+			bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPortState(asicdServices.Int(currMarker), asicdServices.Int(count))
 			if bulkInfo == nil {
 				return
 			}
-			objCount := int(bulkInfo.ObjCount)
+			objCount := int(bulkInfo.Count)
 			more := bool(bulkInfo.More)
-			currMarker = bulkInfo.NextMarker
+			currMarker = asicdServices.Int(bulkInfo.EndIdx)
 			for i := 0; i < objCount; i++ {
-				portNum := bulkInfo.PortConfigList[i].IfIndex
+				portNum := bulkInfo.PortStateList[i].PortNum
 				ent := server.portPropertyMap[portNum]
-				ent.Name = bulkInfo.PortConfigList[i].Name
+				ent.Name = bulkInfo.PortStateList[i].Name
 				ent.VlanId = 0
 				ent.VlanName = ""
 				server.portPropertyMap[portNum] = ent

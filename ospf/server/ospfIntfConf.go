@@ -328,7 +328,15 @@ func (server *OSPFServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
 	ent, _ := server.IntfConfMap[intfConfKey]
         ent.NeighborMap = nil
         ent.IfEvents = ent.IfEvents + 1
+        oldState := ent.IfFSMState
         ent.IfFSMState = config.Down
+        areaId := convertIPv4ToUint32(ent.IfAreaId)
+        if oldState > config.Waiting {
+                msg := IntfStateChangeMsg {
+                        areaId: areaId,
+                }
+                server.IntfStateChangeCh <- msg
+        }
 	server.IntfConfMap[intfConfKey] = ent
 }
 
