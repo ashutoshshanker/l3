@@ -8,6 +8,38 @@ import (
 	"time"
 )
 
+func (server *BFDServer) processSessionConfig(sessionConfig BfdSessionConfig) error {
+	var sessionMgmt BfdSessionMgmt
+	sessionMgmt.DestIp = sessionConfig.DestIp
+	sessionMgmt.Protocol = sessionConfig.Protocol
+	if sessionConfig.Operation {
+		server.CreateSessionCh <- sessionMgmt
+	} else {
+		server.DeleteSessionCh <- sessionMgmt
+	}
+	return nil
+}
+
+func (server *BFDServer) StartSessionHandler() error {
+	server.CreateSessionCh = make(chan BfdSessionMgmt)
+	server.DeleteSessionCh = make(chan BfdSessionMgmt)
+	for {
+		select {
+		case sessionMgmt := <-server.CreateSessionCh:
+			session, err := server.CreateBfdSession(sessionMgmt)
+			if err == nil {
+				session.TxTimeoutCh = make(chan *BfdSession)
+				session.SessionTimeoutCh = make(chan *BfdSession)
+				go server.StartSessionClient(session)
+				go server.StartSessionServer(session)
+			}
+		case sessionMgmt := <-server.DeleteSessionCh:
+			server.DeleteBfdSession(sessionMgmt)
+		}
+	}
+	return nil
+}
+
 func (server *BFDServer) GetNewSessionId() int32 {
 	s1 := rand.NewSource(time.Now().UnixNano())
 	r1 := rand.New(s1)
@@ -24,14 +56,14 @@ func (server *BFDServer) GetIfIndexAndLocalIpFromDestIp(DestIp string) (int32, s
 	return int32(reachabilityInfo.NextHopIfIndex), reachabilityInfo.NextHopIp
 }
 
-func (server *BFDServer) NewBfdSession(DestIp, protocol string) *BfdSession {
+func (server *BFDServer) NewBfdSession(DestIp string, protocol int) *BfdSession {
 	bfdSession := &BfdSession{}
 	bfdSession.state.SessionId = server.GetNewSessionId()
 	bfdSession.state.RemoteIpAddr = DestIp
 	ifIndex, localIp := server.GetIfIndexAndLocalIpFromDestIp(DestIp)
 	bfdSession.state.LocalIpAddr = localIp
 	bfdSession.state.InterfaceId = ifIndex
-	bfdSession.state.RegisteredProtocols += protocol + ","
+	bfdSession.state.RegisteredProtocols[protocol] = true
 	bfdSession.state.SessionState = STATE_DOWN
 	bfdSession.state.RemoteSessionState = STATE_DOWN
 	bfdSession.state.LocalDiscriminator = uint32(bfdSession.state.SessionId)
@@ -93,27 +125,38 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 
 // CreateBfdSession initializes a session and starts cpntrol packets exchange.
 // This function is called when a protocol registers with BFD to monitor a destination IP.
-func (server *BFDServer) CreateBfdSession(DestIp, protocol string) error {
-	bfdSession := server.NewBfdSession(DestIp, protocol)
-	sessionTimeoutMS := time.Duration((bfdSession.state.RequiredMinRxInterval * bfdSession.state.DetectionMultiplier) / 1000)
-	bfdSession.timer = time.NewTimer(time.Millisecond * sessionTimeoutMS)
-	bfdSession.bfdPacket = NewBfdControlPacketDefault()
-	session, exist := server.bfdGlobal.Sessions[bfdSession.state.SessionId]
-	if !exist {
-		session = *bfdSession
+func (server *BFDServer) CreateBfdSession(sessionMgmt BfdSessionMgmt) (*BfdSession, error) {
+	var bfdSession *BfdSession
+	DestIp := sessionMgmt.DestIp
+	Protocol := sessionMgmt.Protocol
+	sessionId, found := server.FindBfdSession(DestIp)
+	if !found {
+		server.logger.Info(fmt.Sprintln("CreateSession ", DestIp, Protocol))
+		bfdSession = server.NewBfdSession(DestIp, Protocol)
+		bfdSession.bfdPacket = NewBfdControlPacketDefault()
+		server.bfdGlobal.Sessions[bfdSession.state.SessionId] = bfdSession
 		server.logger.Info(fmt.Sprintln("Bfd session created ", bfdSession))
 	} else {
-		server.logger.Info(fmt.Sprintln("Bfd session already exists ", session))
+		server.logger.Info(fmt.Sprintln("Bfd session already exists ", DestIp, Protocol, sessionId))
+		bfdSession = server.bfdGlobal.Sessions[sessionId]
+		if !bfdSession.state.RegisteredProtocols[Protocol] {
+			bfdSession.state.RegisteredProtocols[Protocol] = true
+		}
 	}
-	return nil
+	return bfdSession, nil
 }
 
 // DeleteBfdSession ceases the session.
 // A session down control packet is sent to BFD neighbor before deleting the session.
 // This function is called when a protocol decides to stop monitoring the destination IP.
-func (server *BFDServer) DeleteBfdSession(DestIp string) error {
+func (server *BFDServer) DeleteBfdSession(sessionMgmt BfdSessionMgmt) error {
+	DestIp := sessionMgmt.DestIp
+	Protocol := sessionMgmt.Protocol
+	server.logger.Info(fmt.Sprintln("DeleteSession ", DestIp, Protocol))
 	sessionId, found := server.FindBfdSession(DestIp)
 	if found {
+		server.bfdGlobal.Sessions[sessionId].txTimer.Stop()
+		server.bfdGlobal.Sessions[sessionId].sessionTimer.Stop()
 		delete(server.bfdGlobal.Sessions, sessionId)
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
@@ -195,7 +238,7 @@ func (session *BfdSession) MoveToUpState() error {
 	return nil
 }
 
-func (session *BfdSession) StartSessionClient() error {
+func (server *BFDServer) StartSessionClient(session *BfdSession) error {
 	destAddr := session.state.RemoteIpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
@@ -210,23 +253,32 @@ func (session *BfdSession) StartSessionClient() error {
 	if err != nil {
 		fmt.Println("Failed DialUDP ", ClientAddr, ServerAddr, err)
 	}
+	sessionTimeoutMS := time.Duration((session.state.RequiredMinRxInterval * session.state.DetectionMultiplier) / 1000)
+	txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
+	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session })
+	session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session })
 	defer Conn.Close()
 	for {
-		session.UpdateBfdSessionControlPacket()
-		buf, err := session.bfdPacket.createBfdControlPacket()
-		if err != nil {
-			fmt.Println("Failed to create control packet for session ", session.state.SessionId)
-		} else {
-			_, err = Conn.Write(buf)
+		select {
+		case session := <-session.TxTimeoutCh:
+			session.UpdateBfdSessionControlPacket()
+			buf, err := session.bfdPacket.CreateBfdControlPacket()
 			if err != nil {
-				fmt.Println("failed to send control packet for session ", session.state.SessionId)
+				fmt.Println("Failed to create control packet for session ", session.state.SessionId)
+			} else {
+				_, err = Conn.Write(buf)
+				if err != nil {
+					fmt.Println("failed to send control packet for session ", session.state.SessionId)
+				}
 			}
+		case session := <-session.SessionTimeoutCh:
+			session.MoveToDownState()
 		}
 	}
 	return nil
 }
 
-func (session *BfdSession) StartSessionServer() error {
+func (server *BFDServer) StartSessionServer(session *BfdSession) error {
 	destAddr := session.state.RemoteIpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
@@ -243,7 +295,8 @@ func (session *BfdSession) StartSessionServer() error {
 		if err != nil {
 			fmt.Println("Failed to read from ", ServerAddr)
 		} else {
-			fmt.Println("Received ", string(buf[0:n]), " from ", addr)
+			bfdPacket, _ := DecodeBfdControlPacket(buf[0:n])
+			fmt.Println("Received ", string(buf[0:n]), " from ", addr, " bfdPacket ", bfdPacket)
 		}
 	}
 	return nil

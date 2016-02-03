@@ -105,7 +105,7 @@ var BfdControlPacketDefaults = BfdControlPacket{
 /*
  * Create a control packet
  */
-func (p *BfdControlPacket) createBfdControlPacket() ([]byte, error) {
+func (p *BfdControlPacket) CreateBfdControlPacket() ([]byte, error) {
 	var auth []byte
 	var err error
 	buf := bytes.NewBuffer([]uint8{})
@@ -158,7 +158,7 @@ func (p *BfdControlPacket) createBfdControlPacket() ([]byte, error) {
 /*
  * Decode the control packet
  */
-func decodeBfdControlPacket(data []byte) (*BfdControlPacket, error) {
+func DecodeBfdControlPacket(data []byte) (*BfdControlPacket, error) {
 	var err error
 	packet := &BfdControlPacket{}
 
