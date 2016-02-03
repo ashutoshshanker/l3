@@ -27,8 +27,8 @@ func main() {
 	handler := relayServer.NewDhcpRelayServer()
 	err = relayServer.StartServer(logger, handler, addr)
 	if err != nil {
-		fmt.Println("Cannot start server")
-		panic(err)
+		logger.Err(fmt.Sprintln("DRA: Cannot start dhcp server", err))
+		return
 	}
 	logger.Info(fmt.Sprintln("Dhcp Relay started successfully"))
 }

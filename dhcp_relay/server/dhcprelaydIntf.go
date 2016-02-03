@@ -28,16 +28,6 @@ type AsicdClient struct {
 	ClientHdl *asicdServices.ASICDServicesClient
 }
 
-/*
- * Global Variable
- */
-var (
-	//portInfoMap    map[string]int
-	asicdClient                       AsicdClient
-	asicdSubSocket                    *nanomsg.SubSocket
-	dhcprelayLogicalIntfId2LinuxIntId map[int]int // Linux Intf Id ---> Logical ID
-)
-
 func DhcpRelayAgentListenAsicUpdate(address string) error {
 	var err error
 	logger.Info("DRA: setting up asicd update listener")

@@ -3,7 +3,6 @@ package relayServer
 import (
 	"dhcprelayd"
 	"fmt"
-	_ "net"
 	"strconv"
 )
 
@@ -72,41 +71,12 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	logger.Info("DRA: ServerIp:" + config.ServerIp)
 	// Copy over configuration into globalInfo
 	ifNum, _ := strconv.Atoi(config.IfIndex)
-	/*
-		* removing this hack as we have support for linux_id ----> logical_id
-			var err error
-			var linuxInterface *net.Interface
-			//@TODO: hack for if_index
-			if ifNum == 33554441 {
-				logger.Info(fmt.Sprintln("DRA: jgheewal:::: hack for ifNUm", ifNum))
-				linuxInterface, err = net.InterfaceByName("SVI9")
-				if err != nil {
-					logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
-				} else {
-					//copy correct if_id
-					ifNum = linuxInterface.Index
-					logger.Info(fmt.Sprintln("DRA: jgheewal:::: Updated for ifNUm", ifNum))
-				}
-
-			} else if ifNum == 33554442 {
-				logger.Info(fmt.Sprintln("DRA: jgheewal:::: hack for ifNUm", ifNum))
-				linuxInterface, err = net.InterfaceByName("SVI10")
-				if err != nil {
-					logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
-				} else {
-					//copy correct if_id
-					ifNum = linuxInterface.Index
-					logger.Info(fmt.Sprintln("DRA: jgheewal:::: Updated for ifNUm", ifNum))
-				}
-			}
-	*/
 	gblEntry, ok := dhcprelayGblInfo[ifNum]
 	if !ok {
 		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum, " doesn't exist.."))
 		return ok, nil
 	}
 	// Acquire lock for updating configuration.
-	gblEntry.dhcprelayConfigMutex.RLock()
 	gblEntry.IntfConfig.IpSubnet = config.IpSubnet
 	gblEntry.IntfConfig.Netmask = config.Netmask
 	gblEntry.IntfConfig.AgentSubType = config.AgentSubType
@@ -114,8 +84,6 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	gblEntry.IntfConfig.ServerIp = config.ServerIp
 	gblEntry.IntfConfig.IfIndex = config.IfIndex
 	dhcprelayGblInfo[ifNum] = gblEntry
-	// Release lock after updation is done
-	gblEntry.dhcprelayConfigMutex.RUnlock()
 	if dhcprelayClientConn != nil {
 		logger.Info("DRA: no need to create pcap as its already created")
 		return true, nil
