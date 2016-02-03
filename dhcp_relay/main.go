@@ -2,9 +2,7 @@
 package main
 
 import (
-	//"dhcprelayd"
 	"fmt"
-	//"git.apache.org/thrift.git/lib/go/thrift"
 	"l3/dhcp_relay/server"
 	"log/syslog"
 )

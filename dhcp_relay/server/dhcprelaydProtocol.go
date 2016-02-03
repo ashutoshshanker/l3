@@ -240,6 +240,10 @@ func (p DhcpRelayAgentPacket) ParseDhcpOptions() DhcpRelayAgentOptions {
 		if len(opts) < 2+size {
 			break
 		}
+		dup, ok := doptions[DhcpOptionCode(opts[0])]
+		if ok {
+			logger.Info(fmt.Sprintln("DRA: jgheewala entry already exists", dup))
+		}
 		doptions[DhcpOptionCode(opts[0])] = opts[2 : 2+size]
 		opts = opts[2+size:]
 	}
@@ -330,6 +334,25 @@ func DhcpRelayAgentCreateNewPacket(opCode OpCode, inReq DhcpRelayAgentPacket) Dh
 	return p
 }
 
+func DhcpRelayAgentAddOptionsToPacket(reqOptions DhcpRelayAgentOptions, mt MessageType,
+	outPacket *DhcpRelayAgentPacket) {
+	outPacket.AddDhcpOptions(OptionDHCPMessageType, []byte{byte(mt)})
+	var dummyDup map[DhcpOptionCode]int
+	dummyDup = make(map[DhcpOptionCode]int, len(reqOptions))
+	for i := 0; i < len(reqOptions); i++ {
+		opt := reqOptions.SelectOrderOrAll(reqOptions[DhcpOptionCode(i)])
+		for _, option := range opt {
+			_, ok := dummyDup[option.Code]
+			if ok {
+				logger.Err(fmt.Sprintln("DRA: jgheewala duplicate entry",
+					option.Code))
+				continue
+			}
+			outPacket.AddDhcpOptions(option.Code, option.Value)
+			dummyDup[option.Code] = 9999
+		}
+	}
+}
 func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, gblEntry DhcpRelayAgentGlobalInfo,
 	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
 	mt MessageType) {
@@ -344,13 +367,7 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, gblEntry DhcpRelayAge
 	}
 	outPacket := DhcpRelayAgentCreateNewPacket(Request, inReq)
 	outPacket.SetGIAddr(net.ParseIP(gblEntry.IntfConfig.IpSubnet))
-	outPacket.AddDhcpOptions(OptionDHCPMessageType, []byte{byte(mt)})
-	for i := 0; i < len(reqOptions); i++ {
-		opt := reqOptions.SelectOrderOrAll(reqOptions[DhcpOptionCode(i)])
-		for _, option := range opt {
-			outPacket.AddDhcpOptions(option.Code, option.Value)
-		}
-	}
+	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
 	// Decode outpacket...
 	logger.Info("DRA: Decoding out pkt for server")
 	logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
@@ -383,14 +400,9 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 		linuxInterface))
 	logger.Info("DRA: Creating Payload server -----> client")
 	outPacket := DhcpRelayAgentCreateNewPacket(Reply, inReq)
-	outPacket.AddDhcpOptions(OptionDHCPMessageType, []byte{byte(mt)})
-	opt := reqOptions.SelectOrderOrAll(reqOptions[OptionParameterRequestList])
-	for _, option := range opt {
-		outPacket.AddDhcpOptions(option.Code, option.Value)
-	}
-	// subnet ip is the interface ip address
-	// copy the message... by creating new packet
-	// Decode outpacket...
+	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
+	// subnet ip is the interface ip address copy the message...
+	// by creating new packet Decode outpacket...
 	logger.Info("DRA: Decoding out pkt for client")
 	logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
 	logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
