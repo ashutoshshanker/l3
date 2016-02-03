@@ -45,6 +45,7 @@ This file decodes database description packets.as per below format
 remote hardcoding and get it while config.
 */
 const INTF_MTU_MIN = 1500
+const INTF_OPTIONS = 0x2
 
 type ospfDatabaseDescriptionData struct {
 	options            uint8
@@ -100,7 +101,8 @@ func constructDatabaseDescriptionPaket(intf IntfConf, nbr OspfNeighborEntry) {
 
 }
 */
-func (server *OSPFServer) BuildAndSendDBDPkt(intfKey IntfConfKey, ent IntfConf, nbrConf OspfNeighborEntry, dbdData ospfDatabaseDescriptionData) {
+func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
+	nbrConf OspfNeighborEntry, dbdData ospfDatabaseDescriptionData) (data []byte) {
 	ospfHdr := OSPFHeader{
 		ver:      OSPF_VERSION_2,
 		pktType:  uint8(DBDescriptionType),
@@ -155,23 +157,24 @@ func (server *OSPFServer) BuildAndSendDBDPkt(intfKey IntfConfKey, ent IntfConf, 
 	server.logger.Info(fmt.Sprintln("buffer: ", buffer))
 	dbdPkt := buffer.Bytes()
 	server.logger.Info(fmt.Sprintln("dbdPkt: ", dbdPkt))
-	/*
-		TODO get retransmit value from INtfconf
-	*/
-	go func() {
-		for t := range nbrConf.ospfNbrDBDTicker.C {
-			server.SendDBDPkt(intfKey, dbdPkt)
-			server.logger.Info(fmt.Sprintln("Sent DBD at ", t))
 
-		}
-	}()
+	return dbdPkt
 
-	server.SendDBDPkt(intfKey, dbdPkt)
-	//return ospfPkt
 }
 
-func (server *OSPFServer) SendDBDPkt(intfKey IntfConfKey, data []byte) {
-	server.SendOspfPkt(intfKey, data)
+func (server *OSPFServer) SendDBDPkt(nbrKey uint32) {
+	// get interface conf
+	for {
+		nbrConf, _ := server.NeighborConfigMap[nbrKey]
+		intConf, _ := server.IntfConfMap[nbrConf.intfConfKey]
+
+		select {
+		case dbd_mdata := <-nbrConf.ospfNbrDBDSendCh:
+			data := server.BuildDBDPkt(nbrConf.intfConfKey, intConf, nbrConf, dbd_mdata)
+			//case <-nbrConf.ospfNbrDBDTickerCh.C: // retransmit interval over
+			server.SendOspfPkt(nbrConf.intfConfKey, data)
+		}
+	}
 
 }
 
