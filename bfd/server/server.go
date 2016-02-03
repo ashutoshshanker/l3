@@ -46,8 +46,9 @@ type BfdInterface struct {
 }
 
 type BfdSession struct {
-	state SessionState
-	timer *time.Timer
+	state     SessionState
+	timer     *time.Timer
+	bfdPacket *BfdControlPacket
 }
 
 type BfdGlobal struct {

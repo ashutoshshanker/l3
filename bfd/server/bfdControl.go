@@ -69,6 +69,8 @@ const (
 	DEFAULT_REQUIRED_MIN_ECHO_RX_INTERVAL = 0
 	DEFAULT_CONTROL_PACKET_LEN            = 24
 	MAX_NUM_SESSIONS                      = 1024
+	DEST_PORT                             = 3784
+	SRC_PORT                              = 49152
 )
 
 // Flags in BFD Control packet
