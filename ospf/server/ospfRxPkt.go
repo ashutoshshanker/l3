@@ -124,6 +124,17 @@ func (server *OSPFServer) processOspfHeader(ospfPkt []byte, key IntfConfKey, md 
 
 func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packet) {
 	server.logger.Info(fmt.Sprintf("Recevied Ospf Packet"))
+
+        ethLayer := pkt.Layer(layers.LayerTypeEthernet)
+        if ethLayer == nil {
+		server.logger.Err("Not an Ethernet frame")
+		return
+        }
+	eth := ethLayer.(*layers.Ethernet)
+
+	ethHdrMd := NewEthHdrMetadata()
+        ethHdrMd.srcMAC = eth.SrcMAC
+
 	ipLayer := pkt.Layer(layers.LayerTypeIPv4)
 	if ipLayer == nil {
 		server.logger.Err("Not an IP packet")
@@ -156,7 +167,7 @@ func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packe
 	}
 
 	ospfData := ospfPkt[OSPF_HEADER_SIZE:]
-	err = server.processOspfData(ospfData, ipHdrMd, ospfHdrMd, key)
+	err = server.processOspfData(ospfData, ethHdrMd, ipHdrMd, ospfHdrMd, key)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Dropped because of Ospf Header processing", err))
 		return
@@ -166,11 +177,11 @@ func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packe
 	return
 }
 
-func (server *OSPFServer) processOspfData(data []byte, ipHdrMd *IpHdrMetadata, ospfHdrMd *OspfHdrMetadata, key IntfConfKey) error {
+func (server *OSPFServer) processOspfData(data []byte, ethHdrMd *EthHdrMetadata, ipHdrMd *IpHdrMetadata, ospfHdrMd *OspfHdrMetadata, key IntfConfKey) error {
 	var err error = nil
 	switch ospfHdrMd.pktType {
 	case HelloType:
-		err = server.processRxHelloPkt(data, ospfHdrMd, ipHdrMd, key)
+		err = server.processRxHelloPkt(data, ospfHdrMd, ipHdrMd, ethHdrMd, key)
 	case DBDescriptionType:
 		err = server.processRxDbdPkt(data, ospfHdrMd, ipHdrMd, key)
 

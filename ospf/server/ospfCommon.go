@@ -39,6 +39,14 @@ func NewIpHdrMetadata() *IpHdrMetadata {
 	return &IpHdrMetadata{}
 }
 
+type EthHdrMetadata struct {
+        srcMAC      net.HardwareAddr
+}
+
+func NewEthHdrMetadata() *EthHdrMetadata {
+	return &EthHdrMetadata{}
+}
+
 var (
 	snapshot_len int32         = 65549 //packet capture length
 	promiscuous  bool          = false //mode
@@ -71,6 +79,9 @@ type IntfToNeighMsg struct {
 	NeighborIP   net.IP
 	nbrDeadTimer time.Duration
 	TwoWayStatus bool
+        nbrDR        []byte
+        nbrBDR       []byte
+        nbrMAC       net.HardwareAddr
 }
 
 type NbrStateChangeMsg struct {
