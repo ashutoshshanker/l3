@@ -19,7 +19,7 @@ struct Routes {
 	8: bool IsValid,
 	9: int SliceIdx,
 	10: int PolicyHitCounter,
-	11: list<string>PolicyList,
+	11: map<string,list<string>> PolicyList,
     12: 	bool IsPolicyBasedStateValid,
 	13: string RouteCreated,
 	14: string RouteUpdated
@@ -30,6 +30,17 @@ struct RoutesGetInfo {
 	3: int Count,
 	4: bool More,
 	5: list<Routes> RouteList,
+}
+struct IPV4EventState{
+	1 : string 	TimeStamp
+	2 : string   EventInfo
+}
+struct IPV4EventStateGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<IPV4EventState> IPV4EventStateList
 }
 struct PolicyDefinitionSetsPrefix {
 	1 : string	IpPrefix,
@@ -230,6 +241,7 @@ service RouteService
 	list<Routes> getConnectedRoutesInfo();
     void printV4Routes();
 	RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
+	IPV4EventStateGetInfo GetBulkIPV4EventState(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	void linkDown(1: int ifType, 2:int ifIndex);
 	void linkUp(1: int ifType, 2:int ifIndex);
@@ -280,6 +292,6 @@ service RouteService
 
 	bool CreatePolicyDefinition(1: PolicyDefinitionConfig config);
 //	bool UpdatePolicyDefinition(1: PolicyDefinitionConfig origconfig, 2: PolicyDefinitionConfig newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyDefinition(1: PolicyDefinitionConfig config);
+	bool DeletePolicyDefinition(1: PolicyDefinitionConfig config);
 	PolicyDefinitionStateGetInfo GetBulkPolicyDefinitionState(1: int fromIndex, 2: int count);
 }

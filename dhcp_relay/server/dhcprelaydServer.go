@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/google/gopacket/pcap"
 	"golang.org/x/net/ipv4"
 	"io/ioutil"
 	"log/syslog"
@@ -55,10 +56,16 @@ type DhcpRelayAgentStateInfo struct {
 type DhcpRelayAgentGlobalInfo struct {
 	IntfConfig           dhcprelayd.DhcpRelayIntfConfig
 	dhcprelayConfigMutex sync.RWMutex
+	PcapHandle           *pcap.Handle
 }
 type Option struct {
 	Code  DhcpOptionCode
 	Value []byte
+}
+
+type DhcpRelayAgentIntfInfo struct {
+	linuxInterface *net.Interface
+	logicalId      int
 }
 
 var (
@@ -71,7 +78,7 @@ var (
 	dhcprelayServerConn *ipv4.PacketConn
 	logger              *syslog.Writer
 	//map for mac_address to interface id for sending unicast packet
-	dhcprelayReverseMap map[string]int
+	dhcprelayReverseMap map[string]*net.Interface
 	// PadddingToMinimumSize pads a packet so that when sent over UDP,
 	// the entire packet, is 300 bytes (which is BOOTP/DHCP min)
 	dhcprelayPadder [DHCP_PACKET_MIN_SIZE]byte
@@ -216,31 +223,6 @@ func InitDhcpRelayPortPktHandler() error {
 func DhcpRelayAgentInitGblHandling(ifNum int) {
 	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(ifNum))
 	// Created a global Entry for Interface
-	// @HACK HACK HACK TODO jgheewala remove this
-	var err error
-	var linuxInterface *net.Interface
-	if ifNum == 9 {
-		logger.Info(fmt.Sprintln("DRA: jgheewal:::: hack for ifNUm", ifNum))
-		linuxInterface, err = net.InterfaceByName("SVI9")
-		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
-		} else {
-			//copy correct if_id
-			ifNum = linuxInterface.Index
-			logger.Info(fmt.Sprintln("DRA: jgheewal:::: Updated for ifNUm", ifNum))
-		}
-
-	} else if ifNum == 10 {
-		logger.Info(fmt.Sprintln("DRA: jgheewal:::: hack for ifNUm", ifNum))
-		linuxInterface, err = net.InterfaceByName("SVI10")
-		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
-		} else {
-			//copy correct if_id
-			ifNum = linuxInterface.Index
-			logger.Info(fmt.Sprintln("DRA: jgheewal:::: Updated for ifNUm", ifNum))
-		}
-	}
 	gblEntry := dhcprelayGblInfo[ifNum]
 	// Setting up default values for globalEntry
 	gblEntry.IntfConfig.IpSubnet = ""
