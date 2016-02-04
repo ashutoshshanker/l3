@@ -67,6 +67,7 @@ type BfdGlobal struct {
 	Interfaces           map[int32]BfdInterface
 	NumSessions          uint32
 	Sessions             map[int32]*BfdSession
+	SessionsIdSlice      []int32
 	NumUpSessions        uint32
 	NumDownSessions      uint32
 	NumAdminDownSessions uint32
@@ -106,6 +107,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]BfdInterface)
 	bfdServer.bfdGlobal.NumSessions = 0
 	bfdServer.bfdGlobal.Sessions = make(map[int32]*BfdSession)
+	bfdServer.bfdGlobal.SessionsIdSlice = []int32{}
 	bfdServer.bfdGlobal.NumUpSessions = 0
 	bfdServer.bfdGlobal.NumDownSessions = 0
 	bfdServer.bfdGlobal.NumAdminDownSessions = 0

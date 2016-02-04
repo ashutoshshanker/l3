@@ -46,6 +46,7 @@ func (server *BFDServer) GetNewSessionId() int32 {
 	s1 := rand.NewSource(time.Now().UnixNano())
 	r1 := rand.New(s1)
 	sessionId := r1.Int31n(MAX_NUM_SESSIONS)
+	server.bfdGlobal.SessionsIdSlice = append(server.bfdGlobal.SessionsIdSlice, sessionId)
 	return sessionId
 }
 

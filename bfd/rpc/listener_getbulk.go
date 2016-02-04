@@ -4,6 +4,7 @@ import (
 	"bfdd"
 	"errors"
 	"fmt"
+	"l3/bfd/bfddCommonDefs"
 	"l3/bfd/server"
 	//    "log/syslog"
 	//    "net"
@@ -38,8 +39,58 @@ func (h *BFDHandler) GetBulkBfdGlobalState(fromIdx bfdd.Int, count bfdd.Int) (*b
 	return bfdGlobalStateGetInfo, nil
 }
 
+func (h *BFDHandler) convertBfdSessionProtocolsToString(Protocols []bool) string {
+	var protocols string
+	if Protocols[bfddCommonDefs.PROTOCOL_BGP] {
+		protocols += "bgp, "
+	}
+	if Protocols[bfddCommonDefs.PROTOCOL_OSPF] {
+		protocols += "ospf, "
+	}
+	return protocols
+}
+
+func (h *BFDHandler) convertSessionStateToThrift(ent server.SessionState) *bfdd.BfdSessionState {
+	sessionState := bfdd.NewBfdSessionState()
+	sessionState.SessionId = int32(ent.SessionId)
+	sessionState.LocalIpAddr = string(ent.LocalIpAddr)
+	sessionState.RemoteIpAddr = string(ent.RemoteIpAddr)
+	sessionState.InterfaceId = int32(ent.InterfaceId)
+	sessionState.RegisteredProtocols = h.convertBfdSessionProtocolsToString(ent.RegisteredProtocols)
+	sessionState.SessionState = int32(ent.SessionState)
+	sessionState.RemoteSessionState = int32(ent.RemoteSessionState)
+	sessionState.LocalDiscriminator = int32(ent.LocalDiscriminator)
+	sessionState.RemoteDiscriminator = int32(ent.RemoteDiscriminator)
+	sessionState.LocalDiagType = int32(ent.LocalDiagType)
+	sessionState.DesiredMinTxInterval = int32(ent.DesiredMinTxInterval)
+	sessionState.RequiredMinRxInterval = int32(ent.RequiredMinRxInterval)
+	sessionState.RemoteMinRxInterval = int32(ent.RemoteMinRxInterval)
+	sessionState.DetectionMultiplier = int32(ent.DetectionMultiplier)
+	sessionState.DemandMode = ent.DemandMode
+	sessionState.RemoteDemandMode = ent.RemoteDemandMode
+	sessionState.AuthType = int32(ent.AuthType)
+	sessionState.AuthSeqKnown = ent.AuthSeqKnown
+	sessionState.ReceivedAuthSeq = int32(ent.ReceivedAuthSeq)
+	sessionState.SentAuthSeq = int32(ent.SentAuthSeq)
+	return sessionState
+}
+
 func (h *BFDHandler) GetBulkBfdSessionState(fromIdx bfdd.Int, count bfdd.Int) (*bfdd.BfdSessionStateGetInfo, error) {
-	h.logger.Info(fmt.Sprintln("Get Neighbor attrs"))
-	bfdSessionResponse := bfdd.NewBfdSessionStateGetInfo()
-	return bfdSessionResponse, nil
+	h.logger.Info(fmt.Sprintln("Get session states"))
+	nextIdx, currCount, bfdSessionStates := h.server.GetBulkBfdSessionStates(int(fromIdx), int(count))
+	if bfdSessionStates == nil {
+		err := errors.New("Bfd server is busy")
+		return nil, err
+	}
+	bfdSessionResponse := make([]*bfdd.BfdSessionState, len(bfdSessionStates))
+	for idx, item := range bfdSessionStates {
+		bfdSessionResponse[idx] = h.convertSessionStateToThrift(item)
+	}
+	BfdSessionStateGetInfo := bfdd.NewBfdSessionStateGetInfo()
+	BfdSessionStateGetInfo.Count = bfdd.Int(currCount)
+	BfdSessionStateGetInfo.StartIdx = bfdd.Int(fromIdx)
+	BfdSessionStateGetInfo.EndIdx = bfdd.Int(nextIdx)
+	BfdSessionStateGetInfo.More = (nextIdx != 0)
+	BfdSessionStateGetInfo.BfdSessionStateList = bfdSessionResponse
+	return BfdSessionStateGetInfo, nil
 }
