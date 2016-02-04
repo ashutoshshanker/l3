@@ -11,6 +11,7 @@ import (
 
 var logger *log.Logger
 var routeServiceHandler *RouteServiceHandler
+var PARAMSDIR string
 
 func main() {
 	var transport thrift.TServerTransport

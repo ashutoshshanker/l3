@@ -499,6 +499,7 @@ func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 
 func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
+	PARAMSDIR = paramsDir
 	localRouteEventsDB = make([]RouteEventInfo,0)
 	configFile := paramsDir + "/clients.json"
 	logger.Println("configfile = ", configFile)
@@ -508,6 +509,6 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	//CreateRoutes("RouteSetup.json")
-	UpdateFromDB(paramsDir)
+	UpdateFromDB()//(paramsDir)
 	return &RouteServiceHandler{}
 }

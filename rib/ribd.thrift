@@ -19,7 +19,8 @@ struct Routes {
 	8: bool IsValid,
 	9: int SliceIdx,
 	10: int PolicyHitCounter,
-	11: map<string,list<string>> PolicyList,
+	11: list<string> PolicyList,
+//	11: map<string,list<string>> PolicyList,
     12: 	bool IsPolicyBasedStateValid,
 	13: string RouteCreated,
 	14: string RouteUpdated

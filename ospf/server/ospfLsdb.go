@@ -98,13 +98,7 @@ type LsdbUpdateMsg struct {
         Msg             []byte
 }
 
-type IntfStateChangeMsg struct {
-        areaId          uint32
-        //OldState        config.IfState
-        //NewState        config.IfState
-}
-
-type NetworkDRChangeMsg struct {
+type LSAChangeMsg struct {
         areaId          uint32
 }
 
@@ -227,7 +221,16 @@ func (server *OSPFServer)processLSDatabaseUpdates() {
                         server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
                 case msg := <-server.NetworkDRChangeCh:
                         server.logger.Info(fmt.Sprintf("Network DR change msg", msg))
-
+                        // Create a new router LSA
+                case msg := <-server.CreateNetworkLSACh:
+                        server.logger.Info(fmt.Sprintf("Create Network LSA msg", msg))
+                        // Flush the old Network LSA
+                        // Check if link is broadcast or not
+                        // If link is broadcast
+                        // Create Network LSA
+                case msg := <-server.FlushNetworkLSACh:
+                        server.logger.Info(fmt.Sprintf("Flush Network LSA msg", msg))
+                        // Flush the old Network LSA
                 }
         }
 }

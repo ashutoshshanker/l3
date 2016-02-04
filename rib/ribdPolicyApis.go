@@ -30,6 +30,7 @@ type Policy struct {
 	policyStmtPrecedenceMap map[int]string
 	hitCounter         int   
 	routeList         []string
+	routeInfoList     []ribd.Routes
 	localDBSliceIdx        int8  
 }
 
@@ -62,11 +63,26 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
 //	newRoute := string(ipPrefix[:])
 	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
-	if policy.routeList == nil {
-		policy.routeList = make([]string, 0)
+	policyInfo:=PolicyDB.Get(patriciaDB.Prefix(policy.name))
+	if policyInfo == nil {
+		logger.Println("Unexpected:policyInfo nil for policy ", policy.name)
+		return
 	}
-    policy.routeList = append(policy.routeList, newRoute)
-	PolicyDB.Set(patriciaDB.Prefix(policy.name), policy)
+	tempPolicy:=policyInfo.(Policy)
+	if tempPolicy.routeList == nil {
+		logger.Println("routeList nil")
+		tempPolicy.routeList = make([]string, 0)
+	}
+    tempPolicy.routeList = append(tempPolicy.routeList, newRoute)
+	logger.Println("routelist len= ", len(tempPolicy.routeList)," prefix list so far")
+	for i:=0;i<len(tempPolicy.routeList);i++ {
+		logger.Println(tempPolicy.routeList[i])
+	}
+	if tempPolicy.routeInfoList == nil {
+		tempPolicy.routeInfoList = make([]ribd.Routes, 0)
+	}
+    tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
+	PolicyDB.Set(patriciaDB.Prefix(policy.name), tempPolicy)
 }
 func deletePolicyRouteMap(route ribd.Routes, policy Policy) {
 	logger.Println("deletePolicyRouteMap")
@@ -497,7 +513,10 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionState( fromIndex ribd.Int, r
 			nextNode = &tempNode[validCount]
 		    nextNode.Name = prefixNode.name
 			nextNode.HitCounter = ribd.Int(prefixNode.hitCounter)
-			nextNode.IpPrefixList = prefixNode.routeList
+			nextNode.IpPrefixList = make([]string,0)
+			for k:=0;k<len(prefixNode.routeList);k++ {
+			   nextNode.IpPrefixList = append(nextNode.IpPrefixList,prefixNode.routeList[k])
+			}
 			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
 			if(len(returnNodes) == 0){
 				returnNodes = make([]*ribd.PolicyDefinitionState, 0)

@@ -22,6 +22,7 @@ type NeighborData struct {
         DRtr                []byte
         BDRtr               []byte
         NbrIP               uint32
+        FullState           bool
 }
 
 type NeighborKey struct {
@@ -74,6 +75,7 @@ type IntfConf struct {
         NeighCreateCh           chan NeighCreateMsg
         NeighChangeCh           chan NeighChangeMsg
         NbrStateChangeCh        chan NbrStateChangeMsg
+        NbrFullStateCh          chan NbrFullStateMsg
 	WaitTimer               *time.Timer
         /* IntefaceState: Start */
         IfDRIp                  []byte
@@ -122,6 +124,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
                 ent.NeighCreateCh = make(chan NeighCreateMsg)
                 ent.NeighChangeCh = make(chan NeighChangeMsg)
                 ent.NbrStateChangeCh = make(chan NbrStateChangeMsg)
+                ent.NbrFullStateCh = make(chan NbrFullStateMsg)
 		//ent.WaitTimerExpired = make(chan bool)
 		ent.WaitTimer = nil
 		ent.HelloIntervalTicker = nil
@@ -256,7 +259,7 @@ func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
         server.IntfKeyToSliceIdxMap[intfConfKey] = false
 	delete(server.IntfConfMap, intfConfKey)
         if flag == true {
-                msg := IntfStateChangeMsg {
+                msg := LSAChangeMsg {
                         areaId: areaId,
                 }
                 server.IntfStateChangeCh <- msg
