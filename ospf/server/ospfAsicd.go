@@ -74,7 +74,8 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 		ipv4IntfMsg.IfId = uint16(asicdConstDefs.GetIntfIdFromIfIndex(NewIpv4IntfMsg.IfIndex))
 		if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_CREATE", ipv4IntfMsg))
-			server.createIPIntfConfMap(ipv4IntfMsg)
+                        mtu := server.computeMinMTU(ipv4IntfMsg)
+			server.createIPIntfConfMap(ipv4IntfMsg, mtu)
 			if ipv4IntfMsg.IfType == commonDefs.L2RefTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
 			} else if ipv4IntfMsg.IfType == commonDefs.L2RefTypeVlan { // Vlan

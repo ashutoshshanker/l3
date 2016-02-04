@@ -90,15 +90,15 @@ func (server *OSPFServer)BuildHelloPkt(ent IntfConf) ([]byte) {
     ospfHdr.pktlen = uint16(ospfPktlen)
 
     ospfEncHdr := encodeOspfHdr(ospfHdr)
-    server.logger.Info(fmt.Sprintln("ospfEncHdr:", ospfEncHdr))
+    //server.logger.Info(fmt.Sprintln("ospfEncHdr:", ospfEncHdr))
     helloDataEnc := encodeOspfHelloData(helloData)
-    server.logger.Info(fmt.Sprintln("HelloPkt:", helloDataEnc))
+    //server.logger.Info(fmt.Sprintln("HelloPkt:", helloDataEnc))
     helloDataNbrEnc := append(helloDataEnc, neighbor...)
-    server.logger.Info(fmt.Sprintln("HelloPkt with Neighbor:", helloDataNbrEnc))
+    //server.logger.Info(fmt.Sprintln("HelloPkt with Neighbor:", helloDataNbrEnc))
 
 
     ospf := append(ospfEncHdr, helloDataNbrEnc...)
-    server.logger.Info(fmt.Sprintln("ospf:", ospf))
+    //server.logger.Info(fmt.Sprintln("ospf:", ospf))
     csum := computeCheckSum(ospf)
     binary.BigEndian.PutUint16(ospf[12:14], csum)
     copy(ospf[16:24], ent.IfAuthKey)
@@ -127,13 +127,14 @@ func (server *OSPFServer)BuildHelloPkt(ent IntfConf) ([]byte) {
         ComputeChecksums:   true,
     }
     gopacket.SerializeLayers(buffer, options, &ethLayer, &ipLayer, gopacket.Payload(ospf))
-    server.logger.Info(fmt.Sprintln("buffer: ", buffer))
+    //server.logger.Info(fmt.Sprintln("buffer: ", buffer))
     ospfPkt := buffer.Bytes()
-    server.logger.Info(fmt.Sprintln("ospfPkt: ", ospfPkt))
+    //server.logger.Info(fmt.Sprintln("ospfPkt: ", ospfPkt))
     return ospfPkt
 }
 
-func (server *OSPFServer)processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetadata, ipHdrMd *IpHdrMetadata, key IntfConfKey) error {
+func (server *OSPFServer)processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetadata,
+         ipHdrMd *IpHdrMetadata, ethHdrMd *EthHdrMetadata, key IntfConfKey) error {
     ent, _ := server.IntfConfMap[key]
     ospfHelloData := NewOSPFHelloData()
     if len(data) < OSPF_HELLO_MIN_SIZE {
@@ -161,7 +162,7 @@ func (server *OSPFServer)processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetada
     }
 
     if ospfHdrMd.backbone == true {
-        server.logger.Info(fmt.Sprintln("Options:", ospfHelloData.options, "EOPTIONS:", EOption))
+        //server.logger.Info(fmt.Sprintln("Options:", ospfHelloData.options, "EOPTIONS:", EOption))
         if (ospfHelloData.options & EOption) == 0 {
             err := errors.New("External Routing Capability mismatch")
             return err
@@ -184,9 +185,9 @@ func (server *OSPFServer)processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetada
     ipHdrMetadata.srcIP = ipHdrMd.srcIP
     copy(ipHdrMetadata.dstIP, ipHdrMd.dstIP)
 */
-    server.logger.Info(fmt.Sprintln("ospfHelloData", ospfHelloData))
-    server.logger.Info(fmt.Sprintln("ipHdrMd", ipHdrMd))
-    server.logger.Info(fmt.Sprintln("ospfHdrMd", ospfHdrMd))
+    //server.logger.Info(fmt.Sprintln("ospfHelloData", ospfHelloData))
+    //server.logger.Info(fmt.Sprintln("ipHdrMd", ipHdrMd))
+    //server.logger.Info(fmt.Sprintln("ospfHdrMd", ospfHdrMd))
     nbrlen := ospfHdrMd.pktlen - (OSPF_HELLO_MIN_SIZE + OSPF_HEADER_SIZE)
     if nbrlen > 0 {
         j := uint16(OSPF_HELLO_MIN_SIZE)
@@ -208,9 +209,9 @@ func (server *OSPFServer)processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetada
 
 func (server *OSPFServer)processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloData *OSPFHelloData, ipHdrMd *IpHdrMetadata, ospfHdrMd *OspfHdrMetadata, key IntfConfKey) {
 
-    server.logger.Info(fmt.Sprintln("ospfHelloData", ospfHelloData))
-    server.logger.Info(fmt.Sprintln("ipHdrMd", ipHdrMd))
-    server.logger.Info(fmt.Sprintln("ospfHdrMd", ospfHdrMd))
+    //server.logger.Info(fmt.Sprintln("ospfHelloData", ospfHelloData))
+    //server.logger.Info(fmt.Sprintln("ipHdrMd", ipHdrMd))
+    //server.logger.Info(fmt.Sprintln("ospfHdrMd", ospfHdrMd))
     routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
     NbrIP := convertIPv4ToUint32(ipHdrMd.srcIP)
     neighborKey := NeighborKey {
@@ -317,6 +318,6 @@ func (server *OSPFServer)CreateAndSendHelloRecvdMsg(routerId uint32,
     msg.TwoWayStatus = TwoWayStatus
 
 
-    server.logger.Info(fmt.Sprintf("Sending msg to Neighbor State Machine", msg))
+    server.logger.Info(fmt.Sprintln("Sending msg to Neighbor State Machine", msg))
     server.neighborHelloEventCh <- msg
 }

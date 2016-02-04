@@ -3,7 +3,6 @@ package relayServer
 import (
 	"dhcprelayd"
 	"fmt"
-	_ "net"
 	"strconv"
 )
 
@@ -41,9 +40,17 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobalConfig(
 	config *dhcprelayd.DhcpRelayGlobalConfig) (bool, error) {
 
 	if config.Enable {
-		fmt.Println("Enabling Dhcp Relay Global Config")
+		dhcprelayEnable = config.Enable
+		if dhcprelayClientConn != nil {
+			logger.Info("DRA: no need to create pcap as its already created")
+			return true, nil
+		} else {
+			DhcpRelayAgentCreateClientServerConn()
+			// Stats information
+			StateDebugInfo = make(map[string]DhcpRelayAgentStateInfo, 150)
+		}
 	} else {
-		fmt.Println("Disabling Dhcp Relay Global Config")
+		dhcprelayEnable = config.Enable
 	}
 	return true, nil
 }
@@ -52,11 +59,16 @@ func (h *DhcpRelayServiceHandler) UpdateDhcpRelayGlobalConfig(
 	origconfig *dhcprelayd.DhcpRelayGlobalConfig,
 	newconfig *dhcprelayd.DhcpRelayGlobalConfig,
 	attrset []bool) (bool, error) {
+	logger.Info(fmt.Sprintln("DRA: updating relay config to",
+		newconfig.Enable))
+	dhcprelayEnable = newconfig.Enable
 	return true, nil
 }
 
 func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobalConfig(
 	config *dhcprelayd.DhcpRelayGlobalConfig) (bool, error) {
+	logger.Info(fmt.Sprintln("DRA: deleting relay config to", config.Enable))
+	dhcprelayEnable = config.Enable
 	return true, nil
 }
 
@@ -72,41 +84,13 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	logger.Info("DRA: ServerIp:" + config.ServerIp)
 	// Copy over configuration into globalInfo
 	ifNum, _ := strconv.Atoi(config.IfIndex)
-	/*
-		* removing this hack as we have support for linux_id ----> logical_id
-			var err error
-			var linuxInterface *net.Interface
-			//@TODO: hack for if_index
-			if ifNum == 33554441 {
-				logger.Info(fmt.Sprintln("DRA: jgheewal:::: hack for ifNUm", ifNum))
-				linuxInterface, err = net.InterfaceByName("SVI9")
-				if err != nil {
-					logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
-				} else {
-					//copy correct if_id
-					ifNum = linuxInterface.Index
-					logger.Info(fmt.Sprintln("DRA: jgheewal:::: Updated for ifNUm", ifNum))
-				}
-
-			} else if ifNum == 33554442 {
-				logger.Info(fmt.Sprintln("DRA: jgheewal:::: hack for ifNUm", ifNum))
-				linuxInterface, err = net.InterfaceByName("SVI10")
-				if err != nil {
-					logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
-				} else {
-					//copy correct if_id
-					ifNum = linuxInterface.Index
-					logger.Info(fmt.Sprintln("DRA: jgheewal:::: Updated for ifNUm", ifNum))
-				}
-			}
-	*/
 	gblEntry, ok := dhcprelayGblInfo[ifNum]
 	if !ok {
-		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum, " doesn't exist.."))
+		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum,
+			" doesn't exist.."))
 		return ok, nil
 	}
 	// Acquire lock for updating configuration.
-	gblEntry.dhcprelayConfigMutex.RLock()
 	gblEntry.IntfConfig.IpSubnet = config.IpSubnet
 	gblEntry.IntfConfig.Netmask = config.Netmask
 	gblEntry.IntfConfig.AgentSubType = config.AgentSubType
@@ -114,15 +98,8 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	gblEntry.IntfConfig.ServerIp = config.ServerIp
 	gblEntry.IntfConfig.IfIndex = config.IfIndex
 	dhcprelayGblInfo[ifNum] = gblEntry
-	// Release lock after updation is done
-	gblEntry.dhcprelayConfigMutex.RUnlock()
-	if dhcprelayClientConn != nil {
-		logger.Info("DRA: no need to create pcap as its already created")
-		return true, nil
-	} else {
-		DhcpRelayAgentCreateClientServerConn()
-		// Stats information
-		StateDebugInfo = make(map[string]DhcpRelayAgentStateInfo, 150)
+	if dhcprelayEnable == false {
+		logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
 	}
 	return true, nil
 }
@@ -136,5 +113,22 @@ func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntfConfig(
 
 func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
+	logger.Info("DRA: deleting config for interface" + config.IfIndex)
+	ifNum, _ := strconv.Atoi(config.IfIndex)
+	gblEntry, ok := dhcprelayGblInfo[ifNum]
+	if !ok {
+		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum,
+			" doesn't exist.."))
+		return ok, nil
+	}
+	// Setting up default values for globalEntry
+	gblEntry.IntfConfig.IpSubnet = ""
+	gblEntry.IntfConfig.Netmask = ""
+	gblEntry.IntfConfig.IfIndex = strconv.Itoa(ifNum) //ifName
+	gblEntry.IntfConfig.AgentSubType = 0
+	gblEntry.IntfConfig.Enable = false
+	gblEntry.PcapHandle.Close()
+	gblEntry.PcapHandle = nil
+	dhcprelayGblInfo[ifNum] = gblEntry
 	return true, nil
 }

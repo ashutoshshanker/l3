@@ -8,143 +8,6 @@ import (
 	"golang.org/x/net/ipv4"
 	"net"
 	"strconv"
-	"time"
-)
-
-var (
-	snapshot_len int32         = 1024
-	promiscuous  bool          = false
-	timeout      time.Duration = 30 * time.Second
-)
-
-// Dhcp OpCodes Types
-const (
-	Request OpCode = 1 // From Client
-	Reply   OpCode = 2 // From Server
-)
-
-// DHCP Packet global constants
-const DHCP_PACKET_MIN_SIZE = 272 //300 // 272?????? @TODO: fixme....jgheewala
-const DHCP_PACKET_HEADER_SIZE = 16
-const DHCP_PACKET_MIN_BYTES = 240
-const DHCP_SERVER_PORT = 67
-const DHCP_CLIENT_PORT = 68
-const DHCP_BROADCAST_IP = "255.255.255.255"
-
-// DHCP Client/Server Message Type 53
-const (
-	DhcpDiscover MessageType = 1 // From Client - Can I have an IP?
-	DhcpOffer    MessageType = 2 // From Server - Here's an IP
-	DhcpRequest  MessageType = 3 // From Client - I'll take that IP (Also start for renewals)
-	DhcpDecline  MessageType = 4 // From Client - Sorry I can't use that IP
-	DhcpACK      MessageType = 5 // From Server, Yes you can have that IP
-	DhcpNAK      MessageType = 6 // From Server, No you cannot have that IP
-	DhcpRelease  MessageType = 7 // From Client, I don't need that IP anymore
-	DhcpInform   MessageType = 8 // From Client, I have this IP and there's nothing you can do about it
-)
-
-// DHCP Available Options enum type.... This will cover most of the options type
-const (
-	End                          DhcpOptionCode = 255
-	Pad                          DhcpOptionCode = 0
-	OptionSubnetMask             DhcpOptionCode = 1
-	OptionTimeOffset             DhcpOptionCode = 2
-	OptionRouter                 DhcpOptionCode = 3
-	OptionTimeServer             DhcpOptionCode = 4
-	OptionNameServer             DhcpOptionCode = 5
-	OptionDomainNameServer       DhcpOptionCode = 6
-	OptionLogServer              DhcpOptionCode = 7
-	OptionCookieServer           DhcpOptionCode = 8
-	OptionLPRServer              DhcpOptionCode = 9
-	OptionImpressServer          DhcpOptionCode = 10
-	OptionResourceLocationServer DhcpOptionCode = 11
-	OptionHostName               DhcpOptionCode = 12
-	OptionBootFileSize           DhcpOptionCode = 13
-	OptionMeritDumpFile          DhcpOptionCode = 14
-	OptionDomainName             DhcpOptionCode = 15
-	OptionSwapServer             DhcpOptionCode = 16
-	OptionRootPath               DhcpOptionCode = 17
-	OptionExtensionsPath         DhcpOptionCode = 18
-
-	// IP Layer Parameters per Host
-	OptionIPForwardingEnableDisable          DhcpOptionCode = 19
-	OptionNonLocalSourceRoutingEnableDisable DhcpOptionCode = 20
-	OptionPolicyFilter                       DhcpOptionCode = 21
-	OptionMaximumDatagramReassemblySize      DhcpOptionCode = 22
-	OptionDefaultIPTimeToLive                DhcpOptionCode = 23
-	OptionPathMTUAgingTimeout                DhcpOptionCode = 24
-	OptionPathMTUPlateauTable                DhcpOptionCode = 25
-
-	// IP Layer Parameters per Interface
-	OptionInterfaceMTU              DhcpOptionCode = 26
-	OptionAllSubnetsAreLocal        DhcpOptionCode = 27
-	OptionBroadcastAddress          DhcpOptionCode = 28
-	OptionPerformMaskDiscovery      DhcpOptionCode = 29
-	OptionMaskSupplier              DhcpOptionCode = 30
-	OptionPerformRouterDiscovery    DhcpOptionCode = 31
-	OptionRouterSolicitationAddress DhcpOptionCode = 32
-	OptionStaticRoute               DhcpOptionCode = 33
-
-	// Link Layer Parameters per Interface
-	OptionTrailerEncapsulation  DhcpOptionCode = 34
-	OptionARPCacheTimeout       DhcpOptionCode = 35
-	OptionEthernetEncapsulation DhcpOptionCode = 36
-
-	// TCP Parameters
-	OptionTCPDefaultTTL        DhcpOptionCode = 37
-	OptionTCPKeepaliveInterval DhcpOptionCode = 38
-	OptionTCPKeepaliveGarbage  DhcpOptionCode = 39
-
-	// Application and Service Parameters
-	OptionNetworkInformationServiceDomain            DhcpOptionCode = 40
-	OptionNetworkInformationServers                  DhcpOptionCode = 41
-	OptionNetworkTimeProtocolServers                 DhcpOptionCode = 42
-	OptionVendorSpecificInformation                  DhcpOptionCode = 43
-	OptionNetBIOSOverTCPIPNameServer                 DhcpOptionCode = 44
-	OptionNetBIOSOverTCPIPDatagramDistributionServer DhcpOptionCode = 45
-	OptionNetBIOSOverTCPIPNodeType                   DhcpOptionCode = 46
-	OptionNetBIOSOverTCPIPScope                      DhcpOptionCode = 47
-	OptionXWindowSystemFontServer                    DhcpOptionCode = 48
-	OptionXWindowSystemDisplayManager                DhcpOptionCode = 49
-	OptionNetworkInformationServicePlusDomain        DhcpOptionCode = 64
-	OptionNetworkInformationServicePlusServers       DhcpOptionCode = 65
-	OptionMobileIPHomeAgent                          DhcpOptionCode = 68
-	OptionSimpleMailTransportProtocol                DhcpOptionCode = 69
-	OptionPostOfficeProtocolServer                   DhcpOptionCode = 70
-	OptionNetworkNewsTransportProtocol               DhcpOptionCode = 71
-	OptionDefaultWorldWideWebServer                  DhcpOptionCode = 72
-	OptionDefaultFingerServer                        DhcpOptionCode = 73
-	OptionDefaultInternetRelayChatServer             DhcpOptionCode = 74
-	OptionStreetTalkServer                           DhcpOptionCode = 75
-	OptionStreetTalkDirectoryAssistance              DhcpOptionCode = 76
-
-	OptionRelayAgentInformation DhcpOptionCode = 82
-
-	// DHCP Extensions
-	OptionRequestedIPAddress     DhcpOptionCode = 50
-	OptionIPAddressLeaseTime     DhcpOptionCode = 51
-	OptionOverload               DhcpOptionCode = 52
-	OptionDHCPMessageType        DhcpOptionCode = 53
-	OptionServerIdentifier       DhcpOptionCode = 54
-	OptionParameterRequestList   DhcpOptionCode = 55
-	OptionMessage                DhcpOptionCode = 56
-	OptionMaximumDHCPMessageSize DhcpOptionCode = 57
-	OptionRenewalTimeValue       DhcpOptionCode = 58
-	OptionRebindingTimeValue     DhcpOptionCode = 59
-	OptionVendorClassIdentifier  DhcpOptionCode = 60
-	OptionClientIdentifier       DhcpOptionCode = 61
-
-	OptionTFTPServerName DhcpOptionCode = 66
-	OptionBootFileName   DhcpOptionCode = 67
-
-	OptionUserClass DhcpOptionCode = 77
-
-	OptionClientArchitecture DhcpOptionCode = 93
-
-	OptionTZPOSIXString    DhcpOptionCode = 100
-	OptionTZDatabaseString DhcpOptionCode = 101
-
-	OptionClasslessRouteFormat DhcpOptionCode = 121
 )
 
 /* ========================HELPER FUNCTIONS FOR DHCP =========================*/
@@ -418,10 +281,6 @@ func (o DhcpRelayAgentOptions) SelectOrderOrAll(order []byte) []Option {
 	return o.SelectOrder(order)
 }
 
-func (p *DhcpRelayAgentPacket) CopyDhcpOptions(value []byte) {
-
-}
-
 /*========================= END OF HELPER FUNCTION ===========================*/
 /*
  * APT to decode incoming Packet by converting the byte into DHCP packet format
@@ -467,28 +326,28 @@ func DhcpRelayAgentCreateNewPacket(opCode OpCode, inReq DhcpRelayAgentPacket) Dh
 	return p
 }
 
-func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.ControlMessage,
-	data []byte, inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
+func DhcpRelayAgentAddOptionsToPacket(reqOptions DhcpRelayAgentOptions, mt MessageType,
+	outPacket *DhcpRelayAgentPacket) {
+	outPacket.AddDhcpOptions(OptionDHCPMessageType, []byte{byte(mt)})
+	var dummyDup map[DhcpOptionCode]int
+	dummyDup = make(map[DhcpOptionCode]int, len(reqOptions))
+	for i := 0; i < len(reqOptions); i++ {
+		opt := reqOptions.SelectOrderOrAll(reqOptions[DhcpOptionCode(i)])
+		for _, option := range opt {
+			_, ok := dummyDup[option.Code]
+			if ok {
+				continue
+			}
+			outPacket.AddDhcpOptions(option.Code, option.Value)
+			dummyDup[option.Code] = 9999
+		}
+	}
+}
+func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, gblEntry DhcpRelayAgentGlobalInfo,
+	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
 	mt MessageType) {
-	logger.Info("DRA: Creating Send Pkt client ----> server")
+	logger.Info("DRA: Creating Send Pkt")
 
-	// get logical interface id from linux id...
-	logicalId, ok := dhcprelayLogicalIntfId2LinuxIntId[controlMessage.IfIndex]
-	if !ok {
-		logger.Err(fmt.Sprintln("DRA: linux id", controlMessage.IfIndex,
-			" has no mapping...drop packet"))
-		return
-	}
-	// Use obtained logical id to find the global interface object
-	logger.Info(fmt.Sprintln("DRA: linux id ----> logical id is success for", logicalId))
-	//gblEntry, ok := dhcprelayGblInfo[controlMessage.IfIndex]
-	gblEntry, ok := dhcprelayGblInfo[logicalId]
-	if !ok {
-		logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index ????",
-			logicalId))
-		logger.Err("DRA: not sending packet.... :(")
-		return
-	}
 	serverIpPort := gblEntry.IntfConfig.ServerIp + ":" + strconv.Itoa(DHCP_SERVER_PORT)
 	logger.Info("DRA: Sending DHCP PACKET to server: " + serverIpPort)
 	serverAddr, err := net.ResolveUDPAddr("udp", serverIpPort)
@@ -498,23 +357,7 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.
 	}
 	outPacket := DhcpRelayAgentCreateNewPacket(Request, inReq)
 	outPacket.SetGIAddr(net.ParseIP(gblEntry.IntfConfig.IpSubnet))
-	outPacket.AddDhcpOptions(OptionDHCPMessageType, []byte{byte(mt)})
-	for i := 0; i < len(reqOptions); i++ {
-		opt := reqOptions.SelectOrderOrAll(reqOptions[DhcpOptionCode(i)])
-		for _, option := range opt {
-			outPacket.AddDhcpOptions(option.Code, option.Value)
-		}
-	}
-	/*
-		for opt := range reqOptions {
-			outPacket.AddDhcpOptions(opt.Code, opt.Value)
-		}
-		/*
-			opt := reqOptions.SelectOrder(reqOptions[OptionParameterRequestList])
-			for _, option := range opt {
-				outPacket.AddDhcpOptions(option.Code, option.Value)
-			}
-	*/
+	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
 	// Decode outpacket...
 	logger.Info("DRA: Decoding out pkt for server")
 	logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
@@ -531,43 +374,15 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, controlMessage *ipv4.
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to server"))
 }
 
-func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.ControlMessage,
-	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions, mt MessageType) {
+func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
+	logicalId int, inReq DhcpRelayAgentPacket, linuxInterface *net.Interface,
+	reqOptions DhcpRelayAgentOptions, mt MessageType) {
 
-	// Get the interface from reverse mapping to send the unicast
-	// packet...
-	//logicalId := dhcprelayReverseMap[inReq.GetCHAddr().String()]
-	linuxInterface := dhcprelayReverseMap[inReq.GetCHAddr().String()]
-	logger.Info(fmt.Sprintln("DRA: using cached linuxInterface", linuxInterface))
-	logicalId, ok := dhcprelayLogicalIntfId2LinuxIntId[controlMessage.IfIndex]
-	if !ok {
-		logger.Err(fmt.Sprintln("DRA: linux id", controlMessage.IfIndex,
-			" has no mapping...drop packet"))
-		return
-	}
-	logger.Info(fmt.Sprintln("DRA: Send unicast packet to Interface Id:", logicalId))
-	gblEntry, ok := dhcprelayGblInfo[logicalId]
-	if !ok {
-		// dropping the packet??
-		logger.Err(fmt.Sprintln("DRA: dra is not enable on", logicalId, "??"))
-		return //continue
-	}
-	/*
-		linuxInterface, err := net.InterfaceByIndex(controlMessage.IfIndex)
-		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: getting interface by id failed", err))
-			return
-		}
-	*/
-	logger.Info("DRA: Creating Payload server -----> client")
+	logger.Info("DRA: Creating Payload")
 	outPacket := DhcpRelayAgentCreateNewPacket(Reply, inReq)
-	opt := reqOptions.SelectOrderOrAll(reqOptions[OptionParameterRequestList])
-	for _, option := range opt {
-		outPacket.AddDhcpOptions(option.Code, option.Value)
-	}
-	// subnet ip is the interface ip address
-	// copy the message... by creating new packet
-	// Decode outpacket...
+	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
+	// subnet ip is the interface ip address copy the message...
+	// by creating new packet Decode outpacket...
 	logger.Info("DRA: Decoding out pkt for client")
 	logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
 	logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
@@ -575,13 +390,12 @@ func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.
 	logger.Info("DRA: GIAddr is " + outPacket.GetGIAddr().String())
 	logger.Info(fmt.Sprintln("DRA: Cookie is ", outPacket.GetCookie()))
 	outPacket.PadToMinSize()
-	logger.Info("DRA: Creating go packet server ------> client")
+	logger.Info("DRA: Creating go packet")
 	eth := &layers.Ethernet{
 		SrcMAC:       linuxInterface.HardwareAddr,
 		DstMAC:       outPacket.GetCHAddr(),
 		EthernetType: layers.EthernetTypeIPv4,
 	}
-	logger.Info(fmt.Sprintln("DRA: ethernet info:", eth))
 	ipv4 := &layers.IPv4{
 		SrcIP:    net.ParseIP(gblEntry.IntfConfig.IpSubnet),
 		DstIP:    outPacket.GetYIAddr(),
@@ -589,13 +403,11 @@ func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.
 		Protocol: layers.IPProtocolUDP,
 		TTL:      64,
 	}
-	logger.Info(fmt.Sprintln("DRA: ipv4 info:", ipv4))
 	udp := &layers.UDP{
 		SrcPort: layers.UDPPort(DHCP_SERVER_PORT),
 		DstPort: layers.UDPPort(DHCP_CLIENT_PORT),
 	}
 	udp.SetNetworkLayerForChecksum(ipv4)
-	logger.Info(fmt.Sprintln("DRA: udp info:", udp))
 
 	goOpts := gopacket.SerializeOptions{
 		FixLengths:       true,
@@ -607,10 +419,11 @@ func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.
 	var err error
 	if gblEntry.PcapHandle == nil {
 		logger.Info(fmt.Sprintln("DRA: opening pcap handle for", linuxInterface.Name))
-		pHandle, err = pcap.OpenLive(linuxInterface.Name, snapshot_len, promiscuous, timeout)
+		pHandle, err = pcap.OpenLive(linuxInterface.Name, snapshot_len,
+			promiscuous, timeout)
 		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: opening pcap for", linuxInterface.Name,
-				" failed with Error:", err))
+			logger.Err(fmt.Sprintln("DRA: opening pcap for",
+				linuxInterface.Name, " failed with Error:", err))
 			return
 		}
 		gblEntry.PcapHandle = pHandle
@@ -620,7 +433,8 @@ func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.
 	}
 
 	if gblEntry.PcapHandle == nil {
-		logger.Info("DRA: jgheewala...pcap handler is nul....")
+		logger.Info("DRA: pcap handler is nul....")
+		return
 	}
 	err = pHandle.WritePacketData(buffer.Bytes())
 	if err != nil {
@@ -631,7 +445,79 @@ func DhcpRelayAgentSendPacketToDhcpClient(ch *net.UDPConn, controlMessage *ipv4.
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to client"))
 }
 
-func DhcpRelayAgentReceiveDhcpPktFromClient(clientHandler *net.UDPConn) {
+func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessage,
+	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions, mType MessageType) {
+	switch mType {
+	case 1, 3, 4, 7, 8:
+		logger.Info("DRA: Handling for CLIENT -----> SERVER")
+		// Updating reverse mapping with logical interface id
+		logicalId, ok := dhcprelayLogicalIntfId2LinuxIntId[cm.IfIndex]
+		if !ok {
+			logger.Err(fmt.Sprintln("DRA: linux id", cm.IfIndex,
+				" has no mapping...drop packet"))
+			return
+		}
+		// Use obtained logical id to find the global interface object
+		logger.Info(fmt.Sprintln("DRA: logical id is", logicalId))
+		gblEntry, ok := dhcprelayGblInfo[logicalId]
+		if !ok {
+			logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index ????",
+				logicalId))
+			logger.Err("DRA: not sending packet.... :(")
+			return
+		}
+		linuxInterface, err := net.InterfaceByIndex(cm.IfIndex)
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: getting interface by id failed",
+				err, " drop packet"))
+			return
+		}
+		dhcprelayReverseMap[inReq.GetCHAddr().String()] = linuxInterface
+		logger.Info(fmt.Sprintln("DRA: cached linux interface is",
+			linuxInterface))
+		// get logical interface id from linux id...
+		// Send Packet
+		DhcpRelayAgentSendPacketToDhcpServer(clientHandler, gblEntry,
+			inReq, reqOptions, mType)
+		break
+	case 2, 5, 6:
+		logger.Info("DRA: Handling for SERVER -----> CLIENT")
+		// Get the interface from reverse mapping to send the unicast
+		// packet...
+		linuxInterface, ok := dhcprelayReverseMap[inReq.GetCHAddr().String()]
+		if !ok {
+			logger.Err("DRA: rever map didn't cache linux interface for " +
+				inReq.GetCHAddr().String())
+			return
+		}
+		// Updating reverse mapping with logical interface id
+		logicalId, ok := dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index]
+		if !ok {
+			logger.Err(fmt.Sprintln("DRA: linux id", cm.IfIndex,
+				" has no mapping...drop packet"))
+			return
+		}
+		// Use obtained logical id to find the global interface object
+		logger.Info(fmt.Sprintln("DRA: logical id is", logicalId))
+		gblEntry, ok := dhcprelayGblInfo[logicalId]
+		if !ok {
+			logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index ????",
+				logicalId))
+			logger.Err("DRA: not sending packet.... :(")
+			return
+		}
+		logger.Info(fmt.Sprintln("DRA: using cached linuxInterface",
+			linuxInterface))
+		DhcpRelayAgentSendPacketToDhcpClient(gblEntry, logicalId, inReq,
+			linuxInterface, reqOptions, mType)
+		break
+	default:
+		logger.Info("DRA: any new message type")
+	}
+
+}
+
+func DhcpRelayAgentReceiveDhcpPkt(clientHandler *net.UDPConn) {
 	var buf []byte = make([]byte, 1500)
 	for {
 		bytesRead, cm, srcAddr, err := dhcprelayClientConn.ReadFrom(buf)
@@ -640,6 +526,9 @@ func DhcpRelayAgentReceiveDhcpPktFromClient(clientHandler *net.UDPConn) {
 			continue
 		} else if bytesRead < DHCP_PACKET_MIN_BYTES {
 			// This is not dhcp packet as the minimum size is 240
+			continue
+		} else if dhcprelayEnable == false {
+			logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
 			continue
 		}
 		logger.Info(fmt.Sprintln("DRA: Received Packet from ", srcAddr))
@@ -653,34 +542,8 @@ func DhcpRelayAgentReceiveDhcpPktFromClient(clientHandler *net.UDPConn) {
 
 		// Based on Packet type decide whether to send packet to server
 		// or to client
-		//DhcpDiscover MessageType = 1
-		//DhcpOffer    MessageType = 2
-		//DhcpRequest  MessageType = 3
-		//DhcpDecline  MessageType = 4
-		//DhcpACK      MessageType = 5
-		//DhcpNAK      MessageType = 6
-		//DhcpRelease  MessageType = 7
-		//DhcpInform   MessageType = 8
-		logger.Info(fmt.Sprintln("DRA: mtype is", mType))
-		switch mType {
-		case 1, 3, 4, 7, 8:
-			// Updating reverse mapping with logical interface id
-			linuxInterface, err := net.InterfaceByIndex(cm.IfIndex)
-			if err != nil {
-				logger.Err(fmt.Sprintln("DRA: getting interface by id failed", err))
-				return
-			}
-			dhcprelayReverseMap[inReq.GetCHAddr().String()] = linuxInterface
-			logger.Info(fmt.Sprintln("DRA: cached linux interface is", linuxInterface))
-			// Send Packet
-			DhcpRelayAgentSendPacketToDhcpServer(clientHandler, cm, buf, inReq, reqOptions, mType)
-			break
-		case 2, 5, 6:
-			DhcpRelayAgentSendPacketToDhcpClient(clientHandler, cm, inReq, reqOptions, mType)
-			break
-		default:
-			logger.Info("DRA: any new message type")
-		}
+		DhcpRelayAgentSendPacket(clientHandler, cm, inReq, reqOptions,
+			mType)
 	}
 }
 
@@ -689,7 +552,6 @@ func DhcpRelayAgentCreateClientServerConn() {
 	// Client send dhcp packet from port 68 to server port 67
 	// So create a filter for udp:67 for messages send out by client to
 	// server
-	logger.Info("DRA: creating listenPacket for udp port 67")
 	saddr := net.UDPAddr{
 		Port: DHCP_SERVER_PORT,
 		IP:   net.ParseIP(""),
@@ -708,5 +570,5 @@ func DhcpRelayAgentCreateClientServerConn() {
 	}
 	logger.Info("DRA: Client Connection opened successfully")
 	dhcprelayReverseMap = make(map[string]*net.Interface, 30)
-	go DhcpRelayAgentReceiveDhcpPktFromClient(dhcprelayClientHandler)
+	go DhcpRelayAgentReceiveDhcpPkt(dhcprelayClientHandler)
 }
