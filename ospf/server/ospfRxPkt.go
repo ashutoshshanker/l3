@@ -123,7 +123,7 @@ func (server *OSPFServer) processOspfHeader(ospfPkt []byte, key IntfConfKey, md 
 }
 
 func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packet) {
-	server.logger.Info(fmt.Sprintf("Recevied Ospf Packet"))
+	//server.logger.Info(fmt.Sprintf("Recevied Ospf Packet"))
 
         ethLayer := pkt.Layer(layers.LayerTypeEthernet)
         if ethLayer == nil {
@@ -153,7 +153,7 @@ func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packe
 		server.logger.Err(fmt.Sprintln("Dropped because of IPv4 layer processing", err))
 		return
 	} else {
-		server.logger.Info("IPv4 Header is processed succesfully")
+		//server.logger.Info("IPv4 Header is processed succesfully")
 	}
 
 	ospfHdrMd := NewOspfHdrMetadata()
@@ -163,7 +163,7 @@ func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packe
 		server.logger.Err(fmt.Sprintln("Dropped because of Ospf Header processing", err))
 		return
 	} else {
-		server.logger.Info("Ospfv2 Header is processed successfully")
+		//server.logger.Info("Ospfv2 Header is processed successfully")
 	}
 
 	ospfData := ospfPkt[OSPF_HEADER_SIZE:]
@@ -172,7 +172,7 @@ func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packe
 		server.logger.Err(fmt.Sprintln("Dropped because of Ospf Header processing", err))
 		return
 	} else {
-		server.logger.Info("Ospfv2 Header is processed successfully")
+		//server.logger.Info("Ospfv2 Header is processed successfully")
 	}
 	return
 }
@@ -206,7 +206,7 @@ func (server *OSPFServer) StartOspfRecvPkts(key IntfConfKey) {
 		select {
 		case packet, ok := <-in:
 			if ok {
-				server.logger.Info("Got Some Ospf Packet on the Recv Thread")
+				//server.logger.Info("Got Some Ospf Packet on the Recv Thread")
 				go server.ProcessOspfRecvPkt(key, packet)
 			}
 		case state := <-ent.PktRecvCh:
