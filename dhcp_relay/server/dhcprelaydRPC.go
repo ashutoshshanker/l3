@@ -40,9 +40,17 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobalConfig(
 	config *dhcprelayd.DhcpRelayGlobalConfig) (bool, error) {
 
 	if config.Enable {
-		fmt.Println("Enabling Dhcp Relay Global Config")
+		dhcprelayEnable = config.Enable
+		if dhcprelayClientConn != nil {
+			logger.Info("DRA: no need to create pcap as its already created")
+			return true, nil
+		} else {
+			DhcpRelayAgentCreateClientServerConn()
+			// Stats information
+			StateDebugInfo = make(map[string]DhcpRelayAgentStateInfo, 150)
+		}
 	} else {
-		fmt.Println("Disabling Dhcp Relay Global Config")
+		dhcprelayEnable = config.Enable
 	}
 	return true, nil
 }
@@ -51,11 +59,16 @@ func (h *DhcpRelayServiceHandler) UpdateDhcpRelayGlobalConfig(
 	origconfig *dhcprelayd.DhcpRelayGlobalConfig,
 	newconfig *dhcprelayd.DhcpRelayGlobalConfig,
 	attrset []bool) (bool, error) {
+	logger.Info(fmt.Sprintln("DRA: updating relay config to",
+		newconfig.Enable))
+	dhcprelayEnable = newconfig.Enable
 	return true, nil
 }
 
 func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobalConfig(
 	config *dhcprelayd.DhcpRelayGlobalConfig) (bool, error) {
+	logger.Info(fmt.Sprintln("DRA: deleting relay config to", config.Enable))
+	dhcprelayEnable = config.Enable
 	return true, nil
 }
 
@@ -73,7 +86,8 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	ifNum, _ := strconv.Atoi(config.IfIndex)
 	gblEntry, ok := dhcprelayGblInfo[ifNum]
 	if !ok {
-		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum, " doesn't exist.."))
+		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum,
+			" doesn't exist.."))
 		return ok, nil
 	}
 	// Acquire lock for updating configuration.
@@ -84,13 +98,8 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	gblEntry.IntfConfig.ServerIp = config.ServerIp
 	gblEntry.IntfConfig.IfIndex = config.IfIndex
 	dhcprelayGblInfo[ifNum] = gblEntry
-	if dhcprelayClientConn != nil {
-		logger.Info("DRA: no need to create pcap as its already created")
-		return true, nil
-	} else {
-		DhcpRelayAgentCreateClientServerConn()
-		// Stats information
-		StateDebugInfo = make(map[string]DhcpRelayAgentStateInfo, 150)
+	if dhcprelayEnable == false {
+		logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
 	}
 	return true, nil
 }
@@ -104,5 +113,22 @@ func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntfConfig(
 
 func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
+	logger.Info("DRA: deleting config for interface" + config.IfIndex)
+	ifNum, _ := strconv.Atoi(config.IfIndex)
+	gblEntry, ok := dhcprelayGblInfo[ifNum]
+	if !ok {
+		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum,
+			" doesn't exist.."))
+		return ok, nil
+	}
+	// Setting up default values for globalEntry
+	gblEntry.IntfConfig.IpSubnet = ""
+	gblEntry.IntfConfig.Netmask = ""
+	gblEntry.IntfConfig.IfIndex = strconv.Itoa(ifNum) //ifName
+	gblEntry.IntfConfig.AgentSubType = 0
+	gblEntry.IntfConfig.Enable = false
+	gblEntry.PcapHandle.Close()
+	gblEntry.PcapHandle = nil
+	dhcprelayGblInfo[ifNum] = gblEntry
 	return true, nil
 }

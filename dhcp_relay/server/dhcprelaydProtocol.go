@@ -281,10 +281,6 @@ func (o DhcpRelayAgentOptions) SelectOrderOrAll(order []byte) []Option {
 	return o.SelectOrder(order)
 }
 
-func (p *DhcpRelayAgentPacket) CopyDhcpOptions(value []byte) {
-
-}
-
 /*========================= END OF HELPER FUNCTION ===========================*/
 /*
  * APT to decode incoming Packet by converting the byte into DHCP packet format
@@ -400,7 +396,6 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 		DstMAC:       outPacket.GetCHAddr(),
 		EthernetType: layers.EthernetTypeIPv4,
 	}
-	logger.Info(fmt.Sprintln("DRA: ethernet info:", eth))
 	ipv4 := &layers.IPv4{
 		SrcIP:    net.ParseIP(gblEntry.IntfConfig.IpSubnet),
 		DstIP:    outPacket.GetYIAddr(),
@@ -408,13 +403,11 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 		Protocol: layers.IPProtocolUDP,
 		TTL:      64,
 	}
-	logger.Info(fmt.Sprintln("DRA: ipv4 info:", ipv4))
 	udp := &layers.UDP{
 		SrcPort: layers.UDPPort(DHCP_SERVER_PORT),
 		DstPort: layers.UDPPort(DHCP_CLIENT_PORT),
 	}
 	udp.SetNetworkLayerForChecksum(ipv4)
-	logger.Info(fmt.Sprintln("DRA: udp info:", udp))
 
 	goOpts := gopacket.SerializeOptions{
 		FixLengths:       true,
@@ -475,7 +468,8 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 		}
 		linuxInterface, err := net.InterfaceByIndex(cm.IfIndex)
 		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: getting interface by id failed", err))
+			logger.Err(fmt.Sprintln("DRA: getting interface by id failed",
+				err, " drop packet"))
 			return
 		}
 		dhcprelayReverseMap[inReq.GetCHAddr().String()] = linuxInterface
@@ -533,6 +527,9 @@ func DhcpRelayAgentReceiveDhcpPkt(clientHandler *net.UDPConn) {
 		} else if bytesRead < DHCP_PACKET_MIN_BYTES {
 			// This is not dhcp packet as the minimum size is 240
 			continue
+		} else if dhcprelayEnable == false {
+			logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
+			continue
 		}
 		logger.Info(fmt.Sprintln("DRA: Received Packet from ", srcAddr))
 		logger.Info(fmt.Sprintln("DRA: control message is ", cm))
@@ -545,7 +542,6 @@ func DhcpRelayAgentReceiveDhcpPkt(clientHandler *net.UDPConn) {
 
 		// Based on Packet type decide whether to send packet to server
 		// or to client
-		logger.Info(fmt.Sprintln("DRA: mtype is", mType))
 		DhcpRelayAgentSendPacket(clientHandler, cm, inReq, reqOptions,
 			mType)
 	}
@@ -556,7 +552,6 @@ func DhcpRelayAgentCreateClientServerConn() {
 	// Client send dhcp packet from port 68 to server port 67
 	// So create a filter for udp:67 for messages send out by client to
 	// server
-	logger.Info("DRA: creating listenPacket for udp port 67")
 	saddr := net.UDPAddr{
 		Port: DHCP_SERVER_PORT,
 		IP:   net.ParseIP(""),
