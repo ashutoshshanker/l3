@@ -103,7 +103,6 @@ func DhcpRelaySignalHandler(sigChannel <-chan os.Signal) {
 	switch signal {
 	case syscall.SIGHUP:
 		logger.Alert("DRA: Received SIGHUP SIGNAL")
-		// @TODO: jgheewala clean up stuff on exit...
 		os.Exit(0)
 	default:
 		logger.Info(fmt.Sprintln("DRA: Unhandled Signal : ", signal))
@@ -172,12 +171,11 @@ func DhcpRelayAgentInitGblHandling(ifNum int) {
 func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr string) error {
 	logger = log
 	// Initialize port information and packet handler for dhcp
-	logger.Info("DRA: initializing Port Pkt Handler")
 	err := InitDhcpRelayPortPktHandler()
 	if err != nil {
 		return err
 	}
-
+	dhcprelayEnable = false
 	// create transport and protocol for server
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
@@ -188,7 +186,6 @@ func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr stri
 		return err
 	}
 	processor := dhcprelayd.NewDHCPRELAYDServicesProcessor(handler)
-	fmt.Printf("Starting DHCP-RELAY daemon at %s\n", addr)
 	server := thrift.NewTSimpleServer4(processor, transport,
 		transportFactory, protocolFactory)
 	err = server.Serve()
@@ -197,6 +194,6 @@ func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr stri
 		return err
 	}
 
-	logger.Info("DRA:Start the Server successfully")
+	logger.Info("DRA:Started the Server successfully")
 	return nil
 }

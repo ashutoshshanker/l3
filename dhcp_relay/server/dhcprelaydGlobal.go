@@ -71,6 +71,7 @@ var (
 	// When we receive a udp packet... we will get interface id and that can
 	// be used to collect the global info...
 	dhcprelayGblInfo    map[int]DhcpRelayAgentGlobalInfo
+	dhcprelayEnable     bool
 	StateDebugInfo      map[string]DhcpRelayAgentStateInfo
 	dhcprelayClientConn *ipv4.PacketConn
 	dhcprelayServerConn *ipv4.PacketConn
