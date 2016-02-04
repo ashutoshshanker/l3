@@ -254,7 +254,7 @@ func (st *ConnectState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.SetPeerConn(data)
 		st.fsm.sendOpenMessage()
-		st.fsm.SetHoldTime(st.fsm.peer.Neighbor.Config.HoldTime, st.fsm.peer.Neighbor.Config.KeepaliveTime)
+		st.fsm.SetHoldTime(st.fsm.peer.PeerConf.HoldTime, st.fsm.peer.PeerConf.KeepaliveTime)
 		st.fsm.StartHoldTimer()
 		st.BaseState.fsm.ChangeState(NewOpenSentState(st.BaseState.fsm))
 
@@ -339,7 +339,7 @@ func (st *ActiveState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.SetPeerConn(data)
 		st.fsm.sendOpenMessage()
-		st.fsm.SetHoldTime(st.fsm.peer.Neighbor.Config.HoldTime, st.fsm.peer.Neighbor.Config.KeepaliveTime)
+		st.fsm.SetHoldTime(st.fsm.peer.PeerConf.HoldTime, st.fsm.peer.PeerConf.KeepaliveTime)
 		st.fsm.StartHoldTimer()
 		st.fsm.ChangeState(NewOpenSentState(st.fsm))
 
@@ -603,7 +603,7 @@ func (st *OpenConfirmState) enter() {
 
 func (st *OpenConfirmState) leave() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "State: OpenConfirm - leave"))
-	st.fsm.SetHoldTime(st.fsm.peer.Neighbor.Config.HoldTime, st.fsm.peer.Neighbor.Config.KeepaliveTime)
+	st.fsm.SetHoldTime(st.fsm.peer.PeerConf.HoldTime, st.fsm.peer.PeerConf.KeepaliveTime)
 }
 
 func (st *OpenConfirmState) state() BGPFSMState {
@@ -718,7 +718,7 @@ func (st *EstablishedState) enter() {
 
 func (st *EstablishedState) leave() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "State: Established - leave"))
-	st.fsm.SetHoldTime(st.fsm.peer.Neighbor.Config.HoldTime, st.fsm.peer.Neighbor.Config.KeepaliveTime)
+	st.fsm.SetHoldTime(st.fsm.peer.PeerConf.HoldTime, st.fsm.peer.PeerConf.KeepaliveTime)
 	st.fsm.ConnBroken()
 }
 
@@ -804,12 +804,12 @@ func NewFSM(fsmManager *FSMManager, id uint8, peer *Peer) *FSM {
 		logger:           fsmManager.logger,
 		peer:             peer,
 		gConf:            peer.Global,
-		pConf:            &peer.Neighbor.Config,
+		pConf:            &peer.PeerConf,
 		Manager:          fsmManager,
 		id:               id,
-		connectRetryTime: peer.Neighbor.Config.ConnectRetryTime, // seconds
-		holdTime:         peer.Neighbor.Config.HoldTime,         // seconds
-		keepAliveTime:    peer.Neighbor.Config.KeepaliveTime,    // seconds
+		connectRetryTime: peer.PeerConf.ConnectRetryTime, // seconds
+		holdTime:         peer.PeerConf.HoldTime,         // seconds
+		keepAliveTime:    peer.PeerConf.KeepaliveTime,    // seconds
 		rxPktsFlag:       false,
 		outConnCh:        make(chan net.Conn),
 		outConnErrCh:     make(chan error),
