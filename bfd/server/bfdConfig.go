@@ -32,12 +32,18 @@ type IntfConfig struct {
 type IntfState struct {
 }
 
+type BfdSessionConfig struct {
+	DestIp    string
+	Protocol  int
+	Operation bool
+}
+
 type SessionState struct {
 	SessionId             int32
 	LocalIpAddr           string
 	RemoteIpAddr          string
 	InterfaceId           int32
-	RegisteredProtocols   string
+	RegisteredProtocols   [MAX_NUM_PROTOCOLS]bool
 	SessionState          BfdSessionState
 	RemoteSessionState    BfdSessionState
 	LocalDiscriminator    uint32

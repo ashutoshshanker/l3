@@ -45,9 +45,24 @@ type BfdInterface struct {
 	property IpIntfProperty
 }
 
+const (
+	PROTOCOL_BGP = iota + 1
+	PROTOCOL_OSPF
+	MAX_NUM_PROTOCOLS
+)
+
+type BfdSessionMgmt struct {
+	DestIp   string
+	Protocol int
+}
+
 type BfdSession struct {
-	state SessionState
-	timer *time.Timer
+	state            SessionState
+	sessionTimer     *time.Timer
+	txTimer          *time.Timer
+	TxTimeoutCh      chan *BfdSession
+	SessionTimeoutCh chan *BfdSession
+	bfdPacket        *BfdControlPacket
 }
 
 type BfdGlobal struct {
@@ -55,7 +70,7 @@ type BfdGlobal struct {
 	NumInterfaces        uint32
 	Interfaces           map[int32]BfdInterface
 	NumSessions          uint32
-	Sessions             map[int32]BfdSession
+	Sessions             map[int32]*BfdSession
 	NumUpSessions        uint32
 	NumDownSessions      uint32
 	NumAdminDownSessions uint32
@@ -73,6 +88,9 @@ type BFDServer struct {
 	portPropertyMap     map[int32]PortProperty
 	vlanPropertyMap     map[uint16]VlanProperty
 	IPIntfPropertyMap   map[string]IPIntfProperty
+	CreateSessionCh     chan BfdSessionMgmt
+	DeleteSessionCh     chan BfdSessionMgmt
+	sessionConfigCh     chan BfdSessionConfig
 	bfdGlobal           BfdGlobal
 }
 
@@ -85,11 +103,12 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)
 	bfdServer.vlanPropertyMap = make(map[uint16]VlanProperty)
+	bfdServer.sessionConfigCh = make(chan BfdSessionConfig)
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]BfdInterface)
 	bfdServer.bfdGlobal.NumSessions = 0
-	bfdServer.bfdGlobal.Sessions = make(map[int32]BfdSession)
+	bfdServer.bfdGlobal.Sessions = make(map[int32]*BfdSession)
 	bfdServer.bfdGlobal.NumUpSessions = 0
 	bfdServer.bfdGlobal.NumDownSessions = 0
 	bfdServer.bfdGlobal.NumAdminDownSessions = 0
@@ -148,6 +167,8 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.logger.Info("Listen for ASICd updates")
 	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
+	// Start session handler
+	go server.StartSessionHandler()
 }
 
 func (server *BFDServer) StartServer(paramFile string) {
@@ -163,6 +184,8 @@ func (server *BFDServer) StartServer(paramFile string) {
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:
+		case sessionConfig := <-server.sessionConfigCh:
+			server.processSessionConfig(sessionConfig)
 			/*
 				case ribrxBuf := <-server.ribSubSocketCh:
 					server.processRibdNotification(ribdrxBuf)

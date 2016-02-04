@@ -22,6 +22,7 @@ type NeighborData struct {
         DRtr                []byte
         BDRtr               []byte
         NbrIP               uint32
+        FullState           bool
 }
 
 type NeighborKey struct {
@@ -74,6 +75,7 @@ type IntfConf struct {
         NeighCreateCh           chan NeighCreateMsg
         NeighChangeCh           chan NeighChangeMsg
         NbrStateChangeCh        chan NbrStateChangeMsg
+        NbrFullStateCh          chan NbrFullStateMsg
 	WaitTimer               *time.Timer
         /* IntefaceState: Start */
         IfDRIp                  []byte
@@ -89,6 +91,7 @@ type IntfConf struct {
 	IfIpAddr                net.IP
 	IfMacAddr               net.HardwareAddr
 	IfNetmask               []byte
+        IfMtu                   int32
 }
 
 func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfProperty) {
@@ -121,12 +124,14 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
                 ent.NeighCreateCh = make(chan NeighCreateMsg)
                 ent.NeighChangeCh = make(chan NeighChangeMsg)
                 ent.NbrStateChangeCh = make(chan NbrStateChangeMsg)
+                ent.NbrFullStateCh = make(chan NbrFullStateMsg)
 		//ent.WaitTimerExpired = make(chan bool)
 		ent.WaitTimer = nil
 		ent.HelloIntervalTicker = nil
                 ent.NeighborMap = make(map[NeighborKey]NeighborData)
 		ent.IfNetmask = ipIntfProp.NetMask
 		ent.IfName = ipIntfProp.IfName
+		ent.IfMtu = ipIntfProp.Mtu
 		ent.IfIpAddr = ipIntfProp.IpAddr
 		ent.IfMacAddr = ipIntfProp.MacAddr
                 ent.IfDRIp = []byte {0, 0, 0, 0}
@@ -176,7 +181,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 	}
 }
 
-func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
+func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg, mtu int32) {
 	ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to parse IP address", msg.IpAddr))
@@ -205,6 +210,7 @@ func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		IpAddr:  ip,
 		MacAddr: macAddr,
 		NetMask: ipNet.Mask,
+                Mtu:    mtu,
 	}
 	server.initDefaultIntfConf(intfConfKey, ipIntfProp)
 	_, exist := server.IntfConfMap[intfConfKey]
@@ -222,6 +228,8 @@ func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 }
 
 func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
+        var flag bool = false
+        server.logger.Info(fmt.Sprintln("calling deleteIPIntfConfMap for....:", msg))
 	ip, _, err := net.ParseCIDR(msg.IpAddr)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to parse IP address", msg.IpAddr))
@@ -241,13 +249,21 @@ func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		server.logger.Err("No such inteface exists")
 		return
 	}
+        areaId := convertIPv4ToUint32(ent.IfAreaId)
 	if server.ospfGlobalConf.AdminStat == config.Enabled &&
 		ent.IfAdminStat == config.Enabled {
 		server.StopSendRecvPkts(intfConfKey)
+                flag = true
 	}
 	server.logger.Info(fmt.Sprintln("1:delete IPIntfConfMap for ", intfConfKey))
         server.IntfKeyToSliceIdxMap[intfConfKey] = false
 	delete(server.IntfConfMap, intfConfKey)
+        if flag == true {
+                msg := LSAChangeMsg {
+                        areaId: areaId,
+                }
+                server.IntfStateChangeCh <- msg
+        }
 }
 
 func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
@@ -328,15 +344,7 @@ func (server *OSPFServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
 	ent, _ := server.IntfConfMap[intfConfKey]
         ent.NeighborMap = nil
         ent.IfEvents = ent.IfEvents + 1
-        oldState := ent.IfFSMState
         ent.IfFSMState = config.Down
-        areaId := convertIPv4ToUint32(ent.IfAreaId)
-        if oldState > config.Waiting {
-                msg := IntfStateChangeMsg {
-                        areaId: areaId,
-                }
-                server.IntfStateChangeCh <- msg
-        }
 	server.IntfConfMap[intfConfKey] = ent
 }
 

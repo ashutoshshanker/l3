@@ -39,6 +39,14 @@ func NewIpHdrMetadata() *IpHdrMetadata {
 	return &IpHdrMetadata{}
 }
 
+type EthHdrMetadata struct {
+        srcMAC      net.HardwareAddr
+}
+
+func NewEthHdrMetadata() *EthHdrMetadata {
+	return &EthHdrMetadata{}
+}
+
 var (
 	snapshot_len int32         = 65549 //packet capture length
 	promiscuous  bool          = false //mode
@@ -48,6 +56,7 @@ var (
 const (
 	OSPF_HELLO_MIN_SIZE = 20
 	OSPF_DBD_MIN_SIZE   = 8
+        OSPF_LSA_HEADER_SIZE = 20
 	OSPF_HEADER_SIZE    = 24
 	IP_HEADER_MIN_LEN   = 20
 	OSPF_PROTO_ID       = 89
@@ -71,6 +80,9 @@ type IntfToNeighMsg struct {
 	NeighborIP   net.IP
 	nbrDeadTimer time.Duration
 	TwoWayStatus bool
+        nbrDR        []byte
+        nbrBDR       []byte
+        nbrMAC       net.HardwareAddr
 }
 
 type NbrStateChangeMsg struct {
@@ -95,4 +107,16 @@ type IntfRxHandle struct {
 	PktRecvCh       chan bool
 	PktRecvStatusCh chan bool
 	//RecvMutex               *sync.Mutex
+}
+
+type AdjOKEvtMsg struct {
+        NewDRtrId         uint32
+        OldDRtrId         uint32
+        NewBDRtrId        uint32
+        OldBDRtrId        uint32
+}
+
+type NbrFullStateMsg struct {
+        FullState       bool
+        NbrRtrId        uint32
 }

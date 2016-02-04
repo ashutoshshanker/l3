@@ -8,9 +8,11 @@ import (
 	"net"
 	"errors"
 	"utils/patriciaDB"
+	"github.com/vishvananda/netlink"
+	"asicd/asicdConstDefs"
 	"l3/rib/ribdCommonDefs"
+	"time"
 )
-
 var RouteProtocolTypeMapDB = make(map[string]int)
 var ReverseRouteProtoTypeMapDB = make(map[int]string)
 
@@ -69,11 +71,11 @@ func deleteRoutePolicyStateAll(route ribd.Routes) {
 	}
     routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
 	routeInfoRecordList.policyHitCounter = route.PolicyHitCounter
-	routeInfoRecordList.policyList = append(routeInfoRecordList.policyList[:0])
+	routeInfoRecordList.policyList = nil//append(routeInfoRecordList.policyList[:0])
 	RouteInfoMap.Set(destNet,routeInfoRecordList)
 	return
 }
-func addRoutePolicyState(route ribd.Routes, policy string) {
+func addRoutePolicyState(route ribd.Routes, policy string, policyStmt string) {
 	logger.Println("addRoutePolicyState")
 	destNet, err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
 	if err != nil {
@@ -89,11 +91,45 @@ func addRoutePolicyState(route ribd.Routes, policy string) {
     routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
 	routeInfoRecordList.policyHitCounter = route.PolicyHitCounter
 	if routeInfoRecordList.policyList == nil {
-		routeInfoRecordList.policyList = make([]string, 0)
+		routeInfoRecordList.policyList = make([]string,0)
 	}
+/*	policyStmtList := routeInfoRecordList.policyList[policy]
+	if policyStmtList == nil {
+	   policyStmtList = make([]string,0)
+	}
+	policyStmtList = append(policyStmtList,policyStmt)
+    routeInfoRecordList.policyList[policy] = policyStmtList*/
 	routeInfoRecordList.policyList = append(routeInfoRecordList.policyList, policy)
 	RouteInfoMap.Set(destNet,routeInfoRecordList)
 	return
+}
+func	 addPolicyRouteMapEntry(route *ribd.Routes, policy string, policyStmt string, conditionList []string, actionList []string) {
+	logger.Println("addPolicyRouteMapEntry")
+	var policyStmtMap PolicyStmtMap
+	var conditionsAndActionsList ConditionsAndActionsList
+	if PolicyRouteMap == nil {
+		PolicyRouteMap = make(map[PolicyRouteIndex]PolicyStmtMap)
+	}
+	policyRouteIndex := PolicyRouteIndex{routeIP:route.Ipaddr, routeMask:route.Mask,policy:policy}
+	policyStmtMap, ok:= PolicyRouteMap[policyRouteIndex]
+	if !ok {
+		policyStmtMap.policyStmtMap = make(map[string]ConditionsAndActionsList)
+	}
+	_, ok = policyStmtMap.policyStmtMap[policyStmt]
+	if ok {
+		logger.Println("policy statement map for statement ", policyStmt, " already in place for policy ", policy)
+		return
+	} 
+	conditionsAndActionsList.conditionList = make([]string,0)
+	conditionsAndActionsList.actionList = make([]string,0)
+	for i:=0;conditionList != nil && i<len(conditionList);i++ {
+		conditionsAndActionsList.conditionList = append(conditionsAndActionsList.conditionList,conditionList[i])
+	}
+	for i:=0;actionList != nil && i<len(actionList);i++ {
+		conditionsAndActionsList.actionList = append(conditionsAndActionsList.actionList,actionList[i])
+	}
+	policyStmtMap.policyStmtMap[policyStmt]=conditionsAndActionsList
+	PolicyRouteMap[policyRouteIndex]=policyStmtMap
 }
 func deleteRoutePolicyState( ipPrefix patriciaDB.Prefix, policyName string) {
 	logger.Println("deleteRoutePolicyState")
@@ -105,6 +141,9 @@ func deleteRoutePolicyState( ipPrefix patriciaDB.Prefix, policyName string) {
 		return
 	}
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
+/*    if routeInfoRecordList.policyList[policyName] != nil {
+		delete(routeInfoRecordList.policyList, policyName)
+	}*/
 	for idx = 0;idx<len(routeInfoRecordList.policyList);idx++ {
 		if routeInfoRecordList.policyList[idx] == policyName {
 			found = true
@@ -118,12 +157,24 @@ func deleteRoutePolicyState( ipPrefix patriciaDB.Prefix, policyName string) {
 	routeInfoRecordList.policyList = append(routeInfoRecordList.policyList[:idx], routeInfoRecordList.policyList[idx+1:]...)
 	RouteInfoMap.Set(ipPrefix, routeInfoRecordList)
 }
-func updateRoutePolicyState(route ribd.Routes, op int, policy string) {
+func	 deletePolicyRouteMapEntry(route ribd.Routes, policy string) {
+	logger.Println("deletePolicyRouteMapEntry for policy ", policy, "route ", route.Ipaddr, ":", route.Mask)
+	if PolicyRouteMap == nil {
+		logger.Println("PolicyRouteMap empty")
+		return
+	}
+	policyRouteIndex := PolicyRouteIndex{routeIP:route.Ipaddr,routeMask:route.Mask, policy:policy}
+	//PolicyRouteMap[policyRouteIndex].policyStmtMap=nil
+	delete(PolicyRouteMap,policyRouteIndex)
+}
+
+func updateRoutePolicyState(route ribd.Routes, op int, policy string, policyStmt string) {
 	logger.Println("updateRoutePolicyState")
 	if op == delAll {
 		deleteRoutePolicyStateAll(route)
+		deletePolicyRouteMapEntry(route, policy)
 	} else if op == add {
-		addRoutePolicyState(route, policy)
+		addRoutePolicyState(route, policy, policyStmt)
     }
 }
 func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes, evt int) {
@@ -142,10 +193,55 @@ func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes, evt int) {
 	} else if evt == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
 		evtStr = "NOTIFY_ROUTE_DELETED"
 	}
+	eventInfo := "Redistribute "+evtStr+" for route "+route.Ipaddr+" "+route.Mask+" type" + ReverseRouteProtoTypeMapDB[int(route.Prototype)]
    	logger.Println("Sending ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " ", buf)
+	t1 := time.Now()
+    routeEventInfo := RouteEventInfo{timeStamp:t1.String(),eventInfo:eventInfo}
+	localRouteEventsDB = append(localRouteEventsDB,routeEventInfo)
    	PUB.Send(buf, nanomsg.DontWait)
 }
 
+func delLinuxRoute(route RouteInfoRecord) {
+	logger.Println("delLinuxRoute")
+		dst := &net.IPNet{
+		IP:   route.destNetIp,
+		Mask: net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
+	    }
+		ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
+	    link, err := netlink.LinkByIndex(int(ifId))
+	    if err != nil {
+			logger.Println("LinkByIndex call failed with error ", err, "for link ", ifId)
+			return
+  	    }
+
+	    lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst}
+        err = netlink.RouteDel(&lxroute)
+		if err != nil {
+			logger.Println("Route delete call failed with error ", err)
+		}
+    return
+}
+
+func addLinuxRoute(route RouteInfoRecord) {
+	logger.Println("addLinuxRoute")
+		dst := &net.IPNet{
+		IP:   route.destNetIp,
+		Mask: net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
+	    }
+		ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
+	    link, err := netlink.LinkByIndex(int(ifId))
+	    if err != nil {
+			logger.Println("LinkByIndex call failed with error ", err, "for link ", ifId)
+			return
+  	    }
+
+	    lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst}
+        err = netlink.RouteAdd(&lxroute)
+		if err != nil {
+			logger.Println("Route add call failed with error ", err)
+		}
+    return
+}
 func getIPInt(ip net.IP) (ipInt int, err error) {
 	if ip == nil {
 		logger.Printf("ip address %v invalid\n", ip)

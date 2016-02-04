@@ -98,13 +98,7 @@ type LsdbUpdateMsg struct {
         Msg             []byte
 }
 
-type IntfStateChangeMsg struct {
-        areaId          uint32
-        //OldState        config.IfState
-        //NewState        config.IfState
-}
-
-type NetworkDRChangeMsg struct {
+type LSAChangeMsg struct {
         areaId          uint32
 }
 
@@ -136,6 +130,9 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
                 if areaId != AreaId {
                         continue
                 }
+                if ent.IfFSMState <= config.Waiting {
+                        continue
+                }
                 var linkDetail LinkDetail
                 if ent.IfType == config.Broadcast {
                         if len(ent.NeighborMap) == 0 { // Stub Network
@@ -165,15 +162,10 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
                 } else if ent.IfType == config.PointToPoint {
                        // linkDetial.LinkId = NBRs Router ID
                 }
-                server.logger.Info(fmt.Sprintln("Linkdetail", linkDetail))
                 linkDetails = append(linkDetails, linkDetail)
         }
 
-        server.logger.Info(fmt.Sprintln("Linkdetails", linkDetails))
         numOfLinks := len(linkDetails)
-        if numOfLinks == 0 {
-                return
-        }
 
         LSType := RouterLSA
         LSId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
@@ -193,6 +185,11 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
         }
         lsDbEnt, _ := server.AreaLsdb[lsdbKey]
 
+        if numOfLinks == 0 {
+                delete(lsDbEnt.RouterLsaMap, lsaKey)
+                server.AreaLsdb[lsdbKey] = lsDbEnt
+                return
+        }
         ent, _ := lsDbEnt.RouterLsaMap[lsaKey]
         ent.LSAge = uint16(LSAge)
         ent.Options = Options
@@ -224,7 +221,16 @@ func (server *OSPFServer)processLSDatabaseUpdates() {
                         server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
                 case msg := <-server.NetworkDRChangeCh:
                         server.logger.Info(fmt.Sprintf("Network DR change msg", msg))
-
+                        // Create a new router LSA
+                case msg := <-server.CreateNetworkLSACh:
+                        server.logger.Info(fmt.Sprintf("Create Network LSA msg", msg))
+                        // Flush the old Network LSA
+                        // Check if link is broadcast or not
+                        // If link is broadcast
+                        // Create Network LSA
+                case msg := <-server.FlushNetworkLSACh:
+                        server.logger.Info(fmt.Sprintf("Flush Network LSA msg", msg))
+                        // Flush the old Network LSA
                 }
         }
 }

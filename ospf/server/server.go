@@ -47,8 +47,11 @@ type OSPFServer struct {
 	IntfConfigCh      chan config.InterfaceConf
         AreaLsdb          map[LsdbKey]LSDatabase
         LsdbUpdateCh      chan LsdbUpdateMsg
-        IntfStateChangeCh chan IntfStateChangeMsg
-        NetworkDRChangeCh chan NetworkDRChangeMsg
+        IntfStateChangeCh chan LSAChangeMsg
+        NetworkDRChangeCh chan LSAChangeMsg
+        FlushNetworkLSACh chan LSAChangeMsg
+        CreateNetworkLSACh chan LSAChangeMsg
+        AdjOKEvtCh        chan AdjOKEvtMsg
 
 	/*
 	   connRoutesTimer         *time.Timer
@@ -103,9 +106,12 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.IntfTxMap = make(map[IntfConfKey]IntfTxHandle)
 	ospfServer.IntfRxMap = make(map[IntfConfKey]IntfRxHandle)
         ospfServer.AreaLsdb = make(map[LsdbKey]LSDatabase)
-        ospfServer.IntfStateChangeCh = make(chan IntfStateChangeMsg)
-        ospfServer.NetworkDRChangeCh = make(chan NetworkDRChangeMsg)
+        ospfServer.IntfStateChangeCh = make(chan LSAChangeMsg)
+        ospfServer.NetworkDRChangeCh = make(chan LSAChangeMsg)
+        ospfServer.CreateNetworkLSACh = make(chan LSAChangeMsg)
+        ospfServer.FlushNetworkLSACh = make(chan LSAChangeMsg)
         ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
+        ospfServer.AdjOKEvtCh = make(chan AdjOKEvtMsg)
 	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
