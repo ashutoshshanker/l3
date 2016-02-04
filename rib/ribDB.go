@@ -5,13 +5,12 @@ import (
 	"ribd"
 	"strconv"
 	"utils/commonDefs"
-	"l3/rib/ribdCommonDefs"
 //    "utils/dbutils"
 	_ "github.com/mattn/go-sqlite3"
     "database/sql"
 )
 
-func UpdateRoutesFromDB(paramsDir string, dbHdl *sql.DB) (err error) {
+func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
     logger.Println("UpdateRoutesFromDB")
     dbCmd := "select * from IPV4Route"
 	rows, err := dbHdl.Query(dbCmd)
@@ -33,7 +32,8 @@ func UpdateRoutesFromDB(paramsDir string, dbHdl *sql.DB) (err error) {
 			outIntfType = commonDefs.L2RefTypePort
 		}
 		proto, _ := strconv.Atoi(ipRoute.Protocol)
-		_,err = createV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto),  FIBAndRIB,ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
+		_,err = routeServiceHandler.CreateV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto))
+		//_,err = createV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto),  FIBAndRIB,ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 		if(err != nil) {
 			logger.Printf("Route create failed with err %s\n", err)
 			return err
@@ -42,7 +42,7 @@ func UpdateRoutesFromDB(paramsDir string, dbHdl *sql.DB) (err error) {
 	return err
 }
 
-func UpdatePolicyConditionsFromDB(paramsDir string, dbHdl *sql.DB) (err error) {
+func UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
       logger.Println("UpdatePolicyConditionsFromDB")
     dbCmd := "select * from PolicyDefinitionStmtMatchProtocolCondition"
 	rows, err := dbHdl.Query(dbCmd)
@@ -64,22 +64,22 @@ func UpdatePolicyConditionsFromDB(paramsDir string, dbHdl *sql.DB) (err error) {
 	}
 	return err
 }
-func UpdateFromDB(paramsDir string) (err error) {
+func UpdateFromDB() {//(paramsDir string) (err error) {
       logger.Println("UpdateFromDB")
-	  DbName := paramsDir + "/UsrConfDb.db"
+	  DbName := PARAMSDIR + "/UsrConfDb.db"
       logger.Println("DB Location: ", DbName)
       dbHdl, err := sql.Open("sqlite3", DbName)
       if err != nil {
         logger.Println("Failed to create the handle with err ", err)
-        return err
+        return 
       }
 
     if err = dbHdl.Ping(); err != nil {
         logger.Println("Failed to keep DB connection alive")
-        return err
+        return 
     }
-	UpdateRoutesFromDB(paramsDir, dbHdl)
-	UpdatePolicyConditionsFromDB(paramsDir, dbHdl)
-	return err
+	UpdateRoutesFromDB(dbHdl)//paramsDir, dbHdl)
+	UpdatePolicyConditionsFromDB(dbHdl)//paramsDir, dbHdl)
+	return
 }
 

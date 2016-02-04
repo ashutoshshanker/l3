@@ -30,6 +30,7 @@ type Policy struct {
 	policyStmtPrecedenceMap map[int]string
 	hitCounter         int   
 	routeList         []string
+	routeInfoList     []ribd.Routes
 	localDBSliceIdx        int8  
 }
 
@@ -66,6 +67,10 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 		policy.routeList = make([]string, 0)
 	}
     policy.routeList = append(policy.routeList, newRoute)
+	if policy.routeInfoList == nil {
+		policy.routeInfoList = make([]ribd.Routes, 0)
+	}
+    policy.routeInfoList = append(policy.routeInfoList, route)
 	PolicyDB.Set(patriciaDB.Prefix(policy.name), policy)
 }
 func deletePolicyRouteMap(route ribd.Routes, policy Policy) {

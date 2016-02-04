@@ -26,18 +26,23 @@ type RouteInfoRecord struct {
 	protocol       int8
 	isPolicyBasedStateValid bool
 }
-
+type ConditionsAndActionsList struct {
+	conditionList []string
+	actionList    []string
+}
+type PolicyStmtMap struct {
+	policyStmtMap map[string]ConditionsAndActionsList
+}
 //implement priority queue of the routes
 type RouteInfoRecordList struct {
 	selectedRouteIdx int8
 	routeInfoList    []RouteInfoRecord //map[int]RouteInfoRecord
 	policyHitCounter  ribd.Int
-	policyList       map[string][]string
+	policyList       []string
 	isPolicyBasedStateValid bool
 	routeCreatedTime string
 	routeUpdatedTime string
 }
-
 
 type RouteParams struct {
 	destNetIp      string
@@ -55,10 +60,16 @@ type RouteEventInfo struct {
 	timeStamp     string
 	eventInfo     string
 }
+type PolicyRouteIndex struct {
+	routeIP string// patriciaDB.Prefix
+	routeMask string
+	policy string
+}
 var RouteInfoMap = patriciaDB.NewTrie()
 var DummyRouteInfoRecord RouteInfoRecord //{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
 var destNetSlice []localDB
 var localRouteEventsDB []RouteEventInfo
+var PolicyRouteMap map[PolicyRouteIndex]PolicyStmtMap
 
 func getSelectedRoute(routeInfoRecordList RouteInfoRecordList) (routeInfoRecord RouteInfoRecord, err error) {
 	if routeInfoRecordList.selectedRouteIdx == PROTOCOL_NONE {
@@ -265,9 +276,30 @@ func (m RouteServiceHandler) GetBulkRoutes(fromIndex ribd.Int, rcount ribd.Int) 
 			nextRoute.IsValid = destNetSlice[i+fromIndex].isValid
 			nextRoute.RouteCreated = prefixNodeRouteList.routeCreatedTime
 			nextRoute.RouteUpdated = prefixNodeRouteList.routeUpdatedTime
-			/*nextRoute.PolicyList = make([]string,0)
+			nextRoute.PolicyList = make([]string,0)
 			routePolicyListInfo := ""
 			if prefixNodeRouteList.policyList != nil {
+				for k:=0;k<len(prefixNodeRouteList.policyList);k++ {
+					routePolicyListInfo = "policy "+prefixNodeRouteList.policyList[k]+"["
+	                 policyRouteIndex := PolicyRouteIndex{routeIP:prefixNodeRoute.destNetIp.String(),routeMask:prefixNodeRoute.networkMask.String(), policy:prefixNodeRouteList.policyList[k]}
+					policyStmtMap, ok := PolicyRouteMap[policyRouteIndex]
+					if !ok || policyStmtMap.policyStmtMap == nil{
+						continue
+					}
+					for stmt,conditionsAndActionsList := range policyStmtMap.policyStmtMap {
+						routePolicyListInfo = routePolicyListInfo + "stmt"+stmt+"]:[conditions]:"
+						for c:=0;c<len(conditionsAndActionsList.conditionList);c++ {
+							routePolicyListInfo = routePolicyListInfo + conditionsAndActionsList.conditionList[c]+","
+						}  
+						routePolicyListInfo = routePolicyListInfo+",[actions]:"
+						for a:=0;a<len(conditionsAndActionsList.conditionList);a++ {
+							routePolicyListInfo = routePolicyListInfo + conditionsAndActionsList.conditionList[a]+","
+						}  
+					}
+				    nextRoute.PolicyList = append(nextRoute.PolicyList,routePolicyListInfo)
+				}
+			}
+/*			if prefixNodeRouteList.policyList != nil {
 			  for k,v := range prefixNodeRouteList.policyList {
 				routePolicyListInfo = k+":"
 			    for vv:=range v {
@@ -275,7 +307,7 @@ func (m RouteServiceHandler) GetBulkRoutes(fromIndex ribd.Int, rcount ribd.Int) 
 			    }
 			  }	
 			}
-			nextRoute.PolicyList = routePolicyListInfo*/
+			nextRoute.PolicyList = routePolicyListInfo
 			nextRoute.PolicyList = make(map[string][]string)
 			if prefixNodeRouteList.policyList != nil {
 			  for k,v := range prefixNodeRouteList.policyList {
@@ -284,7 +316,7 @@ func (m RouteServiceHandler) GetBulkRoutes(fromIndex ribd.Int, rcount ribd.Int) 
 					nextRoute.PolicyList[k] = append(nextRoute.PolicyList[k],v[idx])
 			    }
 			  }	
-			}
+			}*/
 			toIndex = ribd.Int(prefixNodeRoute.sliceIdx)
 			if len(returnRoutes) == 0 {
 				returnRoutes = make([]*ribd.Routes, 0)
@@ -440,6 +472,11 @@ func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 		}
 	} else if op == del {
 		logger.Println(" in del index selectedrouteIndex", index, routeInfoRecordList.selectedRouteIdx)
+		if destNetSlice == nil || int(routeInfoRecord.sliceIdx) >= len(destNetSlice) {
+			logger.Println("Destination slice not found at the expected slice index ", routeInfoRecord.sliceIdx)
+			return err
+		}
+		destNetSlice[routeInfoRecord.sliceIdx].isValid = false //invalidate this entry in the local db
 		if len(routeInfoRecordList.routeInfoList) == 0 {
 			logger.Println(" in del,numRoutes now 0, so delete the node")
 			RouteInfoMap.Delete(destNetPrefix)
@@ -459,11 +496,6 @@ func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 			PolicyEngineFilter(policyRoute, ribdCommonDefs.PolicyPath_Export, params)
 			return nil
 		}
-		if destNetSlice == nil || int(routeInfoRecord.sliceIdx) >= len(destNetSlice) {
-			logger.Println("Destination slice not found at the expected slice index ", routeInfoRecord.sliceIdx)
-			return err
-		}
-		destNetSlice[routeInfoRecord.sliceIdx].isValid = false //invalidate this entry in the local db
 		if int8(index) == routeInfoRecordList.selectedRouteIdx {
 			logger.Println("Deleting the selected route")
 			deleteRoute = true
