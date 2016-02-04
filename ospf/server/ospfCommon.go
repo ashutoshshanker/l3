@@ -107,3 +107,15 @@ type IntfRxHandle struct {
 	PktRecvStatusCh chan bool
 	//RecvMutex               *sync.Mutex
 }
+
+type AdjOKEvtMsg struct {
+        NewDRtrId         uint32
+        OldDRtrId         uint32
+        NewBDRtrId        uint32
+        OldBDRtrId        uint32
+}
+
+type NbrFullStateMsg struct {
+        FullState       bool
+        NbrRtrId        uint32
+}

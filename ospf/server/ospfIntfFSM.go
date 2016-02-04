@@ -9,6 +9,7 @@ import (
 
 
 func (server *OSPFServer)StartOspfIntfFSM(key IntfConfKey) {
+    server.StartSendHelloPkt(key)
     for {
         ent, _ := server.IntfConfMap[key]
         select {
@@ -34,6 +35,7 @@ func (server *OSPFServer)StartOspfIntfFSM(key IntfConfKey) {
                 neighborEntry.RtrPrio = createMsg.RtrPrio
                 neighborEntry.DRtr = createMsg.DRtr
                 neighborEntry.BDRtr = createMsg.BDRtr
+                neighborEntry.FullState = false
                 ent.NeighborMap[neighborKey] = neighborEntry
                 server.IntfConfMap[key] = ent
                 server.logger.Info(fmt.Sprintln("1 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap, "neighborKey:", neighborKey))
@@ -58,12 +60,6 @@ func (server *OSPFServer)StartOspfIntfFSM(key IntfConfKey) {
                 newDRtr := binary.BigEndian.Uint32(changeMsg.DRtr)
                 newBDRtr := binary.BigEndian.Uint32(changeMsg.BDRtr)
                 oldTwoWayStatus := neighborEntry.TwoWayStatus
-/*
-                if (neighborEntry.RtrPrio != changeMsg.RtrPrio ||
-                    bytesEqual(neighborEntry.DRtr, changeMsg.DRtr) == false ||
-                    bytesEqual(neighborEntry.BDRtr, changeMsg.BDRtr) == false) &&
-                    changeMsg.TwoWayStatus == true {
-*/
                 neighborEntry.NbrIP = changeMsg.NbrIP
                 neighborEntry.TwoWayStatus = changeMsg.TwoWayStatus
                 neighborEntry.RtrPrio = changeMsg.RtrPrio
@@ -85,37 +81,73 @@ func (server *OSPFServer)StartOspfIntfFSM(key IntfConfKey) {
                         server.ElectBDRAndDR(key)
                     }
                 }
-/*
-                }
-*/
             }
         case nbrStateChangeMsg := <-ent.NbrStateChangeCh:
             // Only when Neighbor Went Down from TwoWayStatus
             // Todo: Handle NbrIP: Ashutosh
             server.logger.Info(fmt.Sprintf("Recev Neighbor State Change message", nbrStateChangeMsg))
-            nbrKey := NeighborKey {
-                RouterId:   nbrStateChangeMsg.RouterId,
-            }
-            neighborEntry, exist := ent.NeighborMap[nbrKey]
-            if exist {
-                oldTwoWayStatus := neighborEntry.TwoWayStatus
-                delete(ent.NeighborMap, nbrKey)
-                server.logger.Info(fmt.Sprintln("Deleting", nbrKey))
-                server.IntfConfMap[key] = ent
-                if ent.IfFSMState > config.Waiting {
-                    // RFC2328 Section 9.2 (Neighbor Change Event)
-                    if oldTwoWayStatus == true {
-                        server.ElectBDRAndDR(key)
-                    }
-                }
-            }
-            server.logger.Info(fmt.Sprintln("Hello", server.IntfConfMap))
+            server.processNbrDownEvent(nbrStateChangeMsg, key)
         case state := <-ent.FSMCtrlCh:
             if state == false {
                 server.StopSendHelloPkt(key)
                 ent.FSMCtrlStatusCh<-false
                 return
             }
+        case msg := <-ent.NbrFullStateCh:
+            // Note : NBR State Machine should only send message if
+            // NBR State changes to/from Full (but not to Down)
+            server.processNbrFullStateMsg(msg, key)
+        }
+    }
+}
+
+func (server *OSPFServer)processNbrDownEvent(msg NbrStateChangeMsg,
+    key IntfConfKey) {
+    ent, _ := server.IntfConfMap[key]
+    nbrKey := NeighborKey {
+        RouterId:   msg.RouterId,
+    }
+    neighborEntry, exist := ent.NeighborMap[nbrKey]
+    if exist {
+        oldTwoWayStatus := neighborEntry.TwoWayStatus
+        delete(ent.NeighborMap, nbrKey)
+        server.logger.Info(fmt.Sprintln("Deleting", nbrKey))
+        server.IntfConfMap[key] = ent
+        if ent.IfFSMState > config.Waiting {
+            // RFC2328 Section 9.2 (Neighbor Change Event)
+            if oldTwoWayStatus == true {
+                server.ElectBDRAndDR(key)
+            }
+        }
+    }
+    server.logger.Info(fmt.Sprintln("Hello", server.IntfConfMap))
+}
+
+// Nbr State machine has to send FullState change msg and then
+// Send interface state down event
+func (server *OSPFServer)processNbrFullStateMsg(msg NbrFullStateMsg,
+    key IntfConfKey) {
+    ent, _ := server.IntfConfMap[key]
+    areaId := convertIPv4ToUint32(ent.IfAreaId)
+    if msg.FullState == true {
+        server.logger.Info("Neighbor State changed to full state")
+    } else {
+        server.logger.Info("Neighbor State changed from full state")
+    }
+    nbrKey := NeighborKey {
+            RouterId:   msg.NbrRtrId,
+    }
+    nbrEntry, exist := ent.NeighborMap[nbrKey]
+    if exist {
+        if msg.FullState != nbrEntry.FullState &&
+            ent.IfFSMState == config.DesignatedRouter {
+            nbrEntry.FullState = msg.FullState
+            ent.NeighborMap[nbrKey] = nbrEntry
+            server.IntfConfMap[key] = ent
+            lsaMsg := LSAChangeMsg {
+                areaId: areaId,
+            }
+            server.CreateNetworkLSACh <- lsaMsg
         }
     }
 }
@@ -263,6 +295,7 @@ func (server *OSPFServer)ElectBDRAndDR(key IntfConfKey) {
         server.logger.Info(fmt.Sprintln("Election of BDR andDR", ent.IfFSMState))
 
         oldDRtrId := ent.IfDRtrId
+        oldBDRtrId := ent.IfBDRtrId
         //oldBDR := ent.IfBDRIp
         oldState := ent.IfFSMState
         var newState config.IfState
@@ -305,30 +338,65 @@ func (server *OSPFServer)ElectBDRAndDR(key IntfConfKey) {
                 server.IntfConfMap[key] = ent
         }
 
-        ent, _ = server.IntfConfMap[key]
+        server.createAndSendEventsIntfFSM(key, oldState, newState, oldDRtrId, oldBDRtrId)
+}
+
+func (server *OSPFServer)createAndSendEventsIntfFSM(key IntfConfKey,
+        oldState config.IfState, newState config.IfState, oldDRtrId uint32,
+        oldBDRtrId uint32) {
+        ent, _ := server.IntfConfMap[key]
         ent.IfFSMState = newState
         // Need to Check: do we need to add events even when we
         // come back to same state after DR or BDR Election
         ent.IfEvents = ent.IfEvents + 1
+        server.IntfConfMap[key] = ent
         server.logger.Info(fmt.Sprintln("Final Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState))
 
         areaId := convertIPv4ToUint32(ent.IfAreaId)
-        if oldState != newState {
-                msg := IntfStateChangeMsg {
-                        areaId: areaId,
-                }
-                server.IntfStateChangeCh <- msg
-                if newState == config.DesignatedRouter {
-                        // Todo: Construct Network LSA
-                }
-        } else if oldDRtrId == ent.IfDRtrId {
-                msg := NetworkDRChangeMsg {
-                        areaId: areaId,
-                }
-                server.NetworkDRChangeCh <- msg
+        msg := LSAChangeMsg {
+                areaId: areaId,
         }
-        server.IntfConfMap[key] = ent
+
+        server.logger.Info("1. Sending msg for router LSA generation")
+        server.IntfStateChangeCh <- msg
+
+        if oldState != newState {
+                if newState == config.DesignatedRouter {
+                        // Construct Network LSA
+                        server.logger.Info("1. Sending msg for Network LSA generation")
+                        server.CreateNetworkLSACh <- msg
+                } else if oldState == config.DesignatedRouter {
+                        // Flush Network LSA
+                        server.logger.Info("2. Sending msg for Network LSA generation")
+                        server.FlushNetworkLSACh <- msg
+                }
+                server.logger.Info(fmt.Sprintln("oldState", oldState, " != newState", newState))
+        }
+        server.logger.Info(fmt.Sprintln("oldState", oldState, " newState", newState))
+
+/*
+        if oldDRtrId != ent.IfDRtrId {
+                adjOKEvtMsg := AdjOKEvtMsg {
+                        NewDRtrId:         ent.IfDRtrId,
+                        OldDRtrId:         oldDRtrId,
+                        NewBDRtrId:        ent.IfBDRtrId,
+                        OldBDRtrId:        oldBDRtrId,
+                }
+                server.logger.Info("Intf State Machine: Sending AdjOK Event to NBR State Machine because of DR change")
+                server.AdjOKEvtCh <- adjOKEvtMsg
+        } else if oldBDRtrId != ent.IfBDRtrId {
+                adjOKEvtMsg := AdjOKEvtMsg {
+                        NewDRtrId:         ent.IfDRtrId,
+                        OldDRtrId:         oldDRtrId,
+                        NewBDRtrId:        ent.IfBDRtrId,
+                        OldBDRtrId:        oldBDRtrId,
+                }
+                server.logger.Info("Intf State Machine: Sending AdjOK Event to NBR State Machine because of BDR change")
+                server.AdjOKEvtCh <- adjOKEvtMsg
+        }
+*/
 }
+
 
 func (server *OSPFServer)StopOspfIntfFSM(key IntfConfKey) {
     ent, _ := server.IntfConfMap[key]
