@@ -99,7 +99,7 @@ func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) (map[
 	addPath := NewPath(adjRib.server, peer, body.PathAttributes, false, true, RouteTypeEGP)
 	addPath.GetReachabilityInfo()
 	if !addPath.IsValid() {
-		adjRib.logger.Info(fmt.Sprintf("Received a update with our cluster id %d. Discarding the update.", addPath.peer.Neighbor.Config.RouteReflectorClusterId))
+		adjRib.logger.Info(fmt.Sprintf("Received a update with our cluster id %d. Discarding the update.", addPath.peer.PeerConf.RouteReflectorClusterId))
 		return nil, nil, nil
 	}
 

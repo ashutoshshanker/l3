@@ -24,11 +24,13 @@ const BGPPort string = "179"
 type PeerUpdate struct {
 	OldPeer config.NeighborConfig
 	NewPeer config.NeighborConfig
+	AttrSet []bool
 }
 
 type PeerGroupUpdate struct {
-	OldGroup config.PeerGroup
-	NewGroup config.PeerGroup
+	OldGroup config.PeerGroupConfig
+	NewGroup config.PeerGroupConfig
+	AttrSet  []bool
 }
 
 type BGPServer struct {
@@ -166,7 +168,7 @@ func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 }
 
 func (server *BGPServer) IsPeerLocal(peerIp string) bool {
-	return server.PeerMap[peerIp].Neighbor.Config.PeerAS == server.BgpConfig.Global.Config.AS
+	return server.PeerMap[peerIp].PeerConf.PeerAS == server.BgpConfig.Global.Config.AS
 }
 
 func (server *BGPServer) sendUpdateMsgToAllPeers(msg *packet.BGPMessage, path *Path) {
@@ -181,7 +183,7 @@ func (server *BGPServer) sendUpdateMsgToAllPeers(msg *packet.BGPMessage, path *P
 			}
 
 			// Don't send the update to the peer that sent the update.
-			if peer.Neighbor.Config.NeighborAddress.String() == path.peer.Neighbor.Config.NeighborAddress.String() {
+			if peer.PeerConf.NeighborAddress.String() == path.peer.PeerConf.NeighborAddress.String() {
 				continue
 			}
 		}
@@ -266,6 +268,30 @@ func (server *BGPServer) removePeerFromList(peer *Peer) {
 	}
 }
 
+func (server *BGPServer) StopPeersByGroup(groupName string) []*Peer {
+	peers := make([]*Peer, 0)
+	for peerIP, peer := range server.PeerMap {
+		if peer.PeerGroup.Name == groupName {
+			server.logger.Info(fmt.Sprintln("Clean up peer", peerIP))
+			peer.Cleanup()
+			server.ProcessRemoveNeighbor(peerIP, peer)
+			peers = append(peers, peer)
+
+			runtime.Gosched()
+		}
+	}
+
+	return peers
+}
+
+func (server *BGPServer) UpdatePeerGroupInPeers(groupName string, peerGroup *config.PeerGroupConfig) {
+	peers := server.StopPeersByGroup(groupName)
+	for _, peer := range peers {
+		peer.UpdatePeerGroup(peerGroup)
+		peer.Init()
+	}
+}
+
 func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.AS = gConf.AS
 	server.BgpConfig.Global.Config.RouterId = gConf.RouterId
@@ -275,6 +301,7 @@ func (server *BGPServer) StartServer() {
 	gConf := <-server.GlobalConfigCh
 	server.logger.Info(fmt.Sprintln("Recieved global conf:", gConf))
 	server.BgpConfig.Global.Config = gConf
+	server.BgpConfig.PeerGroups = make(map[string]*config.PeerGroup)
 
 	pathAttrs := packet.ConstructPathAttrForConnRoutes(gConf.RouterId, gConf.AS)
 	server.connRoutesPath = NewPath(server, nil, pathAttrs, false, false, RouteTypeConnected)
@@ -341,8 +368,18 @@ func (server *BGPServer) StartServer() {
 						newPeer.NeighborAddress.String()))
 					break
 				}
+
+				var groupConfig *config.PeerGroupConfig
+				if newPeer.PeerGroup != "" {
+					if group, ok := server.BgpConfig.PeerGroups[newPeer.PeerGroup]; !ok {
+						server.logger.Info(fmt.Sprintln("Peer group", newPeer.PeerGroup, "not created yet, creating peer",
+							newPeer.NeighborAddress.String(), "without the group"))
+					} else {
+						groupConfig = &group.Config
+					}
+				}
 				server.logger.Info(fmt.Sprintln("Add neighbor, ip:", newPeer.NeighborAddress.String()))
-				peer = NewPeer(server, server.BgpConfig.Global.Config, newPeer)
+				peer = NewPeer(server, &server.BgpConfig.Global.Config, groupConfig, newPeer)
 				server.PeerMap[newPeer.NeighborAddress.String()] = peer
 				server.NeighborMutex.Lock()
 				server.addPeerToList(peer)
@@ -365,12 +402,35 @@ func (server *BGPServer) StartServer() {
 			server.ProcessRemoveNeighbor(remPeer, peer)
 
 		case groupUpdate := <-server.AddPeerGroupCh:
-			oldGroup := groupUpdate.OldGroup
-			newGroup := groupUpdate.NewGroup
-			server.logger.Info(fmt.Sprintln("Peer group update old:", oldGroup, "new:", newGroup))
+			oldGroupConf := groupUpdate.OldGroup
+			newGroupConf := groupUpdate.NewGroup
+			server.logger.Info(fmt.Sprintln("Peer group update old:", oldGroupConf, "new:", newGroupConf))
+			var ok bool
+
+			if oldGroupConf.Name != "" {
+				if _, ok = server.BgpConfig.PeerGroups[oldGroupConf.Name]; !ok {
+					server.logger.Err(fmt.Sprintln("Could not find peer group", oldGroupConf.Name))
+					break
+				}
+			}
+
+			if _, ok = server.BgpConfig.PeerGroups[newGroupConf.Name]; !ok {
+				server.logger.Info(fmt.Sprintln("Add new peer group with name", newGroupConf.Name))
+				peerGroup := config.PeerGroup{
+					Config: newGroupConf,
+				}
+				server.BgpConfig.PeerGroups[newGroupConf.Name] = &peerGroup
+			}
+			server.UpdatePeerGroupInPeers(newGroupConf.Name, &newGroupConf)
 
 		case groupName := <-server.RemPeerGroupCh:
 			server.logger.Info(fmt.Sprintln("Remove Peer group:", groupName))
+			if _, ok := server.BgpConfig.PeerGroups[groupName]; !ok {
+				server.logger.Info(fmt.Sprintln("Peer group", groupName, "not found"))
+				break
+			}
+			delete(server.BgpConfig.PeerGroups, groupName)
+			server.UpdatePeerGroupInPeers(groupName, nil)
 
 		case tcpConn := <-acceptCh:
 			server.logger.Info(fmt.Sprintln("Connected to", tcpConn.RemoteAddr().String()))

@@ -15,24 +15,28 @@ type Peer struct {
 	Server     *BGPServer
 	logger     *syslog.Writer
 	Global     *config.GlobalConfig
+	PeerGroup  *config.PeerGroupConfig
 	Neighbor   *config.Neighbor
 	fsmManager *FSMManager
 	BGPId      net.IP
 	ASSize     uint8
 	afiSafiMap map[uint32]bool
+	PeerConf   config.NeighborConfig
 }
 
-func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.NeighborConfig) *Peer {
+func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *config.PeerGroupConfig, peerConf config.NeighborConfig) *Peer {
 	peer := Peer{
-		Server: server,
-		logger: server.logger,
-		Global: &globalConf,
+		Server:    server,
+		logger:    server.logger,
+		Global:    globalConf,
+		PeerGroup: peerGroup,
 		Neighbor: &config.Neighbor{
 			NeighborAddress: peerConf.NeighborAddress,
 			Config:          peerConf,
 		},
 		BGPId:      net.IP{},
 		afiSafiMap: make(map[uint32]bool),
+		PeerConf:   config.NeighborConfig{},
 	}
 
 	peer.Neighbor.State = config.NeighborState{
@@ -54,15 +58,16 @@ func NewPeer(server *BGPServer, globalConf config.GlobalConfig, peerConf config.
 		peer.Neighbor.State.PeerType = config.PeerTypeExternal
 	}
 
+	peer.SetPeerConf(peerGroup, &peer.PeerConf)
 	peer.afiSafiMap, _ = packet.GetProtocolFromConfig(&peer.Neighbor.AfiSafis)
-	peer.fsmManager = NewFSMManager(&peer, &globalConf, &peerConf)
+	peer.fsmManager = NewFSMManager(&peer, globalConf, &peerConf)
 	return &peer
 }
 
 func (p *Peer) Init() {
 	if p.fsmManager == nil {
 		p.logger.Info(fmt.Sprintf("Instantiating new FSM Manager for neighbor %s", p.Neighbor.NeighborAddress))
-		p.fsmManager = NewFSMManager(p, &p.Server.BgpConfig.Global.Config, &p.Neighbor.Config)
+		p.fsmManager = NewFSMManager(p, &p.Server.BgpConfig.Global.Config, &p.PeerConf)
 	}
 
 	go p.fsmManager.Init()
@@ -76,6 +81,87 @@ func (p *Peer) Cleanup() {
 func (p *Peer) UpdateNeighborConf(nConf config.NeighborConfig) {
 	p.Neighbor.NeighborAddress = nConf.NeighborAddress
 	p.Neighbor.Config = nConf
+	p.PeerConf = config.NeighborConfig{}
+	if nConf.PeerGroup != p.PeerGroup.Name {
+		if peerGroup, ok := p.Server.BgpConfig.PeerGroups[nConf.PeerGroup]; ok {
+			p.GetNeighConfFromPeerGroup(&peerGroup.Config, &p.PeerConf)
+		}
+	}
+	p.GetConfFromNeighbor(&p.Neighbor.Config, &p.PeerConf)
+}
+
+func (p *Peer) UpdatePeerGroup(peerGroup *config.PeerGroupConfig) {
+	p.PeerGroup = peerGroup
+	p.PeerConf = config.NeighborConfig{}
+	p.SetPeerConf(peerGroup, &p.PeerConf)
+}
+
+func (p *Peer) SetPeerConf(peerGroup *config.PeerGroupConfig, peerConf *config.NeighborConfig) {
+	p.GetNeighConfFromGlobal(peerConf)
+	p.GetNeighConfFromPeerGroup(peerGroup, peerConf)
+	p.GetConfFromNeighbor(&p.Neighbor.Config, peerConf)
+}
+
+func (p *Peer) GetNeighConfFromGlobal(peerConf *config.NeighborConfig) {
+	peerConf.LocalAS = p.Server.BgpConfig.Global.Config.AS
+}
+
+func (p *Peer) GetNeighConfFromPeerGroup(groupConf *config.PeerGroupConfig, peerConf *config.NeighborConfig) {
+	globalAS := peerConf.LocalAS
+	if groupConf != nil {
+		peerConf.BaseConfig = groupConf.BaseConfig
+	}
+	if peerConf.LocalAS == 0 {
+		peerConf.LocalAS = globalAS
+	}
+}
+
+func (p *Peer) GetConfFromNeighbor(inConf *config.NeighborConfig, outConf *config.NeighborConfig) {
+	if inConf.PeerAS != 0 {
+		outConf.PeerAS = inConf.PeerAS
+	}
+
+	if inConf.LocalAS != 0 {
+		outConf.LocalAS = inConf.LocalAS
+	}
+
+	if inConf.AuthPassword != "" {
+		outConf.AuthPassword = inConf.AuthPassword
+	}
+
+	if inConf.Description != "" {
+		outConf.Description = inConf.Description
+	}
+
+	if inConf.RouteReflectorClusterId != 0 {
+		outConf.RouteReflectorClusterId = inConf.RouteReflectorClusterId
+	}
+
+	if inConf.RouteReflectorClient != false {
+		outConf.RouteReflectorClient = inConf.RouteReflectorClient
+	}
+
+	if inConf.MultiHopEnable != false {
+		outConf.MultiHopEnable = inConf.MultiHopEnable
+	}
+
+	if inConf.MultiHopTTL != 0 {
+		outConf.MultiHopTTL = inConf.MultiHopTTL
+	}
+
+	if inConf.ConnectRetryTime != 0 {
+		outConf.ConnectRetryTime = inConf.ConnectRetryTime
+	}
+
+	if inConf.HoldTime != 0 {
+		outConf.HoldTime = inConf.HoldTime
+	}
+
+	if inConf.KeepaliveTime != 0 {
+		outConf.KeepaliveTime = inConf.KeepaliveTime
+	}
+	outConf.NeighborAddress = inConf.NeighborAddress
+	outConf.PeerGroup = inConf.PeerGroup
 }
 
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
@@ -95,15 +181,15 @@ func (p *Peer) Command(command int) {
 }
 
 func (p *Peer) IsInternal() bool {
-	return p.Neighbor.Config.PeerAS == p.Neighbor.Config.LocalAS
+	return p.PeerConf.PeerAS == p.PeerConf.LocalAS
 }
 
 func (p *Peer) IsExternal() bool {
-	return p.Neighbor.Config.LocalAS != p.Neighbor.Config.PeerAS
+	return p.PeerConf.LocalAS != p.PeerConf.PeerAS
 }
 
 func (p *Peer) IsRouteReflectorClient() bool {
-	return p.Neighbor.Config.RouteReflectorClient
+	return p.PeerConf.RouteReflectorClient
 }
 
 func (p *Peer) SendKeepAlives(conn *net.TCPConn) {
@@ -151,7 +237,7 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 	if p.IsInternal() {
 		if path.peer != nil && (path.peer.IsRouteReflectorClient() || p.IsRouteReflectorClient()) {
 			packet.AddOriginatorId(bgpMsg, path.peer.BGPId)
-			packet.AddClusterId(bgpMsg, path.peer.Neighbor.Config.RouteReflectorClusterId)
+			packet.AddClusterId(bgpMsg, path.peer.PeerConf.RouteReflectorClusterId)
 		} else {
 			packet.SetNextHop(bgpMsg, p.Neighbor.Transport.Config.LocalAddress)
 			packet.SetLocalPref(bgpMsg, path.GetPreference())
@@ -161,7 +247,7 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 		if path.peer != nil {
 			packet.RemoveMultiExitDisc(bgpMsg)
 		}
-		packet.PrependAS(bgpMsg, p.Neighbor.Config.LocalAS, p.ASSize)
+		packet.PrependAS(bgpMsg, p.PeerConf.LocalAS, p.ASSize)
 		packet.SetNextHop(bgpMsg, p.Neighbor.Transport.Config.LocalAddress)
 		packet.RemoveLocalPref(bgpMsg)
 	}
@@ -185,9 +271,9 @@ func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 		p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
 	}
 
-	p.Neighbor.State.ConnectRetryTime = p.Neighbor.Config.ConnectRetryTime
-	p.Neighbor.State.HoldTime = p.Neighbor.Config.HoldTime
-	p.Neighbor.State.KeepaliveTime = p.Neighbor.Config.KeepaliveTime
+	p.Neighbor.State.ConnectRetryTime = p.PeerConf.ConnectRetryTime
+	p.Neighbor.State.HoldTime = p.PeerConf.HoldTime
+	p.Neighbor.State.KeepaliveTime = p.PeerConf.KeepaliveTime
 
 }
 

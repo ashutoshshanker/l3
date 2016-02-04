@@ -141,7 +141,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 			}
 
 			if path.HasASLoop() {
-				d.logger.Info(fmt.Sprintf("This path has AS loop [%d], removing this path from the selection process", path.peer.Neighbor.Config.LocalAS))
+				d.logger.Info(fmt.Sprintf("This path has AS loop [%d], removing this path from the selection process", path.peer.PeerConf.LocalAS))
 				continue
 			}
 

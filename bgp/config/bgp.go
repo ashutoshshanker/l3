@@ -64,11 +64,6 @@ type NeighborConfig struct {
 	PeerGroup       string
 }
 
-type PeerGroup struct {
-	BaseConfig
-	Name string
-}
-
 type NeighborState struct {
 	PeerAS                  uint32
 	LocalAS                 uint32
@@ -165,11 +160,19 @@ type Neighbor struct {
 	AfiSafis        []AfiSafiConfig
 }
 
-type Neighbors struct {
-	Neighbors []Neighbor
+type PeerGroupConfig struct {
+	BaseConfig
+	Name string
+}
+
+type PeerGroup struct {
+	Config   PeerGroupConfig
+	State    PeerGroupConfig
+	AfiSafis []AfiSafiConfig
 }
 
 type Bgp struct {
-	Global    Global
-	Neighbors Neighbors
+	Global     Global
+	PeerGroups map[string]*PeerGroup
+	Neighbors  []Neighbor
 }
