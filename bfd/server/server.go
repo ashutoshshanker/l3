@@ -8,6 +8,7 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
+	"l3/bfd/bfddCommonDefs"
 	"log/syslog"
 	"net"
 	"ribd"
@@ -45,12 +46,6 @@ type BfdInterface struct {
 	property IpIntfProperty
 }
 
-const (
-	PROTOCOL_BGP = iota + 1
-	PROTOCOL_OSPF
-	MAX_NUM_PROTOCOLS
-)
-
 type BfdSessionMgmt struct {
 	DestIp   string
 	Protocol int
@@ -63,6 +58,7 @@ type BfdSession struct {
 	TxTimeoutCh      chan *BfdSession
 	SessionTimeoutCh chan *BfdSession
 	bfdPacket        *BfdControlPacket
+	SessionDeleteCh  chan bool
 }
 
 type BfdGlobal struct {
@@ -90,7 +86,8 @@ type BFDServer struct {
 	IPIntfPropertyMap   map[string]IPIntfProperty
 	CreateSessionCh     chan BfdSessionMgmt
 	DeleteSessionCh     chan BfdSessionMgmt
-	sessionConfigCh     chan BfdSessionConfig
+	sessionConfigCh     chan bfddCommonDefs.BfdSessionConfig
+	bfddPubSocket       *nanomsg.PubSocket
 	bfdGlobal           BfdGlobal
 }
 
@@ -103,7 +100,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)
 	bfdServer.vlanPropertyMap = make(map[uint16]VlanProperty)
-	bfdServer.sessionConfigCh = make(chan BfdSessionConfig)
+	bfdServer.sessionConfigCh = make(chan bfddCommonDefs.BfdSessionConfig)
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]BfdInterface)
@@ -153,6 +150,26 @@ func (server *BFDServer) ConnectToClients(paramsFile string) {
 	}
 }
 
+func (server *BFDServer) InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
+	server.logger.Info(fmt.Sprintln("Setting up %s", pub_str, "publisher"))
+	pub, err := nanomsg.NewPubSocket()
+	if err != nil {
+		server.logger.Info(fmt.Sprintln("Failed to open pub socket"))
+		return nil
+	}
+	ep, err := pub.Bind(pub_str)
+	if err != nil {
+		server.logger.Info(fmt.Sprintln("Failed to bind pub socket - ", ep))
+		return nil
+	}
+	err = pub.SetSendBuffer(1024)
+	if err != nil {
+		server.logger.Info(fmt.Sprintln("Failed to set send buffer size"))
+		return nil
+	}
+	return pub
+}
+
 func (server *BFDServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Bfd Server"))
 	server.ConnectToClients(paramFile)
@@ -169,6 +186,8 @@ func (server *BFDServer) InitServer(paramFile string) {
 	go server.createASICdSubscriber()
 	// Start session handler
 	go server.StartSessionHandler()
+	// Initialize publisher
+	server.bfddPubSocket = server.InitPublisher(bfddCommonDefs.PUB_SOCKET_ADDR)
 }
 
 func (server *BFDServer) StartServer(paramFile string) {
