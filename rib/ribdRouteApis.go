@@ -292,8 +292,8 @@ func (m RouteServiceHandler) GetBulkRoutes(fromIndex ribd.Int, rcount ribd.Int) 
 							routePolicyListInfo = routePolicyListInfo + conditionsAndActionsList.conditionList[c]+","
 						}  
 						routePolicyListInfo = routePolicyListInfo+",[actions]:"
-						for a:=0;a<len(conditionsAndActionsList.conditionList);a++ {
-							routePolicyListInfo = routePolicyListInfo + conditionsAndActionsList.conditionList[a]+","
+						for a:=0;a<len(conditionsAndActionsList.actionList);a++ {
+							routePolicyListInfo = routePolicyListInfo + conditionsAndActionsList.actionList[a]+","
 						}  
 					}
 				    nextRoute.PolicyList = append(nextRoute.PolicyList,routePolicyListInfo)

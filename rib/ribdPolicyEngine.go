@@ -874,7 +874,7 @@ func PolicyEngineTraverseAndReverse(policy Policy) {
          params = RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
         }
 		policyEngineUndoPolicyForRoute(policyRoute, policy, params,)
-		deleteRoutePolicyState(patriciaDB.Prefix(policy.routeList[idx]), policy.name)
+		deleteRoutePolicyState(ipPrefix, policy.name)
 		
 	}
 }
