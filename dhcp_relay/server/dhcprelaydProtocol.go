@@ -345,22 +345,6 @@ func DhcpRelayAgentAddOptionsToPacket(reqOptions DhcpRelayAgentOptions, mt Messa
 	}
 }
 
-/*
- *
- * struct DhcpRelayHostDhcpState{
-	    1 : string		MacAddr
-	    2 : string		ServerIp
-	    3 : string		OfferedIp
-	    4 : string		GatewayIp
-	    5 : string		AcceptedIp
-	    6 : string		LeaseDuration
-	    7 : string		ClientRequest // all request/response are last most time
-	    8 : string		ClientResponse
-	    9 : string		ServerRequest
-	    10 : string 	ServerResponse
-    }
- *
-*/
 func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 	gblEntry DhcpRelayAgentGlobalInfo,
 	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
@@ -370,9 +354,14 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 	hostServerStateKey := inReq.GetCHAddr().String() + "_" +
 		gblEntry.IntfConfig.ServerIp
 	// get host + server state entry for updating the state
-	hostServerStateEntry := dhcprelayHostServerStateMap[hostServerStateKey]
-	hostServerStateEntry.MacAddr = inReq.GetCHAddr().String()
-	hostServerStateEntry.ServerIp = gblEntry.IntfConfig.ServerIp
+	hostServerStateEntry, ok := dhcprelayHostServerStateMap[hostServerStateKey]
+	if !ok {
+		hostServerStateEntry.MacAddr = inReq.GetCHAddr().String()
+		hostServerStateEntry.ServerIp = gblEntry.IntfConfig.ServerIp
+		if inReq.GetYIAddr().String() != DHCP_NO_IP {
+			hostServerStateEntry.AcceptedIp = inReq.GetYIAddr().String()
+		}
+	}
 	DhcpRelayAgentUpdateTime(hostServerStateEntry.ClientRequest)
 
 	// Create server ip address + port number
@@ -387,8 +376,14 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 	}
 
 	outPacket = DhcpRelayAgentCreateNewPacket(Request, inReq)
-	//@TODO: if Giaddr is not 0.0.0.0 then only add the giaddr???
-	outPacket.SetGIAddr(net.ParseIP(gblEntry.IntfConfig.IpSubnet))
+	if inReq.GetGIAddr().String() == DHCP_NO_IP {
+		outPacket.SetGIAddr(net.ParseIP(gblEntry.IntfConfig.IpSubnet))
+	} else {
+		logger.Info("DRA: Relay Agent " + inReq.GetGIAddr().String() +
+			" requested for DHCP for HOST " + inReq.GetCHAddr().String())
+		outPacket.SetGIAddr(inReq.GetGIAddr())
+	}
+
 	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
 
 	// Decode outpacket...
@@ -426,6 +421,11 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 			"request for " + inReq.GetCHAddr().String())
 	} else {
 		DhcpRelayAgentUpdateTime(hostServerStateEntry.ServerResponse)
+		hostServerStateEntry.OfferedIp = inReq.GetYIAddr().String()
+		hostServerStateEntry.GatewayIp = inReq.GetGIAddr().String()
+		leaseInfo := reqOptions[OptionIPAddressLeaseTime]
+		hostServerStateEntry.LeaseDuration = string(OpCode(leaseInfo[0]))
+
 	}
 	outPacket = DhcpRelayAgentCreateNewPacket(Reply, inReq)
 	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
@@ -619,7 +619,8 @@ func DhcpRelayAgentCreateClientServerConn() {
 	}
 	dhcprelayClientHandler, err := net.ListenUDP("udp", &saddr)
 	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: Opening udp port for client --> server failed", err))
+		logger.Err(fmt.Sprintln("DRA: Opening udp port for client --> server failed",
+			err))
 		return
 	}
 	dhcprelayClientConn = ipv4.NewPacketConn(dhcprelayClientHandler)
