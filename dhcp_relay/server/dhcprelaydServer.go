@@ -15,7 +15,7 @@ import (
 	"strconv"
 	_ "strings"
 	"syscall"
-	_ "time"
+	"time"
 	"utils/ipcutils"
 )
 
@@ -25,29 +25,9 @@ func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 	return &DhcpRelayServiceHandler{}
 }
 
-func DhcpRelayAgentUpdateTime(entry *dhcprelayd.DhcpRelayHostDhcpState) {
-	//ctime := time.Now()
+func DhcpRelayAgentUpdateTime(entry string) {
+	entry = time.Now().String()
 }
-
-/*
-func DhcpRelayAgentUpdateStats(input string, key string) {
-		elem, ok := StateDebugInfo[key]
-		ctime := time.Now()
-		mac := strings.Split(key, "_")
-		if ok == false {
-			// first time entry is being populated....
-			insert := "(" + ctime.String() + "): Stats Started for Host: " + mac[0] +
-				" Server: " + mac[1]
-			var statString DhcpRelayAgentStateInfo
-			statString.stats = make([]string, 10)
-			statString.stats = append(statString.stats, insert)
-			StateDebugInfo[key] = statString
-		} else {
-			elem.stats = append(elem.stats, input)
-			StateDebugInfo[key] = elem
-		}
-}
-*/
 
 /*
  *  ConnectToClients:
@@ -159,7 +139,29 @@ func InitDhcpRelayPortPktHandler() error {
 	return nil
 }
 
-//func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
+func DhcpRelayAgentInitIntfServerState(IntfId string, serverIp string, id int) {
+	key := IntfId + "_" + serverIp
+	intfServerEntry := dhcprelayIntfServerStateMap[key]
+	intfServerEntry.IntfId = int32(id)
+	intfServerEntry.ServerIp = serverIp
+	intfServerEntry.Request = 0
+	intfServerEntry.Responses = 0
+	dhcprelayIntfServerStateMap[IntfId] = intfServerEntry
+	dhcprelayIntfServerStateSlice = append(dhcprelayIntfServerStateSlice, key)
+}
+
+func DhcpRelayAgentInitIntfState(IntfId int) {
+	intfEntry := dhcprelayIntfStateMap[IntfId]
+	intfEntry.IntfId = int32(IntfId)
+	intfEntry.TotalDrops = 0
+	intfEntry.TotalDhcpClientRx = 0
+	intfEntry.TotalDhcpClientTx = 0
+	intfEntry.TotalDhcpServerRx = 0
+	intfEntry.TotalDhcpServerTx = 0
+	dhcprelayIntfStateMap[IntfId] = intfEntry
+	dhcprelayIntfStateSlice = append(dhcprelayIntfStateSlice, IntfId)
+}
+
 func DhcpRelayAgentInitGblHandling(ifNum int) {
 	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(ifNum))
 	// Created a global Entry for Interface
@@ -171,7 +173,6 @@ func DhcpRelayAgentInitGblHandling(ifNum int) {
 	gblEntry.IntfConfig.AgentSubType = 0
 	gblEntry.IntfConfig.Enable = false
 	dhcprelayGblInfo[ifNum] = gblEntry
-
 }
 
 func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr string) error {
