@@ -1,6 +1,7 @@
 package relayServer
 
 import (
+	"dhcprelayd"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -343,6 +344,23 @@ func DhcpRelayAgentAddOptionsToPacket(reqOptions DhcpRelayAgentOptions, mt Messa
 		}
 	}
 }
+
+/*
+ *
+ * struct DhcpRelayHostDhcpState{
+	    1 : string		MacAddr
+	    2 : string		ServerIp
+	    3 : string		OfferedIp
+	    4 : string		GatewayIp
+	    5 : string		AcceptedIp
+	    6 : string		LeaseDuration
+	    7 : string		ClientRequest // all request/response are last most time
+	    8 : string		ClientResponse
+	    9 : string		ServerRequest
+	    10 : string 	ServerResponse
+    }
+ *
+*/
 func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, gblEntry DhcpRelayAgentGlobalInfo,
 	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
 	mt MessageType) {
@@ -355,6 +373,14 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, gblEntry DhcpRelayAge
 		logger.Err(fmt.Sprintln("DRA: couldn't resolved udp addr for and err is", err))
 		return
 	}
+	hostServerStateKey := inReq.GetCHAddr().String() + "_" + gblEntry.IntfConfig.ServerIp
+	// get host + server state entry for updating the state
+	hostServerStateEntry := dhcprelayHostServerStateMap[hostServerStateKey]
+	hostServerStateEntry.MacAddr = inReq.GetCHAddr().String()
+	hostServerStateEntry.ServerIp = gblEntry.IntfConfig.ServerIp
+	DhcpRelayAgentUpdateTime(&hostServerStateEntry)
+	dhcprelayHostServerStateMap[hostServerStateKey] = hostServerStateEntry
+
 	outPacket := DhcpRelayAgentCreateNewPacket(Request, inReq)
 	outPacket.SetGIAddr(net.ParseIP(gblEntry.IntfConfig.IpSubnet))
 	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
@@ -475,7 +501,6 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 		dhcprelayReverseMap[inReq.GetCHAddr().String()] = linuxInterface
 		logger.Info(fmt.Sprintln("DRA: cached linux interface is",
 			linuxInterface))
-		// get logical interface id from linux id...
 		// Send Packet
 		DhcpRelayAgentSendPacketToDhcpServer(clientHandler, gblEntry,
 			inReq, reqOptions, mType)
@@ -571,7 +596,10 @@ func DhcpRelayAgentCreateClientServerConn() {
 		logger.Err(fmt.Sprintln("DRA: Setting control flag for client failed..", err))
 		return
 	}
-	logger.Info("DRA: Client Connection opened successfully")
 	dhcprelayReverseMap = make(map[string]*net.Interface, 30)
+	// State information
+	dhcprelayHostServerStateMap = make(map[string]dhcprelayd.DhcpRelayHostDhcpState,
+		150)
 	go DhcpRelayAgentReceiveDhcpPkt(dhcprelayClientHandler)
+	logger.Info("DRA: Client Connection opened successfully")
 }
