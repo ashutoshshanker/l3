@@ -43,9 +43,10 @@ struct BGPNeighborConfig {
 	7: bool RouteReflectorClient,
 	8: bool MultiHopEnable,
 	9: byte MultiHopTTL,
-	10: i32 ConnectRetryTime
-	11: i32 HoldTime
-	12: i32 KeepaliveTime
+	10: i32 ConnectRetryTime,
+	11: i32 HoldTime,
+	12: i32 KeepaliveTime,
+    13: string PeerGroup,
 }
 
 struct BGPNeighborState {
@@ -62,9 +63,10 @@ struct BGPNeighborState {
 	11: bool RouteReflectorClient,
 	12: bool MultiHopEnable,
 	13: byte MultiHopTTL,
-	14: i32 ConnectRetryTime
-	15: i32 HoldTime
-	16: i32 KeepaliveTime
+	14: i32 ConnectRetryTime,
+	15: i32 HoldTime,
+	16: i32 KeepaliveTime,
+    17: string GroupName,
 }
 
 struct BGPNeighborStateBulk {
@@ -73,6 +75,21 @@ struct BGPNeighborStateBulk {
 	3: i64 Count,
 	4: bool More,
 	5: list<BGPNeighborState> StateList,
+}
+
+struct BGPPeerGroup {
+    1: i32 PeerAS,
+    2: i32 LocalAS,
+	3: string AuthPassword,
+    4: string Description,
+    5: string Name,
+	6: i32 RouteReflectorClusterId,
+	7: bool RouteReflectorClient,
+	8: bool MultiHopEnable,
+	9: byte MultiHopTTL,
+	10: i32 ConnectRetryTime,
+	11: i32 HoldTime,
+	12: i32 KeepaliveTime,
 }
 
 service BGPServer
@@ -87,4 +104,8 @@ service BGPServer
 	BGPNeighborStateBulk BulkGetBGPNeighbors(1: i64 index, 2: i64 count);
     bool UpdateBGPNeighbor(1: BGPNeighborConfig origNeighbor, 2: BGPNeighborConfig updatedNeighbor, 3: list<bool> attrSet);
     bool DeleteBGPNeighbor(1: string neighborAddress);
+
+    bool CreateBGPPeerGroup(1: BGPPeerGroup group);
+    bool UpdateBGPPeerGroup(1: BGPPeerGroup origGroup, 2: BGPPeerGroup updatedGroup, 3: list<bool> attrSet);
+    bool DeleteBGPPeerGroup(1: string groupName);
 }

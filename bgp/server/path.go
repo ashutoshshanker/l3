@@ -98,7 +98,7 @@ func (p *Path) IsValid() bool {
 		if attr.GetCode() == packet.BGPPathAttrTypeClusterList {
 			clusters := attr.(*packet.BGPPathAttrClusterList).Value
 			for _, clusterId := range clusters {
-				if clusterId == p.peer.Neighbor.Config.RouteReflectorClusterId {
+				if clusterId == p.peer.PeerConf.RouteReflectorClusterId {
 					return false
 				}
 			}
@@ -143,14 +143,14 @@ func (p *Path) HasASLoop() bool {
 				if asSize == 4 {
 					seg := asSegment.(*packet.BGPAS4PathSegment)
 					for _, as := range seg.AS {
-						if as == p.peer.Neighbor.Config.LocalAS {
+						if as == p.peer.PeerConf.LocalAS {
 							return true
 						}
 					}
 				} else {
 					seg := asSegment.(*packet.BGPAS2PathSegment)
 					for _, as := range seg.AS {
-						if as == uint16(p.peer.Neighbor.Config.LocalAS) {
+						if as == uint16(p.peer.PeerConf.LocalAS) {
 							return true
 						}
 					}

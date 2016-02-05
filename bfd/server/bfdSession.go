@@ -2,13 +2,14 @@ package server
 
 import (
 	"fmt"
+	"l3/bfd/bfddCommonDefs"
 	"math/rand"
 	"net"
 	"strconv"
 	"time"
 )
 
-func (server *BFDServer) processSessionConfig(sessionConfig BfdSessionConfig) error {
+func (server *BFDServer) processSessionConfig(sessionConfig bfddCommonDefs.BfdSessionConfig) error {
 	var sessionMgmt BfdSessionMgmt
 	sessionMgmt.DestIp = sessionConfig.DestIp
 	sessionMgmt.Protocol = sessionConfig.Protocol
@@ -30,8 +31,9 @@ func (server *BFDServer) StartSessionHandler() error {
 			if err == nil {
 				session.TxTimeoutCh = make(chan *BfdSession)
 				session.SessionTimeoutCh = make(chan *BfdSession)
-				go server.StartSessionClient(session)
-				go server.StartSessionServer(session)
+				session.SessionDeleteCh = make(chan bool)
+				go session.StartSessionClient()
+				go session.StartSessionServer()
 			}
 		case sessionMgmt := <-server.DeleteSessionCh:
 			server.DeleteBfdSession(sessionMgmt)
@@ -44,6 +46,7 @@ func (server *BFDServer) GetNewSessionId() int32 {
 	s1 := rand.NewSource(time.Now().UnixNano())
 	r1 := rand.New(s1)
 	sessionId := r1.Int31n(MAX_NUM_SESSIONS)
+	server.bfdGlobal.SessionsIdSlice = append(server.bfdGlobal.SessionsIdSlice, sessionId)
 	return sessionId
 }
 
@@ -63,6 +66,7 @@ func (server *BFDServer) NewBfdSession(DestIp string, protocol int) *BfdSession 
 	ifIndex, localIp := server.GetIfIndexAndLocalIpFromDestIp(DestIp)
 	bfdSession.state.LocalIpAddr = localIp
 	bfdSession.state.InterfaceId = ifIndex
+	bfdSession.state.RegisteredProtocols = make([]bool, bfddCommonDefs.MAX_NUM_PROTOCOLS)
 	bfdSession.state.RegisteredProtocols[protocol] = true
 	bfdSession.state.SessionState = STATE_DOWN
 	bfdSession.state.RemoteSessionState = STATE_DOWN
@@ -157,6 +161,7 @@ func (server *BFDServer) DeleteBfdSession(sessionMgmt BfdSessionMgmt) error {
 	if found {
 		server.bfdGlobal.Sessions[sessionId].txTimer.Stop()
 		server.bfdGlobal.Sessions[sessionId].sessionTimer.Stop()
+		server.bfdGlobal.Sessions[sessionId].SessionDeleteCh <- true
 		delete(server.bfdGlobal.Sessions, sessionId)
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
@@ -238,7 +243,7 @@ func (session *BfdSession) MoveToUpState() error {
 	return nil
 }
 
-func (server *BFDServer) StartSessionClient(session *BfdSession) error {
+func (session *BfdSession) StartSessionClient() error {
 	destAddr := session.state.RemoteIpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
@@ -270,15 +275,18 @@ func (server *BFDServer) StartSessionClient(session *BfdSession) error {
 				if err != nil {
 					fmt.Println("failed to send control packet for session ", session.state.SessionId)
 				}
+				session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session })
 			}
 		case session := <-session.SessionTimeoutCh:
-			session.MoveToDownState()
+			session.EventHandler(TIMEOUT)
+			session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session })
+		case <-session.SessionDeleteCh:
+			return nil
 		}
 	}
-	return nil
 }
 
-func (server *BFDServer) StartSessionServer(session *BfdSession) error {
+func (session *BfdSession) StartSessionServer() error {
 	destAddr := session.state.RemoteIpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
@@ -296,8 +304,29 @@ func (server *BFDServer) StartSessionServer(session *BfdSession) error {
 			fmt.Println("Failed to read from ", ServerAddr)
 		} else {
 			bfdPacket, _ := DecodeBfdControlPacket(buf[0:n])
+			session.ProcessBfdPacket(bfdPacket)
 			fmt.Println("Received ", string(buf[0:n]), " from ", addr, " bfdPacket ", bfdPacket)
 		}
 	}
+	return nil
+}
+
+func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
+	var event BfdSessionEvent
+	session.state.RemoteSessionState = bfdPacket.State
+	session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
+	session.state.RemoteMinRxInterval = int32(bfdPacket.RequiredMinRxInterval)
+	if bfdPacket.Demand {
+		session.state.RemoteDemandMode = true
+	}
+	switch session.state.RemoteSessionState {
+	case STATE_DOWN:
+		event = REMOTE_DOWN
+	case STATE_INIT:
+		event = REMOTE_INIT
+	case STATE_UP:
+		event = REMOTE_UP
+	}
+	session.EventHandler(event)
 	return nil
 }

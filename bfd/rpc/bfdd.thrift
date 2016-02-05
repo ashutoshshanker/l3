@@ -38,9 +38,15 @@ struct BfdSessionState{
 	2 : string 	LocalIpAddr
 	3 : string 	RemoteIpAddr
 	4 : i32 	InterfaceId
-	5 : string 	ReqisteredProtocols
-	8 : i32 	LocalDicriminator
+	5 : string 	RegisteredProtocols
+	6 : i32 	SessionState
+	7 : i32 	RemoteSessionState
+	8 : i32 	LocalDiscriminator
 	9 : i32 	RemoteDiscriminator
+	10 : i32 	LocalDiagType
+	11 : i32 	DesiredMinTxInterval
+	12 : i32 	RequiredMinRxInterval
+	13 : i32 	RemoteMinRxInterval
 	14 : i32 	DetectionMultiplier
 	15 : bool 	DemandMode
 	16 : bool 	RemoteDemandMode
