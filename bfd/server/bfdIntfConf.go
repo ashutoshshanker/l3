@@ -121,7 +121,15 @@ func (server *BFDServer) processIntfConfig(ifConf IntfConfig) {
 }
 
 func (server *BFDServer) StopSendRecvPkts(ifIndex int32) {
+	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
+	if exist {
+		intf.Enabled = false
+	}
 }
 
 func (server *BFDServer) StartSendRecvPkts(ifIndex int32) {
+	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
+	if exist {
+		intf.Enabled = true
+	}
 }
