@@ -46,8 +46,6 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobalConfig(
 			return true, nil
 		} else {
 			DhcpRelayAgentCreateClientServerConn()
-			// Stats information
-			StateDebugInfo = make(map[string]DhcpRelayAgentStateInfo, 150)
 		}
 	} else {
 		dhcprelayEnable = config.Enable
