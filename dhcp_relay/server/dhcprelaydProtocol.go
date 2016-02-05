@@ -361,62 +361,84 @@ func DhcpRelayAgentAddOptionsToPacket(reqOptions DhcpRelayAgentOptions, mt Messa
     }
  *
 */
-func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn, gblEntry DhcpRelayAgentGlobalInfo,
+func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
+	gblEntry DhcpRelayAgentGlobalInfo,
 	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
 	mt MessageType) {
-	logger.Info("DRA: Creating Send Pkt")
 
-	serverIpPort := gblEntry.IntfConfig.ServerIp + ":" + strconv.Itoa(DHCP_SERVER_PORT)
-	logger.Info("DRA: Sending DHCP PACKET to server: " + serverIpPort)
-	serverAddr, err := net.ResolveUDPAddr("udp", serverIpPort)
-	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: couldn't resolved udp addr for and err is", err))
-		return
-	}
-	hostServerStateKey := inReq.GetCHAddr().String() + "_" + gblEntry.IntfConfig.ServerIp
+	var outPacket DhcpRelayAgentPacket
+	hostServerStateKey := inReq.GetCHAddr().String() + "_" +
+		gblEntry.IntfConfig.ServerIp
 	// get host + server state entry for updating the state
 	hostServerStateEntry := dhcprelayHostServerStateMap[hostServerStateKey]
 	hostServerStateEntry.MacAddr = inReq.GetCHAddr().String()
 	hostServerStateEntry.ServerIp = gblEntry.IntfConfig.ServerIp
-	DhcpRelayAgentUpdateTime(&hostServerStateEntry)
-	dhcprelayHostServerStateMap[hostServerStateKey] = hostServerStateEntry
+	DhcpRelayAgentUpdateTime(hostServerStateEntry.ClientRequest)
 
-	outPacket := DhcpRelayAgentCreateNewPacket(Request, inReq)
+	// Create server ip address + port number
+	serverIpPort := gblEntry.IntfConfig.ServerIp + ":" +
+		strconv.Itoa(DHCP_SERVER_PORT)
+	logger.Info("DRA: Sending DHCP PACKET to server: " + serverIpPort)
+	serverAddr, err := net.ResolveUDPAddr("udp", serverIpPort)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: couldn't resolved udp addr",
+			" for and err is", err))
+		goto early_exit
+	}
+
+	outPacket = DhcpRelayAgentCreateNewPacket(Request, inReq)
+	//@TODO: if Giaddr is not 0.0.0.0 then only add the giaddr???
 	outPacket.SetGIAddr(net.ParseIP(gblEntry.IntfConfig.IpSubnet))
 	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
+
 	// Decode outpacket...
-	logger.Info("DRA: Decoding out pkt for server")
 	logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
 	logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
 	logger.Info("DRA: YIAddr is " + outPacket.GetYIAddr().String())
 	logger.Info("DRA: GIAddr is " + outPacket.GetGIAddr().String())
-	logger.Info(fmt.Sprintln("DRA: Cookie is ", outPacket.GetCookie()))
+
+	// Pad to minimum size of dhcp packet
 	outPacket.PadToMinSize()
+	// send out the packet...
 	_, err = ch.WriteToUDP(outPacket, serverAddr)
 	if err != nil {
 		logger.Info(fmt.Sprintln("DRA: WriteToUDP failed with error:", err))
-		return
+		goto early_exit
 	}
+
+	DhcpRelayAgentUpdateTime(hostServerStateEntry.ServerRequest)
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to server"))
+
+early_exit:
+	dhcprelayHostServerStateMap[hostServerStateKey] = hostServerStateEntry
 }
 
 func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 	logicalId int, inReq DhcpRelayAgentPacket, linuxInterface *net.Interface,
-	reqOptions DhcpRelayAgentOptions, mt MessageType) {
+	reqOptions DhcpRelayAgentOptions, mt MessageType, server net.IP) {
 
-	logger.Info("DRA: Creating Payload")
-	outPacket := DhcpRelayAgentCreateNewPacket(Reply, inReq)
+	var outPacket DhcpRelayAgentPacket
+	hostServerStateKey := inReq.GetCHAddr().String() + "_" + server.String()
+	// get host + server state entry for updating the state
+	hostServerStateEntry, ok := dhcprelayHostServerStateMap[hostServerStateKey]
+	if !ok {
+		logger.Warning("DRA: missed updating state during client " +
+			"request for " + inReq.GetCHAddr().String())
+	} else {
+		DhcpRelayAgentUpdateTime(hostServerStateEntry.ServerResponse)
+	}
+	outPacket = DhcpRelayAgentCreateNewPacket(Reply, inReq)
 	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
 	// subnet ip is the interface ip address copy the message...
 	// by creating new packet Decode outpacket...
-	logger.Info("DRA: Decoding out pkt for client")
 	logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
 	logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
 	logger.Info("DRA: YIAddr is " + outPacket.GetYIAddr().String())
 	logger.Info("DRA: GIAddr is " + outPacket.GetGIAddr().String())
-	logger.Info(fmt.Sprintln("DRA: Cookie is ", outPacket.GetCookie()))
+
+	// Pad to minimum size of dhcp packet
 	outPacket.PadToMinSize()
-	logger.Info("DRA: Creating go packet")
+
 	eth := &layers.Ethernet{
 		SrcMAC:       linuxInterface.HardwareAddr,
 		DstMAC:       outPacket.GetCHAddr(),
@@ -440,17 +462,19 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 		ComputeChecksums: true,
 	}
 	buffer := gopacket.NewSerializeBuffer()
-	gopacket.SerializeLayers(buffer, goOpts, eth, ipv4, udp, gopacket.Payload(outPacket))
+	gopacket.SerializeLayers(buffer, goOpts, eth, ipv4, udp,
+		gopacket.Payload(outPacket))
 	var pHandle *pcap.Handle
 	var err error
 	if gblEntry.PcapHandle == nil {
-		logger.Info(fmt.Sprintln("DRA: opening pcap handle for", linuxInterface.Name))
+		logger.Info(fmt.Sprintln("DRA: opening pcap handle for",
+			linuxInterface.Name))
 		pHandle, err = pcap.OpenLive(linuxInterface.Name, snapshot_len,
 			promiscuous, timeout)
 		if err != nil {
 			logger.Err(fmt.Sprintln("DRA: opening pcap for",
 				linuxInterface.Name, " failed with Error:", err))
-			return
+			goto early_exit
 		}
 		gblEntry.PcapHandle = pHandle
 		dhcprelayGblInfo[logicalId] = gblEntry
@@ -460,15 +484,25 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 
 	if gblEntry.PcapHandle == nil {
 		logger.Info("DRA: pcap handler is nul....")
-		return
+		goto early_exit
 	}
 	err = pHandle.WritePacketData(buffer.Bytes())
 	if err != nil {
-		logger.Info(fmt.Sprintln("DRA: WritePacketData failed with error:", err))
-		return
+		logger.Info(fmt.Sprintln("DRA: WritePacketData failed with error:",
+			err))
+		goto early_exit
+	}
+
+	if ok {
+		DhcpRelayAgentUpdateTime(hostServerStateEntry.ClientResponse)
 	}
 
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to client"))
+early_exit:
+	if ok {
+		dhcprelayHostServerStateMap[hostServerStateKey] =
+			hostServerStateEntry
+	}
 }
 
 func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessage,
@@ -487,9 +521,8 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 		logger.Info(fmt.Sprintln("DRA: logical id is", logicalId))
 		gblEntry, ok := dhcprelayGblInfo[logicalId]
 		if !ok {
-			logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index ????",
-				logicalId))
-			logger.Err("DRA: not sending packet.... :(")
+			logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index?",
+				logicalId, " dropping packet"))
 			return
 		}
 		linuxInterface, err := net.InterfaceByIndex(cm.IfIndex)
@@ -511,12 +544,13 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 		// packet...
 		linuxInterface, ok := dhcprelayReverseMap[inReq.GetCHAddr().String()]
 		if !ok {
-			logger.Err("DRA: rever map didn't cache linux interface for " +
-				inReq.GetCHAddr().String())
+			logger.Err("DRA: cache for linux interface for " +
+				inReq.GetCHAddr().String() + " not present")
 			return
 		}
-		// Updating reverse mapping with logical interface id
-		logicalId, ok := dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index]
+		// Getting logical ID from reverse mapping
+		logicalId, ok :=
+			dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index]
 		if !ok {
 			logger.Err(fmt.Sprintln("DRA: linux id", cm.IfIndex,
 				" has no mapping...drop packet"))
@@ -534,7 +568,7 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 		logger.Info(fmt.Sprintln("DRA: using cached linuxInterface",
 			linuxInterface))
 		DhcpRelayAgentSendPacketToDhcpClient(gblEntry, logicalId, inReq,
-			linuxInterface, reqOptions, mType)
+			linuxInterface, reqOptions, mType, cm.Src)
 		break
 	default:
 		logger.Info("DRA: any new message type")
@@ -560,14 +594,13 @@ func DhcpRelayAgentReceiveDhcpPkt(clientHandler *net.UDPConn) {
 			continue
 		}
 		logger.Info(fmt.Sprintln("DRA: Received Packet from ", srcAddr))
-		logger.Info(fmt.Sprintln("DRA: control message is ", cm))
+		logger.Info(fmt.Sprintln("DRA:", cm))
 		//Decode the packet...
 		inReq, reqOptions, mType := DhcpRelayAgentDecodeInPkt(buf, bytesRead)
 		if inReq == nil || reqOptions == nil {
 			logger.Warning("DRA: Couldn't decode dhcp packet...continue")
 			continue
 		}
-
 		// Based on Packet type decide whether to send packet to server
 		// or to client
 		DhcpRelayAgentSendPacket(clientHandler, cm, inReq, reqOptions,

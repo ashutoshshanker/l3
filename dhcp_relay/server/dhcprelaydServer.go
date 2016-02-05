@@ -15,7 +15,7 @@ import (
 	"strconv"
 	_ "strings"
 	"syscall"
-	_ "time"
+	"time"
 	"utils/ipcutils"
 )
 
@@ -25,29 +25,9 @@ func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 	return &DhcpRelayServiceHandler{}
 }
 
-func DhcpRelayAgentUpdateTime(entry *dhcprelayd.DhcpRelayHostDhcpState) {
-	//ctime := time.Now()
+func DhcpRelayAgentUpdateTime(entry string) {
+	entry = time.Now().String()
 }
-
-/*
-func DhcpRelayAgentUpdateStats(input string, key string) {
-		elem, ok := StateDebugInfo[key]
-		ctime := time.Now()
-		mac := strings.Split(key, "_")
-		if ok == false {
-			// first time entry is being populated....
-			insert := "(" + ctime.String() + "): Stats Started for Host: " + mac[0] +
-				" Server: " + mac[1]
-			var statString DhcpRelayAgentStateInfo
-			statString.stats = make([]string, 10)
-			statString.stats = append(statString.stats, insert)
-			StateDebugInfo[key] = statString
-		} else {
-			elem.stats = append(elem.stats, input)
-			StateDebugInfo[key] = elem
-		}
-}
-*/
 
 /*
  *  ConnectToClients:
