@@ -13,9 +13,10 @@ func (server *BFDServer) processSessionConfig(sessionConfig bfddCommonDefs.BfdSe
 	var sessionMgmt BfdSessionMgmt
 	sessionMgmt.DestIp = sessionConfig.DestIp
 	sessionMgmt.Protocol = sessionConfig.Protocol
-	if sessionConfig.Operation {
+	if sessionConfig.Operation == bfddCommonDefs.CREATE {
 		server.CreateSessionCh <- sessionMgmt
-	} else {
+	}
+	if sessionConfig.Operation == bfddCommonDefs.DELETE {
 		server.DeleteSessionCh <- sessionMgmt
 	}
 	return nil

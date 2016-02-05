@@ -87,7 +87,7 @@ type BFDServer struct {
 	IPIntfPropertyMap   map[string]IPIntfProperty
 	CreateSessionCh     chan BfdSessionMgmt
 	DeleteSessionCh     chan BfdSessionMgmt
-	sessionConfigCh     chan bfddCommonDefs.BfdSessionConfig
+	SessionConfigCh     chan bfddCommonDefs.BfdSessionConfig
 	bfddPubSocket       *nanomsg.PubSocket
 	bfdGlobal           BfdGlobal
 }
@@ -101,7 +101,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)
 	bfdServer.vlanPropertyMap = make(map[uint16]VlanProperty)
-	bfdServer.sessionConfigCh = make(chan bfddCommonDefs.BfdSessionConfig)
+	bfdServer.SessionConfigCh = make(chan bfddCommonDefs.BfdSessionConfig)
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]BfdInterface)
@@ -205,7 +205,7 @@ func (server *BFDServer) StartServer(paramFile string) {
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:
-		case sessionConfig := <-server.sessionConfigCh:
+		case sessionConfig := <-server.SessionConfigCh:
 			server.processSessionConfig(sessionConfig)
 			/*
 				case ribrxBuf := <-server.ribSubSocketCh:

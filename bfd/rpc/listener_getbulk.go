@@ -41,10 +41,10 @@ func (h *BFDHandler) GetBulkBfdGlobalState(fromIdx bfdd.Int, count bfdd.Int) (*b
 
 func (h *BFDHandler) convertBfdSessionProtocolsToString(Protocols []bool) string {
 	var protocols string
-	if Protocols[bfddCommonDefs.PROTOCOL_BGP] {
+	if Protocols[bfddCommonDefs.BGP] {
 		protocols += "bgp, "
 	}
-	if Protocols[bfddCommonDefs.PROTOCOL_OSPF] {
+	if Protocols[bfddCommonDefs.OSPF] {
 		protocols += "ospf, "
 	}
 	return protocols
