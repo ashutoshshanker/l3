@@ -5,97 +5,10 @@ import (
         "l3/ospf/config"
 )
 
-type LsaKey struct {
-        LSType          uint8 /* LS Type */
-        LSId            uint32 /* Link State Id */
-        AdvRouter       uint32 /* Avertising Router */
-}
-
-type LinkDetail struct {
-        LinkId          uint32 /* Link ID */
-        LinkData        uint32 /* Link Data */
-        LinkType        uint8 /* Link Type */
-        TOSMetric       uint8 /* # TOS Metrics */
-        LinkMetric      uint16 /* Metric */
-}
-
-/* LS Type 1 */
-type RouterLsa struct {
-        LSAge           uint16 /* LS Age */
-        Options         uint8 /* Options */
-        BitE            bool /* Bit E */
-        BitB            bool /* Bit B */
-        NumofLinks      uint16 /* NumOfLinks */
-        LinkDetails     []LinkDetail /* List of LinkDetails */
-}
-
-/* LS Type 2 */
-type NetworkLsa struct {
-        /* LS Age */
-        /* Options */
-        /* Network Mask */
-        /* List of attached Routers */
-}
-
-/* LS Type 3 */
-type Summary3Lsa struct {
-
-}
-
-/* LS Type 4 */
-type Summary4Lsa struct {
-
-}
-
-/* LS Type 5 */
-type ASExternalLsa struct {
-
-}
-
-type LSDatabase struct {
-        RouterLsaMap            map[LsaKey]RouterLsa
-        NetworkLsaMap           map[LsaKey]NetworkLsa
-        Summary3LsaMap          map[LsaKey]Summary3Lsa
-        Summary4LsaMap          map[LsaKey]Summary4Lsa
-        ASExternalLsaMap        map[LsaKey]ASExternalLsa
-}
-
-func (server *OSPFServer)initLSDatabase(areaId uint32) {
-        lsdbKey := LsdbKey {
-                AreaId:         areaId,
-        }
-        lsDbEnt, exist := server.AreaLsdb[lsdbKey]
-        if !exist {
-                lsDbEnt.RouterLsaMap = make(map[LsaKey]RouterLsa)
-                lsDbEnt.NetworkLsaMap = make(map[LsaKey]NetworkLsa)
-                lsDbEnt.Summary3LsaMap = make(map[LsaKey]Summary3Lsa)
-                lsDbEnt.Summary4LsaMap = make(map[LsaKey]Summary4Lsa)
-                lsDbEnt.ASExternalLsaMap = make(map[LsaKey]ASExternalLsa)
-                server.AreaLsdb[lsdbKey] = lsDbEnt
-        }
-}
-
-func (server *OSPFServer)StartLSDatabase() {
-        server.logger.Info("Initializing LSA Database")
-        for key, _ := range server.AreaConfMap {
-                areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
-                server.initLSDatabase(areaId)
-        }
-
-        go server.processLSDatabaseUpdates()
-        return
-}
-
-
-func (server *OSPFServer)StopLSDatabase() {
-
-}
-
 type LsdbUpdateMsg struct {
         MsgType         uint8
         AreaId          uint32
-        LsaKey          LsaKey
-        Msg             []byte
+        Data            []byte
 }
 
 type LSAChangeMsg struct {
@@ -115,13 +28,43 @@ const (
         VirtualLink     uint8 = 4
 )
 
-const (
-        RouterLSA               uint8 = 1
-        NetworkLSA              uint8 = 2
-        Summary3LSA             uint8 = 3
-        Summary4LSA             uint8 = 4
-        ASExternalLSA           uint8 = 5
-)
+
+func (server *OSPFServer)initLSDatabase(areaId uint32) {
+        lsdbKey := LsdbKey {
+                AreaId:         areaId,
+        }
+        lsDbEnt, exist := server.AreaLsdb[lsdbKey]
+        if !exist {
+                lsDbEnt.RouterLsaMap = make(map[LsaKey]RouterLsa)
+                lsDbEnt.NetworkLsaMap = make(map[LsaKey]NetworkLsa)
+                lsDbEnt.Summary3LsaMap = make(map[LsaKey]Summary3Lsa)
+                lsDbEnt.Summary4LsaMap = make(map[LsaKey]Summary4Lsa)
+                lsDbEnt.ASExternalLsaMap = make(map[LsaKey]ASExternalLsa)
+                server.AreaLsdb[lsdbKey] = lsDbEnt
+        }
+        selfOrigLsaEnt, exist := server.AreaSelfOrigLsa[lsdbKey]
+        if !exist {
+                selfOrigLsaEnt = make(map[LsaKey]bool)
+                server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
+        }
+}
+
+func (server *OSPFServer)StartLSDatabase() {
+        server.logger.Info("Initializing LSA Database")
+        for key, _ := range server.AreaConfMap {
+                areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
+                server.initLSDatabase(areaId)
+        }
+
+        go server.processLSDatabaseUpdates()
+        return
+}
+
+
+func (server *OSPFServer)StopLSDatabase() {
+
+}
+
 
 func (server *OSPFServer)generateRouterLSA(areaId uint32) {
         var linkDetails []LinkDetail = nil
@@ -145,7 +88,7 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
                                 linkDetail.LinkData = netmask
                                 linkDetail.LinkType = StubLink
                                 /* Todo: Need to handle IfMetricConf */
-                                linkDetail.TOSMetric = 0
+                                linkDetail.NumOfTOS = 0
                                 linkDetail.LinkMetric = 10
                         } else { // Transit Network
                                 server.logger.Info("Transit Network")
@@ -156,7 +99,7 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
                                 linkDetail.LinkData = convertAreaOrRouterIdUint32(ent.IfIpAddr.String())
                                 linkDetail.LinkType = TransitLink
                                 /* Todo: Need to handle IfMetricConf */
-                                linkDetail.TOSMetric = 0
+                                linkDetail.NumOfTOS = 0
                                 linkDetail.LinkMetric = 10
                         }
                 } else if ent.IfType == config.PointToPoint {
@@ -184,24 +127,90 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
                 AreaId:         areaId,
         }
         lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
 
         if numOfLinks == 0 {
                 delete(lsDbEnt.RouterLsaMap, lsaKey)
+                delete(selfOrigLsaEnt, lsaKey)
+                server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
                 server.AreaLsdb[lsdbKey] = lsDbEnt
                 return
         }
-        ent, _ := lsDbEnt.RouterLsaMap[lsaKey]
-        ent.LSAge = uint16(LSAge)
-        ent.Options = Options
+        ent, exist := lsDbEnt.RouterLsaMap[lsaKey]
+        ent.LsaMd.LSAge = 0
+        ent.LsaMd.Options = Options
+        if !exist {
+                ent.LsaMd.LSSequenceNum = InitialSequenceNumber
+        } else {
+                ent.LsaMd.LSSequenceNum = ent.LsaMd.LSSequenceNum + 1
+        }
+        ent.LsaMd.LSChecksum = 0
+        // Length of Per Link Details = 12 bytes
+        // Length of Router LSA Metadata (BitE, BitB, NumofLinks)  = 4 bytes
+        ent.LsaMd.LSLen = uint16(OSPF_LSA_HEADER_LEN + 4 + (12 * numOfLinks))
         ent.BitE = BitE
         ent.BitB = BitB
-        ent.NumofLinks = uint16(numOfLinks)
+        ent.NumOfLinks = uint16(numOfLinks)
         ent.LinkDetails = make([]LinkDetail, numOfLinks)
         copy(ent.LinkDetails, linkDetails[0:])
         server.logger.Info(fmt.Sprintln("Hello... LinkDetails:", ent.LinkDetails))
+        selfOrigLsaEnt[lsaKey] = true
+        server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
+        server.logger.Info(fmt.Sprintln("Self Originated Router LSA Key:", server.AreaSelfOrigLsa[lsdbKey]))
+        LsaEnc := encodeRouterLsa(ent, lsaKey)
+        ent.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc)
+        ent.LsaMd.LSAge = uint16(LSAge)
         lsDbEnt.RouterLsaMap[lsaKey] = ent
         server.AreaLsdb[lsdbKey] = lsDbEnt
         return
+}
+
+func (server *OSPFServer)processNewRecvdRouterLsa(data []byte, areaId uint32) bool {
+        lsakey := NewLsaKey()
+        routerLsa := NewRouterLsa()
+        decodeRouterLsa(data, routerLsa, lsakey)
+        //Check Checksum
+        //If there is already existing entry Verify the seq num
+        //Handle LsaAge
+        //Add entry in LSADatabase 
+        return true
+}
+
+func (server *OSPFServer)processNewRecvdNetworkLsa(data []byte, areaId uint32) bool {
+
+        return true
+}
+
+func (server *OSPFServer)processNewRecvdSummary3Lsa(data []byte, areaId uint32) bool {
+
+        return true
+}
+
+func (server *OSPFServer)processNewRecvdSummary4Lsa(data []byte, areaId uint32) bool {
+
+        return true
+}
+
+func (server *OSPFServer)processNewRecvdASExternalLsa(data []byte, areaId uint32) bool {
+
+        return true
+}
+
+func (server *OSPFServer)processNewRecvdLsa(data []byte, areaId uint32) bool {
+        LSType := uint8(data[3])
+        if LSType == RouterLSA {
+                return server.processNewRecvdRouterLsa(data, areaId)
+        } else if LSType == NetworkLSA {
+                return server.processNewRecvdNetworkLsa(data, areaId)
+        } else if LSType == Summary3LSA {
+                return server.processNewRecvdSummary3Lsa(data, areaId)
+        } else if LSType == Summary4LSA {
+                return server.processNewRecvdSummary4Lsa(data, areaId)
+        } else if LSType == ASExternalLSA {
+                return server.processNewRecvdASExternalLsa(data, areaId)
+        } else {
+                return false
+        }
 }
 
 func (server *OSPFServer)processLSDatabaseUpdates() {
@@ -210,6 +219,9 @@ func (server *OSPFServer)processLSDatabaseUpdates() {
                 case msg := <-server.LsdbUpdateCh:
                         if msg.MsgType == LsdbAdd {
                                 server.logger.Info("Adding LS in the Lsdb")
+                                server.logger.Info("Received New LSA")
+                                ret := server.processNewRecvdLsa(msg.Data, msg.AreaId)
+                                server.LsaUpdateRetCodeCh <- ret
                         } else if msg.MsgType == LsdbDel {
                                 server.logger.Info("Deleting LS in the Lsdb")
                         } else if msg.MsgType == LsdbUpdate {
@@ -222,6 +234,8 @@ func (server *OSPFServer)processLSDatabaseUpdates() {
                 case msg := <-server.NetworkDRChangeCh:
                         server.logger.Info(fmt.Sprintf("Network DR change msg", msg))
                         // Create a new router LSA
+                        server.generateRouterLSA(msg.areaId)
+                        server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
                 case msg := <-server.CreateNetworkLSACh:
                         server.logger.Info(fmt.Sprintf("Create Network LSA msg", msg))
                         // Flush the old Network LSA
