@@ -73,4 +73,6 @@ service BFDDServices {
 	bool DeleteBfdIntfConfig(1: BfdIntfConfig config);
 
 	BfdSessionStateGetInfo GetBulkBfdSessionState(1: int fromIndex, 2: int count);
+
+	bool ExecuteBfdCommand(1: string IpAddr, 2: int Cmd, 3: int Owner)
 }
