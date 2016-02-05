@@ -96,6 +96,9 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	gblEntry.IntfConfig.ServerIp = config.ServerIp
 	gblEntry.IntfConfig.IfIndex = config.IfIndex
 	dhcprelayGblInfo[ifNum] = gblEntry
+
+	DhcpRelayAgentInitIntfServerState(config.IfIndex, config.ServerIp, ifNum)
+
 	if dhcprelayEnable == false {
 		logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
 	}

@@ -632,8 +632,9 @@ func DhcpRelayAgentCreateClientServerConn() {
 	}
 	dhcprelayReverseMap = make(map[string]*net.Interface, 30)
 	// State information
-	dhcprelayHostServerStateMap = make(map[string]dhcprelayd.DhcpRelayHostDhcpState,
-		150)
+	dhcprelayHostServerStateMap = make(map[string]dhcprelayd.DhcpRelayHostDhcpState, 150)
+
 	go DhcpRelayAgentReceiveDhcpPkt(dhcprelayClientHandler)
+
 	logger.Info("DRA: Client Connection opened successfully")
 }

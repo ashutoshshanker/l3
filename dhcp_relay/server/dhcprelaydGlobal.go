@@ -75,6 +75,12 @@ var (
 
 	// map key would be MACADDR_SERVERIP
 	dhcprelayHostServerStateMap map[string]dhcprelayd.DhcpRelayHostDhcpState
+
+	// map key is interface id
+	dhcprelayIntfStateMap map[int]dhcprelayd.DhcpRelayIntfState
+
+	// map key is interface id + server
+	dhcprelayIntfServerStateMap map[string]dhcprelayd.DhcpRelayIntfServerState
 )
 
 // Dhcp OpCodes Types

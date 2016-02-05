@@ -139,7 +139,26 @@ func InitDhcpRelayPortPktHandler() error {
 	return nil
 }
 
-//func DhcpRelayAgentInitGblHandling(ifName string, ifNum int) {
+func DhcpRelayAgentInitIntfServerState(IntfId string, serverIp string, id int) {
+	intfServerEntry := dhcprelayIntfServerStateMap[IntfId+"_"+serverIp]
+	intfServerEntry.IntfId = int32(id)
+	intfServerEntry.ServerIp = serverIp
+	intfServerEntry.Request = 0
+	intfServerEntry.Responses = 0
+	dhcprelayIntfServerStateMap[IntfId] = intfServerEntry
+}
+
+func DhcpRelayAgentInitIntfState(IntfId int) {
+	intfEntry := dhcprelayIntfStateMap[IntfId]
+	intfEntry.IntfId = int32(IntfId)
+	intfEntry.TotalDrops = 0
+	intfEntry.TotalDhcpClientRx = 0
+	intfEntry.TotalDhcpClientTx = 0
+	intfEntry.TotalDhcpServerRx = 0
+	intfEntry.TotalDhcpServerTx = 0
+	dhcprelayIntfStateMap[IntfId] = intfEntry
+}
+
 func DhcpRelayAgentInitGblHandling(ifNum int) {
 	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(ifNum))
 	// Created a global Entry for Interface
@@ -151,7 +170,6 @@ func DhcpRelayAgentInitGblHandling(ifNum int) {
 	gblEntry.IntfConfig.AgentSubType = 0
 	gblEntry.IntfConfig.Enable = false
 	dhcprelayGblInfo[ifNum] = gblEntry
-
 }
 
 func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr string) error {
