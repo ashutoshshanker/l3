@@ -140,12 +140,14 @@ func InitDhcpRelayPortPktHandler() error {
 }
 
 func DhcpRelayAgentInitIntfServerState(IntfId string, serverIp string, id int) {
-	intfServerEntry := dhcprelayIntfServerStateMap[IntfId+"_"+serverIp]
+	key := IntfId + "_" + serverIp
+	intfServerEntry := dhcprelayIntfServerStateMap[key]
 	intfServerEntry.IntfId = int32(id)
 	intfServerEntry.ServerIp = serverIp
 	intfServerEntry.Request = 0
 	intfServerEntry.Responses = 0
 	dhcprelayIntfServerStateMap[IntfId] = intfServerEntry
+	dhcprelayIntfServerStateSlice = append(dhcprelayIntfServerStateSlice, key)
 }
 
 func DhcpRelayAgentInitIntfState(IntfId int) {
@@ -157,6 +159,7 @@ func DhcpRelayAgentInitIntfState(IntfId int) {
 	intfEntry.TotalDhcpServerRx = 0
 	intfEntry.TotalDhcpServerTx = 0
 	dhcprelayIntfStateMap[IntfId] = intfEntry
+	dhcprelayIntfStateSlice = append(dhcprelayIntfStateSlice, IntfId)
 }
 
 func DhcpRelayAgentInitGblHandling(ifNum int) {

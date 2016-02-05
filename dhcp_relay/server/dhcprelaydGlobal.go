@@ -74,13 +74,15 @@ var (
 	dhcprelayReverseMap map[string]*net.Interface
 
 	// map key would be MACADDR_SERVERIP
-	dhcprelayHostServerStateMap map[string]dhcprelayd.DhcpRelayHostDhcpState
+	dhcprelayHostServerStateMap   map[string]dhcprelayd.DhcpRelayHostDhcpState
+	dhcprelayHostServerStateSlice []string
 
 	// map key is interface id
-	dhcprelayIntfStateMap map[int]dhcprelayd.DhcpRelayIntfState
-
+	dhcprelayIntfStateMap   map[int]dhcprelayd.DhcpRelayIntfState
+	dhcprelayIntfStateSlice []int
 	// map key is interface id + server
-	dhcprelayIntfServerStateMap map[string]dhcprelayd.DhcpRelayIntfServerState
+	dhcprelayIntfServerStateMap   map[string]dhcprelayd.DhcpRelayIntfServerState
+	dhcprelayIntfServerStateSlice []string
 )
 
 // Dhcp OpCodes Types

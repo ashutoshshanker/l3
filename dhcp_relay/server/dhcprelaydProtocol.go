@@ -363,6 +363,8 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 		if inReq.GetYIAddr().String() != DHCP_NO_IP {
 			hostServerStateEntry.AcceptedIp = inReq.GetYIAddr().String()
 		}
+		dhcprelayHostServerStateSlice = append(dhcprelayHostServerStateSlice,
+			hostServerStateKey)
 	}
 	DhcpRelayAgentUpdateTime(hostServerStateEntry.ClientRequest)
 
@@ -669,7 +671,7 @@ func DhcpRelayAgentCreateClientServerConn() {
 	dhcprelayReverseMap = make(map[string]*net.Interface, 30)
 	// State information
 	dhcprelayHostServerStateMap = make(map[string]dhcprelayd.DhcpRelayHostDhcpState, 150)
-
+	dhcprelayHostServerStateSlice = []string{}
 	go DhcpRelayAgentReceiveDhcpPkt(dhcprelayClientHandler)
 
 	logger.Info("DRA: Client Connection opened successfully")

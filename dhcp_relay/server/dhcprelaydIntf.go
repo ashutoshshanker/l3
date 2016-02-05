@@ -182,6 +182,9 @@ func DhcpRelayInitPortParams() error {
 	// Interface State Maps
 	dhcprelayIntfStateMap = make(map[int]dhcprelayd.DhcpRelayIntfState, 50)
 	dhcprelayIntfServerStateMap = make(map[string]dhcprelayd.DhcpRelayIntfServerState, 50)
+	// Interface State Slice
+	dhcprelayIntfStateSlice = []int{}
+	dhcprelayIntfServerStateSlice = []string{}
 	// Allocate memory for Linux ID ---> Logical Id mapping
 	dhcprelayLogicalIntfId2LinuxIntId = make(map[int]int, 10)
 	for {
