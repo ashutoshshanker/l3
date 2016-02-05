@@ -203,14 +203,29 @@ func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes, evt int) {
 
 func delLinuxRoute(route RouteInfoRecord) {
 	logger.Println("delLinuxRoute")
+	if route.protocol == ribdCommonDefs.CONNECTED {
+		logger.Println("This is a connected route, do nothing")
+		return
+	}
+	mask:=net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
+	maskedIP:=route.destNetIp.Mask(mask)
+	logger.Println("mask = ", mask, " destip:= ", route.destNetIp, " maskedIP ",maskedIP)
 		dst := &net.IPNet{
-		IP:   route.destNetIp,
-		Mask: net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
+		IP:   maskedIP,//route.destNetIp,
+		Mask: mask,//net.CIDRMask(prefixLen, 32),//net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
 	    }
 		ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
-	    link, err := netlink.LinkByIndex(int(ifId))
+        logger.Println("IfId = ", ifId)
+		intfEntry,ok:=IntfIdNameMap[ifId]
+		if !ok {
+			logger.Println("IfName not updated for ifId ", ifId)
+			return
+		}
+		ifName := intfEntry.name
+		logger.Println("ifName = ", ifName, " for ifId ", ifId)
+	    link, err := netlink.LinkByName(ifName)
 	    if err != nil {
-			logger.Println("LinkByIndex call failed with error ", err, "for link ", ifId)
+			logger.Println("LinkByIndex call failed with error ", err, "for linkName ", ifName)
 			return
   	    }
 
@@ -224,18 +239,34 @@ func delLinuxRoute(route RouteInfoRecord) {
 
 func addLinuxRoute(route RouteInfoRecord) {
 	logger.Println("addLinuxRoute")
+	if route.protocol == ribdCommonDefs.CONNECTED {
+		logger.Println("This is a connected route, do nothing")
+		return
+	}
+	mask:=net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
+	maskedIP:=route.destNetIp.Mask(mask)
+	logger.Println("mask = ", mask, " destip:= ", route.destNetIp, " maskedIP ",maskedIP)
 		dst := &net.IPNet{
-		IP:   route.destNetIp,
-		Mask: net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
+		IP:   maskedIP,//route.destNetIp,
+		Mask: mask,//net.CIDRMask(prefixLen, 32),//net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
 	    }
 		ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
-	    link, err := netlink.LinkByIndex(int(ifId))
+        logger.Println("IfId = ", ifId)
+		intfEntry,ok:=IntfIdNameMap[ifId]
+		if !ok {
+			logger.Println("IfName not updated for ifId ", ifId)
+			return
+		}
+		ifName := intfEntry.name
+		logger.Println("ifName = ", ifName, " for ifId ", ifId)
+	    link, err := netlink.LinkByName(ifName)
 	    if err != nil {
-			logger.Println("LinkByIndex call failed with error ", err, "for link ", ifId)
+			logger.Println("LinkByIndex call failed with error ", err, "for linkName ", ifName)
 			return
   	    }
 
-	    lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst}
+        logger.Println("adding linux route for dst.ip= ", dst.IP.String(), " mask: ", dst.Mask.String(), "Gw: ", route.nextHopIp)
+	    lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst, Gw:route.nextHopIp}
         err = netlink.RouteAdd(&lxroute)
 		if err != nil {
 			logger.Println("Route add call failed with error ", err)

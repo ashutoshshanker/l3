@@ -60,6 +60,7 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	}
 	logger.Println("prefixLen= ", prefixLen)
 	var newRoute string
+	found := false
 	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
 //	newRoute := string(ipPrefix[:])
 	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
@@ -73,15 +74,32 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 		logger.Println("routeList nil")
 		tempPolicy.routeList = make([]string, 0)
 	}
-    tempPolicy.routeList = append(tempPolicy.routeList, newRoute)
 	logger.Println("routelist len= ", len(tempPolicy.routeList)," prefix list so far")
 	for i:=0;i<len(tempPolicy.routeList);i++ {
 		logger.Println(tempPolicy.routeList[i])
+		if tempPolicy.routeList[i] == newRoute {
+			logger.Println(newRoute, " already is a part of ", policy.name, "'s routelist")
+			found = true
+		}
+	}
+	if !found {
+       tempPolicy.routeList = append(tempPolicy.routeList, newRoute)
+	}
+	found=false
+	logger.Println("routeInfoList details")
+	for i:=0;i<len(tempPolicy.routeInfoList);i++ {
+		logger.Println("IP: ",tempPolicy.routeInfoList[i].Ipaddr, ":", tempPolicy.routeInfoList[i].Mask, " routeType: ", tempPolicy.routeInfoList[i].Prototype)
+		if tempPolicy.routeInfoList[i].Ipaddr==route.Ipaddr && tempPolicy.routeInfoList[i].Mask == route.Mask && tempPolicy.routeInfoList[i].Prototype == route.Prototype {
+			logger.Println("route already is a part of ", policy.name, "'s routeInfolist")
+			found = true
+		}
 	}
 	if tempPolicy.routeInfoList == nil {
 		tempPolicy.routeInfoList = make([]ribd.Routes, 0)
 	}
-    tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
+	if found == false {
+       tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
+	}
 	PolicyDB.Set(patriciaDB.Prefix(policy.name), tempPolicy)
 }
 func deletePolicyRouteMap(route ribd.Routes, policy Policy) {
