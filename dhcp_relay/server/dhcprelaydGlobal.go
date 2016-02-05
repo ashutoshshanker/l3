@@ -22,14 +22,6 @@ type DhcpRelayAgentOptions map[DhcpOptionCode][]byte
 type DhcpRelayAgentPacket []byte
 
 /*
- * DhcpRelayAgentStateInfo will maintain state from when a packet was recieved
- * until it is out
- */
-type DhcpRelayAgentStateInfo struct {
-	stats []string
-}
-
-/*
  * Global DRA Data Structure:
  *	    IntfConfig Info
  *	    PCAP Handler specific to Interface
@@ -58,26 +50,31 @@ type DhcpRelayServiceHandler struct {
  * Global Variable
  */
 var (
-	// PadddingToMinimumSize pads a packet so that when sent over UDP,
-	// the entire packet, is 300 bytes (which is BOOTP/DHCP min)
-	dhcprelayPadder                   [DHCP_PACKET_MIN_SIZE]byte
 	asicdClient                       AsicdClient
 	asicdSubSocket                    *nanomsg.SubSocket
 	snapshot_len                      int32         = 1024
 	promiscuous                       bool          = false
 	timeout                           time.Duration = 30 * time.Second
 	dhcprelayLogicalIntfId2LinuxIntId map[int]int   // Linux Intf Id ---> Logical ID
+	dhcprelayEnable                   bool
+	dhcprelayClientConn               *ipv4.PacketConn
+	dhcprelayServerConn               *ipv4.PacketConn
+	logger                            *syslog.Writer
+
 	// map key would be if_name
 	// When we receive a udp packet... we will get interface id and that can
 	// be used to collect the global info...
-	dhcprelayGblInfo    map[int]DhcpRelayAgentGlobalInfo
-	dhcprelayEnable     bool
-	StateDebugInfo      map[string]DhcpRelayAgentStateInfo
-	dhcprelayClientConn *ipv4.PacketConn
-	dhcprelayServerConn *ipv4.PacketConn
-	logger              *syslog.Writer
+	dhcprelayGblInfo map[int]DhcpRelayAgentGlobalInfo
+
+	// PadddingToMinimumSize pads a packet so that when sent over UDP,
+	// the entire packet, is 300 bytes (which is BOOTP/DHCP min)
+	dhcprelayPadder [DHCP_PACKET_MIN_SIZE]byte
+
 	//map for mac_address to interface id for sending unicast packet
 	dhcprelayReverseMap map[string]*net.Interface
+
+	// map key would be MACADDR_SERVERIP
+	dhcprelayHostServerStateMap map[string]dhcprelayd.DhcpRelayHostDhcpState
 )
 
 // Dhcp OpCodes Types

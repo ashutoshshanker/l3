@@ -13,9 +13,9 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
+	_ "strings"
 	"syscall"
-	"time"
+	_ "time"
 	"utils/ipcutils"
 )
 
@@ -25,23 +25,29 @@ func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 	return &DhcpRelayServiceHandler{}
 }
 
-func DhcpRelayAgentUpdateStats(input string, key string) {
-	elem, ok := StateDebugInfo[key]
-	ctime := time.Now()
-	mac := strings.Split(key, "_")
-	if ok == false {
-		// first time entry is being populated....
-		insert := "(" + ctime.String() + "): Stats Started for Host: " + mac[0] +
-			" Server: " + mac[1]
-		var statString DhcpRelayAgentStateInfo
-		statString.stats = make([]string, 10)
-		statString.stats = append(statString.stats, insert)
-		StateDebugInfo[key] = statString
-	} else {
-		elem.stats = append(elem.stats, input)
-		StateDebugInfo[key] = elem
-	}
+func DhcpRelayAgentUpdateTime(entry *dhcprelayd.DhcpRelayHostDhcpState) {
+	//ctime := time.Now()
 }
+
+/*
+func DhcpRelayAgentUpdateStats(input string, key string) {
+		elem, ok := StateDebugInfo[key]
+		ctime := time.Now()
+		mac := strings.Split(key, "_")
+		if ok == false {
+			// first time entry is being populated....
+			insert := "(" + ctime.String() + "): Stats Started for Host: " + mac[0] +
+				" Server: " + mac[1]
+			var statString DhcpRelayAgentStateInfo
+			statString.stats = make([]string, 10)
+			statString.stats = append(statString.stats, insert)
+			StateDebugInfo[key] = statString
+		} else {
+			elem.stats = append(elem.stats, input)
+			StateDebugInfo[key] = elem
+		}
+}
+*/
 
 /*
  *  ConnectToClients:

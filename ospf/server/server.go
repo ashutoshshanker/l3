@@ -35,23 +35,25 @@ type LsdbKey struct {
 }
 
 type OSPFServer struct {
-	logger            *syslog.Writer
-	ribdClient        RibdClient
-	asicdClient       AsicdClient
-	portPropertyMap   map[int32]PortProperty
-	vlanPropertyMap   map[uint16]VlanProperty
-	IPIntfPropertyMap map[string]IPIntfProperty
-	ospfGlobalConf    GlobalConf
-	GlobalConfigCh    chan config.GlobalConf
-	AreaConfigCh      chan config.AreaConf
-	IntfConfigCh      chan config.InterfaceConf
-        AreaLsdb          map[LsdbKey]LSDatabase
-        LsdbUpdateCh      chan LsdbUpdateMsg
-        IntfStateChangeCh chan LSAChangeMsg
-        NetworkDRChangeCh chan LSAChangeMsg
-        FlushNetworkLSACh chan LSAChangeMsg
-        CreateNetworkLSACh chan LSAChangeMsg
-        AdjOKEvtCh        chan AdjOKEvtMsg
+	logger                  *syslog.Writer
+	ribdClient              RibdClient
+	asicdClient             AsicdClient
+	portPropertyMap         map[int32]PortProperty
+	vlanPropertyMap         map[uint16]VlanProperty
+	IPIntfPropertyMap       map[string]IPIntfProperty
+	ospfGlobalConf          GlobalConf
+	GlobalConfigCh          chan config.GlobalConf
+	AreaConfigCh            chan config.AreaConf
+	IntfConfigCh            chan config.InterfaceConf
+        AreaLsdb                map[LsdbKey]LSDatabase
+        AreaSelfOrigLsa         map[LsdbKey]SelfOrigLsa
+        LsdbUpdateCh            chan LsdbUpdateMsg
+        LsaUpdateRetCodeCh      chan bool
+        IntfStateChangeCh       chan LSAChangeMsg
+        NetworkDRChangeCh       chan LSAChangeMsg
+        FlushNetworkLSACh       chan LSAChangeMsg
+        CreateNetworkLSACh      chan LSAChangeMsg
+        AdjOKEvtCh              chan AdjOKEvtMsg
 
 	/*
 	   connRoutesTimer         *time.Timer
@@ -106,11 +108,13 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.IntfTxMap = make(map[IntfConfKey]IntfTxHandle)
 	ospfServer.IntfRxMap = make(map[IntfConfKey]IntfRxHandle)
         ospfServer.AreaLsdb = make(map[LsdbKey]LSDatabase)
+        ospfServer.AreaSelfOrigLsa = make(map[LsdbKey]SelfOrigLsa)
         ospfServer.IntfStateChangeCh = make(chan LSAChangeMsg)
         ospfServer.NetworkDRChangeCh = make(chan LSAChangeMsg)
         ospfServer.CreateNetworkLSACh = make(chan LSAChangeMsg)
         ospfServer.FlushNetworkLSACh = make(chan LSAChangeMsg)
         ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
+        ospfServer.LsaUpdateRetCodeCh = make(chan bool)
         ospfServer.AdjOKEvtCh = make(chan AdjOKEvtMsg)
 	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
