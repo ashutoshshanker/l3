@@ -75,6 +75,12 @@ var (
 
 	// map key would be MACADDR_SERVERIP
 	dhcprelayHostServerStateMap map[string]dhcprelayd.DhcpRelayHostDhcpState
+
+	// map key is interface id
+	dhcprelayIntfStateMap map[int]dhcprelayd.DhcpRelayIntfState
+
+	// map key is interface id + server
+	dhcprelayIntfServerStateMap map[string]dhcprelayd.DhcpRelayIntfServerState
 )
 
 // Dhcp OpCodes Types
@@ -90,6 +96,7 @@ const DHCP_PACKET_MIN_BYTES = 240
 const DHCP_SERVER_PORT = 67
 const DHCP_CLIENT_PORT = 68
 const DHCP_BROADCAST_IP = "255.255.255.255"
+const DHCP_NO_IP = "0.0.0.0"
 
 // DHCP Client/Server Message Type 53
 const (
