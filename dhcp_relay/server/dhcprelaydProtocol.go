@@ -520,6 +520,9 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 func DhcpRelayAgentReceiveDhcpPkt(clientHandler *net.UDPConn) {
 	var buf []byte = make([]byte, 1500)
 	for {
+		if dhcprelayEnable == false {
+			continue
+		}
 		bytesRead, cm, srcAddr, err := dhcprelayClientConn.ReadFrom(buf)
 		if err != nil {
 			logger.Err("DRA: reading buffer failed")
