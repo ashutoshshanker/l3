@@ -351,6 +351,8 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 	mt MessageType, intfStateEntry *dhcprelayd.DhcpRelayIntfState) {
 
 	var outPacket DhcpRelayAgentPacket
+	var intfStateServerEntry dhcprelayd.DhcpRelayIntfServerState
+	var intfkey string
 	hostServerStateKey := inReq.GetCHAddr().String() + "_" +
 		gblEntry.IntfConfig.ServerIp
 	// get host + server state entry for updating the state
@@ -402,7 +404,10 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 		intfStateEntry.TotalDrops++
 		goto early_exit
 	}
-
+	intfkey = strconv.Itoa(int(intfStateEntry.IntfId)) + "_" + gblEntry.IntfConfig.ServerIp
+	intfStateServerEntry = dhcprelayIntfServerStateMap[intfkey]
+	intfStateServerEntry.Request++
+	dhcprelayIntfServerStateMap[intfkey] = intfStateServerEntry
 	intfStateEntry.TotalDhcpServerTx++
 	DhcpRelayAgentUpdateTime(hostServerStateEntry.ServerRequest)
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to server"))
@@ -417,6 +422,8 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 	intfStateEntry *dhcprelayd.DhcpRelayIntfState) {
 
 	var outPacket DhcpRelayAgentPacket
+	var intfStateServerEntry dhcprelayd.DhcpRelayIntfServerState
+	var intfkey string
 	hostServerStateKey := inReq.GetCHAddr().String() + "_" + server.String()
 	// get host + server state entry for updating the state
 	hostServerStateEntry, ok := dhcprelayHostServerStateMap[hostServerStateKey]
@@ -503,6 +510,10 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 	if ok {
 		DhcpRelayAgentUpdateTime(hostServerStateEntry.ClientResponse)
 	}
+	intfkey = strconv.Itoa(int(intfStateEntry.IntfId)) + "_" + server.String()
+	intfStateServerEntry = dhcprelayIntfServerStateMap[intfkey]
+	intfStateServerEntry.Responses++
+	dhcprelayIntfServerStateMap[intfkey] = intfStateServerEntry
 	intfStateEntry.TotalDhcpClientTx++
 
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to client"))
