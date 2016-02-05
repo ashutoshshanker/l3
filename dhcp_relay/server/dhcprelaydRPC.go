@@ -132,3 +132,19 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 	dhcprelayGblInfo[ifNum] = gblEntry
 	return true, nil
 }
+
+func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayHostDhcpState(fromIndex dhcprelayd.Int,
+	count dhcprelayd.Int) (hostEntry *dhcprelayd.DhcpRelayHostDhcpStateGetInfo, err error) {
+
+	return hostEntry, err
+}
+
+func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayIntfState(fromIndex dhcprelayd.Int,
+	count dhcprelayd.Int) (intfEntry *dhcprelayd.DhcpRelayIntfStateGetInfo, err error) {
+	return intfEntry, err
+}
+
+func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayIntfServerState(fromIndex dhcprelayd.Int,
+	count dhcprelayd.Int) (intfServerEntry *dhcprelayd.DhcpRelayIntfServerStateGetInfo, err error) {
+	return intfServerEntry, err
+}
