@@ -6,7 +6,7 @@ const (
       STATIC     = 1
       OSPF       = 89
       BGP        = 8
-	  PolicyConditionTypePrefixMatch = 0
+	  PolicyConditionTypeDstIpPrefixMatch = 0
 	  PolicyConditionTypeProtocolMatch = 1
 	  PolicyActionTypeRouteDisposition = 0
 	  PolicyActionTypeRouteRedistribute = 1
