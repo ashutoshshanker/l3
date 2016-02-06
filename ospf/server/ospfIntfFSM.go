@@ -144,8 +144,9 @@ func (server *OSPFServer)processNbrFullStateMsg(msg NbrFullStateMsg,
             nbrEntry.FullState = msg.FullState
             ent.NeighborMap[nbrKey] = nbrEntry
             server.IntfConfMap[key] = ent
-            lsaMsg := LSAChangeMsg {
+            lsaMsg := NetworkLSAChangeMsg {
                 areaId: areaId,
+                intfKey: key,
             }
             server.CreateNetworkLSACh <- lsaMsg
         }
@@ -357,6 +358,11 @@ func (server *OSPFServer)createAndSendEventsIntfFSM(key IntfConfKey,
                 areaId: areaId,
         }
 
+        msg1 := NetworkLSAChangeMsg {
+                areaId: areaId,
+                intfKey: key,
+        }
+
         server.logger.Info("1. Sending msg for router LSA generation")
         server.IntfStateChangeCh <- msg
 
@@ -364,11 +370,11 @@ func (server *OSPFServer)createAndSendEventsIntfFSM(key IntfConfKey,
                 if newState == config.DesignatedRouter {
                         // Construct Network LSA
                         server.logger.Info("1. Sending msg for Network LSA generation")
-                        server.CreateNetworkLSACh <- msg
+                        server.CreateNetworkLSACh <- msg1
                 } else if oldState == config.DesignatedRouter {
                         // Flush Network LSA
                         server.logger.Info("2. Sending msg for Network LSA generation")
-                        server.FlushNetworkLSACh <- msg
+                        server.FlushNetworkLSACh <- msg1
                 }
                 server.logger.Info(fmt.Sprintln("oldState", oldState, " != newState", newState))
         }

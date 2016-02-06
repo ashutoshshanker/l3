@@ -1,9 +1,10 @@
 package server
 
 import (
-    "fmt"
-    "strconv"
-    "net"
+        "fmt"
+        "strconv"
+        "net"
+        "encoding/binary"
 )
 
 const big = 0xFFFFFF
@@ -163,3 +164,56 @@ func convertUint32ToIPv4(val uint32) (string) {
         return str
 }
 
+const (
+        MODX int = 4102
+        FLETCHER_CHECKSUM_VALIDATE uint16 = 0xffff
+)
+
+func min(x int, y int) int {
+        if x < y {
+                return x
+        }
+        return y
+}
+
+func computeFletcherChecksum(data []byte, offset uint16) (uint16) {
+        checksum := 0
+        if offset != FLETCHER_CHECKSUM_VALIDATE {
+                binary.BigEndian.PutUint16(data[offset:], 0)
+        }
+        fmt.Println(data)
+        left := len(data)
+        c0 := 0
+        c1 := 0
+        j := 0
+        for left != 0 {
+                pLen := min(left, MODX)
+                fmt.Println("Hello:", pLen, left)
+                for i := 0; i < pLen; i++ {
+                        c0 = c0 + int(data[j])
+                        j = j + 1
+                        c1 = c1 + c0
+                }
+                c0 = c0 % 255
+                c1 = c1 % 255
+                left = left - pLen
+        }
+        fmt.Println(c0, c1, len(data), offset)
+        x := int((len(data) - int(offset) - 1) * c0 - c1) % 255
+        fmt.Println("x:", x)
+        if x <= 0 {
+                x = x + 255
+        }
+        y := 510 - c0 - x
+        if y > 255 {
+                y = y - 255
+        }
+
+        if offset == FLETCHER_CHECKSUM_VALIDATE {
+                checksum = (c1 << 8) + c0
+        } else {
+                checksum = (x << 8) | (y & 0xff)
+        }
+
+        return uint16(checksum)
+}

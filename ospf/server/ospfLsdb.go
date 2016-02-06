@@ -15,6 +15,11 @@ type LSAChangeMsg struct {
         areaId          uint32
 }
 
+type NetworkLSAChangeMsg struct {
+        areaId          uint32
+        intfKey         IntfConfKey
+}
+
 const (
         LsdbAdd         uint8 = 0
         LsdbDel         uint8 = 1
@@ -63,6 +68,110 @@ func (server *OSPFServer)StartLSDatabase() {
 
 func (server *OSPFServer)StopLSDatabase() {
 
+}
+
+func (server *OSPFServer)flushNetworkLSA(areaId uint32, key IntfConfKey) {
+        ent := server.IntfConfMap[key]
+        AreaId := convertIPv4ToUint32(ent.IfAreaId)
+        if areaId != AreaId {
+                return
+        }
+        if ent.IfFSMState <= config.Waiting {
+                return
+        }
+
+        LSType := NetworkLSA
+        LSId := convertAreaOrRouterIdUint32(ent.IfIpAddr.String())
+        AdvRouter := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
+        lsaKey :=  LsaKey {
+                LSType: LSType,
+                LSId:   LSId,
+                AdvRouter: AdvRouter,
+        }
+        lsdbKey := LsdbKey {
+                AreaId:         areaId,
+        }
+        lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+
+        // Need to Flush these entries
+        delete(lsDbEnt.NetworkLsaMap, lsaKey)
+        delete(selfOrigLsaEnt, lsaKey)
+        server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
+        server.AreaLsdb[lsdbKey] = lsDbEnt
+}
+
+
+func (server *OSPFServer)generateNetworkLSA(areaId uint32, key IntfConfKey) {
+        routerId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
+        ent := server.IntfConfMap[key]
+        AreaId := convertIPv4ToUint32(ent.IfAreaId)
+        if areaId != AreaId {
+                return
+        }
+        if ent.IfFSMState <= config.Waiting {
+                return
+        }
+        if routerId != ent.IfDRtrId {
+                return
+        }
+
+        netmask := convertIPv4ToUint32(ent.IfNetmask)
+        var attachedRtr []uint32
+        for key, nbrEnt := range ent.NeighborMap {
+                if nbrEnt.FullState == false {
+                        continue
+                }
+                attachedRtr = append(attachedRtr, key.RouterId)
+        }
+        numOfAttachedRtr := len(attachedRtr)
+        if numOfAttachedRtr == 0 {
+                return
+        }
+
+        LSType := NetworkLSA
+        LSId := convertAreaOrRouterIdUint32(ent.IfIpAddr.String())
+        Options := uint8(2) // Need to be revisited
+        LSAge := 0
+        AdvRouter := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
+        lsaKey :=  LsaKey {
+                LSType: LSType,
+                LSId:   LSId,
+                AdvRouter: AdvRouter,
+        }
+
+        lsdbKey := LsdbKey {
+                AreaId:         areaId,
+        }
+        lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+        entry, exist := lsDbEnt.NetworkLsaMap[lsaKey]
+        entry.LsaMd.LSAge = 0
+        entry.LsaMd.Options = Options
+        if !exist {
+                entry.LsaMd.LSSequenceNum = InitialSequenceNumber
+        } else {
+                entry.LsaMd.LSSequenceNum = entry.LsaMd.LSSequenceNum + 1
+        }
+        entry.LsaMd.LSChecksum = 0
+        // Length of Network LSA Metadata (netmask)  = 4 bytes
+        entry.LsaMd.LSLen = uint16(OSPF_LSA_HEADER_SIZE + 4 + (4 * numOfAttachedRtr))
+        entry.Netmask = netmask
+        entry.AttachedRtr = make([]uint32, numOfAttachedRtr)
+        for i := 0; i < numOfAttachedRtr; i++ {
+                entry.AttachedRtr[i] = attachedRtr[i]
+        }
+        server.logger.Info(fmt.Sprintln("Hello... Attached Routers:", entry.AttachedRtr))
+        selfOrigLsaEnt[lsaKey] = true
+        server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
+        server.logger.Info(fmt.Sprintln("Self Originated Router LSA Key:", server.AreaSelfOrigLsa[lsdbKey]))
+        LsaEnc := encodeNetworkLsa(entry, lsaKey)
+        checksumOffset := uint16(14)
+        entry.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc[2:], checksumOffset)
+        entry.LsaMd.LSAge = uint16(LSAge)
+        lsDbEnt.NetworkLsaMap[lsaKey] = entry
+        server.AreaLsdb[lsdbKey] = lsDbEnt
+        return
 }
 
 
@@ -147,7 +256,7 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
         ent.LsaMd.LSChecksum = 0
         // Length of Per Link Details = 12 bytes
         // Length of Router LSA Metadata (BitE, BitB, NumofLinks)  = 4 bytes
-        ent.LsaMd.LSLen = uint16(OSPF_LSA_HEADER_LEN + 4 + (12 * numOfLinks))
+        ent.LsaMd.LSLen = uint16(OSPF_LSA_HEADER_SIZE + 4 + (12 * numOfLinks))
         ent.BitE = BitE
         ent.BitB = BitB
         ent.NumOfLinks = uint16(numOfLinks)
@@ -158,7 +267,8 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
         server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
         server.logger.Info(fmt.Sprintln("Self Originated Router LSA Key:", server.AreaSelfOrigLsa[lsdbKey]))
         LsaEnc := encodeRouterLsa(ent, lsaKey)
-        ent.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc)
+        checksumOffset := uint16(14)
+        ent.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc[2:], checksumOffset)
         ent.LsaMd.LSAge = uint16(LSAge)
         lsDbEnt.RouterLsaMap[lsaKey] = ent
         server.AreaLsdb[lsdbKey] = lsDbEnt
@@ -168,16 +278,71 @@ func (server *OSPFServer)generateRouterLSA(areaId uint32) {
 func (server *OSPFServer)processNewRecvdRouterLsa(data []byte, areaId uint32) bool {
         lsakey := NewLsaKey()
         routerLsa := NewRouterLsa()
+        lsdbKey := LsdbKey {
+                AreaId:         areaId,
+        }
         decodeRouterLsa(data, routerLsa, lsakey)
+        selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+        _, exist := selfOrigLsaEnt[*lsakey]
+        if exist {
+                server.logger.Info("Recvd a self generated Router LSA")
+                return false
+        }
         //Check Checksum
-        //If there is already existing entry Verify the seq num
+        csum := computeFletcherChecksum(data[2:], FLETCHER_CHECKSUM_VALIDATE)
+        if csum != 0 {
+                server.logger.Err("Invalid Router LSA Checksum")
+                return false
+        }
+        //Todo: If there is already existing entry Verify the seq num
+        lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        ent, exist := lsDbEnt.RouterLsaMap[*lsakey]
+        if exist {
+                if ent.LsaMd.LSSequenceNum >= routerLsa.LsaMd.LSSequenceNum {
+                        server.logger.Err("Old instance of Router LSA Recvd")
+                        return false
+                }
+        }
         //Handle LsaAge
-        //Add entry in LSADatabase 
+        //Add entry in LSADatabase
+        lsDbEnt.RouterLsaMap[*lsakey] = *routerLsa
+        server.AreaLsdb[lsdbKey] = lsDbEnt
         return true
 }
 
 func (server *OSPFServer)processNewRecvdNetworkLsa(data []byte, areaId uint32) bool {
+        lsakey := NewLsaKey()
+        networkLsa := NewNetworkLsa()
+        lsdbKey := LsdbKey {
+                AreaId:         areaId,
+        }
+        decodeNetworkLsa(data, networkLsa, lsakey)
+        selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+        _, exist := selfOrigLsaEnt[*lsakey]
+        if exist {
+                server.logger.Info("Recvd a self generated Network LSA")
+                return false
+        }
 
+        //Check Checksum
+        csum := computeFletcherChecksum(data[2:], FLETCHER_CHECKSUM_VALIDATE)
+        if csum != 0 {
+                server.logger.Err("Invalid Network LSA Checksum")
+                return false
+        }
+        //Todo: If there is already existing entry Verify the seq num
+        lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        ent, exist := lsDbEnt.NetworkLsaMap[*lsakey]
+        if exist {
+                if ent.LsaMd.LSSequenceNum >= networkLsa.LsaMd.LSSequenceNum {
+                        server.logger.Err("Old instance of Network LSA Recvd")
+                        return false
+                }
+        }
+        //Handle LsaAge
+        //Add entry in LSADatabase
+        lsDbEnt.NetworkLsaMap[*lsakey] = *networkLsa
+        server.AreaLsdb[lsdbKey] = lsDbEnt
         return true
 }
 
@@ -238,13 +403,17 @@ func (server *OSPFServer)processLSDatabaseUpdates() {
                         server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
                 case msg := <-server.CreateNetworkLSACh:
                         server.logger.Info(fmt.Sprintf("Create Network LSA msg", msg))
+                        server.generateNetworkLSA(msg.areaId, msg.intfKey)
                         // Flush the old Network LSA
                         // Check if link is broadcast or not
                         // If link is broadcast
                         // Create Network LSA
+                        server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
                 case msg := <-server.FlushNetworkLSACh:
                         server.logger.Info(fmt.Sprintf("Flush Network LSA msg", msg))
                         // Flush the old Network LSA
+                        server.flushNetworkLSA(msg.areaId, msg.intfKey)
+                        server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
                 }
         }
 }
