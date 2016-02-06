@@ -25,6 +25,7 @@ const (
 	REMOTE_UP   BfdSessionEvent = 3
 	TIMEOUT     BfdSessionEvent = 4
 	ADMIN_DOWN  BfdSessionEvent = 5
+	ADMIN_UP    BfdSessionEvent = 6
 )
 
 type BfdDiagnostic int
