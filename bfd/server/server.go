@@ -42,6 +42,7 @@ type IpIntfProperty struct {
 }
 
 type BfdInterface struct {
+	Enabled  bool
 	conf     IntfConfig
 	property IpIntfProperty
 }
@@ -153,7 +154,7 @@ func (server *BFDServer) ConnectToClients(paramsFile string) {
 }
 
 func (server *BFDServer) InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
-	server.logger.Info(fmt.Sprintln("Setting up %s", pub_str, "publisher"))
+	server.logger.Info(fmt.Sprintln("Setting up ", pub_str, "publisher"))
 	pub, err := nanomsg.NewPubSocket()
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed to open pub socket"))
