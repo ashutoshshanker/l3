@@ -12,6 +12,8 @@ var PolicyConditionsDB = patriciaDB.NewTrie()
 type MatchPrefixConditionInfo struct {
 	usePrefixSet bool
 	prefixSet string
+	dstIpMatch     bool
+	srcIpMatch     bool
 	prefix ribd.PolicyDefinitionSetsPrefix
 }
 type PolicyCondition struct {
@@ -31,8 +33,8 @@ func updateLocalConditionsDB(prefix patriciaDB.Prefix) {
 	localPolicyConditionsDB = append(localPolicyConditionsDB, localDBRecord)
 
 }
-func (m RouteServiceHandler) CreatePolicyDefinitionStmtMatchPrefixSetCondition(cfg *ribd.PolicyDefinitionStmtMatchPrefixSetCondition) (val bool, err error) {
-	logger.Println("CreatePolicyDefinitionStmtMatchPrefixSetCondition")
+func (m RouteServiceHandler) CreatePolicyDefinitionStmtDstIpMatchPrefixSetCondition(cfg *ribd.PolicyDefinitionStmtDstIpMatchPrefixSetCondition) (val bool, err error) {
+	logger.Println("CreatePolicyDefinitionStmtDstIpMatchPrefixSetCondition")
 	var conditionInfo MatchPrefixConditionInfo
 	var conditionGetBulkInfo string
     if len(cfg.PrefixSet) == 0 && cfg.Prefix == nil {
@@ -49,16 +51,17 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStmtMatchPrefixSetCondition(c
 	   conditionInfo.usePrefixSet = false
        conditionInfo.prefix.IpPrefix = cfg.Prefix.IpPrefix
 	   conditionInfo.prefix.MasklengthRange = cfg.Prefix.MasklengthRange
-	   conditionGetBulkInfo = "match Prefix " + cfg.Prefix.IpPrefix + "MasklengthRange " + cfg.Prefix.MasklengthRange
+	   conditionGetBulkInfo = "match destination Prefix " + cfg.Prefix.IpPrefix + "MasklengthRange " + cfg.Prefix.MasklengthRange
 	} else if len(cfg.PrefixSet) != 0 {
 		conditionInfo.usePrefixSet = true
 		conditionInfo.prefixSet = cfg.PrefixSet
-	    conditionGetBulkInfo = "match Prefix " + cfg.PrefixSet
+	    conditionGetBulkInfo = "match destination Prefix " + cfg.PrefixSet
 	}
+	conditionInfo.dstIpMatch = true
 	policyCondition := PolicyConditionsDB.Get(patriciaDB.Prefix(cfg.Name))
 	if(policyCondition == nil) {
 	   logger.Println("Defining a new policy condition with name ", cfg.Name)
-	   newPolicyCondition := PolicyCondition{name:cfg.Name,conditionType:ribdCommonDefs.PolicyConditionTypePrefixMatch,conditionInfo:conditionInfo ,localDBSliceIdx:(len(localPolicyConditionsDB))}
+	   newPolicyCondition := PolicyCondition{name:cfg.Name,conditionType:ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch,conditionInfo:conditionInfo ,localDBSliceIdx:(len(localPolicyConditionsDB))}
        newPolicyCondition.conditionGetBulkInfo = conditionGetBulkInfo 
 	   if ok := PolicyConditionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyCondition); ok != true {
 	   logger.Println(" return value not ok")
