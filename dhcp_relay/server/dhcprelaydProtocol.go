@@ -407,7 +407,11 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 		goto early_exit
 	}
 	intfkey = strconv.Itoa(int(intfStateEntry.IntfId)) + "_" + gblEntry.IntfConfig.ServerIp
-	intfStateServerEntry = dhcprelayIntfServerStateMap[intfkey]
+	logger.Info("DRA: #######key for interface Server state is " + intfkey)
+	intfStateServerEntry, ok = dhcprelayIntfServerStateMap[intfkey]
+	if !ok {
+		logger.Info("DRA: Why don't we have entry for " + intfkey)
+	}
 	intfStateServerEntry.Request++
 	dhcprelayIntfServerStateMap[intfkey] = intfStateServerEntry
 	intfStateEntry.TotalDhcpServerTx++

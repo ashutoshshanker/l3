@@ -141,6 +141,7 @@ func InitDhcpRelayPortPktHandler() error {
 
 func DhcpRelayAgentInitIntfServerState(IntfId string, serverIp string, id int) {
 	key := IntfId + "_" + serverIp
+	logger.Info("DRA: #######key for interface Server state is " + key)
 	intfServerEntry := dhcprelayIntfServerStateMap[key]
 	intfServerEntry.IntfId = int32(id)
 	intfServerEntry.ServerIp = serverIp

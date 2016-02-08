@@ -188,5 +188,43 @@ func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayIntfState(fromIndex dhcprelayd
 func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayIntfServerState(fromIndex dhcprelayd.Int,
 	count dhcprelayd.Int) (intfServerEntry *dhcprelayd.DhcpRelayIntfServerStateGetInfo, err error) {
 	logger.Info(fmt.Sprintln("DRA: Get Bulk for Intf Server State for ", count, " combination"))
+	var nextEntry *dhcprelayd.DhcpRelayIntfServerState
+	var finalList []*dhcprelayd.DhcpRelayIntfServerState
+	var returnBulk dhcprelayd.DhcpRelayIntfServerStateGetInfo
+	var endIdx int
+	var more bool
+	intfServerEntry = &returnBulk
+
+	if dhcprelayIntfServerStateSlice == nil {
+		logger.Info("DRA: Interface Server Slice is not initialized")
+		return intfServerEntry, err
+	}
+	currIdx := int(fromIndex)
+	cnt := int(count)
+	length := len(dhcprelayIntfServerStateSlice)
+
+	if currIdx+cnt >= length {
+		cnt = length - currIdx
+		endIdx = 0
+		more = false
+	} else {
+		endIdx = currIdx + cnt
+		more = true
+	}
+	for i := 0; i < cnt; i++ {
+		if len(finalList) == 0 {
+			finalList = make([]*dhcprelayd.DhcpRelayIntfServerState, 0)
+		}
+		key := dhcprelayIntfServerStateSlice[i]
+		entry := dhcprelayIntfServerStateMap[key]
+		nextEntry = &entry
+		finalList = append(finalList, nextEntry)
+	}
+	intfServerEntry.DhcpRelayIntfServerStateList = finalList
+	intfServerEntry.StartIdx = fromIndex
+	intfServerEntry.EndIdx = dhcprelayd.Int(endIdx)
+	intfServerEntry.More = more
+	intfServerEntry.Count = dhcprelayd.Int(cnt)
+
 	return intfServerEntry, err
 }
