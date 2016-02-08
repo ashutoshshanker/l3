@@ -23,7 +23,8 @@ struct Routes {
 //	11: map<string,list<string>> PolicyList,
     12: 	bool IsPolicyBasedStateValid,
 	13: string RouteCreated,
-	14: string RouteUpdated
+	14: string RouteUpdated,
+	15: string RoutePrototypeString
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -235,9 +236,9 @@ struct PolicyDefinitionStateGetInfo {
 //typedef RouteList  list<Routes>
 service RouteService 
 {
-    int createV4Route (1:string destNetIp, 2:string networkMask, 3:int metric, 4:string nextHopIp, 5: int nextHopIfType, 6:int nextHopIfIndex, 7:int routeType);
+    int createV4Route (1:string destNetIp, 2:string networkMask, 3:int metric, 4:string nextHopIp, 5: int nextHopIfType, 6:int nextHopIfIndex, 7:string routeType);
     void updateV4Route (1:string destNetIp, 2:string networkMask, 3:int routeType, 4:string nextHopIp, 5:int nextHopIfIndex, 6:int metric);
-    int deleteV4Route (1:string destNetIp, 2:string networkMask, 3:int routeType);
+    int deleteV4Route (1:string destNetIp, 2:string networkMask, 3:string routeType);
     NextHopInfo getRouteReachabilityInfo(1: string desIPv4MasktNet);
 	list<Routes> getConnectedRoutesInfo();
     void printV4Routes();

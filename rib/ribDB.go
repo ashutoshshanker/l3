@@ -31,8 +31,7 @@ func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
 		} else {
 			outIntfType = commonDefs.L2RefTypePort
 		}
-		proto, _ := strconv.Atoi(ipRoute.Protocol)
-		_,err = routeServiceHandler.CreateV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto))
+		_,err = routeServiceHandler.CreateV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), "STATIC")
 		//_,err = createV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto),  FIBAndRIB,ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 		if(err != nil) {
 			logger.Printf("Route create failed with err %s\n", err)

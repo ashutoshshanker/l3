@@ -115,7 +115,7 @@ func conditionCheckValid(route ribd.Routes,conditionsList []string) (valid bool)
 func policyEngineActionRejectRoute(route ribd.Routes, params interface{}) {
     logger.Println("policyEngineActionRejectRoute for route ", route.Ipaddr, " ", route.Mask)
 	routeInfo := params.(RouteParams)
-  _, err := routeServiceHandler.DeleteV4Route(routeInfo.destNetIp, routeInfo.networkMask, routeInfo.routeType,)// FIBAndRIB)//,ribdCommonDefs.RoutePolicyStateChangetoInValid)
+  _, err := routeServiceHandler.DeleteV4Route(routeInfo.destNetIp, routeInfo.networkMask, ReverseRouteProtoTypeMapDB[int(routeInfo.routeType)],)// FIBAndRIB)//,ribdCommonDefs.RoutePolicyStateChangetoInValid)
 	  if err != nil {
 		logger.Println("deleting v4 route failed with err ", err)
 		return
@@ -314,7 +314,7 @@ func policyEngineActionUndoRejectRoute(route ribd.Routes,params interface {}, co
 			  logger.Println("This route does not qualify for reversing reject route")
 			  continue
 		   }
-		  _,err = routeServiceHandler.CreateV4Route(tempRoute.Ipaddr, tempRoute.Mask, tempRoute.Metric, tempRoute.NextHopIp, tempRoute.NextHopIfType,tempRoute.IfIndex, tempRoute.Prototype)
+		  _,err = routeServiceHandler.CreateV4Route(tempRoute.Ipaddr, tempRoute.Mask, tempRoute.Metric, tempRoute.NextHopIp, tempRoute.NextHopIfType,tempRoute.IfIndex, "STATIC")//tempRoute.Prototype)
 		  if(err != nil) {
 			logger.Printf("Route create failed with err %s\n", err)
 			return 
@@ -364,7 +364,7 @@ func policyEngineActionUndoRejectRoute(route ribd.Routes,params interface {}, co
 			    continue
 		      }
 			  logger.Printf("Calling createv4Route with ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
-			  _, err = routeServiceHandler.CreateV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribdCommonDefs.CONNECTED) // FIBAndRIB, ribd.Int(len(destNetSlice)))
+			  _, err = routeServiceHandler.CreateV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
 			  if err != nil {
 				logger.Printf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)))
 			  }
