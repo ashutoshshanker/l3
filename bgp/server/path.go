@@ -33,6 +33,8 @@ type Path struct {
 	NextHopIfIdx  ribd.Int
 	Metric        ribd.Int
 	routeType     uint8
+	MED           uint32
+	LocalPref     uint32
 }
 
 func NewPath(server *BGPServer, peer *Peer, pa []packet.BGPPathAttr, withdrawn bool, updated bool, routeType uint8) *Path {
@@ -63,6 +65,8 @@ func (p *Path) Clone() *Path {
 		NextHopIfIdx: p.NextHopIfIdx,
 		Metric:       p.Metric,
 		routeType:    p.routeType,
+		MED:          p.MED,
+		LocalPref:    p.LocalPref,
 	}
 
 	return path
@@ -70,17 +74,19 @@ func (p *Path) Clone() *Path {
 
 func (p *Path) calculatePref() uint32 {
 	var pref uint32
-	if p.IsLocal() {
-		pref = BGP_INTERNAL_PREF
-	} else if p.peer.IsInternal() {
-		pref = BGP_INTERNAL_PREF
-		for _, attr := range p.pathAttrs {
-			if attr.GetCode() == packet.BGPPathAttrTypeLocalPref {
-				pref = attr.(*packet.BGPPathAttrLocalPref).Value
-				break
-			}
+
+	pref = BGP_INTERNAL_PREF
+
+	for _, attr := range p.pathAttrs {
+		if attr.GetCode() == packet.BGPPathAttrTypeLocalPref {
+			p.LocalPref = attr.(*packet.BGPPathAttrLocalPref).Value
+			pref = p.LocalPref
+		} else if attr.GetCode() == packet.BGPPathAttrTypeMultiExitDisc {
+			p.MED = attr.(*packet.BGPPathAttrMultiExitDisc).Value
 		}
-	} else {
+	}
+
+	if p.IsExternal() {
 		pref = BGP_EXTERNAL_PREF
 	}
 
@@ -134,6 +140,32 @@ func (p *Path) GetPreference() uint32 {
 	return p.Pref
 }
 
+func (p *Path) GetAS4ByteList() []int32 {
+	asList := make([]int32, 0)
+	for _, attr := range p.pathAttrs {
+		if attr.GetCode() == packet.BGPPathAttrTypeASPath {
+			asPaths := attr.(*packet.BGPPathAttrASPath).Value
+			asSize := attr.(*packet.BGPPathAttrASPath).ASSize
+			for _, asSegment := range asPaths {
+				if asSize == 4 {
+					seg := asSegment.(*packet.BGPAS4PathSegment)
+					for _, as := range seg.AS {
+						asList = append(asList, int32(as))
+					}
+				} else {
+					seg := asSegment.(*packet.BGPAS2PathSegment)
+					for _, as := range seg.AS {
+						asList = append(asList, int32(as))
+					}
+				}
+			}
+			break
+		}
+	}
+
+	return asList
+}
+
 func (p *Path) HasASLoop() bool {
 	for _, attr := range p.pathAttrs {
 		if attr.GetCode() == packet.BGPPathAttrTypeASPath {
@@ -165,6 +197,10 @@ func (p *Path) HasASLoop() bool {
 
 func (p *Path) IsLocal() bool {
 	return (p.routeType & RouteLocal) != 0
+}
+
+func (p *Path) IsExternal() bool {
+	return p.peer != nil && p.peer.IsExternal()
 }
 
 func (p *Path) GetNumASes() uint32 {
