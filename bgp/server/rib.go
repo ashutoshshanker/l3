@@ -57,11 +57,15 @@ func (adjRib *AdjRib) getDest(nlri packet.IPPrefix, createIfNotExist bool) (*Des
 	return dest, ok
 }
 
-func updateRibOutInfo(action RouteSelectionAction, dest *Destination, withdrawn []packet.IPPrefix,
+func (adjRib *AdjRib) updateRibOutInfo(action RouteSelectionAction, dest *Destination, withdrawn []packet.IPPrefix,
 	updated map[*Path][]packet.IPPrefix) ([]packet.IPPrefix, map[*Path][]packet.IPPrefix) {
 	if action == RouteSelectionAdd || action == RouteSelectionReplace {
+		if action == RouteSelectionAdd {
+			adjRib.addDestToRouteList(dest)
+		}
 		updated[dest.locRibPath] = append(updated[dest.locRibPath], dest.nlri)
 	} else if action == RouteSelectionDelete {
+		adjRib.removeDestFromRouteList(dest)
 		withdrawn = append(withdrawn, dest.nlri)
 	}
 
@@ -85,10 +89,8 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.IPPrefix, addPat
 			}
 			dest.RemovePath(peerIP, remPath)
 			action = dest.SelectRouteForLocRib()
-			withdrawn, updated = updateRibOutInfo(action, dest, withdrawn, updated)
+			withdrawn, updated = adjRib.updateRibOutInfo(action, dest, withdrawn, updated)
 			if action == RouteSelectionDelete {
-
-				adjRib.removeDestFromRouteList(dest)
 				if dest.IsEmpty() {
 					delete(adjRib.destPathMap, nlri.Prefix.String())
 				}
@@ -104,7 +106,7 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.IPPrefix, addPat
 		dest, _ := adjRib.getDest(nlri, true)
 		dest.AddOrUpdatePath(peerIP, addPath)
 		action = dest.SelectRouteForLocRib()
-		withdrawn, updated = updateRibOutInfo(action, dest, withdrawn, updated)
+		withdrawn, updated = adjRib.updateRibOutInfo(action, dest, withdrawn, updated)
 	}
 
 	return updated, withdrawn
@@ -146,7 +148,7 @@ func (adjRib *AdjRib) RemoveUpdatesFromNeighbor(peerIP string, peer *Peer) (map[
 	for destIP, dest := range adjRib.destPathMap {
 		dest.RemovePath(peerIP, remPath)
 		action = dest.SelectRouteForLocRib()
-		withdrawn, updated = updateRibOutInfo(action, dest, withdrawn, updated)
+		withdrawn, updated = adjRib.updateRibOutInfo(action, dest, withdrawn, updated)
 		if action == RouteSelectionDelete && dest.IsEmpty() {
 			delete(adjRib.destPathMap, destIP)
 		}
@@ -162,7 +164,7 @@ func (adjRib *AdjRib) RemoveUpdatesFromAllNeighbors() {
 	for destIP, dest := range adjRib.destPathMap {
 		dest.RemoveAllNeighborPaths()
 		action := dest.SelectRouteForLocRib()
-		updateRibOutInfo(action, dest, withdrawn, updated)
+		adjRib.updateRibOutInfo(action, dest, withdrawn, updated)
 		if action == RouteSelectionDelete && dest.IsEmpty() {
 			delete(adjRib.destPathMap, destIP)
 		}
@@ -236,14 +238,14 @@ func (adjRib *AdjRib) GetBGPRoute(prefix string) *bgpd.BGPRoute {
 }
 
 func (adjRib *AdjRib) BulkGetBGPRoutes(index int, count int) (int, int, []*bgpd.BGPRoute) {
-	defer adjRib.routeMutex.RUnlock()
-
-	adjRib.routeMutex.RLock()
 	adjRib.timer.Stop()
 	if index == 0 && adjRib.activeGet {
 		adjRib.ResetRouteList()
 	}
 	adjRib.activeGet = true
+
+	defer adjRib.routeMutex.RUnlock()
+	adjRib.routeMutex.RLock()
 
 	var i int
 	n := 0
