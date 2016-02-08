@@ -61,7 +61,6 @@ const (
 	IP_HEADER_MIN_LEN   = 20
 	OSPF_PROTO_ID       = 89
 	OSPF_VERSION_2      = 2
-        OSPF_LSA_HEADER_LEN = 20
 )
 
 type OspfType uint8

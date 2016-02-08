@@ -51,8 +51,8 @@ type OSPFServer struct {
         LsaUpdateRetCodeCh      chan bool
         IntfStateChangeCh       chan LSAChangeMsg
         NetworkDRChangeCh       chan LSAChangeMsg
-        FlushNetworkLSACh       chan LSAChangeMsg
-        CreateNetworkLSACh      chan LSAChangeMsg
+        FlushNetworkLSACh       chan NetworkLSAChangeMsg
+        CreateNetworkLSACh      chan NetworkLSAChangeMsg
         AdjOKEvtCh              chan AdjOKEvtMsg
 
 	/*
@@ -111,8 +111,8 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
         ospfServer.AreaSelfOrigLsa = make(map[LsdbKey]SelfOrigLsa)
         ospfServer.IntfStateChangeCh = make(chan LSAChangeMsg)
         ospfServer.NetworkDRChangeCh = make(chan LSAChangeMsg)
-        ospfServer.CreateNetworkLSACh = make(chan LSAChangeMsg)
-        ospfServer.FlushNetworkLSACh = make(chan LSAChangeMsg)
+        ospfServer.CreateNetworkLSACh = make(chan NetworkLSAChangeMsg)
+        ospfServer.FlushNetworkLSACh = make(chan NetworkLSAChangeMsg)
         ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
         ospfServer.LsaUpdateRetCodeCh = make(chan bool)
         ospfServer.AdjOKEvtCh = make(chan AdjOKEvtMsg)

@@ -50,7 +50,7 @@ type BGPServer struct {
 	NeighborMutex  sync.RWMutex
 	PeerMap        map[string]*Peer
 	Neighbors      []*Peer
-	adjRib         *AdjRib
+	AdjRib         *AdjRib
 	connRoutesPath *Path
 }
 
@@ -70,7 +70,7 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.NeighborMutex = sync.RWMutex{}
 	bgpServer.PeerMap = make(map[string]*Peer)
 	bgpServer.Neighbors = make([]*Peer, 0)
-	bgpServer.adjRib = NewAdjRib(bgpServer)
+	bgpServer.AdjRib = NewAdjRib(bgpServer)
 	return bgpServer
 }
 
@@ -213,7 +213,7 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 
 	atomic.AddUint32(&peer.Neighbor.State.Queues.Input, ^uint32(0))
 	peer.Neighbor.State.Messages.Received.Update++
-	updated, withdrawn, withdrawPath := server.adjRib.ProcessUpdate(peer, pktInfo)
+	updated, withdrawn, withdrawPath := server.AdjRib.ProcessUpdate(peer, pktInfo)
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
@@ -230,19 +230,19 @@ func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribd.Routes, 
 	server.logger.Info(fmt.Sprintln("valid routes:", installedRoutes, "invalid routes:", withdrawnRoutes))
 	valid := server.convertDestIPToIPPrefix(installedRoutes)
 	invalid := server.convertDestIPToIPPrefix(withdrawnRoutes)
-	updated, withdrawn, withdrawPath := server.adjRib.ProcessConnectedRoutes(server.BgpConfig.Global.Config.RouterId.String(),
+	updated, withdrawn, withdrawPath := server.AdjRib.ProcessConnectedRoutes(server.BgpConfig.Global.Config.RouterId.String(),
 		server.connRoutesPath, valid, invalid)
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
 func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
-	updated, withdrawn, withdrawPath := server.adjRib.RemoveUpdatesFromNeighbor(peerIp, peer)
+	updated, withdrawn, withdrawPath := server.AdjRib.RemoveUpdatesFromNeighbor(peerIp, peer)
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
 func (server *BGPServer) SendAllRoutesToPeer(peer *Peer) {
 	withdrawn := make([]packet.IPPrefix, 0)
-	updated := server.adjRib.GetLocRib()
+	updated := server.AdjRib.GetLocRib()
 	for path, dest := range updated {
 		updateMsg := packet.NewBGPUpdateMessage(withdrawn, path.pathAttrs, dest)
 		peer.SendUpdate(*updateMsg.Clone(), path)
@@ -250,7 +250,7 @@ func (server *BGPServer) SendAllRoutesToPeer(peer *Peer) {
 }
 
 func (server *BGPServer) RemoveRoutesFromAllNeighbor() {
-	server.adjRib.RemoveUpdatesFromAllNeighbors()
+	server.AdjRib.RemoveUpdatesFromAllNeighbors()
 }
 
 func (server *BGPServer) addPeerToList(peer *Peer) {

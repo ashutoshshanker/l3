@@ -2,8 +2,8 @@ namespace go bgpd
 typedef i32 int
 
 struct BGPGlobalConfig {
-    1: i32 ASNum,
-    2: string RouterId,
+	1: i32 ASNum,
+	2: string RouterId,
 }
 
 struct BGPGlobalState {
@@ -34,11 +34,11 @@ struct BGPQueues {
 }
 
 struct BGPNeighborConfig {
-    1: i32 PeerAS,
-    2: i32 LocalAS,
+	1: i32 PeerAS,
+	2: i32 LocalAS,
 	3: string AuthPassword,
-    4: string Description,
-    5: string NeighborAddress,
+	4: string Description,
+	5: string NeighborAddress,
 	6: i32 RouteReflectorClusterId,
 	7: bool RouteReflectorClient,
 	8: bool MultiHopEnable,
@@ -46,7 +46,7 @@ struct BGPNeighborConfig {
 	10: i32 ConnectRetryTime,
 	11: i32 HoldTime,
 	12: i32 KeepaliveTime,
-    13: string PeerGroup,
+	13: string PeerGroup,
 }
 
 struct BGPNeighborState {
@@ -78,11 +78,11 @@ struct BGPNeighborStateBulk {
 }
 
 struct BGPPeerGroup {
-    1: i32 PeerAS,
-    2: i32 LocalAS,
+	1: i32 PeerAS,
+	2: i32 LocalAS,
 	3: string AuthPassword,
-    4: string Description,
-    5: string Name,
+	4: string Description,
+	5: string Name,
 	6: i32 RouteReflectorClusterId,
 	7: bool RouteReflectorClient,
 	8: bool MultiHopEnable,
@@ -92,20 +92,41 @@ struct BGPPeerGroup {
 	12: i32 KeepaliveTime,
 }
 
+struct BGPRoute {
+	1: string Network
+	2: string Mask
+	3: string NextHop
+	4: i32 Metric
+	5: i32 LocalPref
+	6: list<i32> Path
+	7: string Updated
+}
+
+struct BGPRouteBulk {
+	1: i64 CurrIndex,
+	2: i64 NextIndex,
+	3: i64 Count,
+	4: bool More,
+	5: list<BGPRoute> RouteList,
+}
+
 service BGPServer
 {
-    bool CreateBGPGlobal(1: BGPGlobalConfig bgpConf);
+	bool CreateBGPGlobal(1: BGPGlobalConfig bgpConf);
 	BGPGlobalState GetBGPGlobal();
-    bool UpdateBGPGlobal(1: BGPGlobalConfig origGlobal, 2: BGPGlobalConfig updatedGlobal, 3: list<bool> attrSet);
-    //bool DeleteBGPGlobal(1: BGPGlobal bgpConf);
+	bool UpdateBGPGlobal(1: BGPGlobalConfig origGlobal, 2: BGPGlobalConfig updatedGlobal, 3: list<bool> attrSet);
+	//bool DeleteBGPGlobal(1: BGPGlobal bgpConf);
 
-    bool CreateBGPNeighbor(1: BGPNeighborConfig neighbor);
+	bool CreateBGPNeighbor(1: BGPNeighborConfig neighbor);
 	BGPNeighborState GetBGPNeighbor(1: string ip);
 	BGPNeighborStateBulk BulkGetBGPNeighbors(1: i64 index, 2: i64 count);
-    bool UpdateBGPNeighbor(1: BGPNeighborConfig origNeighbor, 2: BGPNeighborConfig updatedNeighbor, 3: list<bool> attrSet);
-    bool DeleteBGPNeighbor(1: string neighborAddress);
+	bool UpdateBGPNeighbor(1: BGPNeighborConfig origNeighbor, 2: BGPNeighborConfig updatedNeighbor, 3: list<bool> attrSet);
+	bool DeleteBGPNeighbor(1: string neighborAddress);
 
-    bool CreateBGPPeerGroup(1: BGPPeerGroup group);
-    bool UpdateBGPPeerGroup(1: BGPPeerGroup origGroup, 2: BGPPeerGroup updatedGroup, 3: list<bool> attrSet);
-    bool DeleteBGPPeerGroup(1: string groupName);
+	bool CreateBGPPeerGroup(1: BGPPeerGroup group);
+	bool UpdateBGPPeerGroup(1: BGPPeerGroup origGroup, 2: BGPPeerGroup updatedGroup, 3: list<bool> attrSet);
+	bool DeleteBGPPeerGroup(1: string groupName);
+
+	BGPRoute GetBGPRoute(1: string ip);
+	BGPRouteBulk BulkGetBGPRoutes(1: i64 index, 2: i64 count);
 }

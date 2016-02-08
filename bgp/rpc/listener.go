@@ -383,3 +383,20 @@ func (h *BGPHandler) DeleteBGPPeerGroup(name string) (bool, error) {
 	h.server.RemPeerGroupCh <- name
 	return true, nil
 }
+
+func (h *BGPHandler) GetBGPRoute(prefix string) (*bgpd.BGPRoute, error) {
+	bgpRoute := h.server.AdjRib.GetBGPRoute(prefix)
+	return bgpRoute, nil
+}
+
+func (h *BGPHandler) BulkGetBGPRoutes(index int64, count int64) (*bgpd.BGPRouteBulk, error) {
+	nextIdx, currCount, bgpRoutes := h.server.AdjRib.BulkGetBGPRoutes(int(index), int(count))
+
+	bgpRoutesBulk := bgpd.NewBGPRouteBulk()
+	bgpRoutesBulk.NextIndex = int64(nextIdx)
+	bgpRoutesBulk.Count = int64(currCount)
+	bgpRoutesBulk.More = (nextIdx != 0)
+	bgpRoutesBulk.RouteList = bgpRoutes
+
+	return bgpRoutesBulk, nil
+}

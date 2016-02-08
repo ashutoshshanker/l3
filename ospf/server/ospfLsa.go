@@ -130,7 +130,7 @@ var LSSequenceNumber int = InitialSequenceNumber
 */
 
 func encodeLsaHeader(lsaMd LsaMetadata, lsakey LsaKey) ([]byte) {
-        lsaHdr := make([]byte, OSPF_LSA_HEADER_LEN)
+        lsaHdr := make([]byte, OSPF_LSA_HEADER_SIZE)
         binary.BigEndian.PutUint16(lsaHdr[0:2], lsaMd.LSAge)
         lsaHdr[2] = lsaMd.Options
         lsaHdr[3] = lsakey.LSType
@@ -280,31 +280,6 @@ func encodeRouterLsa(lsa RouterLsa, lsakey LsaKey)([]byte) {
         return rtrLsa
 }
 
-func computeFletcherChecksum(data []byte) (uint16) {
-        var sum1 uint8 = 0
-        var sum2 uint64 = 0
-        var csum uint16 = 0
-        var csum1 uint16 = 0
-        var csum2 uint16 = 0
-        /* RFC : The Fletcher checksum of the complete contents of the LSA,
-        *       including the LSA header but excluding the LS age field.
-        */
-        i := 0
-        for length := len(data); length != 0; length-- {
-                sum1 += data[i]
-                i++
-                if sum1 >= 255 {
-                        sum1 -= 255
-                }
-                sum2 += uint64(sum1)
-        }
-        sum2 %= 255
-        csum2 = uint16(sum2)
-        csum1 = uint16(sum1)
-        csum = uint16(csum2 << 8 | csum1)
-        return csum
-}
-
 /*
         0                   1                   2                   3
         0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -327,3 +302,38 @@ func computeFletcherChecksum(data []byte) (uint16) {
 
 
 */
+
+func encodeNetworkLsa(lsa NetworkLsa, lsakey LsaKey) ([]byte) {
+        nLsa := make([]byte, lsa.LsaMd.LSLen)
+        lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
+        copy(nLsa[0:20], lsaHdr)
+        binary.BigEndian.PutUint32(nLsa[20:24], lsa.Netmask)
+        numOfAttachedRtr := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 4)/1
+        start := 24
+        for i := 0; i < numOfAttachedRtr; i++ {
+                end := start + 4
+                binary.BigEndian.PutUint32(nLsa[start:end], lsa.AttachedRtr[i])
+                start = end
+        }
+        return nLsa
+}
+
+func decodeNetworkLsa(data []byte, lsa *NetworkLsa, lsakey *LsaKey) {
+        lsa.LsaMd.LSAge = binary.BigEndian.Uint16(data[0:2])
+        lsa.LsaMd.Options = uint8(data[2])
+        lsakey.LSType = uint8(data[3])
+        lsakey.LSId = binary.BigEndian.Uint32(data[4:8])
+        lsakey.AdvRouter = binary.BigEndian.Uint32(data[8:12])
+        lsa.LsaMd.LSSequenceNum = int(binary.BigEndian.Uint32(data[12:16]))
+        lsa.LsaMd.LSChecksum = binary.BigEndian.Uint16(data[16:18])
+        lsa.LsaMd.LSLen = binary.BigEndian.Uint16(data[18:20])
+        lsa.Netmask = binary.BigEndian.Uint32(data[20:24])
+        numOfAttachedRtr := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 4)/1
+        lsa.AttachedRtr = make([]uint32, numOfAttachedRtr)
+        start := 24
+        for i := 0; i < numOfAttachedRtr; i++ {
+                end := start + 4
+                lsa.AttachedRtr[i] = binary.BigEndian.Uint32(data[start:end])
+                start  = end
+        }
+}

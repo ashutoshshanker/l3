@@ -2,6 +2,7 @@
 package server
 
 import (
+	"bgpd"
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
@@ -9,6 +10,7 @@ import (
 	"math"
 	"net"
 	_ "ribd"
+	"time"
 )
 
 const BGP_INTERNAL_PREF = 100
@@ -24,12 +26,14 @@ const (
 )
 
 type Destination struct {
-	server      *BGPServer
-	logger      *syslog.Writer
-	nlri        packet.IPPrefix
-	peerPathMap map[string]*Path
-	locRibPath  *Path
-	recalculate bool
+	server       *BGPServer
+	logger       *syslog.Writer
+	nlri         packet.IPPrefix
+	peerPathMap  map[string]*Path
+	locRibPath   *Path
+	recalculate  bool
+	routeListIdx int
+	time         time.Time
 }
 
 func NewDestination(server *BGPServer, nlri packet.IPPrefix) *Destination {
@@ -41,6 +45,22 @@ func NewDestination(server *BGPServer, nlri packet.IPPrefix) *Destination {
 	}
 
 	return dest
+}
+
+func (d *Destination) GetBGPRoute() *bgpd.BGPRoute {
+	if d.locRibPath != nil {
+		return &bgpd.BGPRoute{
+			Network:   d.nlri.Prefix.String(),
+			Mask:      net.CIDRMask(int(d.nlri.Length), 32).String(),
+			NextHop:   d.locRibPath.NextHop,
+			Metric:    int32(d.locRibPath.MED),
+			LocalPref: int32(d.locRibPath.LocalPref),
+			Path:      d.locRibPath.GetAS4ByteList(),
+			Updated:   time.Now().Sub(d.time).String(),
+		}
+	}
+
+	return nil
 }
 
 func (d *Destination) IsEmpty() bool {
@@ -213,6 +233,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 					d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
 				}
 			}
+			d.time = time.Now()
 			action = RouteSelectionAdd
 		} else if d.locRibPath != selectedPath || d.locRibPath.IsUpdated() {
 			// Update path
@@ -229,6 +250,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 					}
 				*/
 			}
+			d.time = time.Now()
 			action = RouteSelectionReplace
 		}
 
@@ -244,6 +266,7 @@ func (d *Destination) SelectRouteForLocRib() RouteSelectionAction {
 					d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 				}
 			}
+			d.time = time.Time{}
 			action = RouteSelectionDelete
 			d.locRibPath = nil
 		}
