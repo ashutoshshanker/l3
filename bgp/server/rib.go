@@ -2,15 +2,24 @@
 package server
 
 import (
+	"bgpd"
 	"fmt"
 	"l3/bgp/packet"
 	"log/syslog"
+	"sync"
+	"time"
 )
+
+const ResetTime int = 120
 
 type AdjRib struct {
 	server      *BGPServer
 	logger      *syslog.Writer
 	destPathMap map[string]*Destination
+	routeList   []*Destination
+	routeMutex  sync.RWMutex
+	activeGet   bool
+	timer       *time.Timer
 }
 
 func NewAdjRib(server *BGPServer) *AdjRib {
@@ -18,8 +27,13 @@ func NewAdjRib(server *BGPServer) *AdjRib {
 		server:      server,
 		logger:      server.logger,
 		destPathMap: make(map[string]*Destination),
+		routeList:   make([]*Destination, 0),
+		activeGet:   false,
+		routeMutex:  sync.RWMutex{},
 	}
 
+	rib.timer = time.AfterFunc(time.Duration(100)*time.Second, rib.ResetRouteList)
+	rib.timer.Stop()
 	return rib
 }
 
@@ -43,11 +57,15 @@ func (adjRib *AdjRib) getDest(nlri packet.IPPrefix, createIfNotExist bool) (*Des
 	return dest, ok
 }
 
-func updateRibOutInfo(action RouteSelectionAction, dest *Destination, withdrawn []packet.IPPrefix,
+func (adjRib *AdjRib) updateRibOutInfo(action RouteSelectionAction, dest *Destination, withdrawn []packet.IPPrefix,
 	updated map[*Path][]packet.IPPrefix) ([]packet.IPPrefix, map[*Path][]packet.IPPrefix) {
 	if action == RouteSelectionAdd || action == RouteSelectionReplace {
+		if action == RouteSelectionAdd {
+			adjRib.addDestToRouteList(dest)
+		}
 		updated[dest.locRibPath] = append(updated[dest.locRibPath], dest.nlri)
 	} else if action == RouteSelectionDelete {
+		adjRib.removeDestFromRouteList(dest)
 		withdrawn = append(withdrawn, dest.nlri)
 	}
 
@@ -71,9 +89,11 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.IPPrefix, addPat
 			}
 			dest.RemovePath(peerIP, remPath)
 			action = dest.SelectRouteForLocRib()
-			withdrawn, updated = updateRibOutInfo(action, dest, withdrawn, updated)
-			if action == RouteSelectionDelete && dest.IsEmpty() {
-				delete(adjRib.destPathMap, nlri.Prefix.String())
+			withdrawn, updated = adjRib.updateRibOutInfo(action, dest, withdrawn, updated)
+			if action == RouteSelectionDelete {
+				if dest.IsEmpty() {
+					delete(adjRib.destPathMap, nlri.Prefix.String())
+				}
 			}
 		} else {
 			adjRib.logger.Info(fmt.Sprintln("Can't withdraw destination", nlri.Prefix.String(),
@@ -86,7 +106,7 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.IPPrefix, addPat
 		dest, _ := adjRib.getDest(nlri, true)
 		dest.AddOrUpdatePath(peerIP, addPath)
 		action = dest.SelectRouteForLocRib()
-		withdrawn, updated = updateRibOutInfo(action, dest, withdrawn, updated)
+		withdrawn, updated = adjRib.updateRibOutInfo(action, dest, withdrawn, updated)
 	}
 
 	return updated, withdrawn
@@ -128,7 +148,7 @@ func (adjRib *AdjRib) RemoveUpdatesFromNeighbor(peerIP string, peer *Peer) (map[
 	for destIP, dest := range adjRib.destPathMap {
 		dest.RemovePath(peerIP, remPath)
 		action = dest.SelectRouteForLocRib()
-		withdrawn, updated = updateRibOutInfo(action, dest, withdrawn, updated)
+		withdrawn, updated = adjRib.updateRibOutInfo(action, dest, withdrawn, updated)
 		if action == RouteSelectionDelete && dest.IsEmpty() {
 			delete(adjRib.destPathMap, destIP)
 		}
@@ -144,7 +164,7 @@ func (adjRib *AdjRib) RemoveUpdatesFromAllNeighbors() {
 	for destIP, dest := range adjRib.destPathMap {
 		dest.RemoveAllNeighborPaths()
 		action := dest.SelectRouteForLocRib()
-		updateRibOutInfo(action, dest, withdrawn, updated)
+		adjRib.updateRibOutInfo(action, dest, withdrawn, updated)
 		if action == RouteSelectionDelete && dest.IsEmpty() {
 			delete(adjRib.destPathMap, destIP)
 		}
@@ -160,4 +180,88 @@ func (adjRib *AdjRib) GetLocRib() map[*Path][]packet.IPPrefix {
 	}
 
 	return updated
+}
+
+func (adjRib *AdjRib) removeDestFromRouteList(dest *Destination) {
+	idx := dest.routeListIdx
+	if idx != -1 {
+		defer adjRib.routeMutex.Unlock()
+		adjRib.routeMutex.Lock()
+		if !adjRib.activeGet {
+			adjRib.routeList[idx] = adjRib.routeList[len(adjRib.routeList)-1]
+			adjRib.routeList[len(adjRib.routeList)-1] = nil
+			adjRib.routeList = append(adjRib.routeList[:idx], adjRib.routeList[idx+1:]...)
+			adjRib.routeList = adjRib.routeList[:len(adjRib.routeList)-1]
+		} else {
+			adjRib.routeList[idx] = nil
+		}
+	}
+}
+
+func (adjRib *AdjRib) addDestToRouteList(dest *Destination) {
+	defer adjRib.routeMutex.Unlock()
+	adjRib.routeMutex.Lock()
+	adjRib.routeList = append(adjRib.routeList, dest)
+}
+
+func (adjRib *AdjRib) ResetRouteList() {
+	defer adjRib.routeMutex.Unlock()
+	adjRib.routeMutex.Lock()
+	adjRib.activeGet = false
+
+	lastIdx := len(adjRib.routeList) - 1
+	var modIdx int
+	for idx := 0; idx < len(adjRib.routeList); idx++ {
+		if adjRib.routeList[idx] == nil {
+			for modIdx := lastIdx; modIdx > idx && adjRib.routeList[modIdx] == nil; modIdx-- {
+			}
+			if modIdx <= idx {
+				break
+			}
+			adjRib.routeList[idx] = adjRib.routeList[modIdx]
+			adjRib.routeList[modIdx] = nil
+			lastIdx = modIdx
+		}
+	}
+	adjRib.routeList = adjRib.routeList[:lastIdx]
+}
+
+func (adjRib *AdjRib) GetBGPRoute(prefix string) *bgpd.BGPRoute {
+	defer adjRib.routeMutex.RUnlock()
+	adjRib.routeMutex.RLock()
+
+	if dest, ok := adjRib.destPathMap[prefix]; ok {
+		return dest.GetBGPRoute()
+	}
+
+	return nil
+}
+
+func (adjRib *AdjRib) BulkGetBGPRoutes(index int, count int) (int, int, []*bgpd.BGPRoute) {
+	adjRib.timer.Stop()
+	if index == 0 && adjRib.activeGet {
+		adjRib.ResetRouteList()
+	}
+	adjRib.activeGet = true
+
+	defer adjRib.routeMutex.RUnlock()
+	adjRib.routeMutex.RLock()
+
+	var i int
+	n := 0
+	result := make([]*bgpd.BGPRoute, count)
+	for i = index; i < len(adjRib.routeList) && n < count; i++ {
+		if adjRib.routeList[i] != nil && adjRib.routeList[i].locRibPath != nil {
+			result[n] = adjRib.routeList[i].GetBGPRoute()
+			n++
+		}
+	}
+	result = result[:n]
+
+	if i >= len(adjRib.routeList) {
+		i = 0
+	}
+
+	adjRib.timer.Reset(time.Duration(ResetTime) * time.Second)
+	return i, n, result
 }
