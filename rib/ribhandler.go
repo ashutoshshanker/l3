@@ -11,6 +11,7 @@ import (
 	//		"patricia"
 	//	"errors"
 	"asicd/asicdConstDefs"
+	"utils/commonDefs"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/op/go-nanomsg"
 	"io/ioutil"
@@ -88,7 +89,9 @@ type localDB struct {
 	isValid bool
 	precedence int
 }
-
+type IntfEntry struct {
+	name string
+}
 var asicdclnt AsicdClient
 var arpdclnt ArpdClient
 var count int
@@ -97,7 +100,7 @@ var acceptConfig bool
 var AsicdSub *nanomsg.SubSocket
 var RIBD_PUB *nanomsg.PubSocket
 var RIBD_BGPD_PUB *nanomsg.PubSocket
-
+var IntfIdNameMap map[int32]IntfEntry
 /*
 func setProtocol(routeType ribd.Int) (proto int8, err error) {
 	err = nil
@@ -166,7 +169,8 @@ func processL3IntfUpEvent(ipAddr string) {
 	ipMaskStr := net.IP(ipMask).String()
 	logger.Printf(" processL3IntfUpEvent for  ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
 	for i := 0; i < len(ConnectedRoutes); i++ {
-		if ConnectedRoutes[i].Ipaddr == ipAddrStr && ConnectedRoutes[i].Mask == ipMaskStr {
+		logger.Println("Current state of this connected route is ", ConnectedRoutes[i].IsValid)
+		if ConnectedRoutes[i].Ipaddr == ipAddrStr && ConnectedRoutes[i].Mask == ipMaskStr && ConnectedRoutes[i].IsValid == false {
 			//      if(ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex)){
 			logger.Printf("Add this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask)
 
@@ -265,6 +269,40 @@ func (m RouteServiceHandler) IntfUp(ipAddr string) (err error) {
 	return nil
 }
 
+func getIntfInfo() {
+	logger.Println("Getting intfs(ports) from asicd")
+	var currMarker asicdServices.Int
+	var count asicdServices.Int
+	count = 100
+	for {
+		logger.Printf("Getting %d objects from currMarker %d\n", count, currMarker)
+		bulkInfo, err := asicdclnt.ClientHdl.GetBulkPortState(currMarker, count)
+		if err != nil {
+			logger.Println("GetBulkPortState with err ", err)
+			return
+		}
+		if bulkInfo.Count == 0 {
+			logger.Println("0 objects returned from GetBulkPortState")
+			return
+		}
+		logger.Printf("len(bulkInfo.PortStateList)  = %d, num objects returned = %d\n", len(bulkInfo.PortStateList), bulkInfo.Count)
+		for i := 0; i < int(bulkInfo.Count); i++ {
+			portNum := bulkInfo.PortStateList[i].PortNum
+			ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(portNum),commonDefs.L2RefTypePort)
+             logger.Println("portNum = ", portNum, "ifId = ", ifId)
+			if IntfIdNameMap==nil {
+				IntfIdNameMap = make(map[int32]IntfEntry)
+			}
+			intfEntry := IntfEntry{name:bulkInfo.PortStateList[i].Name}
+			IntfIdNameMap[ifId] = intfEntry
+		}
+		if bulkInfo.More == false {
+			logger.Println("more returned as false, so no more get bulks")
+			return
+		}
+		currMarker = asicdServices.Int(bulkInfo.EndIdx)
+	}
+}
 func connectToClient(client ClientJson) {
 	var timer *time.Timer
 	logger.Printf("in go routine ConnectToClient for connecting to %s\n", client.Name)
@@ -280,6 +318,7 @@ func connectToClient(client ClientJson) {
 				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
 				getConnectedRoutes()
+				getIntfInfo()
 				if arpdclnt.IsConnected == true {
 					acceptConfig = true
 				}
@@ -330,6 +369,7 @@ func ConnectToClients(paramsFile string) {
 				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
 				getConnectedRoutes()
+				getIntfInfo()
 			} else {
 				go connectToClient(client)
 			}
@@ -397,6 +437,22 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			return
 		}
 		switch Notif.MsgType {
+		case asicdConstDefs.NOTIFY_VLAN_CREATE:
+		 logger.Println("asicdConstDefs.NOTIFY_VLAN_CREATE")
+		 var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
+		 err = json.Unmarshal(Notif.Msg, &vlanNotifyMsg)
+		 if err != nil {
+			logger.Println("Unable to unmashal vlanNotifyMsg:", Notif.Msg)
+			return
+		}
+		ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(vlanNotifyMsg.VlanId), commonDefs.L2RefTypeVlan)
+		logger.Println("vlanId ", vlanNotifyMsg.VlanId, " ifId:", ifId)
+		if IntfIdNameMap == nil {
+			IntfIdNameMap = make(map[int32]IntfEntry)
+		}
+		intfEntry := IntfEntry{name:vlanNotifyMsg.VlanName}
+		IntfIdNameMap[int32(ifId)] = intfEntry
+		break
 		case asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE:
 			logger.Println("NOTIFY_L3INTF_STATE_CHANGE event")
 			var msg asicdConstDefs.L3IntfStateNotifyMsg
@@ -422,7 +478,7 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				logger.Println("Error in reading msg ", err)
 				return
 			}
-			logger.Printf("Received ipv4 intf create with ipAddr %s ifType %d ifId %d\n", msg.IpAddr, asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex), asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex))
+			logger.Printf("Received ipv4 intf create with ipAddr %s ifIndex = %d ifType %d ifId %d\n", msg.IpAddr, msg.IfIndex, asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex), asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex))
 			var ipMask net.IP
 			ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
 			if err != nil {

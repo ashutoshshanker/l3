@@ -19,8 +19,6 @@ type PolicyStmt struct {				//policy engine uses this
 	conditions         []string
 	actions            []string
 	localDBSliceIdx        int8  
-	importPolicy       bool
-	exportPolicy       bool  
 }
 
 type Policy struct {
@@ -32,13 +30,16 @@ type Policy struct {
 	routeList         []string
 	routeInfoList     []ribd.Routes
 	localDBSliceIdx        int8  
+	importPolicy       bool
+	exportPolicy       bool  
 }
 
 var PolicyDB = patriciaDB.NewTrie()
 var PolicyStmtDB = patriciaDB.NewTrie()
 var PrefixPolicyListDB = patriciaDB.NewTrie()
 var ProtocolPolicyListDB = make(map[int][]string)//policystmt names assoociated with every protocol type
-var PolicyPrecedenceMap = make(map[int] string)
+var ImportPolicyPrecedenceMap = make(map[int] string)
+var ExportPolicyPrecedenceMap = make(map[int] string)
 var localPolicyStmtDB []localDB
 var localPolicyDB []localDB
 
@@ -60,6 +61,7 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	}
 	logger.Println("prefixLen= ", prefixLen)
 	var newRoute string
+	found := false
 	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
 //	newRoute := string(ipPrefix[:])
 	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
@@ -73,15 +75,32 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 		logger.Println("routeList nil")
 		tempPolicy.routeList = make([]string, 0)
 	}
-    tempPolicy.routeList = append(tempPolicy.routeList, newRoute)
 	logger.Println("routelist len= ", len(tempPolicy.routeList)," prefix list so far")
 	for i:=0;i<len(tempPolicy.routeList);i++ {
 		logger.Println(tempPolicy.routeList[i])
+		if tempPolicy.routeList[i] == newRoute {
+			logger.Println(newRoute, " already is a part of ", policy.name, "'s routelist")
+			found = true
+		}
+	}
+	if !found {
+       tempPolicy.routeList = append(tempPolicy.routeList, newRoute)
+	}
+	found=false
+	logger.Println("routeInfoList details")
+	for i:=0;i<len(tempPolicy.routeInfoList);i++ {
+		logger.Println("IP: ",tempPolicy.routeInfoList[i].Ipaddr, ":", tempPolicy.routeInfoList[i].Mask, " routeType: ", tempPolicy.routeInfoList[i].Prototype)
+		if tempPolicy.routeInfoList[i].Ipaddr==route.Ipaddr && tempPolicy.routeInfoList[i].Mask == route.Mask && tempPolicy.routeInfoList[i].Prototype == route.Prototype {
+			logger.Println("route already is a part of ", policy.name, "'s routeInfolist")
+			found = true
+		}
 	}
 	if tempPolicy.routeInfoList == nil {
 		tempPolicy.routeInfoList = make([]ribd.Routes, 0)
 	}
-    tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
+	if found == false {
+       tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
+	}
 	PolicyDB.Set(patriciaDB.Prefix(policy.name), tempPolicy)
 }
 func deletePolicyRouteMap(route ribd.Routes, policy Policy) {
@@ -240,8 +259,8 @@ func updateConditions(policyStmt PolicyStmt, conditionName string, op int) {
 			   logger.Println("PolicyConditionTypeProtocolMatch")
 			   updateProtocolPolicyTable(condition.conditionInfo.(int), policyStmt.name, op)
 			   break
-			case ribdCommonDefs.PolicyConditionTypePrefixMatch:
-			   logger.Println("PolicyConditionTypePrefixMatch")
+			case ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
+			   logger.Println("PolicyConditionTypeDstIpPrefixMatch")
 			   updatePrefixPolicyTable(condition.conditionInfo, policyStmt.name, op)
 			   break
 		}
@@ -282,8 +301,6 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 		  return val, err
 	   }
 	   newPolicyStmt.matchConditions = cfg.MatchConditions
-	   newPolicyStmt.importPolicy = cfg.Import
-	   newPolicyStmt.exportPolicy = cfg.Export
 	   if len(cfg.Conditions) > 0 {
 	      logger.Println("Policy Statement has %d ", len(cfg.Conditions)," number of conditions")	
 		  newPolicyStmt.conditions = make([] string, 0)
@@ -300,6 +317,7 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 			updateActions(newPolicyStmt, cfg.Actions[i], add)
 		}
 	   }
+        newPolicyStmt.localDBSliceIdx = int8(len(localPolicyStmtDB))
 		if ok := PolicyStmtDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyStmt); ok != true {
 			logger.Println(" return value not ok")
 			return val, err
@@ -391,8 +409,6 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtState( fromIndex ribd.In
 		    nextNode.Name = prefixNode.name
 			nextNode.Conditions = prefixNode.conditions
 			nextNode.Actions = prefixNode.actions
-	        nextNode.Import = prefixNode.importPolicy
-	        nextNode.Export = prefixNode.exportPolicy
 			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
 			if(len(returnNodes) == 0){
 				returnNodes = make([]*ribd.PolicyDefinitionStmtState, 0)
@@ -420,6 +436,12 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
 	   newPolicy.name = cfg.Name
 	   newPolicy.precedence = cfg.Precedence
 	   newPolicy.matchType = cfg.MatchType
+       if cfg.Export == false && cfg.Import == false {
+			logger.Println("Need to set import or export to true")
+			return val, err
+	   }	  
+	   newPolicy.exportPolicy = cfg.Export
+	   newPolicy.importPolicy = cfg.Import
 	   logger.Println("Policy has %d ", len(cfg.PolicyDefinitionStatements)," number of statements")
 	   newPolicy.policyStmtPrecedenceMap = make(map[int]string)	
 	   for i=0;i<len(cfg.PolicyDefinitionStatements);i++ {
@@ -429,7 +451,7 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
        for k:=range newPolicy.policyStmtPrecedenceMap {
 		logger.Println("key k = ", k)
 	   }
-
+       newPolicy.localDBSliceIdx = int8(len(localPolicyDB))
 	   if ok := PolicyDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicy); ok != true {
 			logger.Println(" return value not ok")
 			return val, err
@@ -439,10 +461,19 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
 			localPolicyDB = make([]localDB, 0)
 		} 
 	    localPolicyDB = append(localPolicyDB, localDBRecord)
-		if PolicyPrecedenceMap == nil {
-	       PolicyPrecedenceMap = make(map[int]string)	
-		}
-		PolicyPrecedenceMap[int(cfg.Precedence)]=cfg.Name
+		if cfg.Import {
+		   logger.Println("Adding ", newPolicy.name, " as import policy")
+		   if ImportPolicyPrecedenceMap == nil {
+	          ImportPolicyPrecedenceMap = make(map[int]string)	
+		   }
+		   ImportPolicyPrecedenceMap[int(cfg.Precedence)]=cfg.Name
+		} else if cfg.Export {
+		   logger.Println("Adding ", newPolicy.name, " as export policy")
+		   if ExportPolicyPrecedenceMap == nil {
+	          ExportPolicyPrecedenceMap = make(map[int]string)	
+		   }
+		   ExportPolicyPrecedenceMap[int(cfg.Precedence)]=cfg.Name
+		} 
 	    PolicyEngineTraverseAndApply(newPolicy)
 	} else {
 		logger.Println("Duplicate Policy definition name")
@@ -472,6 +503,16 @@ func (m RouteServiceHandler) 	DeletePolicyDefinition(cfg *ribd.PolicyDefinitionC
 		if ok := PolicyDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
 			logger.Println(" return value not ok for delete PolicyDB")
 			return val, err
+		}
+		if policyInfo.exportPolicy{
+			if ExportPolicyPrecedenceMap != nil {
+				delete(ExportPolicyPrecedenceMap,int(policyInfo.precedence))
+			}
+		}
+		if policyInfo.importPolicy{
+			if ImportPolicyPrecedenceMap != nil {
+				delete(ImportPolicyPrecedenceMap,int(policyInfo.precedence))
+			}
 		}
 	} 
 	return val, err

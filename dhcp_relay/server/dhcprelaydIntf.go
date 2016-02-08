@@ -4,6 +4,7 @@ package relayServer
 import (
 	"asicd/asicdConstDefs"
 	"asicdServices"
+	"dhcprelayd"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
@@ -81,6 +82,7 @@ func DhcpRelayAgentUpdateIntfPortMap(msg asicdConstDefs.IPv4IntfNotifyMsg, msgTy
 		// Init DRA Global Handling for new interface....
 		// 192.168.1.1/24 -> ip: 192.168.1.1  net: 192.168.1.0/24
 		DhcpRelayAgentInitGblHandling(intfId)
+		DhcpRelayAgentInitIntfState(intfId)
 		gblEntry := dhcprelayGblInfo[intfId]
 		ip, ipnet, err := net.ParseCIDR(msg.IpAddr)
 		if err != nil {
@@ -93,9 +95,7 @@ func DhcpRelayAgentUpdateIntfPortMap(msg asicdConstDefs.IPv4IntfNotifyMsg, msgTy
 		logger.Info(fmt.Sprintln("DRA: Added interface:", intfId, " Ip address:",
 			gblEntry.IntfConfig.IpSubnet, " netmask:", gblEntry.IntfConfig.IpSubnet))
 	} else {
-		// @TODO: jgheewala do we need to disable relay agent for the
-		// interface which is deleted...
-		logger.Info("deleteing interface")
+		logger.Info(fmt.Sprintln("DRA: deleteing interface", intfId))
 		delete(dhcprelayGblInfo, intfId)
 	}
 }
@@ -178,7 +178,13 @@ func DhcpRelayInitPortParams() error {
 	logger.Info("DRA calling asicd for port config")
 	count := 10
 	// Allocate memory for Global Info
-	dhcprelayGblInfo = make(map[int]DhcpRelayAgentGlobalInfo, 25)
+	dhcprelayGblInfo = make(map[int]DhcpRelayAgentGlobalInfo, 50)
+	// Interface State Maps
+	dhcprelayIntfStateMap = make(map[int]dhcprelayd.DhcpRelayIntfState, 50)
+	dhcprelayIntfServerStateMap = make(map[string]dhcprelayd.DhcpRelayIntfServerState, 50)
+	// Interface State Slice
+	dhcprelayIntfStateSlice = []int{}
+	dhcprelayIntfServerStateSlice = []string{}
 	// Allocate memory for Linux ID ---> Logical Id mapping
 	dhcprelayLogicalIntfId2LinuxIntId = make(map[int]int, 10)
 	for {
@@ -198,6 +204,7 @@ func DhcpRelayInitPortParams() error {
 			ifName = bulkInfo.PortStateList[i].Name
 			logger.Info("DRA: interface global init for " + ifName)
 			DhcpRelayAgentInitGblHandling(portNum)
+			DhcpRelayAgentInitIntfState(portNum)
 		}
 		if more == false {
 			break

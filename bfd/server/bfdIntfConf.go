@@ -99,6 +99,7 @@ func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {
 		intf.conf.AuthenticationKeyId = ifConf.AuthenticationKeyId
 		intf.conf.SequenceNumber = ifConf.SequenceNumber
 		intf.conf.AuthenticationData = ifConf.AuthenticationData
+		server.UpdateBfdSessionsOnInterface(intf.conf.InterfaceId)
 	}
 }
 
@@ -121,7 +122,15 @@ func (server *BFDServer) processIntfConfig(ifConf IntfConfig) {
 }
 
 func (server *BFDServer) StopSendRecvPkts(ifIndex int32) {
+	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
+	if exist {
+		intf.Enabled = false
+	}
 }
 
 func (server *BFDServer) StartSendRecvPkts(ifIndex int32) {
+	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
+	if exist {
+		intf.Enabled = true
+	}
 }

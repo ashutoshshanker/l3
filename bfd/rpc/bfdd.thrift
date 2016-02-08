@@ -38,9 +38,15 @@ struct BfdSessionState{
 	2 : string 	LocalIpAddr
 	3 : string 	RemoteIpAddr
 	4 : i32 	InterfaceId
-	5 : string 	ReqisteredProtocols
-	8 : i32 	LocalDicriminator
+	5 : string 	RegisteredProtocols
+	6 : i32 	SessionState
+	7 : i32 	RemoteSessionState
+	8 : i32 	LocalDiscriminator
 	9 : i32 	RemoteDiscriminator
+	10 : i32 	LocalDiagType
+	11 : i32 	DesiredMinTxInterval
+	12 : i32 	RequiredMinRxInterval
+	13 : i32 	RemoteMinRxInterval
 	14 : i32 	DetectionMultiplier
 	15 : bool 	DemandMode
 	16 : bool 	RemoteDemandMode
@@ -67,4 +73,6 @@ service BFDDServices {
 	bool DeleteBfdIntfConfig(1: BfdIntfConfig config);
 
 	BfdSessionStateGetInfo GetBulkBfdSessionState(1: int fromIndex, 2: int count);
+
+	bool ExecuteBfdCommand(1: string IpAddr, 2: int Cmd, 3: int Owner)
 }

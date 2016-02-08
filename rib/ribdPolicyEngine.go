@@ -15,6 +15,39 @@ import (
 	"bytes"
     "database/sql"
 )
+func isPolicyTypeSame(oldPolicy Policy, policy Policy) (same bool){
+	if oldPolicy.exportPolicy == policy.exportPolicy && oldPolicy.importPolicy==policy.importPolicy {
+		same = true
+	}
+	return same
+}
+func actionListHasAction(actionList []string, action string) (match bool) {
+	logger.Println("actionListHasAction for action ", action)
+	for i:=0;i<len(actionList);i++ {
+	   logger.Println("action at index ", i, " is ", actionList[i])
+	   actionInfoItem:=PolicyActionsDB.Get(patriciaDB.Prefix(actionList[i]))
+	   if actionInfoItem == nil {
+		logger.Println("nil action")
+		return false
+	   }
+	   actionInfo:=actionInfoItem.(PolicyAction)
+		switch actionInfo.actionType {
+		   case ribdCommonDefs.PolicyActionTypeRouteDisposition:
+			  logger.Println("RouteDisposition action = ", actionInfo.actionInfo)
+			  if actionInfo.actionInfo.(string) == action {
+	             match = true
+			  } 
+			  break
+		   case ribdCommonDefs.PolicyActionTypeRouteRedistribute:
+		      logger.Println("PolicyActionTypeRouteRedistribute action ")
+			  break
+		   default:
+		      logger.Println("Unknown type of action")
+			  break
+		}
+	}
+	return match
+}
 func conditionCheckValid(route ribd.Routes,conditionsList []string) (valid bool) {
    logger.Println("conditionCheckValid")	
    valid = true
@@ -32,8 +65,8 @@ func conditionCheckValid(route ribd.Routes,conditionsList []string) (valid bool)
 	  conditionInfo := conditionItem.(PolicyCondition)
 	  logger.Printf("policy condition number %d type %d\n", i, conditionInfo.conditionType)
       switch conditionInfo.conditionType {
-		case ribdCommonDefs.PolicyConditionTypePrefixMatch:
-		  logger.Println("PolicyConditionTypePrefixMatch case")
+		case ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
+		  logger.Println("PolicyConditionTypeDstIpPrefixMatch case")
 		  routePrefix,err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
 		  if err != nil {
 			logger.Println("Invalid routePrefix for the route ", route.Ipaddr," ", route.Mask)
@@ -289,6 +322,10 @@ func policyEngineActionUndoRejectRoute(route ribd.Routes,params interface {}, co
 	    }
 	} else if route.Prototype == ribdCommonDefs.CONNECTED {
 		logger.Println("this is a connected route, fetch it from ASICD")
+		if !asicdclnt.IsConnected {
+			logger.Println("Not connected to ASICD")
+			return
+		}
 	    var currMarker asicdServices.Int
 	    var count asicdServices.Int
 	    count = 100
@@ -478,8 +515,8 @@ func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (matc
 	  condition := conditionItem.(PolicyCondition)
 	  logger.Printf("policy condition number %d type %d\n", i, condition.conditionType)
       switch condition.conditionType {
-		case ribdCommonDefs.PolicyConditionTypePrefixMatch:
-		  logger.Println("PolicyConditionTypePrefixMatch case")
+		case ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
+		  logger.Println("PolicyConditionTypeDstIpPrefixMatch case")
 		  ipPrefix,err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
 		  if err != nil {
 			logger.Println("Invalid ipPrefix for the route ", route.Ipaddr," ", route.Mask)
@@ -531,48 +568,43 @@ func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (matc
    return match,conditionsList
 }
 
-func policyEngineApplyPolicyStmt(route *ribd.Routes, policy Policy, policyStmt PolicyStmt, policyPath int, params interface{}, hit *bool) {
+func policyEngineApplyPolicyStmt(route *ribd.Routes, policy Policy, policyStmt PolicyStmt, policyPath int, params interface{}, hit *bool, routeDeleted *bool) {
 	logger.Println("policyEngineApplyPolicyStmt - ", policyStmt.name)
-	var policyPath_Str string
-	if policyPath == ribdCommonDefs.PolicyPath_Import {
-	   policyPath_Str = "Import"
-	} else if policyPath == ribdCommonDefs.PolicyPath_Export {
-	   policyPath_Str = "Export"
-	} else if policyPath == ribdCommonDefs.PolicyPath_All {
-		policyPath_Str = "ALL"
-	}
-	if policyPath == ribdCommonDefs.PolicyPath_Import && policyStmt.importPolicy == false || 
-	   policyPath == ribdCommonDefs.PolicyPath_Export && policyStmt.exportPolicy == false {
-	   logger.Println("Cannot apply the policy ", policyStmt.name, " as ", policyPath_Str, " policy")
-	   return
-	}
 	if policyStmt.conditions == nil {
 		logger.Println("No policy conditions")
 		return
 	}
 	match,conditionList := PolicyEngineMatchConditions(*route, policyStmt)
 	logger.Println("match = ", match)
+	*hit = match
 	if !match {
 		logger.Println("Conditions do not match")
 		return
 	}
 	actionList := policyEngineImplementActions(*route, policyStmt, params)
+	if actionListHasAction(actionList, "Reject") {
+		logger.Println("Reject action was applied for this route")
+		*routeDeleted = true
+	}
     routeInfo := params.(RouteParams)
 	var op int
 	if routeInfo.deleteType != Invalid {
 		op = del
 	} else {
-		op = add
-	    route.PolicyHitCounter++
-	    updateRoutePolicyState(*route, op, policy.name, policyStmt.name)
-		addPolicyRouteMapEntry(route, policy.name, policyStmt.name, conditionList, actionList)
+	    if *routeDeleted == false{
+		  logger.Println("Reject action was not applied, so add this policy to the route")
+		  op = add
+	      updateRoutePolicyState(*route, op, policy.name, policyStmt.name)
+        } 	 
+        route.PolicyHitCounter++
+	    addPolicyRouteMapEntry(route, policy.name, policyStmt.name, conditionList, actionList)
 	}
 	updatePolicyRouteMap(*route, policy, op)
-	*hit = match
 }
 func policyEngineApplyPolicy(route *ribd.Routes, policy Policy, policyPath int,params interface{}, hit *bool) {
 	logger.Println("policyEngineApplyPolicy - ", policy.name)
      var policyStmtKeys []int
+	routeDeleted := false
 	 for k:=range policy.policyStmtPrecedenceMap {
 		logger.Println("key k = ", k)
 		policyStmtKeys = append(policyStmtKeys,k)
@@ -585,8 +617,8 @@ func policyEngineApplyPolicy(route *ribd.Routes, policy Policy, policyPath int,p
 			logger.Println("Invalid policyStmt")
 			continue
 		}
-		policyEngineApplyPolicyStmt(route,policy,policyStmt.(PolicyStmt),policyPath, params, hit)
-		//check if the route still exists - it may have been deleted by the previous statement action
+		policyEngineApplyPolicyStmt(route,policy,policyStmt.(PolicyStmt),policyPath, params, hit, &routeDeleted)
+/*		//check if the route still exists - it may have been deleted by the previous statement action
 		ipPrefix,err:=getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
 		if err != nil {
 			logger.Println("Error when getting ipPrefix, err= ", err)
@@ -596,6 +628,10 @@ func policyEngineApplyPolicy(route *ribd.Routes, policy Policy, policyPath int,p
 		if routeInfoRecordList == nil {
 			logger.Println("this route no longer exists")
 			break
+		}*/
+		if routeDeleted == true {
+			logger.Println("Route was deleted as a part of the policyStmt ", policy.policyStmtPrecedenceMap[policyStmtKeys[i]])
+             break
 		}
 		if *hit == true {
 			if policy.matchType == "any" {
@@ -624,18 +660,38 @@ func policyEngineCheckPolicy(route *ribd.Routes, params interface {}) {
 }
 func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 	logger.Println("PolicyEngineFilter")
+	var policyPath_Str string
+	if policyPath == ribdCommonDefs.PolicyPath_Import {
+	   policyPath_Str = "Import"
+	} else if policyPath == ribdCommonDefs.PolicyPath_Export {
+	   policyPath_Str = "Export"
+	} else if policyPath == ribdCommonDefs.PolicyPath_All {
+		policyPath_Str = "ALL"
+		logger.Println("policy path ", policyPath_Str, " unexpected in this function")
+		return
+	}
     routeInfo := params.(RouteParams)
+	logger.Println("PolicyEngineFilter for policypath ", policyPath_Str, "createType = ", routeInfo.createType, " deleteType = ", routeInfo.deleteType, " route: ", route.Ipaddr,":",route.Mask, " protocol type: ", route.Prototype)
     var policyKeys []int
 	var policyHit bool
 	idx :=0
 	var policyInfo interface{}
-	for k:=range PolicyPrecedenceMap {
-	   policyKeys = append(policyKeys,k)
+	if policyPath == ribdCommonDefs.PolicyPath_Import{
+	   for k:=range ImportPolicyPrecedenceMap {
+	      policyKeys = append(policyKeys,k)
+	   }
+	} else if policyPath == ribdCommonDefs.PolicyPath_Export{
+	   for k:=range ExportPolicyPrecedenceMap {
+	      policyKeys = append(policyKeys,k)
+	   }
 	}
 	sort.Ints(policyKeys)
 	for ;; {
 		if routeInfo.deleteType != Invalid {
 			if route.PolicyList != nil {
+             if idx >= len(route.PolicyList) {
+				break
+			 } 		
 		     logger.Println("getting policy ", idx, " from route.PolicyList")
 	         policyInfo = 	PolicyDB.Get(patriciaDB.Prefix(route.PolicyList[idx]))
 		     idx++
@@ -646,35 +702,34 @@ func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 	    }  else {
 			//case when no policies have been applied to the route
 			//need to apply the default policy
+			logger.Println("idx = ", idx, " len(policyKeys):", len(policyKeys))
             if idx >= len(policyKeys) {
 				break
 			}		
-		    logger.Println("getting policy  ", idx, " policyKeys[idx] = ", policyKeys[idx]," ", PolicyPrecedenceMap[policyKeys[idx]]," from PolicyDB")
-            policyInfo = PolicyDB.Get((patriciaDB.Prefix(PolicyPrecedenceMap[policyKeys[idx]])))
+			policyName := ""
+            if policyPath == ribdCommonDefs.PolicyPath_Import {
+               policyName = ImportPolicyPrecedenceMap[policyKeys[idx]]
+			} else if policyPath == ribdCommonDefs.PolicyPath_Export {
+               policyName = ExportPolicyPrecedenceMap[policyKeys[idx]]
+			}
+		    logger.Println("getting policy  ", idx, " policyKeys[idx] = ", policyKeys[idx]," ", policyName," from PolicyDB")
+             policyInfo = PolicyDB.Get((patriciaDB.Prefix(policyName)))
 			idx++
-	   }
-	   if policyInfo == nil {
-	      logger.Println("Nil policy")
-		  continue
-	   }
-	   policy := policyInfo.(Policy)
-	   if localPolicyDB != nil && localPolicyDB[policy.localDBSliceIdx].isValid == false {
-	      logger.Println("Invalid policy")
-		  continue	
-	   }		
-	   policyEngineApplyPolicy(&route, policy, policyPath, params, &policyHit)
-	   if policyHit {
-	      logger.Println("Policy ", policy.name, " applied to the route")	
-		  break
-	   }
-	}
-	var policyPath_Str string
-	if policyPath == ribdCommonDefs.PolicyPath_Import {
-	   policyPath_Str = "Import"
-	} else if policyPath == ribdCommonDefs.PolicyPath_Export {
-	   policyPath_Str = "Export"
-	} else if policyPath == ribdCommonDefs.PolicyPath_All {
-		policyPath_Str = "ALL"
+	      }
+	      if policyInfo == nil {
+	        logger.Println("Nil policy")
+		    continue
+	      }
+	      policy := policyInfo.(Policy)
+	      if localPolicyDB != nil && localPolicyDB[policy.localDBSliceIdx].isValid == false {
+	        logger.Println("Invalid policy at localDB slice idx ", policy.localDBSliceIdx)
+		    continue	
+	      }		
+	      policyEngineApplyPolicy(&route, policy, policyPath, params, &policyHit)
+	      if policyHit {
+	         logger.Println("Policy ", policy.name, " applied to the route")	
+		     break
+	      }
 	}
 	if route.PolicyHitCounter == 0{
 		logger.Println("Need to apply default policy, policyPath = ", policyPath, "policyPath_Str= ", policyPath_Str)
@@ -813,8 +868,11 @@ func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, h
 		    logger.Println("Unexpected: Invalid policy in the route policy list")
 	     } else {
 	       oldPolicy := policyInfo.(Policy)
-		   if 	oldPolicy.precedence < policy.precedence {
-			 logger.Println("The precedence of the policy applied currently is lower than the new policy, so do nothing")
+		   if !isPolicyTypeSame(oldPolicy, policy) {
+			 logger.Println("The policy type applied currently is not the same as new policy, so apply new policy")
+              policyEngineApplyPolicy(&policyRoute, policy, ribdCommonDefs.PolicyPath_All,params, &policyHit)
+		   } else if oldPolicy.precedence < policy.precedence {
+			 logger.Println("The policy types are same and precedence of the policy applied currently is lower than the new policy, so do nothing")
 			 return err
 		   } else {
 			logger.Println("The new policy's precedence is lower, so undo old policy's actions and apply the new policy")
@@ -856,8 +914,16 @@ func PolicyEngineTraverseAndReverse(policy Policy) {
 	}
 	var policyRoute ribd.Routes
 	var params RouteParams
-	for idx:=0;idx<len(policy.routeList);idx++ {
-		ipPrefix, err:=getNetworkPrefixFromCIDR(policy.routeList[idx])
+	for idx :=0;idx<len(policy.routeInfoList);idx++ {
+         policyRoute = policy.routeInfoList[idx]
+         params = RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
+		ipPrefix, err:=getNetowrkPrefixFromStrings(policy.routeInfoList[idx].Ipaddr, policy.routeInfoList[idx].Mask)
+		if err != nil {
+			logger.Println("Invalid route ", policy.routeList[idx])
+			continue
+		}
+	//for idx:=0;idx<len(policy.routeList);idx++ {
+	/*	ipPrefix, err:=getNetworkPrefixFromCIDR(policy.routeList[idx])
 		if err != nil {
 			logger.Println("Invalid route ", policy.routeList[idx])
 			continue
@@ -872,9 +938,9 @@ func PolicyEngineTraverseAndReverse(policy Policy) {
          selectedRouteInfoRecord := routeInfoRecordList.routeInfoList[routeInfoRecordList.selectedRouteIdx]
          policyRoute = ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol)}
          params = RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
-        }
+        }*/
 		policyEngineUndoPolicyForRoute(policyRoute, policy, params,)
 		deleteRoutePolicyState(ipPrefix, policy.name)
-		
+        deletePolicyRouteMapEntry(policyRoute, policy.name)
 	}
 }

@@ -58,17 +58,17 @@ struct PolicyDefinitionSetsPrefixSetGetInfo {
 	4: bool More
 	5: list<PolicyDefinitionSetsPrefixSet> PolicyDefinitionSetsPrefixSetList
 }
-struct PolicyDefinitionStmtMatchPrefixSetCondition{
+struct PolicyDefinitionStmtDstIpMatchPrefixSetCondition{
 	1 : string  Name
 	2 : string 	PrefixSet
 	3 : PolicyDefinitionSetsPrefix Prefix
 }
-struct PolicyDefinitionStmtMatchPrefixSetConditionsGetInfo {
+struct PolicyDefinitionStmtDstIpMatchPrefixSetConditionsGetInfo {
 	1: int StartIdx
 	2: int EndIdx
 	3: int Count
 	4: bool More
-	5: list<PolicyDefinitionStmtMatchPrefixSetCondition> PolicyDefinitionStmtMatchPrefixSetConditionList
+	5: list<PolicyDefinitionStmtDstIpMatchPrefixSetCondition> PolicyDefinitionStmtDstIpMatchPrefixSetConditionList
 }
 //Neighbor 
 //NeighborSet 
@@ -155,8 +155,8 @@ struct PolicyDefinitionStmtConfig{
 	3 : string 	MatchConditions
 	4 : list<string> 	Conditions
 	5 : list<string> 	Actions
-	6 : bool     Export
-	7 : bool     Import
+	//6 : bool     Export
+	//7 : bool     Import
 }
 struct PolicyDefinitionStmtState{
 	1 : string  Name
@@ -165,10 +165,8 @@ struct PolicyDefinitionStmtState{
 	4 : string 	MatchConditions
 	5 : list<string> 	Conditions
 	6 : list<string> 	Actions
-	7 : bool     Export
-	8 : bool     Import
-	9 : int      HitCounter
-	10: list<string> IpPrefixList
+	7 : int      HitCounter
+	8: list<string> IpPrefixList
 }
 struct PolicyDefinitionStmtStateGetInfo {
 	1: int StartIdx
@@ -211,6 +209,8 @@ struct PolicyDefinitionConfig{
 	2: int Precedence
 	3: string MatchType
 	4: list<PolicyDefinitionStmtPrecedence> PolicyDefinitionStatements
+	6 : bool     Export
+	7 : bool     Import
 }
 struct PolicyDefinitionGetInfo {
 	1: int StartIdx
@@ -253,9 +253,9 @@ service RouteService
 //	bool UpdatePolicyDefinitionSetsPrefixSet(1: PolicyDefinitionSetsPrefixSet origconfig, 2: PolicyDefinitionSetsPrefixSet newconfig, 3: list<bool> attrset);
 //	bool DeletePolicyDefinitionSetsPrefixSet(1: PolicyDefinitionSetsPrefixSet config);
 
-	bool CreatePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtMatchPrefixSetCondition config);
-//	bool UpdatePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtMatchPrefixSetCondition origconfig, 2: PolicyDefinitionStmtMatchPrefixSetCondition newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtMatchPrefixSetCondition config);
+	bool CreatePolicyDefinitionStmtDstIpMatchPrefixSetCondition(1: PolicyDefinitionStmtDstIpMatchPrefixSetCondition config);
+//	bool UpdatePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtDstIpMatchPrefixSetCondition origconfig, 2: PolicyDefinitionStmtDstIpMatchPrefixSetCondition newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinitionStmtMatchPrefixSetCondition(1: PolicyDefinitionStmtDstIpMatchPrefixSetCondition config);
 
 //	bool CreatePolicyDefinitionStmtMatchNeighborSetCondition(1: PolicyDefinitionStmtMatchNeighborSetCondition config);
 //	bool UpdatePolicyDefinitionStmtMatchNeighborSetCondition(1: PolicyDefinitionStmtMatchNeighborSetCondition origconfig, 2: PolicyDefinitionStmtMatchNeighborSetCondition newconfig, 3: list<bool> attrset);
