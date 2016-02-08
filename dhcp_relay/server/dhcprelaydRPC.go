@@ -125,7 +125,7 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 	// Setting up default values for globalEntry
 	gblEntry.IntfConfig.IpSubnet = ""
 	gblEntry.IntfConfig.Netmask = ""
-	gblEntry.IntfConfig.IfIndex = strconv.Itoa(ifNum) //ifName
+	gblEntry.IntfConfig.IfIndex = strconv.Itoa(ifNum)
 	gblEntry.IntfConfig.AgentSubType = 0
 	gblEntry.IntfConfig.Enable = false
 	gblEntry.PcapHandle.Close()
@@ -136,16 +136,57 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 
 func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayHostDhcpState(fromIndex dhcprelayd.Int,
 	count dhcprelayd.Int) (hostEntry *dhcprelayd.DhcpRelayHostDhcpStateGetInfo, err error) {
-
+	logger.Info(fmt.Sprintln("DRA: Get Bulk for Host Server State for ", count, " hosts"))
 	return hostEntry, err
 }
 
 func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayIntfState(fromIndex dhcprelayd.Int,
 	count dhcprelayd.Int) (intfEntry *dhcprelayd.DhcpRelayIntfStateGetInfo, err error) {
+	logger.Info(fmt.Sprintln("DRA: Get Bulk for Intf State for ", count, " interfaces"))
+	var nextEntry *dhcprelayd.DhcpRelayIntfState
+	var finalList []*dhcprelayd.DhcpRelayIntfState
+	var returnIntfStatebulk dhcprelayd.DhcpRelayIntfStateGetInfo
+	var endIdx int
+	var more bool
+	intfEntry = &returnIntfStatebulk
+
+	if dhcprelayIntfStateSlice == nil {
+		logger.Info("DRA: Interface Slice is not initialized")
+		return intfEntry, err
+	}
+	currIdx := int(fromIndex)
+	cnt := int(count)
+	length := len(dhcprelayIntfStateSlice)
+
+	if currIdx+cnt >= length {
+		cnt = length - currIdx
+		endIdx = 0
+		more = false
+	} else {
+		endIdx = currIdx + cnt
+		more = true
+	}
+
+	for i := 0; i < cnt; i++ {
+		if len(finalList) == 0 {
+			finalList = make([]*dhcprelayd.DhcpRelayIntfState, 0)
+		}
+		key := dhcprelayIntfStateSlice[i]
+		entry := dhcprelayIntfStateMap[key]
+		nextEntry = &entry
+		finalList = append(finalList, nextEntry)
+	}
+	intfEntry.DhcpRelayIntfStateList = finalList
+	intfEntry.StartIdx = fromIndex
+	intfEntry.EndIdx = dhcprelayd.Int(endIdx)
+	intfEntry.More = more
+	intfEntry.Count = dhcprelayd.Int(cnt)
+
 	return intfEntry, err
 }
 
 func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayIntfServerState(fromIndex dhcprelayd.Int,
 	count dhcprelayd.Int) (intfServerEntry *dhcprelayd.DhcpRelayIntfServerStateGetInfo, err error) {
+	logger.Info(fmt.Sprintln("DRA: Get Bulk for Intf Server State for ", count, " combination"))
 	return intfServerEntry, err
 }
