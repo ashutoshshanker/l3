@@ -9,6 +9,7 @@ import (
 	"golang.org/x/net/ipv4"
 	"net"
 	"strconv"
+	"time"
 )
 
 /* ========================HELPER FUNCTIONS FOR DHCP =========================*/
@@ -360,13 +361,13 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 	if !ok {
 		hostServerStateEntry.MacAddr = inReq.GetCHAddr().String()
 		hostServerStateEntry.ServerIp = gblEntry.IntfConfig.ServerIp
-		if inReq.GetYIAddr().String() != DHCP_NO_IP {
-			hostServerStateEntry.AcceptedIp = inReq.GetYIAddr().String()
-		}
 		dhcprelayHostServerStateSlice = append(dhcprelayHostServerStateSlice,
 			hostServerStateKey)
 	}
-	DhcpRelayAgentUpdateTime(hostServerStateEntry.ClientRequest)
+	if inReq.GetYIAddr().String() != DHCP_NO_IP {
+		hostServerStateEntry.AcceptedIp = inReq.GetYIAddr().String()
+	}
+	hostServerStateEntry.ClientRequest = time.Now().String()
 
 	// Create server ip address + port number
 	serverIpPort := gblEntry.IntfConfig.ServerIp + ":" +
@@ -407,7 +408,6 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 		goto early_exit
 	}
 	intfkey = strconv.Itoa(int(intfStateEntry.IntfId)) + "_" + gblEntry.IntfConfig.ServerIp
-	logger.Info("DRA: #######key for interface Server state is " + intfkey)
 	intfStateServerEntry, ok = dhcprelayIntfServerStateMap[intfkey]
 	if !ok {
 		logger.Info("DRA: Why don't we have entry for " + intfkey)
@@ -415,7 +415,7 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 	intfStateServerEntry.Request++
 	dhcprelayIntfServerStateMap[intfkey] = intfStateServerEntry
 	intfStateEntry.TotalDhcpServerTx++
-	DhcpRelayAgentUpdateTime(hostServerStateEntry.ServerRequest)
+	hostServerStateEntry.ServerRequest = time.Now().String()
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to server"))
 
 early_exit:
@@ -437,7 +437,7 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 		logger.Warning("DRA: missed updating state during client " +
 			"request for " + inReq.GetCHAddr().String())
 	} else {
-		DhcpRelayAgentUpdateTime(hostServerStateEntry.ServerResponse)
+		hostServerStateEntry.ServerResponse = time.Now().String()
 		hostServerStateEntry.OfferedIp = inReq.GetYIAddr().String()
 		hostServerStateEntry.GatewayIp = inReq.GetGIAddr().String()
 		leaseInfo := reqOptions[OptionIPAddressLeaseTime]
@@ -514,7 +514,7 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 	}
 
 	if ok {
-		DhcpRelayAgentUpdateTime(hostServerStateEntry.ClientResponse)
+		hostServerStateEntry.ClientResponse = time.Now().String()
 	}
 	intfkey = strconv.Itoa(int(intfStateEntry.IntfId)) + "_" + server.String()
 	intfStateServerEntry = dhcprelayIntfServerStateMap[intfkey]

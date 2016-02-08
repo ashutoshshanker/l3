@@ -137,6 +137,45 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayHostDhcpState(fromIndex dhcprelayd.Int,
 	count dhcprelayd.Int) (hostEntry *dhcprelayd.DhcpRelayHostDhcpStateGetInfo, err error) {
 	logger.Info(fmt.Sprintln("DRA: Get Bulk for Host Server State for ", count, " hosts"))
+
+	var nextEntry *dhcprelayd.DhcpRelayHostDhcpState
+	var finalList []*dhcprelayd.DhcpRelayHostDhcpState
+	var returnBulk dhcprelayd.DhcpRelayHostDhcpStateGetInfo
+	var endIdx int
+	var more bool
+	hostEntry = &returnBulk
+
+	if dhcprelayHostServerStateSlice == nil {
+		logger.Info("DRA: Host Server Slice is not initialized")
+		return hostEntry, err
+	}
+	currIdx := int(fromIndex)
+	cnt := int(count)
+	length := len(dhcprelayHostServerStateSlice)
+
+	if currIdx+cnt >= length {
+		cnt = length - currIdx
+		endIdx = 0
+		more = false
+	} else {
+		endIdx = currIdx + cnt
+		more = true
+	}
+	for i := 0; i < cnt; i++ {
+		if len(finalList) == 0 {
+			finalList = make([]*dhcprelayd.DhcpRelayHostDhcpState, 0)
+		}
+		key := dhcprelayHostServerStateSlice[i]
+		entry := dhcprelayHostServerStateMap[key]
+		nextEntry = &entry
+		finalList = append(finalList, nextEntry)
+	}
+	hostEntry.DhcpRelayHostDhcpStateList = finalList
+	hostEntry.StartIdx = fromIndex
+	hostEntry.EndIdx = dhcprelayd.Int(endIdx)
+	hostEntry.More = more
+	hostEntry.Count = dhcprelayd.Int(cnt)
+
 	return hostEntry, err
 }
 

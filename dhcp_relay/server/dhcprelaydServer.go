@@ -15,7 +15,6 @@ import (
 	"strconv"
 	_ "strings"
 	"syscall"
-	"time"
 	"utils/ipcutils"
 )
 
@@ -23,10 +22,6 @@ import (
 
 func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 	return &DhcpRelayServiceHandler{}
-}
-
-func DhcpRelayAgentUpdateTime(entry string) {
-	entry = time.Now().String()
 }
 
 /*
@@ -141,13 +136,12 @@ func InitDhcpRelayPortPktHandler() error {
 
 func DhcpRelayAgentInitIntfServerState(IntfId string, serverIp string, id int) {
 	key := IntfId + "_" + serverIp
-	logger.Info("DRA: #######key for interface Server state is " + key)
 	intfServerEntry := dhcprelayIntfServerStateMap[key]
 	intfServerEntry.IntfId = int32(id)
 	intfServerEntry.ServerIp = serverIp
 	intfServerEntry.Request = 0
 	intfServerEntry.Responses = 0
-	dhcprelayIntfServerStateMap[IntfId] = intfServerEntry
+	dhcprelayIntfServerStateMap[key] = intfServerEntry
 	dhcprelayIntfServerStateSlice = append(dhcprelayIntfServerStateSlice, key)
 }
 
