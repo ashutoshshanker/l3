@@ -4,13 +4,21 @@ typedef i32 int
 struct BGPGlobalConfig {
 	1: i32 ASNum,
 	2: string RouterId,
+	3: bool UseMultiplePaths
+	4: i32 EBGPMaxPaths
+	5: bool EBGPAllowMultipleAS
+	6: i32 IBGPMaxPaths
 }
 
 struct BGPGlobalState {
 	1: i32 AS,
 	2: string RouterId,
-	3: i32 TotalPaths,
-	4: i32 TotalPrefixes,
+	3: bool UseMultiplePaths
+	4: i32 EBGPMaxPaths
+	5: bool EBGPAllowMultipleAS
+	6: i32 IBGPMaxPaths
+	7: i32 TotalPaths,
+	8: i32 TotalPrefixes,
 }
 
 enum PeerType {

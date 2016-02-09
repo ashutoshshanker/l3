@@ -58,7 +58,6 @@ func NewRouterLsa() *RouterLsa {
         return &RouterLsa{}
 }
 
-
 /* LS Type 2 */
 type NetworkLsa struct {
         LsaMd           LsaMetadata
@@ -70,24 +69,29 @@ func NewNetworkLsa() *NetworkLsa {
         return &NetworkLsa{}
 }
 
-type SummaryLsaDetail struct {
-        Metric          uint32 /* But only max value 2^24-1 */
+type SummaryTOSDetail struct {
         TOS             uint8
-        TOSMetric       uint32 /* But only max value 2^24-1 */
+        TOSMetric       uint32
 }
 
-/* LS Type 3 */
-type Summary3Lsa struct {
+/* LS Type 3 or 4 */
+type SummaryLsa struct {
         LsaMd                   LsaMetadata
         Netmask                 uint32 /* Network Mask */
-        SummaryLsaDetails       []SummaryLsaDetail
+        Metric                  uint32
+        SummaryTOSDetails       []SummaryTOSDetail /* TOS */
 }
 
-/* LS Type 4 */
-type Summary4Lsa struct {
-        LsaMd                   LsaMetadata
-        Netmask                 uint32 /* Network Mask */
-        SummaryLsaDetails       []SummaryLsaDetail
+func NewSummaryLsa() *SummaryLsa {
+        return &SummaryLsa{}
+}
+
+type ASExtTOSDetail struct {
+        BitE                    bool
+        TOS                     uint8
+        TOSMetric               uint32
+        TOSFwdAddr              uint32
+        TOSExtRouteTag          uint32
 
 }
 
@@ -95,14 +99,22 @@ type Summary4Lsa struct {
 type ASExternalLsa struct {
         LsaMd                   LsaMetadata
         Netmask                 uint32 /* Network Mask */
-        /* Todo */
+        BitE                    bool
+        Metric                  uint32 /* But only max value 2^24-1 */
+        FwdAddr                 uint32
+        ExtRouteTag             uint32
+        ASExtTOSDetails         []ASExtTOSDetail
+}
+
+func NewASExternalLsa() *ASExternalLsa {
+        return &ASExternalLsa{}
 }
 
 type LSDatabase struct {
         RouterLsaMap            map[LsaKey]RouterLsa
         NetworkLsaMap           map[LsaKey]NetworkLsa
-        Summary3LsaMap          map[LsaKey]Summary3Lsa
-        Summary4LsaMap          map[LsaKey]Summary4Lsa
+        Summary3LsaMap          map[LsaKey]SummaryLsa
+        Summary4LsaMap          map[LsaKey]SummaryLsa
         ASExternalLsaMap        map[LsaKey]ASExternalLsa
 }
 
@@ -308,7 +320,7 @@ func encodeNetworkLsa(lsa NetworkLsa, lsakey LsaKey) ([]byte) {
         lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
         copy(nLsa[0:20], lsaHdr)
         binary.BigEndian.PutUint32(nLsa[20:24], lsa.Netmask)
-        numOfAttachedRtr := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 4)/1
+        numOfAttachedRtr := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 4)/4
         start := 24
         for i := 0; i < numOfAttachedRtr; i++ {
                 end := start + 4
@@ -328,12 +340,187 @@ func decodeNetworkLsa(data []byte, lsa *NetworkLsa, lsakey *LsaKey) {
         lsa.LsaMd.LSChecksum = binary.BigEndian.Uint16(data[16:18])
         lsa.LsaMd.LSLen = binary.BigEndian.Uint16(data[18:20])
         lsa.Netmask = binary.BigEndian.Uint32(data[20:24])
-        numOfAttachedRtr := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 4)/1
+        numOfAttachedRtr := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 4)/4
         lsa.AttachedRtr = make([]uint32, numOfAttachedRtr)
         start := 24
         for i := 0; i < numOfAttachedRtr; i++ {
                 end := start + 4
                 lsa.AttachedRtr[i] = binary.BigEndian.Uint32(data[start:end])
+                start  = end
+        }
+}
+
+/*
+        0                   1                   2                   3
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |            LS age             |     Options   |    3 or 4     |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                        Link State ID                          |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                     Advertising Router                        |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                     LS sequence number                        |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |         LS checksum           |             length            |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                         Network Mask                          |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |      0        |                  metric                       |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |     TOS       |                TOS  metric                    |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                              ...                              |
+
+*/
+
+func encodeSummaryLsa(lsa SummaryLsa, lsakey LsaKey) ([]byte) {
+        sLsa := make([]byte, lsa.LsaMd.LSLen)
+        lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
+        copy(sLsa[0:20], lsaHdr)
+        binary.BigEndian.PutUint32(sLsa[20:24], lsa.Netmask)
+        binary.BigEndian.PutUint32(sLsa[24:28], lsa.Metric)
+        numOfTOS := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 8)/8
+        start := 28
+        for i := 0; i < numOfTOS; i++ {
+                end := start + 4
+                var temp uint32
+                temp = uint32(lsa.SummaryTOSDetails[i].TOS) << 24
+                temp = temp | lsa.SummaryTOSDetails[i].TOSMetric
+                binary.BigEndian.PutUint32(sLsa[start:end], temp)
+                start = end
+        }
+        return sLsa
+}
+
+func decodeSummaryLsa(data []byte, lsa *SummaryLsa, lsakey *LsaKey) {
+        lsa.LsaMd.LSAge = binary.BigEndian.Uint16(data[0:2])
+        lsa.LsaMd.Options = uint8(data[2])
+        lsakey.LSType = uint8(data[3])
+        lsakey.LSId = binary.BigEndian.Uint32(data[4:8])
+        lsakey.AdvRouter = binary.BigEndian.Uint32(data[8:12])
+        lsa.LsaMd.LSSequenceNum = int(binary.BigEndian.Uint32(data[12:16]))
+        lsa.LsaMd.LSChecksum = binary.BigEndian.Uint16(data[16:18])
+        lsa.LsaMd.LSLen = binary.BigEndian.Uint16(data[18:20])
+        lsa.Netmask = binary.BigEndian.Uint32(data[20:24])
+        temp := binary.BigEndian.Uint32(data[24:28])
+        lsa.Metric = 0x00ffffff | temp
+        numOfTOS := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 8)/8
+        lsa.SummaryTOSDetails = make([]SummaryTOSDetail, numOfTOS)
+        start := 28
+        for i := 0; i < numOfTOS; i++ {
+                end := start + 4
+                temp = binary.BigEndian.Uint32(data[start:end])
+                lsa.SummaryTOSDetails[i].TOS = uint8((0xff000000 | temp) >> 24)
+                lsa.SummaryTOSDetails[i].TOSMetric = 0x00ffffff | temp
+                start  = end
+        }
+}
+
+/*
+        0                   1                   2                   3
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |            LS age             |     Options   |      5        |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                        Link State ID                          |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                     Advertising Router                        |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                     LS sequence number                        |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |         LS checksum           |             length            |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                         Network Mask                          |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |E|     0       |                  metric                       |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                      Forwarding address                       |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                      External Route Tag                       |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |E|    TOS      |                TOS  metric                    |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                      Forwarding address                       |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                      External Route Tag                       |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                              ...                              |
+*/
+
+func encodeASExternalLsa(lsa ASExternalLsa, lsakey LsaKey) ([]byte) {
+        eLsa := make([]byte, lsa.LsaMd.LSLen)
+        lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
+        copy(eLsa[0:20], lsaHdr)
+        binary.BigEndian.PutUint32(eLsa[20:24], lsa.Netmask)
+        var temp uint32
+        if lsa.BitE == true {
+                temp = temp | 0x80000000
+        }
+        temp = temp | lsa.Metric
+        binary.BigEndian.PutUint32(eLsa[24:28], temp)
+        binary.BigEndian.PutUint32(eLsa[28:32], lsa.FwdAddr)
+        binary.BigEndian.PutUint32(eLsa[32:36], lsa.ExtRouteTag)
+        numOfTOS := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 16)/8
+        start := 36
+        for i := 0; i < numOfTOS; i++ {
+                end := start + 4
+                temp = 0
+                if lsa.ASExtTOSDetails[i].BitE == true {
+                        temp = temp | 0x80000000
+                }
+                temp = temp | uint32(lsa.ASExtTOSDetails[i].TOS) << 24 |
+                        lsa.ASExtTOSDetails[i].TOSMetric
+                binary.BigEndian.PutUint32(eLsa[start:end], temp)
+                start = end
+                end = start + 4
+                binary.BigEndian.PutUint32(eLsa[start:end], lsa.ASExtTOSDetails[i].TOSFwdAddr)
+                start = end
+                end = start + 4
+                binary.BigEndian.PutUint32(eLsa[start:end], lsa.ASExtTOSDetails[i].TOSExtRouteTag)
+                start = end
+        }
+        return eLsa
+}
+
+func decodeASExternalLsa(data []byte, lsa *ASExternalLsa, lsakey *LsaKey) {
+        lsa.LsaMd.LSAge = binary.BigEndian.Uint16(data[0:2])
+        lsa.LsaMd.Options = uint8(data[2])
+        lsakey.LSType = uint8(data[3])
+        lsakey.LSId = binary.BigEndian.Uint32(data[4:8])
+        lsakey.AdvRouter = binary.BigEndian.Uint32(data[8:12])
+        lsa.LsaMd.LSSequenceNum = int(binary.BigEndian.Uint32(data[12:16]))
+        lsa.LsaMd.LSChecksum = binary.BigEndian.Uint16(data[16:18])
+        lsa.LsaMd.LSLen = binary.BigEndian.Uint16(data[18:20])
+        lsa.Netmask = binary.BigEndian.Uint32(data[20:24])
+        if data[24] == 0 {
+                lsa.BitE = false
+        } else {
+                lsa.BitE = true
+        }
+        temp := binary.BigEndian.Uint32(data[24:28])
+        lsa.Metric = 0x00ffffff | temp
+        lsa.FwdAddr = binary.BigEndian.Uint32(data[28:32])
+        lsa.ExtRouteTag = binary.BigEndian.Uint32(data[32:36])
+        numOfTOS := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 16)/8
+        lsa.ASExtTOSDetails = make([]ASExtTOSDetail, numOfTOS)
+        start := 36
+        for i := 0; i < numOfTOS; i++ {
+                end := start + 4
+                temp = binary.BigEndian.Uint32(data[start:end])
+                if temp & 0x80000000 != 0 {
+                        lsa.ASExtTOSDetails[i].BitE = true
+                } else {
+                        lsa.ASExtTOSDetails[i].BitE = false
+                }
+                lsa.ASExtTOSDetails[i].TOS = uint8((temp & 0x7f000000) >> 24)
+                lsa.ASExtTOSDetails[i].TOSMetric = 0x00ffffff | temp
+                start = end
+                end = start + 4
+                lsa.ASExtTOSDetails[i].TOSFwdAddr = binary.BigEndian.Uint32(data[start:end])
+                start = end
+                end = start + 4
+                lsa.ASExtTOSDetails[i].TOSExtRouteTag = binary.BigEndian.Uint32(data[start:end])
                 start  = end
         }
 }

@@ -38,6 +38,7 @@ func BuildProtocolAdminDistanceMapDB() {
 	ProtocolAdminDistanceMapDB[ribdCommonDefs.OSPF]       = RouteDistanceConfig{defaultDistance:110}
 }
 func isBetterRoute(selectedRoute RouteInfoRecord, routeInfoRecord RouteInfoRecord) (isBetter bool){ 
+   logger.Println("isBetterRoute ")
    if (selectedRoute.protocol == PROTOCOL_NONE && routeInfoRecord.protocol != PROTOCOL_NONE) {
       logger.Println("new route is better route because the the current route protocol is ", PROTOCOL_NONE)
       isBetter = true
