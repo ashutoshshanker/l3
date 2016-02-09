@@ -123,6 +123,17 @@ struct PolicyDefinitionStmtIgpActionsGetInfo {
 	4: bool More
 	5: list<PolicyDefinitionStmtIgpActions> PolicyDefinitionStmtIgpActionsList
 }
+struct PolicyDefinitionStmtAdminDistanceAction{
+	1 : string  Name
+	2 : int 	Value
+}
+struct PolicyDefinitionStmtAdminDistanceActionGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<PolicyDefinitionStmtAdminDistanceAction> PPolicyDefinitionStmtAdminDistanceActionList
+}
 
 struct PolicyDefinitionStmtRouteDispositionAction{
 	1 : string  Name
@@ -274,6 +285,10 @@ service RouteService
 //	bool CreatePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions config);
 //	bool UpdatePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions origconfig, 2: PolicyDefinitionStmtIgpActions newconfig, 3: list<bool> attrset);
 //	bool DeletePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions config);
+
+	bool CreatePolicyDefinitionStmtAdminDistanceAction(1: PolicyDefinitionStmtAdminDistanceAction config);
+//	bool UpdatePolicyDefinitionStmtAdminDistanceAction(1: PolicyDefinitionStmtAdminDistanceAction origconfig, 2: PolicyDefinitionStmtAdminDistanceAction newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinitionStmtAdminDistanceAction(1: PolicyDefinitionStmtAdminDistanceAction config);
 
 	bool CreatePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction config);
 //	bool UpdatePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction origconfig, 2: PolicyDefinitionStmtRouteDispositionAction newconfig, 3: list<bool> attrset);

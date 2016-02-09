@@ -10,6 +10,7 @@ const (
 	  PolicyConditionTypeProtocolMatch = 1
 	  PolicyActionTypeRouteDisposition = 0
 	  PolicyActionTypeRouteRedistribute = 1
+	  PoilcyActionTypeSetAdminDistance = 2
 	  PUB_SOCKET_ADDR = "ipc:///tmp/ribd.ipc"	
 	  PUB_SOCKET_BGPD_ADDR = "ipc:///tmp/ribd_bgpd.ipc"
 	  NOTIFY_ROUTE_CREATED = 1

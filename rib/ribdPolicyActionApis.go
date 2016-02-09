@@ -6,6 +6,7 @@ import (
 	"errors"
 	"l3/rib/ribdCommonDefs"
 	"utils/patriciaDB"
+	"strconv"
 )
 
 var PolicyActionsDB = patriciaDB.NewTrie()
@@ -49,6 +50,25 @@ func (m RouteServiceHandler) 	CreatePolicyDefinitionStmtRouteDispositionAction(c
 	return val, err
 }
 
+func (m RouteServiceHandler) CreatePolicyDefinitionStmtAdminDistanceAction(cfg *ribd.PolicyDefinitionStmtAdminDistanceAction) (val bool, err error) {
+	logger.Println("CreatePolicyDefinitionStmtAdminDistanceAction")
+	policyAction := PolicyActionsDB.Get(patriciaDB.Prefix(cfg.Name))
+	if(policyAction == nil) {
+	   logger.Println("Defining a new policy action with name ", cfg.Name)
+	   newPolicyAction := PolicyAction{name:cfg.Name,actionType:ribdCommonDefs.PoilcyActionTypeSetAdminDistance,actionInfo:cfg.Value ,localDBSliceIdx:(len(localPolicyActionsDB))}
+       newPolicyAction.actionGetBulkInfo =  "Set admin distance to value "+strconv.Itoa(int(cfg.Value))
+		if ok := PolicyActionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyAction); ok != true {
+			logger.Println(" return value not ok")
+			return val, err
+		}
+	  updateLocalActionsDB(patriciaDB.Prefix(cfg.Name))
+	} else {
+		logger.Println("Duplicate action name")
+		err = errors.New("Duplicate policy action definition")
+		return val, err
+	}
+	return val, err
+}
 
 func (m RouteServiceHandler) CreatePolicyDefinitionStmtRedistributionAction(cfg *ribd.PolicyDefinitionStmtRedistributionAction) (val bool, err error) {
 	logger.Println("CreatePolicyDefinitionStmtRedistributionAction")

@@ -481,6 +481,17 @@ func policyEngineImplementActions(route ribd.Routes, policyStmt PolicyStmt, para
 			  policyEngineActionRedistribute(route, action.actionInfo.(RedistributeActionInfo), params)
 	          addActionToList = true
 			  break
+		   case ribdCommonDefs.PoilcyActionTypeSetAdminDistance:
+		      logger.Println("PoilcyActionTypeSetAdminDistance action to be applied")
+			  if ProtocolAdminDistanceMapDB == nil {
+			     logger.Println("ProtocolAdminDistanceMap nil")
+				 break	
+			  }
+			  routeDistanceConfig := RouteDistanceConfig{configuredDistance:int(action.actionInfo.(ribd.Int))}
+			  ProtocolAdminDistanceMapDB[int(route.Prototype)] =  routeDistanceConfig
+			  logger.Println("Setting distance of prototype ", ReverseRouteProtoTypeMapDB[int(route.Prototype)], " to value ", action.actionInfo.(ribd.Int))
+               //need to call selectv4route from here
+			  break
 		   default:
 		      logger.Println("Unknown type of action")
 			  break
