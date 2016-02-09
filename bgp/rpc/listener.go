@@ -165,8 +165,12 @@ func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobalConfig) bool {
 	}
 
 	gConf := config.GlobalConfig{
-		AS:       uint32(bgpGlobal.ASNum),
-		RouterId: ip,
+		AS:                  uint32(bgpGlobal.ASNum),
+		RouterId:            ip,
+		UseMultiplePaths:    bgpGlobal.UseMultiplePaths,
+		EBGPMaxPaths:        uint32(bgpGlobal.EBGPMaxPaths),
+		EBGPAllowMultipleAS: bgpGlobal.EBGPAllowMultipleAS,
+		IBGPMaxPaths:        uint32(bgpGlobal.IBGPMaxPaths),
 	}
 	h.server.GlobalConfigCh <- gConf
 	return true
@@ -182,6 +186,10 @@ func (h *BGPHandler) GetBGPGlobal() (*bgpd.BGPGlobalState, error) {
 	bgpGlobalResponse := bgpd.NewBGPGlobalState()
 	bgpGlobalResponse.AS = int32(bgpGlobal.AS)
 	bgpGlobalResponse.RouterId = bgpGlobal.RouterId.String()
+	bgpGlobalResponse.UseMultiplePaths = bgpGlobal.UseMultiplePaths
+	bgpGlobalResponse.EBGPMaxPaths = int32(bgpGlobal.EBGPMaxPaths)
+	bgpGlobalResponse.EBGPAllowMultipleAS = bgpGlobal.EBGPAllowMultipleAS
+	bgpGlobalResponse.IBGPMaxPaths = int32(bgpGlobal.IBGPMaxPaths)
 	bgpGlobalResponse.TotalPaths = int32(bgpGlobal.TotalPaths)
 	bgpGlobalResponse.TotalPrefixes = int32(bgpGlobal.TotalPrefixes)
 	return bgpGlobalResponse, nil
