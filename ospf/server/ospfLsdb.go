@@ -42,8 +42,8 @@ func (server *OSPFServer)initLSDatabase(areaId uint32) {
         if !exist {
                 lsDbEnt.RouterLsaMap = make(map[LsaKey]RouterLsa)
                 lsDbEnt.NetworkLsaMap = make(map[LsaKey]NetworkLsa)
-                lsDbEnt.Summary3LsaMap = make(map[LsaKey]Summary3Lsa)
-                lsDbEnt.Summary4LsaMap = make(map[LsaKey]Summary4Lsa)
+                lsDbEnt.Summary3LsaMap = make(map[LsaKey]SummaryLsa)
+                lsDbEnt.Summary4LsaMap = make(map[LsaKey]SummaryLsa)
                 lsDbEnt.ASExternalLsaMap = make(map[LsaKey]ASExternalLsa)
                 server.AreaLsdb[lsdbKey] = lsDbEnt
         }
@@ -346,18 +346,91 @@ func (server *OSPFServer)processNewRecvdNetworkLsa(data []byte, areaId uint32) b
         return true
 }
 
-func (server *OSPFServer)processNewRecvdSummary3Lsa(data []byte, areaId uint32) bool {
+func (server *OSPFServer)processNewRecvdSummaryLsa(data []byte, areaId uint32, lsaType uint8) bool {
+        lsakey := NewLsaKey()
+        summaryLsa := NewSummaryLsa()
+        lsdbKey := LsdbKey {
+                AreaId:         areaId,
+        }
+        decodeSummaryLsa(data, summaryLsa, lsakey)
 
-        return true
-}
+        selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+        _, exist := selfOrigLsaEnt[*lsakey]
+        if exist {
+                server.logger.Info("Recvd a self generated Summary LSA")
+                return false
+        }
 
-func (server *OSPFServer)processNewRecvdSummary4Lsa(data []byte, areaId uint32) bool {
-
+        //Check Checksum
+        csum := computeFletcherChecksum(data[2:], FLETCHER_CHECKSUM_VALIDATE)
+        if csum != 0 {
+                server.logger.Err("Invalid Summary LSA Checksum")
+                return false
+        }
+        //Todo: If there is already existing entry Verify the seq num
+        lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        if lsaType == Summary3LSA {
+                ent, exist := lsDbEnt.Summary3LsaMap[*lsakey]
+                if exist {
+                        if ent.LsaMd.LSSequenceNum >= summaryLsa.LsaMd.LSSequenceNum {
+                                server.logger.Err("Old instance of Summary 3 LSA Recvd")
+                                return false
+                        }
+                }
+                //Handle LsaAge
+                //Add entry in LSADatabase
+                lsDbEnt.Summary3LsaMap[*lsakey] = *summaryLsa
+        } else if lsaType == Summary4LSA {
+                ent, exist := lsDbEnt.Summary4LsaMap[*lsakey]
+                if exist {
+                        if ent.LsaMd.LSSequenceNum >= summaryLsa.LsaMd.LSSequenceNum {
+                                server.logger.Err("Old instance of Summary 4 LSA Recvd")
+                                return false
+                        }
+                }
+                //Handle LsaAge
+                //Add entry in LSADatabase
+                lsDbEnt.Summary4LsaMap[*lsakey] = *summaryLsa
+        } else {
+                return false
+        }
+        server.AreaLsdb[lsdbKey] = lsDbEnt
         return true
 }
 
 func (server *OSPFServer)processNewRecvdASExternalLsa(data []byte, areaId uint32) bool {
+        lsakey := NewLsaKey()
+        asExtLsa := NewASExternalLsa()
+        lsdbKey := LsdbKey {
+                AreaId:         areaId,
+        }
+        decodeASExternalLsa(data, asExtLsa, lsakey)
+        selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+        _, exist := selfOrigLsaEnt[*lsakey]
+        if exist {
+                server.logger.Info("Recvd a self generated AS External LSA")
+                return false
+        }
 
+        //Check Checksum
+        csum := computeFletcherChecksum(data[2:], FLETCHER_CHECKSUM_VALIDATE)
+        if csum != 0 {
+                server.logger.Err("Invalid AS External LSA Checksum")
+                return false
+        }
+        //Todo: If there is already existing entry Verify the seq num
+        lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        ent, exist := lsDbEnt.ASExternalLsaMap[*lsakey]
+        if exist {
+                if ent.LsaMd.LSSequenceNum >= asExtLsa.LsaMd.LSSequenceNum {
+                        server.logger.Err("Old instance of AS External LSA Recvd")
+                        return false
+                }
+        }
+        //Handle LsaAge
+        //Add entry in LSADatabase
+        lsDbEnt.ASExternalLsaMap[*lsakey] = *asExtLsa
+        server.AreaLsdb[lsdbKey] = lsDbEnt
         return true
 }
 
@@ -368,9 +441,9 @@ func (server *OSPFServer)processNewRecvdLsa(data []byte, areaId uint32) bool {
         } else if LSType == NetworkLSA {
                 return server.processNewRecvdNetworkLsa(data, areaId)
         } else if LSType == Summary3LSA {
-                return server.processNewRecvdSummary3Lsa(data, areaId)
+                return server.processNewRecvdSummaryLsa(data, areaId, LSType)
         } else if LSType == Summary4LSA {
-                return server.processNewRecvdSummary4Lsa(data, areaId)
+                return server.processNewRecvdSummaryLsa(data, areaId, LSType)
         } else if LSType == ASExternalLSA {
                 return server.processNewRecvdASExternalLsa(data, areaId)
         } else {
