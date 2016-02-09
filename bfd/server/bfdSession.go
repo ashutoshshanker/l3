@@ -175,19 +175,38 @@ func (server *BFDServer) CreateBfdSession(sessionMgmt BfdSessionMgmt) (*BfdSessi
 	return bfdSession, nil
 }
 
+func (session *BfdSession) CheckIfAnyProtocolRegistered() bool {
+	for i := 0; i < bfddCommonDefs.MAX_NUM_PROTOCOLS; i++ {
+		if session.state.RegisteredProtocols[i] == true {
+			return true
+		}
+	}
+	return false
+}
+
 // DeleteBfdSession ceases the session.
 // A session down control packet is sent to BFD neighbor before deleting the session.
 // This function is called when a protocol decides to stop monitoring the destination IP.
 func (server *BFDServer) DeleteBfdSession(sessionMgmt BfdSessionMgmt) error {
+	var i int
 	DestIp := sessionMgmt.DestIp
 	Protocol := sessionMgmt.Protocol
 	server.logger.Info(fmt.Sprintln("DeleteSession ", DestIp, Protocol))
 	sessionId, found := server.FindBfdSession(DestIp)
 	if found {
-		server.bfdGlobal.Sessions[sessionId].txTimer.Stop()
-		server.bfdGlobal.Sessions[sessionId].sessionTimer.Stop()
-		server.bfdGlobal.Sessions[sessionId].SessionDeleteCh <- true
-		delete(server.bfdGlobal.Sessions, sessionId)
+		server.bfdGlobal.Sessions[sessionId].state.RegisteredProtocols[Protocol] = false
+		if server.bfdGlobal.Sessions[sessionId].CheckIfAnyProtocolRegistered() == false {
+			server.bfdGlobal.Sessions[sessionId].txTimer.Stop()
+			server.bfdGlobal.Sessions[sessionId].sessionTimer.Stop()
+			server.bfdGlobal.Sessions[sessionId].SessionDeleteCh <- true
+			delete(server.bfdGlobal.Sessions, sessionId)
+			for i = 0; i < len(server.bfdGlobal.SessionsIdSlice); i++ {
+				if server.bfdGlobal.SessionsIdSlice[i] == sessionId {
+					break
+				}
+			}
+			server.bfdGlobal.SessionsIdSlice = append(server.bfdGlobal.SessionsIdSlice[:i], server.bfdGlobal.SessionsIdSlice[i+1:]...)
+		}
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
 	}

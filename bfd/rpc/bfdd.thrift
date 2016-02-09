@@ -33,6 +33,28 @@ struct BfdIntfConfig{
 	10 : i32 	SequenceNumber
 	11 : string 	AuthData
 }
+struct BfdIntfState{
+	1 : i32 	InterfaceId
+	2 : bool 	Enabled
+	3 : i32 	NumSessions
+	4 : i32 	LocalMultiplier
+	5 : i32 	DesiredMinTxInterval
+	6 : i32 	RequiredMinRxInterval
+	7 : i32 	RequiredMinEchoRxInterval
+	8 : bool 	DemandEnabled
+	9 : bool 	AuthenticationEnabled
+	10 : i32 	AuthenticationType
+	11 : i32 	AuthenticationKeyId
+	12 : i32 	SequenceNumber
+	13 : string 	AuthenticationData
+}
+struct BfdIntfStateGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<BfdIntfState> BfdIntfStateList
+}
 struct BfdSessionState{
 	1 : i32 	SessionId
 	2 : string 	LocalIpAddr
@@ -72,7 +94,6 @@ service BFDDServices {
 	bool UpdateBfdIntfConfig(1: BfdIntfConfig origconfig, 2: BfdIntfConfig newconfig, 3: list<bool> attrset);
 	bool DeleteBfdIntfConfig(1: BfdIntfConfig config);
 
+	BfdIntfStateGetInfo GetBulkBfdIntfState(1: int fromIndex, 2: int count);
 	BfdSessionStateGetInfo GetBulkBfdSessionState(1: int fromIndex, 2: int count);
-
-	bool ExecuteBfdCommand(1: string IpAddr, 2: int Cmd, 3: int Owner)
 }

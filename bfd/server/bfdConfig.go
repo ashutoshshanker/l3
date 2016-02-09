@@ -30,6 +30,19 @@ type IntfConfig struct {
 }
 
 type IntfState struct {
+	InterfaceId               int32
+	Enabled                   bool
+	NumSessions               int32
+	LocalMultiplier           int32
+	DesiredMinTxInterval      int32
+	RequiredMinRxInterval     int32
+	RequiredMinEchoRxInterval int32
+	DemandEnabled             bool
+	AuthenticationEnabled     bool
+	AuthenticationType        int32
+	AuthenticationKeyId       int32
+	SequenceNumber            int32
+	AuthenticationData        string
 }
 
 type SessionState struct {
