@@ -1,15 +1,15 @@
 package server
 
 import (
-        "fmt"
+        //"fmt"
         "errors"
 )
 
 func (server *OSPFServer)StopSendHelloPkt(key IntfConfKey) {
         ent, _ := server.IntfConfMap[key]
         if ent.HelloIntervalTicker == nil {
-        server.logger.Err("No thread is there to stop.")
-        return
+                server.logger.Err("No thread is there to stop.")
+                return
         }
         ent.HelloIntervalTicker.Stop()
         server.logger.Info("Successfully stopped sending Hello Pkt")
@@ -20,7 +20,7 @@ func (server *OSPFServer)StopSendHelloPkt(key IntfConfKey) {
 
 func (server *OSPFServer)StartSendHelloPkt(key IntfConfKey) {
         ent, _ := server.IntfConfMap[key]
-        server.logger.Info(fmt.Sprintln("Started Send Hello Pkt Thread", ent.IfName))
+        //server.logger.Info(fmt.Sprintln("Started Send Hello Pkt Thread", ent.IfName))
         ospfHelloPkt := server.BuildHelloPkt(ent)
         err := server.SendOspfPkt(key, ospfHelloPkt)
         if err != nil {

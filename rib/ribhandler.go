@@ -151,7 +151,7 @@ func processL3IntfDownEvent(ipAddr string) {
 			RIBD_PUB.Send(buf, nanomsg.DontWait)
 */
 			//Delete this route
-			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, 0, FIBOnly,ribdCommonDefs.RoutePolicyStateChangeNoChange)
+			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask,ribdCommonDefs.CONNECTED, FIBOnly,ribdCommonDefs.RoutePolicyStateChangeNoChange)
 		}
 	}
 }
@@ -489,7 +489,7 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			ipAddrStr := ip.String()
 			ipMaskStr := net.IP(ipMask).String()
 			logger.Printf("Calling createv4Route with ipaddr %s mask %s\n", ipAddrStr, ipMaskStr)
-			_,err = routeServiceHandler.CreateV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED)
+			_,err = routeServiceHandler.CreateV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
 			//_, err = createV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 			if err != nil {
 				logger.Printf("Route create failed with err %s\n", err)
@@ -561,6 +561,7 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	logger.Println("configfile = ", configFile)
 	ConnectToClients(configFile)
 	BuildRouteProtocolTypeMapDB()
+	BuildProtocolAdminDistanceMapDB()
 	RIBD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_ADDR)
 	RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)

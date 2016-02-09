@@ -428,6 +428,21 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtState( fromIndex ribd.In
 
 func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Println("CreatePolicyDefinition")
+	if cfg.Import && ImportPolicyPrecedenceMap != nil {
+	   _,ok:=ImportPolicyPrecedenceMap[int(cfg.Precedence)]
+	   if ok {
+		logger.Println("There is already a import policy with this precedence.")
+		err =  errors.New("There is already a import policy with this precedence.")
+         return val,err
+	   }
+	} else if cfg.Export && ExportPolicyPrecedenceMap != nil {
+	   _,ok:=ExportPolicyPrecedenceMap[int(cfg.Precedence)]
+	   if ok {
+		logger.Println("There is already a export policy with this precedence.")
+		err =  errors.New("There is already a export policy with this precedence.")
+         return val,err
+	   }
+	} 
 	policy := PolicyDB.Get(patriciaDB.Prefix(cfg.Name))
 	var i int
 	if(policy == nil) {

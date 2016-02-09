@@ -13,18 +13,45 @@ import (
 	"l3/rib/ribdCommonDefs"
 	"time"
 )
+type RouteDistanceConfig struct{
+	defaultDistance int
+	configuredDistance int
+}
 var RouteProtocolTypeMapDB = make(map[string]int)
 var ReverseRouteProtoTypeMapDB = make(map[int]string)
+var ProtocolAdminDistanceMapDB = make(map[int]RouteDistanceConfig)
 
 func BuildRouteProtocolTypeMapDB() {
-	RouteProtocolTypeMapDB["Connected"] = ribdCommonDefs.CONNECTED
+	RouteProtocolTypeMapDB["CONNECTED"] = ribdCommonDefs.CONNECTED
 	RouteProtocolTypeMapDB["BGP"]       = ribdCommonDefs.BGP
-	RouteProtocolTypeMapDB["Static"]       = ribdCommonDefs.STATIC
+	RouteProtocolTypeMapDB["STATIC"]       = ribdCommonDefs.STATIC
 	
 	//reverse
-	ReverseRouteProtoTypeMapDB[ribdCommonDefs.CONNECTED] = "Connected"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.CONNECTED] = "CONNECTED"
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.BGP] = "BGP"
-	ReverseRouteProtoTypeMapDB[ribdCommonDefs.STATIC] = "Static"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.STATIC] = "STATIC"
+}
+func BuildProtocolAdminDistanceMapDB() {
+	ProtocolAdminDistanceMapDB[ribdCommonDefs.CONNECTED] = RouteDistanceConfig{defaultDistance:0}
+	ProtocolAdminDistanceMapDB[ribdCommonDefs.STATIC]       = RouteDistanceConfig{defaultDistance:1}	
+	ProtocolAdminDistanceMapDB[ribdCommonDefs.BGP]       = RouteDistanceConfig{defaultDistance:200}
+	ProtocolAdminDistanceMapDB[ribdCommonDefs.OSPF]       = RouteDistanceConfig{defaultDistance:110}
+}
+func isBetterRoute(selectedRoute RouteInfoRecord, routeInfoRecord RouteInfoRecord) (isBetter bool){ 
+   if (selectedRoute.protocol == PROTOCOL_NONE && routeInfoRecord.protocol != PROTOCOL_NONE) {
+      logger.Println("new route is better route because the the current route protocol is ", PROTOCOL_NONE)
+      isBetter = true
+   } else if ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].configuredDistance < ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].configuredDistance {
+      logger.Println("New route is better because configured admin distance", ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].configuredDistance ," of new route ", ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)], " is lower than the current protocol ",ReverseRouteProtoTypeMapDB[int(selectedRoute.protocol)],"'s configured admin distane: ", ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].configuredDistance)
+      isBetter = true	
+   } else if ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].defaultDistance < ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].defaultDistance {
+      logger.Println("New route is better because default admin distance", ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].defaultDistance ," of new route ", ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)], " is lower than the current protocol ",ReverseRouteProtoTypeMapDB[int(selectedRoute.protocol)],"'s default admin distane: ", ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].defaultDistance)
+      isBetter = true	
+   } else if routeInfoRecord.metric < selectedRoute.metric {
+      logger.Println("New route is better becayse its cost: ", routeInfoRecord.metric, " is lower than the selected route's cost ", selectedRoute.metric)
+      isBetter = true	
+   }
+   return isBetter
 }
 func getNetowrkPrefixFromStrings(ipAddr string, mask string) (prefix patriciaDB.Prefix, err error) {
 	destNetIpAddr, err := getIP(ipAddr)
