@@ -27,8 +27,8 @@ type DhcpRelayIntfConfig struct {
 	AgentSubType int32
 	Enable       bool
 	// To make life easy for testing first pass lets have only 1 server
-	//ServerIp     []string
-	ServerIp string
+	ServerIp []string
+	//ServerIp string
 }
 
 /******** Trift APIs *******/
@@ -79,7 +79,6 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	logger.Info("DRA: IF Index:" + config.IfIndex)
 	logger.Info("DRA: AgentSubType:" + string(config.AgentSubType))
 	logger.Info(fmt.Sprintln("DRA: Enable:", config.Enable))
-	logger.Info("DRA: ServerIp:" + config.ServerIp)
 	// Copy over configuration into globalInfo
 	ifNum, _ := strconv.Atoi(config.IfIndex)
 	gblEntry, ok := dhcprelayGblInfo[ifNum]
@@ -93,11 +92,17 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	gblEntry.IntfConfig.Netmask = config.Netmask
 	gblEntry.IntfConfig.AgentSubType = config.AgentSubType
 	gblEntry.IntfConfig.Enable = config.Enable
-	gblEntry.IntfConfig.ServerIp = config.ServerIp
+	logger.Info("DRA: ServerIp:")
+	for idx := 0; idx < len(config.ServerIp); idx++ {
+		logger.Info(fmt.Sprintln("DRA: Server", idx, ": ",
+			config.ServerIp[idx]))
+		gblEntry.IntfConfig.ServerIp = append(gblEntry.IntfConfig.ServerIp,
+			config.ServerIp[idx])
+		DhcpRelayAgentInitIntfServerState(config.IfIndex,
+			config.ServerIp[idx], ifNum)
+	}
 	gblEntry.IntfConfig.IfIndex = config.IfIndex
 	dhcprelayGblInfo[ifNum] = gblEntry
-
-	DhcpRelayAgentInitIntfServerState(config.IfIndex, config.ServerIp, ifNum)
 
 	if dhcprelayEnable == false {
 		logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
