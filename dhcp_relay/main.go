@@ -19,7 +19,7 @@ func main() {
 	}
 	logger.Info("Started the logger successfully.")
 	var addr = IP + ":" + DHCP_RELAY_PORT
-	fmt.Println("DHCP RELAY address is %s", addr)
+	fmt.Println("DHCP RELAY address is", addr)
 	logger.Info(fmt.Sprintln("Starting DHCP RELAY...."))
 	// Create a handler
 	handler := relayServer.NewDhcpRelayServer()

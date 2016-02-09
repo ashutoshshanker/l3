@@ -351,75 +351,75 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 	inReq DhcpRelayAgentPacket, reqOptions DhcpRelayAgentOptions,
 	mt MessageType, intfStateEntry *dhcprelayd.DhcpRelayIntfState) {
 
-	var outPacket DhcpRelayAgentPacket
-	var intfStateServerEntry dhcprelayd.DhcpRelayIntfServerState
-	var intfkey string
-	hostServerStateKey := inReq.GetCHAddr().String() + "_" +
-		gblEntry.IntfConfig.ServerIp
-	// get host + server state entry for updating the state
-	hostServerStateEntry, ok := dhcprelayHostServerStateMap[hostServerStateKey]
-	if !ok {
-		hostServerStateEntry.MacAddr = inReq.GetCHAddr().String()
-		hostServerStateEntry.ServerIp = gblEntry.IntfConfig.ServerIp
-		dhcprelayHostServerStateSlice = append(dhcprelayHostServerStateSlice,
-			hostServerStateKey)
-	}
-	if inReq.GetYIAddr().String() != DHCP_NO_IP {
-		hostServerStateEntry.AcceptedIp = inReq.GetYIAddr().String()
-	}
-	hostServerStateEntry.ClientRequest = time.Now().String()
+	for i := 0; i < len(gblEntry.IntfConfig.ServerIp); i++ {
+		hostServerStateKey := inReq.GetCHAddr().String() + "_" +
+			gblEntry.IntfConfig.ServerIp[i]
+		// get host + server state entry for updating the state
+		hostServerStateEntry, ok := dhcprelayHostServerStateMap[hostServerStateKey]
+		if !ok {
+			hostServerStateEntry.MacAddr = inReq.GetCHAddr().String()
+			hostServerStateEntry.ServerIp = gblEntry.IntfConfig.ServerIp[i]
+			dhcprelayHostServerStateSlice = append(dhcprelayHostServerStateSlice,
+				hostServerStateKey)
+		}
+		if inReq.GetYIAddr().String() != DHCP_NO_IP {
+			hostServerStateEntry.AcceptedIp = inReq.GetYIAddr().String()
+		}
+		hostServerStateEntry.ClientRequest = time.Now().String()
 
-	// Create server ip address + port number
-	serverIpPort := gblEntry.IntfConfig.ServerIp + ":" +
-		strconv.Itoa(DHCP_SERVER_PORT)
-	logger.Info("DRA: Sending DHCP PACKET to server: " + serverIpPort)
-	serverAddr, err := net.ResolveUDPAddr("udp", serverIpPort)
-	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: couldn't resolved udp addr",
-			" for and err is", err))
-		intfStateEntry.TotalDrops++
-		goto early_exit
+		// Create server ip address + port number
+		serverIpPort := gblEntry.IntfConfig.ServerIp[i] + ":" +
+			strconv.Itoa(DHCP_SERVER_PORT)
+		logger.Info("DRA: Sending DHCP PACKET to server: " + serverIpPort)
+		serverAddr, err := net.ResolveUDPAddr("udp", serverIpPort)
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: couldn't resolved udp addr",
+				" for and err is", err))
+			intfStateEntry.TotalDrops++
+			dhcprelayHostServerStateMap[hostServerStateKey] = hostServerStateEntry
+			continue
+		}
+
+		outPacket := DhcpRelayAgentCreateNewPacket(Request, inReq)
+		if inReq.GetGIAddr().String() == DHCP_NO_IP {
+			outPacket.SetGIAddr(net.ParseIP(gblEntry.IntfConfig.IpSubnet))
+		} else {
+			logger.Info("DRA: Relay Agent " + inReq.GetGIAddr().String() +
+				" requested for DHCP for HOST " + inReq.GetCHAddr().String())
+			outPacket.SetGIAddr(inReq.GetGIAddr())
+		}
+
+		DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
+
+		// Decode outpacket...
+		logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
+		logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
+		logger.Info("DRA: YIAddr is " + outPacket.GetYIAddr().String())
+		logger.Info("DRA: GIAddr is " + outPacket.GetGIAddr().String())
+
+		// Pad to minimum size of dhcp packet
+		outPacket.PadToMinSize()
+		// send out the packet...
+		_, err = ch.WriteToUDP(outPacket, serverAddr)
+		if err != nil {
+			logger.Info(fmt.Sprintln("DRA: WriteToUDP failed with error:", err))
+			intfStateEntry.TotalDrops++
+			dhcprelayHostServerStateMap[hostServerStateKey] = hostServerStateEntry
+			continue
+		}
+		intfkey := strconv.Itoa(int(intfStateEntry.IntfId)) + "_" +
+			gblEntry.IntfConfig.ServerIp[i]
+		intfStateServerEntry, ok := dhcprelayIntfServerStateMap[intfkey]
+		if !ok {
+			logger.Info("DRA: Why don't we have entry for " + intfkey)
+		}
+		intfStateServerEntry.Request++
+		dhcprelayIntfServerStateMap[intfkey] = intfStateServerEntry
+		intfStateEntry.TotalDhcpServerTx++
+		hostServerStateEntry.ServerRequest = time.Now().String()
+		logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to server"))
+		dhcprelayHostServerStateMap[hostServerStateKey] = hostServerStateEntry
 	}
-
-	outPacket = DhcpRelayAgentCreateNewPacket(Request, inReq)
-	if inReq.GetGIAddr().String() == DHCP_NO_IP {
-		outPacket.SetGIAddr(net.ParseIP(gblEntry.IntfConfig.IpSubnet))
-	} else {
-		logger.Info("DRA: Relay Agent " + inReq.GetGIAddr().String() +
-			" requested for DHCP for HOST " + inReq.GetCHAddr().String())
-		outPacket.SetGIAddr(inReq.GetGIAddr())
-	}
-
-	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
-
-	// Decode outpacket...
-	logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
-	logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
-	logger.Info("DRA: YIAddr is " + outPacket.GetYIAddr().String())
-	logger.Info("DRA: GIAddr is " + outPacket.GetGIAddr().String())
-
-	// Pad to minimum size of dhcp packet
-	outPacket.PadToMinSize()
-	// send out the packet...
-	_, err = ch.WriteToUDP(outPacket, serverAddr)
-	if err != nil {
-		logger.Info(fmt.Sprintln("DRA: WriteToUDP failed with error:", err))
-		intfStateEntry.TotalDrops++
-		goto early_exit
-	}
-	intfkey = strconv.Itoa(int(intfStateEntry.IntfId)) + "_" + gblEntry.IntfConfig.ServerIp
-	intfStateServerEntry, ok = dhcprelayIntfServerStateMap[intfkey]
-	if !ok {
-		logger.Info("DRA: Why don't we have entry for " + intfkey)
-	}
-	intfStateServerEntry.Request++
-	dhcprelayIntfServerStateMap[intfkey] = intfStateServerEntry
-	intfStateEntry.TotalDhcpServerTx++
-	hostServerStateEntry.ServerRequest = time.Now().String()
-	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to server"))
-
-early_exit:
-	dhcprelayHostServerStateMap[hostServerStateKey] = hostServerStateEntry
 }
 
 func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,

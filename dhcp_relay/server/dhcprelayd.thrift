@@ -11,7 +11,7 @@ struct DhcpRelayIntfConfig{
 	3 : string 	IfIndex
 	4 : i32 	AgentSubType
 	5 : bool 	Enable
-	6 : string 	ServerIp
+	6 : list<string> 	ServerIp
 }
 struct DhcpRelayHostDhcpState{
 	1 : string 	MacAddr
