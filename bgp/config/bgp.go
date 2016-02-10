@@ -6,15 +6,23 @@ import (
 )
 
 type GlobalConfig struct {
-	AS       uint32
-	RouterId net.IP
+	AS                  uint32
+	RouterId            net.IP
+	UseMultiplePaths    bool
+	EBGPMaxPaths        uint32
+	EBGPAllowMultipleAS bool
+	IBGPMaxPaths        uint32
 }
 
 type GlobalState struct {
-	AS            uint32
-	RouterId      net.IP
-	TotalPaths    uint32
-	TotalPrefixes uint32
+	AS                  uint32
+	RouterId            net.IP
+	UseMultiplePaths    bool
+	EBGPMaxPaths        uint32
+	EBGPAllowMultipleAS bool
+	IBGPMaxPaths        uint32
+	TotalPaths          uint32
+	TotalPrefixes       uint32
 }
 
 type Global struct {
