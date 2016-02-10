@@ -42,9 +42,10 @@ type IpIntfProperty struct {
 }
 
 type BfdInterface struct {
-	Enabled  bool
-	conf     IntfConfig
-	property IpIntfProperty
+	Enabled     bool
+	NumSessions int32
+	conf        IntfConfig
+	property    IpIntfProperty
 }
 
 type BfdSessionMgmt struct {
@@ -53,19 +54,22 @@ type BfdSessionMgmt struct {
 }
 
 type BfdSession struct {
-	state            SessionState
-	sessionTimer     *time.Timer
-	txTimer          *time.Timer
-	TxTimeoutCh      chan *BfdSession
-	SessionTimeoutCh chan *BfdSession
-	bfdPacket        *BfdControlPacket
-	SessionDeleteCh  chan bool
+	state             SessionState
+	sessionTimer      *time.Timer
+	txTimer           *time.Timer
+	TxTimeoutCh       chan *BfdSession
+	SessionTimeoutCh  chan *BfdSession
+	bfdPacket         *BfdControlPacket
+	SessionDeleteCh   chan bool
+	pollSequence      bool
+	pollSequenceFinal bool
 }
 
 type BfdGlobal struct {
 	Enabled              bool
 	NumInterfaces        uint32
 	Interfaces           map[int32]BfdInterface
+	InterfacesIdSlice    []int32
 	NumSessions          uint32
 	Sessions             map[int32]*BfdSession
 	SessionsIdSlice      []int32
@@ -106,6 +110,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]BfdInterface)
+	bfdServer.bfdGlobal.InterfacesIdSlice = []int32{}
 	bfdServer.bfdGlobal.NumSessions = 0
 	bfdServer.bfdGlobal.Sessions = make(map[int32]*BfdSession)
 	bfdServer.bfdGlobal.SessionsIdSlice = []int32{}

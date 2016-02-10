@@ -28,6 +28,7 @@ func (server *BFDServer) initDefaultIntfConf(ifIndex int32, ipIntfProp IpIntfPro
 		intf.property.IpAddr = ipIntfProp.IpAddr
 		intf.property.NetMask = ipIntfProp.NetMask
 		intf.property.MacAddr = ipIntfProp.MacAddr
+		server.bfdGlobal.InterfacesIdSlice = append(server.bfdGlobal.InterfacesIdSlice, ifIndex)
 	} else {
 		server.logger.Info(fmt.Sprintln("Intf Conf is not initialized ", ifIndex))
 	}
@@ -70,6 +71,7 @@ func (server *BFDServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 }
 
 func (server *BFDServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
+	var i int
 	server.logger.Info(fmt.Sprintln("delete IPIntfConfMap for ", msg))
 
 	ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(msg.IfId), int(msg.IfType))
@@ -82,6 +84,12 @@ func (server *BFDServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		server.StopSendRecvPkts(ifIndex)
 	}
 	delete(server.bfdGlobal.Interfaces, ifIndex)
+	for i = 0; i < len(server.bfdGlobal.InterfacesIdSlice); i++ {
+		if server.bfdGlobal.InterfacesIdSlice[i] == ifIndex {
+			break
+		}
+	}
+	server.bfdGlobal.InterfacesIdSlice = append(server.bfdGlobal.InterfacesIdSlice[:i], server.bfdGlobal.InterfacesIdSlice[i+1:]...)
 }
 
 func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {

@@ -39,6 +39,47 @@ func (h *BFDHandler) GetBulkBfdGlobalState(fromIdx bfdd.Int, count bfdd.Int) (*b
 	return bfdGlobalStateGetInfo, nil
 }
 
+func (h *BFDHandler) convertIntfStateToThrift(ent server.IntfState) *bfdd.BfdIntfState {
+	intfState := bfdd.NewBfdIntfState()
+	intfState.InterfaceId = int32(ent.InterfaceId)
+	intfState.Enabled = ent.Enabled
+	intfState.NumSessions = int32(ent.NumSessions)
+	intfState.LocalMultiplier = int32(ent.LocalMultiplier)
+	intfState.DesiredMinTxInterval = int32(ent.DesiredMinTxInterval)
+	intfState.RequiredMinRxInterval = int32(ent.RequiredMinRxInterval)
+	intfState.RequiredMinEchoRxInterval = int32(ent.RequiredMinEchoRxInterval)
+	intfState.DemandEnabled = ent.DemandEnabled
+	intfState.AuthenticationEnabled = ent.AuthenticationEnabled
+	intfState.AuthenticationType = int32(ent.AuthenticationType)
+	intfState.AuthenticationKeyId = int32(ent.AuthenticationKeyId)
+	intfState.SequenceNumber = int32(ent.SequenceNumber)
+	intfState.AuthenticationData = string(ent.AuthenticationData)
+	return intfState
+}
+
+func (h *BFDHandler) GetBulkBfdIntfState(fromIdx bfdd.Int, count bfdd.Int) (*bfdd.BfdIntfStateGetInfo, error) {
+	h.logger.Info(fmt.Sprintln("Get BFD interface state"))
+	nextIdx, currCount, bfdIntfStates := h.server.GetBulkBfdIntfStates(int(fromIdx), int(count))
+	if bfdIntfStates == nil {
+		err := errors.New("Bfd server is busy")
+		return nil, err
+	}
+	bfdIntfResponse := make([]*bfdd.BfdIntfState, len(bfdIntfStates))
+	/*
+		for idx, item := range bfdIntfStates {
+			bfdIntfResponse[idx] = h.convertIntfStateToThrift(item)
+		}
+	*/
+	BfdIntfStateGetInfo := bfdd.NewBfdIntfStateGetInfo()
+	BfdIntfStateGetInfo.Count = bfdd.Int(currCount)
+	BfdIntfStateGetInfo.StartIdx = bfdd.Int(fromIdx)
+	BfdIntfStateGetInfo.EndIdx = bfdd.Int(nextIdx)
+	BfdIntfStateGetInfo.More = (nextIdx != 0)
+	BfdIntfStateGetInfo.BfdIntfStateList = bfdIntfResponse
+	return BfdIntfStateGetInfo, nil
+
+}
+
 func (h *BFDHandler) convertBfdSessionProtocolsToString(Protocols []bool) string {
 	var protocols string
 	if Protocols[bfddCommonDefs.BGP] {
