@@ -32,6 +32,7 @@ type Policy struct {
 	localDBSliceIdx        int8  
 	importPolicy       bool
 	exportPolicy       bool  
+	globalPolicy       bool
 }
 
 var PolicyDB = patriciaDB.NewTrie()
@@ -249,7 +250,7 @@ func (m RouteServiceHandler) CreatePolicyDefinitionSetsPrefixSet(cfg *ribd.Polic
 	return val, err
 }
 
-func updateConditions(policyStmt PolicyStmt, conditionName string, op int) {
+func updateConditions(policyStmt PolicyStmt, conditionName string, op int) (err error){
 	logger.Println("updateConditions for condition ", conditionName)
 	conditionItem := PolicyConditionsDB.Get(patriciaDB.Prefix(conditionName))
 	if(conditionItem != nil) {
@@ -264,26 +265,34 @@ func updateConditions(policyStmt PolicyStmt, conditionName string, op int) {
 			   updatePrefixPolicyTable(condition.conditionInfo, policyStmt.name, op)
 			   break
 		}
-		if condition.policyList == nil {
-			condition.policyList = make([]string,0)
+		if condition.policyStmtList == nil {
+			condition.policyStmtList = make([]string,0)
 		}
-        condition.policyList = append(condition.policyList, policyStmt.name)
+        condition.policyStmtList = append(condition.policyStmtList, policyStmt.name)
 		logger.Println("Adding policy ", policyStmt.name, "to condition ", conditionName)
 		PolicyConditionsDB.Set(patriciaDB.Prefix(conditionName), condition)
+	} else {
+		logger.Println("Condition name ", conditionName, " not defined")
+		err = errors.New("Condition name not defined")
 	}
+	return err
 }
 
-func updateActions(policyStmt PolicyStmt, actionName string, op int) {
+func updateActions(policyStmt PolicyStmt, actionName string, op int) (err error) {
 	logger.Println("updateActions for action ", actionName)
 	actionItem := PolicyActionsDB.Get(patriciaDB.Prefix(actionName))
 	if(actionItem != nil) {
 		action := actionItem.(PolicyAction)
-		if action.policyList == nil {
-			action.policyList = make([]string,0)
+		if action.policyStmtList == nil {
+			action.policyStmtList = make([]string,0)
 		}
-        action.policyList = append(action.policyList, policyStmt.name)
+        action.policyStmtList = append(action.policyStmtList, policyStmt.name)
 		PolicyActionsDB.Set(patriciaDB.Prefix(actionName), action)
+	} else {
+		logger.Println("action name ", actionName, " not defined")
+		err = errors.New("action name not defined")
 	}
+	return err
 }
 
 func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStmtConfig) (val bool, err error) {
@@ -306,7 +315,11 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 		  newPolicyStmt.conditions = make([] string, 0)
 		  for i=0;i<len(cfg.Conditions);i++ {
 			newPolicyStmt.conditions = append(newPolicyStmt.conditions, cfg.Conditions[i])
-			updateConditions(newPolicyStmt, cfg.Conditions[i], add)
+			err = updateConditions(newPolicyStmt, cfg.Conditions[i], add)
+			if err != nil {
+				logger.Println("updateConditions returned err ", err)
+				return val,err
+			}
 		}
 	   }
 	   if len(cfg.Actions) > 0 {
@@ -314,7 +327,11 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 		  newPolicyStmt.actions = make([] string, 0)
 		  for i=0;i<len(cfg.Actions);i++ {
 			newPolicyStmt.actions = append(newPolicyStmt.actions,cfg.Actions[i])
-			updateActions(newPolicyStmt, cfg.Actions[i], add)
+			err = updateActions(newPolicyStmt, cfg.Actions[i], add)
+			if err != nil {
+				logger.Println("updateActions returned err ", err)
+				return val,err
+			}
 		}
 	   }
         newPolicyStmt.localDBSliceIdx = int8(len(localPolicyStmtDB))
@@ -442,7 +459,9 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
 		err =  errors.New("There is already a export policy with this precedence.")
          return val,err
 	   }
-	} 
+	} else if cfg.Global {
+		logger.Println("This is a global policy")
+	}
 	policy := PolicyDB.Get(patriciaDB.Prefix(cfg.Name))
 	var i int
 	if(policy == nil) {
@@ -451,12 +470,13 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
 	   newPolicy.name = cfg.Name
 	   newPolicy.precedence = cfg.Precedence
 	   newPolicy.matchType = cfg.MatchType
-       if cfg.Export == false && cfg.Import == false {
-			logger.Println("Need to set import or export to true")
+       if cfg.Export == false && cfg.Import == false && cfg.Global == false {
+			logger.Println("Need to set import, export or global to true")
 			return val, err
 	   }	  
 	   newPolicy.exportPolicy = cfg.Export
 	   newPolicy.importPolicy = cfg.Import
+	   newPolicy.globalPolicy = cfg.Global
 	   logger.Println("Policy has %d ", len(cfg.PolicyDefinitionStatements)," number of statements")
 	   newPolicy.policyStmtPrecedenceMap = make(map[int]string)	
 	   for i=0;i<len(cfg.PolicyDefinitionStatements);i++ {
@@ -488,8 +508,8 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
 	          ExportPolicyPrecedenceMap = make(map[int]string)	
 		   }
 		   ExportPolicyPrecedenceMap[int(cfg.Precedence)]=cfg.Name
-		} 
-	    PolicyEngineTraverseAndApply(newPolicy)
+		}
+	     PolicyEngineTraverseAndApplyPolicy(newPolicy)
 	} else {
 		logger.Println("Duplicate Policy definition name")
 		err = errors.New("Duplicate policy definition")
@@ -513,7 +533,7 @@ func (m RouteServiceHandler) 	DeletePolicyDefinition(cfg *ribd.PolicyDefinitionC
           logger.Println("local DB slice index for this policy is ", policyInfo.localDBSliceIdx)
 		  localPolicyDB[policyInfo.localDBSliceIdx].isValid = false		
 	   }
-	   PolicyEngineTraverseAndReverse(policyInfo)
+	   PolicyEngineTraverseAndReversePolicy(policyInfo)
 	   logger.Println("Deleting policy with name ", cfg.Name)
 		if ok := PolicyDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
 			logger.Println(" return value not ok for delete PolicyDB")

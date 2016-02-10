@@ -20,6 +20,7 @@ type RouteDistanceConfig struct{
 var RouteProtocolTypeMapDB = make(map[string]int)
 var ReverseRouteProtoTypeMapDB = make(map[int]string)
 var ProtocolAdminDistanceMapDB = make(map[int]RouteDistanceConfig)
+var ProtocolAdminDistanceSlice []ribd.RouteDistanceState 
 
 func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["CONNECTED"] = ribdCommonDefs.CONNECTED
@@ -36,6 +37,21 @@ func BuildProtocolAdminDistanceMapDB() {
 	ProtocolAdminDistanceMapDB[ribdCommonDefs.STATIC]       = RouteDistanceConfig{defaultDistance:1}	
 	ProtocolAdminDistanceMapDB[ribdCommonDefs.BGP]       = RouteDistanceConfig{defaultDistance:200}
 	ProtocolAdminDistanceMapDB[ribdCommonDefs.OSPF]       = RouteDistanceConfig{defaultDistance:110}
+}
+func BuildProtocolAdminDistanceSlice() {
+	distance :=0
+	protocol:=""
+	ProtocolAdminDistanceSlice = nil
+	ProtocolAdminDistanceSlice = make([]ribd.RouteDistanceState,0)
+	for k,v:=range ProtocolAdminDistanceMapDB {
+		protocol=ReverseRouteProtoTypeMapDB[k]
+		distance = v.defaultDistance
+		if v.configuredDistance != 0 {
+			distance = v.configuredDistance
+		}
+		routeDistance:=ribd.RouteDistanceState{Protocol:protocol,Distance:ribd.Int(distance)}
+		ProtocolAdminDistanceSlice = append(ProtocolAdminDistanceSlice,routeDistance)
+	}
 }
 func isBetterRoute(selectedRoute RouteInfoRecord, routeInfoRecord RouteInfoRecord) (isBetter bool){ 
    logger.Println("isBetterRoute ")
@@ -54,6 +70,13 @@ func isBetterRoute(selectedRoute RouteInfoRecord, routeInfoRecord RouteInfoRecor
    }
    return isBetter
 }
+func isSameRoute(selectedRoute ribd.Routes, route ribd.Routes) (same bool) {
+	logger.Println("isSameRoute")
+	if selectedRoute.Ipaddr == route.Ipaddr && selectedRoute.Mask == route.Mask && selectedRoute.Prototype == route.Prototype {
+		same = true
+	}
+	return same
+} 
 func getNetowrkPrefixFromStrings(ipAddr string, mask string) (prefix patriciaDB.Prefix, err error) {
 	destNetIpAddr, err := getIP(ipAddr)
 	if err != nil {
