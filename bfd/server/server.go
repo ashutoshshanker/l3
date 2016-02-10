@@ -54,13 +54,15 @@ type BfdSessionMgmt struct {
 }
 
 type BfdSession struct {
-	state            SessionState
-	sessionTimer     *time.Timer
-	txTimer          *time.Timer
-	TxTimeoutCh      chan *BfdSession
-	SessionTimeoutCh chan *BfdSession
-	bfdPacket        *BfdControlPacket
-	SessionDeleteCh  chan bool
+	state             SessionState
+	sessionTimer      *time.Timer
+	txTimer           *time.Timer
+	TxTimeoutCh       chan *BfdSession
+	SessionTimeoutCh  chan *BfdSession
+	bfdPacket         *BfdControlPacket
+	SessionDeleteCh   chan bool
+	pollSequence      bool
+	pollSequenceFinal bool
 }
 
 type BfdGlobal struct {
