@@ -18,7 +18,7 @@ type PolicyAction struct {
 	name          string
 	actionType int
 	actionInfo interface {}
-	policyList []string
+	policyStmtList []string
 	actionGetBulkInfo string
 	localDBSliceIdx int
 }
@@ -196,11 +196,11 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionActionState( fromIndex ribd.
 			nextNode = &tempNode[validCount]
 		    nextNode.Name = prefixNode.name
 			nextNode.ActionInfo = prefixNode.actionGetBulkInfo
-            if prefixNode.policyList != nil {
-				nextNode.PolicyList = make([]string,0)
+            if prefixNode.policyStmtList != nil {
+				nextNode.PolicyStmtList = make([]string,0)
 			}
-			for idx := 0;idx < len(prefixNode.policyList);idx++ {
-				nextNode.PolicyList = append(nextNode.PolicyList, prefixNode.policyList[idx])
+			for idx := 0;idx < len(prefixNode.policyStmtList);idx++ {
+				nextNode.PolicyStmtList = append(nextNode.PolicyStmtList, prefixNode.policyStmtList[idx])
 			}
  			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
 			if(len(returnNodes) == 0){
