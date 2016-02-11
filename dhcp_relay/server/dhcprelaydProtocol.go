@@ -343,7 +343,8 @@ func DhcpRelayAgentAddOptionsToPacket(reqOptions DhcpRelayAgentOptions, mt Messa
 			}
 			switch option.Code {
 			case OptionRequestedIPAddress:
-				retVal = string(option.Value[:])
+				retVal = net.IPv4(option.Value[0], option.Value[1],
+					option.Value[2], option.Value[3]).String()
 			}
 			outPacket.AddDhcpOptions(option.Code, option.Value)
 			dummyDup[option.Code] = 9999
