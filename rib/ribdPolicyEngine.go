@@ -21,7 +21,7 @@ func isPolicyTypeSame(oldPolicy Policy, policy Policy) (same bool){
 	}
 	return same
 }
-func actionListHasAction(actionList []string, action string) (match bool) {
+func actionListHasAction(actionList []string, actionType int, action string) (match bool) {
 	logger.Println("actionListHasAction for action ", action)
 	for i:=0;i<len(actionList);i++ {
 	   logger.Println("action at index ", i, " is ", actionList[i])
@@ -31,6 +31,9 @@ func actionListHasAction(actionList []string, action string) (match bool) {
 		return false
 	   }
 	   actionInfo:=actionInfoItem.(PolicyAction)
+	   if actionType != actionInfo.actionType {
+	      continue	
+	   }
 		switch actionInfo.actionType {
 		   case ribdCommonDefs.PolicyActionTypeRouteDisposition:
 			  logger.Println("RouteDisposition action = ", actionInfo.actionInfo)
@@ -41,6 +44,10 @@ func actionListHasAction(actionList []string, action string) (match bool) {
 		   case ribdCommonDefs.PolicyActionTypeRouteRedistribute:
 		      logger.Println("PolicyActionTypeRouteRedistribute action ")
 			  break
+		   case ribdCommonDefs.PoilcyActionTypeSetAdminDistance:
+		       logger.Println("PoilcyActionTypeSetAdminDistance action")
+			   match = true
+		       break
 		   default:
 		      logger.Println("Unknown type of action")
 			  break
@@ -482,7 +489,7 @@ func policyEngineImplementActions(route ribd.Routes, policyStmt PolicyStmt, para
 	          addActionToList = true
 			  break
 		   default:
-		      logger.Println("Unknown type of action")
+		      logger.Println("UnknownInvalid type of action")
 			  break
 		}
 		if addActionToList == true {
@@ -570,21 +577,54 @@ func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (matc
 
 func policyEngineApplyPolicyStmt(route *ribd.Routes, policy Policy, policyStmt PolicyStmt, policyPath int, params interface{}, hit *bool, routeDeleted *bool) {
 	logger.Println("policyEngineApplyPolicyStmt - ", policyStmt.name)
+	var conditionList []string
 	if policyStmt.conditions == nil {
 		logger.Println("No policy conditions")
-		return
-	}
-	match,conditionList := PolicyEngineMatchConditions(*route, policyStmt)
-	logger.Println("match = ", match)
-	*hit = match
-	if !match {
-		logger.Println("Conditions do not match")
-		return
+		*hit=true
+	} else {
+	   match,ret_conditionList := PolicyEngineMatchConditions(*route, policyStmt)
+	   logger.Println("match = ", match)
+	   *hit = match
+	   if !match {
+		   logger.Println("Conditions do not match")
+		   return
+	   }
+	   if ret_conditionList != nil {
+		 if conditionList == nil {
+			conditionList = make([]string,0)
+		 }
+		 for j:=0;j<len(ret_conditionList);j++ {
+			conditionList =append(conditionList,ret_conditionList[j])
+		 }
+	   }
 	}
 	actionList := policyEngineImplementActions(*route, policyStmt, params)
-	if actionListHasAction(actionList, "Reject") {
+	if actionListHasAction(actionList, ribdCommonDefs.PolicyActionTypeRouteDisposition,"Reject") {
 		logger.Println("Reject action was applied for this route")
 		*routeDeleted = true
+	}
+	//check if the route still exists - it may have been deleted by the previous statement action
+	ipPrefix,err:=getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
+	if err != nil {
+		logger.Println("Error when getting ipPrefix, err= ", err)
+		return
+	}
+    routeInfoRecordList := RouteInfoMap.Get(ipPrefix)
+    if routeInfoRecordList == nil {
+	   logger.Println("this route no longer exists")
+	   *routeDeleted = true
+	} else {
+		selectedRoute,err:=getSelectedRoute(routeInfoRecordList.(RouteInfoRecordList))
+		if err != nil {
+			logger.Println("getSelectedRoute err ", err)
+			*routeDeleted = true
+		} else {
+			selectedRouteInfo := ribd.Routes{Ipaddr:selectedRoute.destNetIp.String(), Mask:selectedRoute.networkMask.String(), Prototype:ribd.Int(selectedRoute.protocol)}
+             if !isSameRoute(selectedRouteInfo, *route) {
+			   logger.Println("The route is no longer the selected route")
+			   *routeDeleted = true
+			}
+		}
 	}
     routeInfo := params.(RouteParams)
 	var op int
@@ -695,6 +735,10 @@ func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 		     logger.Println("getting policy ", idx, " from route.PolicyList")
 	         policyInfo = 	PolicyDB.Get(patriciaDB.Prefix(route.PolicyList[idx]))
 		     idx++
+			 if policyInfo.(Policy).exportPolicy && policyPath == ribdCommonDefs.PolicyPath_Import || policyInfo.(Policy).importPolicy && policyPath == ribdCommonDefs.PolicyPath_Export {
+				logger.Println("policy ", policyInfo.(Policy).name, " not the same type as the policypath -", policyPath_Str)
+				continue
+			 } 
 	        } else if routeInfo.deleteType != Invalid {
 		      logger.Println("route.PolicyList empty and this is a delete operation for the route, so break")
                break
@@ -890,21 +934,13 @@ func PolicyEngineTraverseAndApply(policy Policy) {
 }
 func PolicyEngineTraverseAndApplyPolicy(policy Policy) {
 	logger.Println("PolicyEngineTraverseAndApplyPolicy -  apply policy ", policy.name)
-	PolicyEngineTraverseAndApply(policy)
-/*     var policyStmtKeys []int
-	 for k:=range policy.policyStmtPrecedenceMap {
-		policyStmtKeys = append(policyStmtKeys,k)
+    if policy.exportPolicy || policy.importPolicy{
+	   logger.Println("Applying import/export policy to all routes")
+	   PolicyEngineTraverseAndApply(policy)
+	} else if policy.globalPolicy {
+		logger.Println("Need to apply global policy")
+		policyEngineApplyGlobalPolicy(policy)
 	}
-	sort.Ints(policyStmtKeys)
-	for k:=range policyStmtKeys {
-		logger.Println("Key: ", k, " policyStmtName ", policy.policyStmtPrecedenceMap[k])
-		policyStmt := PolicyStmtDB.Get((patriciaDB.Prefix(policy.policyStmtPrecedenceMap[k])))
-        if policyStmt == nil {
-			logger.Println("Invalid policyStmt")
-			continue
-		}
-		PolicyEngineTraverseAndApply(policyStmt.(PolicyStmt))
-	}*/
 }
 func PolicyEngineTraverseAndReverse(policy Policy) {
 	logger.Println("PolicyEngineTraverseAndReverse - traverse routing table and inverse policy actions", policy.name)
@@ -944,3 +980,182 @@ func PolicyEngineTraverseAndReverse(policy Policy) {
         deletePolicyRouteMapEntry(policyRoute, policy.name)
 	}
 }
+func PolicyEngineTraverseAndReversePolicy(policy Policy){
+	logger.Println("PolicyEngineTraverseAndReversePolicy -  reverse policy ", policy.name)
+    if policy.exportPolicy || policy.importPolicy{
+	   logger.Println("Reversing import/export policy ")
+	   PolicyEngineTraverseAndReverse(policy)
+	} else if policy.globalPolicy {
+		logger.Println("Need to reverse global policy")
+		policyEngineReverseGlobalPolicy(policy)
+	}
+	
+}
+
+func policyEngineUpdateRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, handle patriciaDB.Item) (err error) {
+	logger.Println("policyEngineUpdateRoute for ", prefix)
+	
+   rmapInfoRecordList := item.(RouteInfoRecordList)
+   if len(rmapInfoRecordList.routeInfoList) == 0 {
+      logger.Println("len(rmapInfoRecordList.routeInfoList) == 0")
+	  return err	
+   }
+   logger.Println("Selected route index = ", rmapInfoRecordList.selectedRouteIdx)
+   selectedRouteInfoRecord := rmapInfoRecordList.routeInfoList[rmapInfoRecordList.selectedRouteIdx]
+   route := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid:rmapInfoRecordList.isPolicyBasedStateValid}
+   routeServiceHandler.UpdateIPV4Route(&route, nil, nil)
+   return err
+}
+func  policyEngineTraverseAndUpdate() {
+	logger.Println("policyEngineTraverseAndUpdate")
+	RouteInfoMap.VisitAndUpdate(policyEngineUpdateRoute, nil)
+}			
+func policyEngineApplyGlobalPolicyStmt(policy Policy, policyStmt PolicyStmt) {
+	logger.Println("policyEngineApplyGlobalPolicyStmt - ", policyStmt.name)
+    var conditionItem interface{}=nil
+//global policies can only have statements with 1 condition and 1 action
+	if policyStmt.actions == nil {
+		logger.Println("No policy actions defined")
+		return
+	}
+	if policyStmt.conditions == nil {
+		logger.Println("No policy conditions")
+	} else {
+		if len(policyStmt.conditions) > 1 {
+			logger.Println("only 1 condition allowed for global policy stmt")
+			return
+		}
+		conditionItem = PolicyConditionsDB.Get(patriciaDB.Prefix(policyStmt.conditions[0]))
+		if conditionItem == nil {
+			logger.Println("Condition ", policyStmt.conditions[0]," not found")
+			return
+		}
+		actionItem := PolicyActionsDB.Get(patriciaDB.Prefix(policyStmt.actions[0]))
+		if actionItem == nil {
+			logger.Println("Action ", policyStmt.actions[0]," not found")
+			return
+		}
+		actionInfo := actionItem.(PolicyAction)
+		switch actionInfo.actionType {
+		   case ribdCommonDefs.PoilcyActionTypeSetAdminDistance:
+		      logger.Println("PoilcyActionTypeSetAdminDistance action to be applied")
+			  if ProtocolAdminDistanceMapDB == nil {
+			     logger.Println("ProtocolAdminDistanceMap nil")
+				 break	
+			  }
+			  if conditionItem == nil {
+			     logger.Println("No valid condition provided for set admin distance action")
+				 return	
+			  }
+			  conditionInfo := conditionItem.(PolicyCondition)
+			  switch conditionInfo.conditionType {
+			    case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
+			      routeDistanceConfig := RouteDistanceConfig{configuredDistance:int(actionInfo.actionInfo.(ribd.Int))}
+			      ProtocolAdminDistanceMapDB[int(conditionInfo.conditionInfo.(int))] =  routeDistanceConfig
+			      logger.Println("Setting distance of prototype ", ReverseRouteProtoTypeMapDB[conditionInfo.conditionInfo.(int)], " to value ", actionInfo.actionInfo.(ribd.Int))
+				  break
+				default:
+				  logger.Println("Invalid condition type provided for set admin distance")
+				  return	
+			  }
+               policyEngineTraverseAndUpdate()
+			  break
+			default:
+			   logger.Println("Invalid global policy action")
+			   return
+		}
+	}
+}
+func policyEngineApplyGlobalPolicy(policy Policy) {
+	logger.Println("policyEngineApplyGlobalPolicy")
+     var policyStmtKeys []int
+	 for k:=range policy.policyStmtPrecedenceMap {
+		logger.Println("key k = ", k)
+		policyStmtKeys = append(policyStmtKeys,k)
+	}
+	sort.Ints(policyStmtKeys)
+	for i:=0;i<len(policyStmtKeys);i++ {
+		logger.Println("Key: ", policyStmtKeys[i], " policyStmtName ", policy.policyStmtPrecedenceMap[policyStmtKeys[i]])
+		policyStmt := PolicyStmtDB.Get((patriciaDB.Prefix(policy.policyStmtPrecedenceMap[policyStmtKeys[i]])))
+        if policyStmt == nil {
+			logger.Println("Invalid policyStmt")
+			continue
+		}
+		policyEngineApplyGlobalPolicyStmt(policy,policyStmt.(PolicyStmt))
+	}
+}
+func policyEngineReverseGlobalPolicyStmt(policy Policy, policyStmt PolicyStmt) {
+	logger.Println("policyEngineApplyGlobalPolicyStmt - ", policyStmt.name)
+    var conditionItem interface{}=nil
+//global policies can only have statements with 1 condition and 1 action
+	if policyStmt.actions == nil {
+		logger.Println("No policy actions defined")
+		return
+	}
+	if policyStmt.conditions == nil {
+		logger.Println("No policy conditions")
+	} else {
+		if len(policyStmt.conditions) > 1 {
+			logger.Println("only 1 condition allowed for global policy stmt")
+			return
+		}
+		conditionItem = PolicyConditionsDB.Get(patriciaDB.Prefix(policyStmt.conditions[0]))
+		if conditionItem == nil {
+			logger.Println("Condition ", policyStmt.conditions[0]," not found")
+			return
+		}
+		actionItem := PolicyActionsDB.Get(patriciaDB.Prefix(policyStmt.actions[0]))
+		if actionItem == nil {
+			logger.Println("Action ", policyStmt.actions[0]," not found")
+			return
+		}
+		actionInfo := actionItem.(PolicyAction)
+		switch actionInfo.actionType {
+		   case ribdCommonDefs.PoilcyActionTypeSetAdminDistance:
+		      logger.Println("PoilcyActionTypeSetAdminDistance action to be applied")
+			  if ProtocolAdminDistanceMapDB == nil {
+			     logger.Println("ProtocolAdminDistanceMap nil")
+				 break	
+			  }
+			  if conditionItem == nil {
+			     logger.Println("No valid condition provided for set admin distance action")
+				 return	
+			  }
+			  conditionInfo := conditionItem.(PolicyCondition)
+			  switch conditionInfo.conditionType {
+			    case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
+			      routeDistanceConfig := RouteDistanceConfig{configuredDistance:0}
+			      ProtocolAdminDistanceMapDB[int(conditionInfo.conditionInfo.(int))] =  routeDistanceConfig
+			      logger.Println("Setting configured distance of prototype ", ReverseRouteProtoTypeMapDB[conditionInfo.conditionInfo.(int)], " to value ", 0)
+				  break
+				default:
+				  logger.Println("Invalid condition type provided for set admin distance")
+				  return	
+			  }
+               policyEngineTraverseAndUpdate()
+			  break
+			default:
+			   logger.Println("Invalid global policy action")
+			   return
+		}
+	}
+}
+func policyEngineReverseGlobalPolicy(policy Policy) {
+	logger.Println("policyEngineReverseGlobalPolicy")
+     var policyStmtKeys []int
+	 for k:=range policy.policyStmtPrecedenceMap {
+		logger.Println("key k = ", k)
+		policyStmtKeys = append(policyStmtKeys,k)
+	}
+	sort.Ints(policyStmtKeys)
+	for i:=0;i<len(policyStmtKeys);i++ {
+		logger.Println("Key: ", policyStmtKeys[i], " policyStmtName ", policy.policyStmtPrecedenceMap[policyStmtKeys[i]])
+		policyStmt := PolicyStmtDB.Get((patriciaDB.Prefix(policy.policyStmtPrecedenceMap[policyStmtKeys[i]])))
+        if policyStmt == nil {
+			logger.Println("Invalid policyStmt")
+			continue
+		}
+		policyEngineReverseGlobalPolicyStmt(policy,policyStmt.(PolicyStmt))
+	}
+}
+

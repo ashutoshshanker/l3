@@ -123,6 +123,17 @@ struct PolicyDefinitionStmtIgpActionsGetInfo {
 	4: bool More
 	5: list<PolicyDefinitionStmtIgpActions> PolicyDefinitionStmtIgpActionsList
 }
+struct PolicyDefinitionStmtAdminDistanceAction{
+	1 : string  Name
+	2 : int 	Value
+}
+struct PolicyDefinitionStmtAdminDistanceActionGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<PolicyDefinitionStmtAdminDistanceAction> PPolicyDefinitionStmtAdminDistanceActionList
+}
 
 struct PolicyDefinitionStmtRouteDispositionAction{
 	1 : string  Name
@@ -179,7 +190,7 @@ struct PolicyDefinitionStmtStateGetInfo {
 struct PolicyDefinitionConditionState{
 	1 : string 	Name
 	2 : string 	ConditionInfo
-	3 : list<string> 	PolicyList
+	3 : list<string> 	PolicyStmtList
 }
 struct PolicyDefinitionConditionStateGetInfo {
 	1: int StartIdx
@@ -191,7 +202,7 @@ struct PolicyDefinitionConditionStateGetInfo {
 struct PolicyDefinitionActionState{
 	1 : string 	Name
 	2 : string 	ActionInfo
-	3 : list<string> 	PolicyList
+	3 : list<string> 	PolicyStmtList
 }
 struct PolicyDefinitionActionStateGetInfo {
 	1: int StartIdx
@@ -212,6 +223,7 @@ struct PolicyDefinitionConfig{
 	4: list<PolicyDefinitionStmtPrecedence> PolicyDefinitionStatements
 	6 : bool     Export
 	7 : bool     Import
+	8 : bool     Global
 }
 struct PolicyDefinitionGetInfo {
 	1: int StartIdx
@@ -233,11 +245,23 @@ struct PolicyDefinitionStateGetInfo {
 	5: list<PolicyDefinitionState> PolicyDefinitionStateList
 }
 
+struct RouteDistanceState{
+	1 : string 	Protocol
+	2 : int     Distance
+}
+struct RouteDistanceStateGetInfo {
+	1: int StartIdx
+	2: int EndIdx
+	3: int Count
+	4: bool More
+	5: list<RouteDistanceState> RouteDistanceStateList
+}
 //typedef RouteList  list<Routes>
 service RouteService 
 {
     int createV4Route (1:string destNetIp, 2:string networkMask, 3:int metric, 4:string nextHopIp, 5: int nextHopIfType, 6:int nextHopIfIndex, 7:string routeType);
-    void updateV4Route (1:string destNetIp, 2:string networkMask, 3:int routeType, 4:string nextHopIp, 5:int nextHopIfIndex, 6:int metric);
+    //void updateV4Route (1:string destNetIp, 2:string networkMask, 3:int routeType, 4:string nextHopIp, 5:int nextHopIfIndex, 6:int metric);
+	bool UpdateIPV4Route(1: Routes origconfig, 2: Routes newconfig, 3: list<bool> attrset);
     int deleteV4Route (1:string destNetIp, 2:string networkMask, 3:string routeType);
     NextHopInfo getRouteReachabilityInfo(1: string desIPv4MasktNet);
 	list<Routes> getConnectedRoutesInfo();
@@ -249,6 +273,8 @@ service RouteService
 	void linkUp(1: int ifType, 2:int ifIndex);
 	void intfUp(1:string ipAddr);
 	void intfDown(1:string ipAddr);
+
+	RouteDistanceStateGetInfo GetBulkRouteDistanceState(1: int fromIndex, 2: int count);
 
 	bool CreatePolicyDefinitionSetsPrefixSet(1: PolicyDefinitionSetsPrefixSet config);
 //	bool UpdatePolicyDefinitionSetsPrefixSet(1: PolicyDefinitionSetsPrefixSet origconfig, 2: PolicyDefinitionSetsPrefixSet newconfig, 3: list<bool> attrset);
@@ -274,6 +300,10 @@ service RouteService
 //	bool CreatePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions config);
 //	bool UpdatePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions origconfig, 2: PolicyDefinitionStmtIgpActions newconfig, 3: list<bool> attrset);
 //	bool DeletePolicyDefinitionStmtIgpActions(1: PolicyDefinitionStmtIgpActions config);
+
+	bool CreatePolicyDefinitionStmtAdminDistanceAction(1: PolicyDefinitionStmtAdminDistanceAction config);
+//	bool UpdatePolicyDefinitionStmtAdminDistanceAction(1: PolicyDefinitionStmtAdminDistanceAction origconfig, 2: PolicyDefinitionStmtAdminDistanceAction newconfig, 3: list<bool> attrset);
+//	bool DeletePolicyDefinitionStmtAdminDistanceAction(1: PolicyDefinitionStmtAdminDistanceAction config);
 
 	bool CreatePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction config);
 //	bool UpdatePolicyDefinitionStmtRouteDispositionAction(1: PolicyDefinitionStmtRouteDispositionAction origconfig, 2: PolicyDefinitionStmtRouteDispositionAction newconfig, 3: list<bool> attrset);
