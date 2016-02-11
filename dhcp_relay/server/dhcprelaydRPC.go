@@ -3,33 +3,8 @@ package relayServer
 import (
 	"dhcprelayd"
 	"fmt"
-	"strconv"
+	_ "strconv"
 )
-
-/*
- * Global DataStructure for DHCP RELAY
- */
-type DhcpRelayGlobalConfig struct {
-	// This will tell whether DHCP RELAY is enabled/disabled
-	// on the box right now or not.
-	DhcpRelay string `SNAPROUTE: "KEY"`
-	Enable    bool
-}
-
-/*
- * This DS will be used while adding/deleting Relay Agent.
- */
-type DhcpRelayIntfConfig struct {
-	IpSubnet string `SNAPROUTE: "KEY"` // Ip Address of the interface
-	Netmask  string `SNAPROUTE: "KEY"` // NetMaks of the interface
-	IfIndex  string `SNAPROUTE: "KEY"` // Unique If Id of the interface
-	// Use below field for agent sub-type
-	AgentSubType int32
-	Enable       bool
-	// To make life easy for testing first pass lets have only 1 server
-	ServerIp []string
-	//ServerIp string
-}
 
 /******** Trift APIs *******/
 /*
@@ -73,23 +48,17 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobalConfig(
 func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
 	logger.Info("DRA: Intf Config Create")
-	logger.Info("DRA: Creating Dhcp Relay Config for interface")
-	logger.Info("DRA: IpSubnet:" + config.IpSubnet)
-	logger.Info("DRA: Netmask:" + config.Netmask)
-	logger.Info("DRA: IF Index:" + config.IfIndex)
-	logger.Info("DRA: AgentSubType:" + string(config.AgentSubType))
+	logger.Info(fmt.Sprintln("DRA: IF Index:", config.IfIndex))
 	logger.Info(fmt.Sprintln("DRA: Enable:", config.Enable))
 	// Copy over configuration into globalInfo
-	ifNum, _ := strconv.Atoi(config.IfIndex)
-	gblEntry, ok := dhcprelayGblInfo[int32(ifNum)]
+	//ifNum, _ := strconv.Atoi(config.IfIndex)
+	ifNum := config.IfIndex
+	gblEntry, ok := dhcprelayGblInfo[ifNum]
 	if !ok {
 		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum,
 			" doesn't exist.."))
 		return ok, nil
 	}
-	gblEntry.IntfConfig.IpSubnet = config.IpSubnet
-	gblEntry.IntfConfig.Netmask = config.Netmask
-	gblEntry.IntfConfig.AgentSubType = config.AgentSubType
 	gblEntry.IntfConfig.Enable = config.Enable
 	logger.Info("DRA: ServerIp:")
 	for idx := 0; idx < len(config.ServerIp); idx++ {
@@ -97,11 +66,10 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 			config.ServerIp[idx]))
 		gblEntry.IntfConfig.ServerIp = append(gblEntry.IntfConfig.ServerIp,
 			config.ServerIp[idx])
-		DhcpRelayAgentInitIntfServerState(config.IfIndex,
-			config.ServerIp[idx], int32(ifNum))
+		DhcpRelayAgentInitIntfServerState(config.ServerIp[idx], ifNum)
 	}
 	gblEntry.IntfConfig.IfIndex = config.IfIndex
-	dhcprelayGblInfo[int32(ifNum)] = gblEntry
+	dhcprelayGblInfo[ifNum] = gblEntry
 
 	if dhcprelayEnable == false {
 		logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
@@ -115,33 +83,23 @@ func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntfConfig(
 	attrset []bool) (bool, error) {
 	logger.Info("DRA: Intf Config Update")
 	logger.Info("DRA: Updating Dhcp Relay Config for interface")
-	logger.Info("DRA: IpSubnet: " + origconfig.IpSubnet + " changed to " +
-		newconfig.IpSubnet)
-	logger.Info("DRA: Netmask: " + origconfig.Netmask + " changed to " +
-		newconfig.Netmask)
-	logger.Info("DRA: IF Index: " + origconfig.IfIndex + " changed to " +
-		newconfig.IfIndex)
 	if origconfig.IfIndex != newconfig.IfIndex {
 		logger.Info(fmt.Sprintln("DRA: Interface Id cannot be different.",
 			" Relay Agent will not accept this update for changing if id from",
 			origconfig.IfIndex, "to", newconfig.IfIndex))
 		return false, nil
 	}
-	logger.Info("DRA: AgentSubType: " + string(origconfig.AgentSubType) +
-		" changed to " + string(newconfig.AgentSubType))
 	logger.Info(fmt.Sprintln("DRA: Enable: ", origconfig.Enable, "changed to",
 		newconfig.Enable))
 	// Copy over configuration into globalInfo
-	ifNum, _ := strconv.Atoi(origconfig.IfIndex)
-	gblEntry, ok := dhcprelayGblInfo[int32(ifNum)]
+	//ifNum, _ := strconv.Atoi(origconfig.IfIndex)
+	ifNum := origconfig.IfIndex
+	gblEntry, ok := dhcprelayGblInfo[ifNum]
 	if !ok {
 		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum,
 			" doesn't exist.. and hence cannot update"))
 		return ok, nil
 	}
-	gblEntry.IntfConfig.IpSubnet = newconfig.IpSubnet
-	gblEntry.IntfConfig.Netmask = newconfig.Netmask
-	gblEntry.IntfConfig.AgentSubType = newconfig.AgentSubType
 	gblEntry.IntfConfig.Enable = newconfig.Enable
 	gblEntry.IntfConfig.ServerIp = nil
 	logger.Warning("DRA: Deleted Older DHCP Server IP's List and creating new")
@@ -151,12 +109,11 @@ func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntfConfig(
 			newconfig.ServerIp[idx]))
 		gblEntry.IntfConfig.ServerIp = append(gblEntry.IntfConfig.ServerIp,
 			newconfig.ServerIp[idx])
-		DhcpRelayAgentInitIntfServerState(newconfig.IfIndex,
-			newconfig.ServerIp[idx], int32(ifNum))
+		DhcpRelayAgentInitIntfServerState(newconfig.ServerIp[idx], ifNum)
 
 	}
 	gblEntry.IntfConfig.IfIndex = newconfig.IfIndex
-	dhcprelayGblInfo[int32(ifNum)] = gblEntry
+	dhcprelayGblInfo[ifNum] = gblEntry
 
 	if dhcprelayEnable == false {
 		logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
@@ -166,23 +123,21 @@ func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntfConfig(
 
 func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
-	logger.Info("DRA: deleting config for interface" + config.IfIndex)
-	ifNum, _ := strconv.Atoi(config.IfIndex)
-	gblEntry, ok := dhcprelayGblInfo[int32(ifNum)]
+	logger.Info(fmt.Sprintln("DRA: deleting config for interface", config.IfIndex))
+	//ifNum, _ := strconv.Atoi(config.IfIndex)
+	ifNum := config.IfIndex
+	gblEntry, ok := dhcprelayGblInfo[ifNum]
 	if !ok {
 		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum,
 			" doesn't exist.."))
 		return ok, nil
 	}
 	// Setting up default values for globalEntry
-	gblEntry.IntfConfig.IpSubnet = ""
-	gblEntry.IntfConfig.Netmask = ""
-	gblEntry.IntfConfig.IfIndex = strconv.Itoa(ifNum)
-	gblEntry.IntfConfig.AgentSubType = 0
+	gblEntry.IntfConfig.IfIndex = ifNum //strconv.Itoa(ifNum)
 	gblEntry.IntfConfig.Enable = false
 	gblEntry.PcapHandle.Close()
 	gblEntry.PcapHandle = nil
-	dhcprelayGblInfo[int32(ifNum)] = gblEntry
+	dhcprelayGblInfo[ifNum] = gblEntry
 	return true, nil
 }
 

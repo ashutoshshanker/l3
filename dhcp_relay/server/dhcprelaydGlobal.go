@@ -29,6 +29,8 @@ type DhcpRelayAgentPacket []byte
 type DhcpRelayAgentGlobalInfo struct {
 	IntfConfig dhcprelayd.DhcpRelayIntfConfig
 	PcapHandle *pcap.Handle
+	IpAddr     string
+	Netmask    string
 }
 type Option struct {
 	Code  DhcpOptionCode

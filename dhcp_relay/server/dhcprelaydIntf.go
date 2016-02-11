@@ -92,11 +92,11 @@ func DhcpRelayAgentUpdateIntfPortMap(msg asicdConstDefs.IPv4IntfNotifyMsg, msgTy
 			logger.Err(fmt.Sprintln("DRA: Parsing ipadd and netmask failed:", err))
 			return
 		}
-		gblEntry.IntfConfig.IpSubnet = ip.String()      //string(ip[:]) // 192.168.1.1
-		gblEntry.IntfConfig.Netmask = ipnet.IP.String() // 192.168.1.0
+		gblEntry.IpAddr = ip.String()        //string(ip[:]) // 192.168.1.1
+		gblEntry.Netmask = ipnet.IP.String() // 192.168.1.0
 		dhcprelayGblInfo[intfId] = gblEntry
 		logger.Info(fmt.Sprintln("DRA: Added interface:", intfId, " Ip address:",
-			gblEntry.IntfConfig.IpSubnet, " netmask:", gblEntry.IntfConfig.IpSubnet))
+			gblEntry.IpAddr, " netmask:", gblEntry.Netmask))
 	} else {
 		logger.Info(fmt.Sprintln("DRA: deleteing interface", intfId))
 		delete(dhcprelayGblInfo, intfId)

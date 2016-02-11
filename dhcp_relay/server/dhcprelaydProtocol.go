@@ -419,7 +419,7 @@ func DhcpRelayAgentSendPacketToDhcpServer(ch *net.UDPConn,
 
 		outPacket := DhcpRelayAgentCreateNewPacket(Request, inReq)
 		if inReq.GetGIAddr().String() == DHCP_NO_IP {
-			outPacket.SetGIAddr(net.ParseIP(gblEntry.IntfConfig.IpSubnet))
+			outPacket.SetGIAddr(net.ParseIP(gblEntry.IpAddr))
 		} else {
 			logger.Info("DRA: Relay Agent " + inReq.GetGIAddr().String() +
 				" requested for DHCP for HOST " + inReq.GetCHAddr().String())
@@ -511,7 +511,7 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 	ipv4 := &layers.IPv4{
-		SrcIP:    net.ParseIP(gblEntry.IntfConfig.IpSubnet),
+		SrcIP:    net.ParseIP(gblEntry.IpAddr),
 		DstIP:    outPacket.GetYIAddr(),
 		Version:  4,
 		Protocol: layers.IPProtocolUDP,

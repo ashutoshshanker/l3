@@ -134,8 +134,9 @@ func InitDhcpRelayPortPktHandler() error {
 	return nil
 }
 
-func DhcpRelayAgentInitIntfServerState(IntfId string, serverIp string, id int32) {
-	key := IntfId + "_" + serverIp
+func DhcpRelayAgentInitIntfServerState(serverIp string, id int32) {
+	IntfId := int(id)
+	key := strconv.Itoa(IntfId) + "_" + serverIp
 	intfServerEntry := dhcprelayIntfServerStateMap[key]
 	intfServerEntry.IntfId = id
 	intfServerEntry.ServerIp = serverIp
@@ -162,10 +163,10 @@ func DhcpRelayAgentInitGblHandling(ifNum int32) {
 	// Created a global Entry for Interface
 	gblEntry := dhcprelayGblInfo[ifNum]
 	// Setting up default values for globalEntry
-	gblEntry.IntfConfig.IpSubnet = ""
-	gblEntry.IntfConfig.Netmask = ""
-	gblEntry.IntfConfig.IfIndex = strconv.Itoa(int(ifNum)) //ifName
-	gblEntry.IntfConfig.AgentSubType = 0
+	gblEntry.IpAddr = ""
+	gblEntry.Netmask = ""
+	gblEntry.IntfConfig.IfIndex = ifNum //strconv.Itoa(int(ifNum)) //ifName
+	//gblEntry.IntfConfig.AgentSubType = 0
 	gblEntry.IntfConfig.Enable = false
 	dhcprelayGblInfo[ifNum] = gblEntry
 }
