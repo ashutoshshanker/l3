@@ -19,11 +19,15 @@ struct DhcpRelayHostDhcpState{
 	3 : string 	OfferedIp
 	4 : string 	GatewayIp
 	5 : string 	AcceptedIp
-	6 : string 	LeaseDuration
-	7 : string 	ClientRequest
-	8 : string 	ClientResponse
-	9 : string 	ServerRequest
-	10 : string 	ServerResponse
+	6 : string 	RequestedIp
+	7 : string 	ClientDiscover
+	8 : string 	ClientRequest
+	9 : i32 	ClientRequests
+	10 : i32 	ClientResponses
+	11 : string 	ServerOffer
+	12 : string 	ServerAck
+	13 : i32 	ServerRequests
+	14 : i32 	ServerResponses
 }
 struct DhcpRelayHostDhcpStateGetInfo {
 	1: int StartIdx
