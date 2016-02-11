@@ -392,9 +392,9 @@ func (h *BGPHandler) DeleteBGPPeerGroup(name string) (bool, error) {
 	return true, nil
 }
 
-func (h *BGPHandler) GetBGPRoute(prefix string) (*bgpd.BGPRoute, error) {
-	bgpRoute := h.server.AdjRib.GetBGPRoute(prefix)
-	return bgpRoute, nil
+func (h *BGPHandler) GetBGPRoute(prefix string) ([]*bgpd.BGPRoute, error) {
+	bgpRoutes := h.server.AdjRib.GetBGPRoutes(prefix)
+	return bgpRoutes, nil
 }
 
 func (h *BGPHandler) BulkGetBGPRoutes(index int64, count int64) (*bgpd.BGPRouteBulk, error) {
