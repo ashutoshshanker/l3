@@ -57,7 +57,8 @@ func DhcpRelayAgentListenAsicUpdate(address string) error {
 }
 
 func DhcpRelayAgentUpdateVlanInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
-	logger.Info("DRA: Vlan update message for " + vlanNotifyMsg.VlanName)
+	logger.Info(fmt.Sprintln("DRA: Vlan update message for ",
+		vlanNotifyMsg.VlanName, "vlan id is ", vlanNotifyMsg.VlanId))
 	var linuxInterface *net.Interface
 	var err error
 	linuxInterface, err = net.InterfaceByName(vlanNotifyMsg.VlanName)
@@ -67,17 +68,19 @@ func DhcpRelayAgentUpdateVlanInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, ms
 	}
 	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
 		dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index] =
-			int(vlanNotifyMsg.VlanId)
+			int32(vlanNotifyMsg.VlanId)
 	} else { // Delete interface id
 		delete(dhcprelayLogicalIntfId2LinuxIntId, linuxInterface.Index)
 	}
 }
 
 func DhcpRelayAgentUpdateIntfPortMap(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
-	intfId := asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)
+	logicalId := int32(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex))
+	intfId := msg.IfIndex
 	logger.Info(fmt.Sprintln("DRA: Got a ipv4 interface notification for:", msgType,
-		"for If Id:", intfId))
+		"for If Id:", intfId, "original id is", msg.IfIndex))
 	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
+		dhcprelayLogicalIntf2IfIndex[logicalId] = intfId
 		// @TODO: fix netmask later on...
 		// Init DRA Global Handling for new interface....
 		// 192.168.1.1/24 -> ip: 192.168.1.1  net: 192.168.1.0/24
@@ -166,7 +169,6 @@ func DhcpRelayInitPortParams() error {
 	currMarker := int64(asicdConstDefs.MIN_SYS_PORTS)
 	more := false
 	objCount := 0
-	portNum := 0
 	if !asicdClient.IsConnected {
 		logger.Info("DRA: is not connected to asicd.... is it bad?")
 	}
@@ -178,15 +180,18 @@ func DhcpRelayInitPortParams() error {
 	logger.Info("DRA calling asicd for port config")
 	count := 10
 	// Allocate memory for Global Info
-	dhcprelayGblInfo = make(map[int]DhcpRelayAgentGlobalInfo, 50)
+	dhcprelayGblInfo = make(map[int32]DhcpRelayAgentGlobalInfo, 50)
 	// Interface State Maps
-	dhcprelayIntfStateMap = make(map[int]dhcprelayd.DhcpRelayIntfState, 50)
+	dhcprelayIntfStateMap = make(map[int32]dhcprelayd.DhcpRelayIntfState, 50)
 	dhcprelayIntfServerStateMap = make(map[string]dhcprelayd.DhcpRelayIntfServerState, 50)
 	// Interface State Slice
-	dhcprelayIntfStateSlice = []int{}
+	dhcprelayIntfStateSlice = []int32{}
 	dhcprelayIntfServerStateSlice = []string{}
 	// Allocate memory for Linux ID ---> Logical Id mapping
-	dhcprelayLogicalIntfId2LinuxIntId = make(map[int]int, 10)
+	dhcprelayLogicalIntfId2LinuxIntId = make(map[int]int32, 30)
+	// Logical Id to Unique If Index, for e.g vlan 9
+	// 9 will map to 33554441
+	dhcprelayLogicalIntf2IfIndex = make(map[int32]int32, 10)
 	for {
 		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortState(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
@@ -200,7 +205,8 @@ func DhcpRelayInitPortParams() error {
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
 			var ifName string
-			portNum = int(bulkInfo.PortStateList[i].IfIndex)
+			var portNum int32
+			portNum = bulkInfo.PortStateList[i].IfIndex //int(bulkInfo.PortStateList[i].IfIndex)
 			ifName = bulkInfo.PortStateList[i].Name
 			logger.Info("DRA: interface global init for " + ifName)
 			DhcpRelayAgentInitGblHandling(portNum)
@@ -210,6 +216,7 @@ func DhcpRelayInitPortParams() error {
 			break
 		}
 	}
+	//@TODO: GetBulkVlan
 	logger.Info("DRA: initialized Port Parameters & Global Info successfully")
 	return nil
 }

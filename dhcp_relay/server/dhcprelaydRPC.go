@@ -81,13 +81,12 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	logger.Info(fmt.Sprintln("DRA: Enable:", config.Enable))
 	// Copy over configuration into globalInfo
 	ifNum, _ := strconv.Atoi(config.IfIndex)
-	gblEntry, ok := dhcprelayGblInfo[ifNum]
+	gblEntry, ok := dhcprelayGblInfo[int32(ifNum)]
 	if !ok {
 		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum,
 			" doesn't exist.."))
 		return ok, nil
 	}
-	// Acquire lock for updating configuration.
 	gblEntry.IntfConfig.IpSubnet = config.IpSubnet
 	gblEntry.IntfConfig.Netmask = config.Netmask
 	gblEntry.IntfConfig.AgentSubType = config.AgentSubType
@@ -99,10 +98,10 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 		gblEntry.IntfConfig.ServerIp = append(gblEntry.IntfConfig.ServerIp,
 			config.ServerIp[idx])
 		DhcpRelayAgentInitIntfServerState(config.IfIndex,
-			config.ServerIp[idx], ifNum)
+			config.ServerIp[idx], int32(ifNum))
 	}
 	gblEntry.IntfConfig.IfIndex = config.IfIndex
-	dhcprelayGblInfo[ifNum] = gblEntry
+	dhcprelayGblInfo[int32(ifNum)] = gblEntry
 
 	if dhcprelayEnable == false {
 		logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
@@ -114,6 +113,54 @@ func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntfConfig(
 	origconfig *dhcprelayd.DhcpRelayIntfConfig,
 	newconfig *dhcprelayd.DhcpRelayIntfConfig,
 	attrset []bool) (bool, error) {
+	logger.Info("DRA: Intf Config Update")
+	logger.Info("DRA: Updating Dhcp Relay Config for interface")
+	logger.Info("DRA: IpSubnet: " + origconfig.IpSubnet + " changed to " +
+		newconfig.IpSubnet)
+	logger.Info("DRA: Netmask: " + origconfig.Netmask + " changed to " +
+		newconfig.Netmask)
+	logger.Info("DRA: IF Index: " + origconfig.IfIndex + " changed to " +
+		newconfig.IfIndex)
+	if origconfig.IfIndex != newconfig.IfIndex {
+		logger.Info(fmt.Sprintln("DRA: Interface Id cannot be different.",
+			" Relay Agent will not accept this update for changing if id from",
+			origconfig.IfIndex, "to", newconfig.IfIndex))
+		return false, nil
+	}
+	logger.Info("DRA: AgentSubType: " + string(origconfig.AgentSubType) +
+		" changed to " + string(newconfig.AgentSubType))
+	logger.Info(fmt.Sprintln("DRA: Enable: ", origconfig.Enable, "changed to",
+		newconfig.Enable))
+	// Copy over configuration into globalInfo
+	ifNum, _ := strconv.Atoi(origconfig.IfIndex)
+	gblEntry, ok := dhcprelayGblInfo[int32(ifNum)]
+	if !ok {
+		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum,
+			" doesn't exist.. and hence cannot update"))
+		return ok, nil
+	}
+	gblEntry.IntfConfig.IpSubnet = newconfig.IpSubnet
+	gblEntry.IntfConfig.Netmask = newconfig.Netmask
+	gblEntry.IntfConfig.AgentSubType = newconfig.AgentSubType
+	gblEntry.IntfConfig.Enable = newconfig.Enable
+	gblEntry.IntfConfig.ServerIp = nil
+	logger.Warning("DRA: Deleted Older DHCP Server IP's List and creating new")
+	logger.Info("DRA: New ServerIp's:")
+	for idx := 0; idx < len(newconfig.ServerIp); idx++ {
+		logger.Info(fmt.Sprintln("DRA: Server", idx, ": ",
+			newconfig.ServerIp[idx]))
+		gblEntry.IntfConfig.ServerIp = append(gblEntry.IntfConfig.ServerIp,
+			newconfig.ServerIp[idx])
+		DhcpRelayAgentInitIntfServerState(newconfig.IfIndex,
+			newconfig.ServerIp[idx], int32(ifNum))
+
+	}
+	gblEntry.IntfConfig.IfIndex = newconfig.IfIndex
+	dhcprelayGblInfo[int32(ifNum)] = gblEntry
+
+	if dhcprelayEnable == false {
+		logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
+	}
 	return true, nil
 }
 
@@ -121,7 +168,7 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
 	logger.Info("DRA: deleting config for interface" + config.IfIndex)
 	ifNum, _ := strconv.Atoi(config.IfIndex)
-	gblEntry, ok := dhcprelayGblInfo[ifNum]
+	gblEntry, ok := dhcprelayGblInfo[int32(ifNum)]
 	if !ok {
 		logger.Err(fmt.Sprintln("DRA: entry for ifNum", ifNum,
 			" doesn't exist.."))
@@ -135,7 +182,7 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 	gblEntry.IntfConfig.Enable = false
 	gblEntry.PcapHandle.Close()
 	gblEntry.PcapHandle = nil
-	dhcprelayGblInfo[ifNum] = gblEntry
+	dhcprelayGblInfo[int32(ifNum)] = gblEntry
 	return true, nil
 }
 
