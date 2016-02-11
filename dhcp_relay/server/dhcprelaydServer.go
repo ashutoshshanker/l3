@@ -134,10 +134,11 @@ func InitDhcpRelayPortPktHandler() error {
 	return nil
 }
 
-func DhcpRelayAgentInitIntfServerState(IntfId string, serverIp string, id int) {
-	key := IntfId + "_" + serverIp
+func DhcpRelayAgentInitIntfServerState(serverIp string, id int32) {
+	IntfId := int(id)
+	key := strconv.Itoa(IntfId) + "_" + serverIp
 	intfServerEntry := dhcprelayIntfServerStateMap[key]
-	intfServerEntry.IntfId = int32(id)
+	intfServerEntry.IntfId = id
 	intfServerEntry.ServerIp = serverIp
 	intfServerEntry.Request = 0
 	intfServerEntry.Responses = 0
@@ -145,9 +146,9 @@ func DhcpRelayAgentInitIntfServerState(IntfId string, serverIp string, id int) {
 	dhcprelayIntfServerStateSlice = append(dhcprelayIntfServerStateSlice, key)
 }
 
-func DhcpRelayAgentInitIntfState(IntfId int) {
+func DhcpRelayAgentInitIntfState(IntfId int32) {
 	intfEntry := dhcprelayIntfStateMap[IntfId]
-	intfEntry.IntfId = int32(IntfId)
+	intfEntry.IntfId = IntfId
 	intfEntry.TotalDrops = 0
 	intfEntry.TotalDhcpClientRx = 0
 	intfEntry.TotalDhcpClientTx = 0
@@ -157,15 +158,15 @@ func DhcpRelayAgentInitIntfState(IntfId int) {
 	dhcprelayIntfStateSlice = append(dhcprelayIntfStateSlice, IntfId)
 }
 
-func DhcpRelayAgentInitGblHandling(ifNum int) {
-	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(ifNum))
+func DhcpRelayAgentInitGblHandling(ifNum int32) {
+	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(int(ifNum)))
 	// Created a global Entry for Interface
 	gblEntry := dhcprelayGblInfo[ifNum]
 	// Setting up default values for globalEntry
-	gblEntry.IntfConfig.IpSubnet = ""
-	gblEntry.IntfConfig.Netmask = ""
-	gblEntry.IntfConfig.IfIndex = strconv.Itoa(ifNum) //ifName
-	gblEntry.IntfConfig.AgentSubType = 0
+	gblEntry.IpAddr = ""
+	gblEntry.Netmask = ""
+	gblEntry.IntfConfig.IfIndex = ifNum //strconv.Itoa(int(ifNum)) //ifName
+	//gblEntry.IntfConfig.AgentSubType = 0
 	gblEntry.IntfConfig.Enable = false
 	dhcprelayGblInfo[ifNum] = gblEntry
 }
