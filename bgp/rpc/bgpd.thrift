@@ -135,6 +135,6 @@ service BGPServer
 	bool UpdateBGPPeerGroup(1: BGPPeerGroup origGroup, 2: BGPPeerGroup updatedGroup, 3: list<bool> attrSet);
 	bool DeleteBGPPeerGroup(1: string groupName);
 
-	BGPRoute GetBGPRoute(1: string ip);
+	list<BGPRoute> GetBGPRoute(1: string ip);
 	BGPRouteBulk BulkGetBGPRoutes(1: i64 index, 2: i64 count);
 }
