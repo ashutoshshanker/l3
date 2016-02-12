@@ -54,24 +54,114 @@ type ospfDatabaseDescriptionData struct {
 	ibit               bool
 	mbit               bool
 	msbit              bool
+	lsa_headers        []ospfLSAHeader
+}
+
+type ospfLSAHeader struct {
+	ls_age          uint16
+	ls_type         uint16
+	link_state_id   uint32
+	adv_router_id   uint32
+	ls_sequence_num uint32
+	ls_checksum     uint16
+	ls_len          uint16
+	ack_received    bool
 }
 
 func newOspfDatabaseDescriptionData() *ospfDatabaseDescriptionData {
 	return &ospfDatabaseDescriptionData{}
 }
 
-func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptionData) {
+func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptionData, pktlen uint16) {
 	dbd_data.interface_mtu = binary.BigEndian.Uint16(data[0:2])
 	dbd_data.options = data[2]
 	dbd_data.dd_sequence_number = binary.BigEndian.Uint32(data[4:8])
 	imms_options := data[3]
-	dbd_data.ibit = imms_options&0x04 != 0
+	dbd_data.ibit = imms_options&0x4 != 0
 	dbd_data.mbit = imms_options&0x02 != 0
 	dbd_data.msbit = imms_options&0x01 != 0
 
 	fmt.Println("Decoded packet options:", dbd_data.options,
 		"IMMS:", dbd_data.ibit, dbd_data.mbit, dbd_data.msbit,
 		"seq num:", dbd_data.dd_sequence_number)
+
+	if dbd_data.ibit == false {
+		// negotiation is done. Check if we have LSA headers
+
+		headers_len := pktlen - (OSPF_DBD_MIN_SIZE + OSPF_HEADER_SIZE)
+		fmt.Println("DBD: Received headers_len ", headers_len, " pktLen", pktlen)
+		if headers_len >= 20 && headers_len < pktlen {
+			fmt.Println("DBD: LSA headers length ", headers_len)
+			num_headers := int(headers_len / 20)
+			fmt.Sprintln("DBD: Received ", num_headers, " LSA headers.")
+			header_byte := make([]byte, num_headers*OSPF_LSA_HEADER_SIZE)
+			var start_index uint8
+			var lsa_header ospfLSAHeader
+			for i := 0; i < num_headers; i++ {
+				start_index = uint8(OSPF_DBD_MIN_SIZE + (i * OSPF_LSA_HEADER_SIZE))
+				copy(header_byte, data[start_index:start_index+20])
+				lsa_header = decodeLSAHeader(header_byte)
+				fmt.Println("DBD: Header decoded ",
+					"ls_age:options:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
+					lsa_header.ls_age, lsa_header.ls_type, lsa_header.link_state_id,
+					lsa_header.adv_router_id, lsa_header.ls_sequence_num,
+					lsa_header.ls_checksum)
+				dbd_data.lsa_headers = append(dbd_data.lsa_headers, lsa_header)
+			}
+		}
+	}
+}
+
+/*
+
+LSA headers
+ 0                   1                   2                   3
+       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |           LS Age              |           LS Type             |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |                       Link State ID                           |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |                    Advertising Router                         |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |                    LS Sequence Number                         |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |        LS Checksum            |             Length            |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+*/
+
+func decodeLSAHeader(data []byte) (lsa_header ospfLSAHeader) {
+	lsa_header.ls_age = binary.BigEndian.Uint16(data[0:2])
+	lsa_header.ls_type = binary.BigEndian.Uint16(data[2:4])
+	lsa_header.link_state_id = binary.BigEndian.Uint32(data[4:8])
+	lsa_header.adv_router_id = binary.BigEndian.Uint32(data[8:12])
+	lsa_header.ls_sequence_num = binary.BigEndian.Uint32(data[12:16])
+	lsa_header.ls_checksum = binary.BigEndian.Uint16(data[16:18])
+	lsa_header.ls_len = binary.BigEndian.Uint16(data[18:20])
+
+	return lsa_header
+}
+
+func encodeLSAHeader(dd_data ospfDatabaseDescriptionData) []byte {
+	headers := len(dd_data.lsa_headers)
+
+	if headers == 0 {
+		return nil
+	}
+	pkt := make([]byte, headers*OSPF_LSA_HEADER_SIZE)
+	for index := 0; index < headers; index++ {
+		lsa_header := dd_data.lsa_headers[index]
+		pkt_index := 20 * index
+		binary.BigEndian.PutUint16(pkt[pkt_index:pkt_index+2], lsa_header.ls_age)
+		binary.BigEndian.PutUint16(pkt[pkt_index+2:pkt_index+4], lsa_header.ls_type)
+		binary.BigEndian.PutUint32(pkt[pkt_index+4:pkt_index+8], lsa_header.link_state_id)
+		binary.BigEndian.PutUint32(pkt[pkt_index+8:pkt_index+12], lsa_header.adv_router_id)
+		binary.BigEndian.PutUint32(pkt[pkt_index+12:pkt_index+16], lsa_header.ls_sequence_num)
+		binary.BigEndian.PutUint16(pkt[pkt_index+16:pkt_index+18], lsa_header.ls_checksum)
+		binary.BigEndian.PutUint16(pkt[pkt_index+18:pkt_index+20], lsa_header.ls_len)
+	}
+	return pkt
 }
 
 func encodeDatabaseDescriptionData(dd_data ospfDatabaseDescriptionData) []byte {
@@ -79,19 +169,25 @@ func encodeDatabaseDescriptionData(dd_data ospfDatabaseDescriptionData) []byte {
 	binary.BigEndian.PutUint16(pkt[0:2], dd_data.interface_mtu)
 	//pkt[3] = dd_data.options
 	pkt[2] = 0x2
-	imms := 0x07
-	if !dd_data.ibit {
-		imms = imms & 0x04
+	imms := 0
+	if dd_data.ibit {
+		imms = imms | 0x4
 	}
-	if !dd_data.mbit {
-		imms = imms & 0x02
+	if dd_data.mbit {
+		imms = imms | 0x2
 	}
-	if !dd_data.msbit {
-		imms = imms & 0x01
+	if dd_data.msbit {
+		imms = imms | 0x1
 	}
 	pkt[3] = byte(imms)
+	fmt.Println("data imms  ", pkt[3])
 	//	pkt[3] = dd_data.ibit | dd_data.mbit | dd_data.msbit
 	binary.BigEndian.PutUint32(pkt[4:8], dd_data.dd_sequence_number)
+	lsa_pkt := encodeLSAHeader(dd_data)
+	if lsa_pkt != nil {
+		pkt = append(pkt, lsa_pkt...)
+	}
+
 	fmt.Println("data consrtructed  ", pkt)
 	return pkt
 }
@@ -115,7 +211,8 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 	}
 
 	ospfPktlen := OSPF_HEADER_SIZE
-	ospfPktlen = ospfPktlen + OSPF_DBD_MIN_SIZE
+	lsa_header_size := OSPF_LSA_HEADER_SIZE * len(dbdData.lsa_headers)
+	ospfPktlen = ospfPktlen + OSPF_DBD_MIN_SIZE + lsa_header_size
 
 	ospfHdr.pktlen = uint16(ospfPktlen)
 
@@ -139,12 +236,12 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 		TTL:      uint8(1),
 		Protocol: layers.IPProtocol(OSPF_PROTO_ID),
 		SrcIP:    ent.IfIpAddr,
-		DstIP:    net.IP{30, 0, 1, 3},
+		DstIP:    net.IP{20, 0, 1, 2},
 	}
 
 	ethLayer := layers.Ethernet{
 		SrcMAC:       ent.IfMacAddr,
-		DstMAC:       net.HardwareAddr{0x62, 0x01, 0x0b, 0xca, 0x68, 0x90},
+		DstMAC:       net.HardwareAddr{0xd8, 0xeb, 0x97, 0xb6, 0x49, 0x7f},
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 
@@ -173,6 +270,14 @@ func (server *OSPFServer) SendDBDPkt(nbrKey uint32) {
 			data := server.BuildDBDPkt(nbrConf.intfConfKey, intConf, nbrConf, dbd_mdata)
 			//case <-nbrConf.ospfNbrDBDTickerCh.C: // retransmit interval over
 			server.SendOspfPkt(nbrConf.intfConfKey, data)
+		case lsa_data := <-nbrConf.ospfNbrLsaSendCh:
+			server.logger.Info(fmt.Sprintln("Send LSA: nbrconf ,  lsa_data", nbrConf, lsa_data))
+			data := server.BuildLSAReqPkt(nbrConf.intfConfKey, intConf, nbrConf, lsa_data)
+			server.SendOspfPkt(nbrConf.intfConfKey, data)
+		case stop := <-nbrConf.ospfNbrDBDStopCh:
+			if stop == true {
+				return
+			}
 		}
 	}
 
@@ -181,17 +286,30 @@ func (server *OSPFServer) SendDBDPkt(nbrKey uint32) {
 func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadata, ipHdrMd *IpHdrMetadata, key IntfConfKey) error {
 	//ent, _ := server.IntfConfMap[key]
 	ospfdbd_data := newOspfDatabaseDescriptionData()
+	ospfdbd_data.lsa_headers = []ospfLSAHeader{}
 	routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
+	pktlen := ospfHdrMd.pktlen
 	/*  TODO check min length
 	 */
-	decodeDatabaseDescriptionData(data, ospfdbd_data)
+	decodeDatabaseDescriptionData(data, ospfdbd_data, pktlen)
+
 	dbdNbrMsg := ospfNeighborDBDMsg{
 		ospfNbrConfKey: NeighborConfKey{
 			OspfNbrRtrId: routerId,
 		},
 		ospfNbrDBDData: *ospfdbd_data,
 	}
+	fmt.Println(" lsa_header length = ", len(ospfdbd_data.lsa_headers))
+	dbdNbrMsg.ospfNbrDBDData.lsa_headers = []ospfLSAHeader{}
+
+	copy(dbdNbrMsg.ospfNbrDBDData.lsa_headers, ospfdbd_data.lsa_headers)
+	for i := 0; i < len(ospfdbd_data.lsa_headers); i++ {
+		dbdNbrMsg.ospfNbrDBDData.lsa_headers = append(dbdNbrMsg.ospfNbrDBDData.lsa_headers,
+			ospfdbd_data.lsa_headers[i])
+	}
+
 	server.neighborDBDEventCh <- dbdNbrMsg
+	fmt.Println("msg lsa_header length = ", len(dbdNbrMsg.ospfNbrDBDData.lsa_headers))
 	return nil
 }
 

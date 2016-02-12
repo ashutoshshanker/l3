@@ -29,6 +29,8 @@ type DhcpRelayAgentPacket []byte
 type DhcpRelayAgentGlobalInfo struct {
 	IntfConfig dhcprelayd.DhcpRelayIntfConfig
 	PcapHandle *pcap.Handle
+	IpAddr     string
+	Netmask    string
 }
 type Option struct {
 	Code  DhcpOptionCode
@@ -37,7 +39,8 @@ type Option struct {
 
 type DhcpRelayAgentIntfInfo struct {
 	linuxInterface *net.Interface
-	logicalId      int
+	logicalId      int32
+	IfIndex        int32
 }
 
 /*
@@ -50,12 +53,14 @@ type DhcpRelayServiceHandler struct {
  * Global Variable
  */
 var (
-	asicdClient                       AsicdClient
-	asicdSubSocket                    *nanomsg.SubSocket
-	snapshot_len                      int32         = 1024
-	promiscuous                       bool          = false
-	timeout                           time.Duration = 30 * time.Second
-	dhcprelayLogicalIntfId2LinuxIntId map[int]int   // Linux Intf Id ---> Logical ID
+	asicdClient    AsicdClient
+	asicdSubSocket *nanomsg.SubSocket
+	snapshot_len   int32         = 1024
+	promiscuous    bool          = false
+	timeout        time.Duration = 30 * time.Second
+	// Linux Intf Id ---> Logical ID
+	dhcprelayLogicalIntfId2LinuxIntId map[int]int32
+	dhcprelayLogicalIntf2IfIndex      map[int32]int32
 	dhcprelayEnable                   bool
 	dhcprelayClientConn               *ipv4.PacketConn
 	dhcprelayServerConn               *ipv4.PacketConn
@@ -63,8 +68,8 @@ var (
 
 	// map key would be if_name
 	// When we receive a udp packet... we will get interface id and that can
-	// be used to collect the global info...
-	dhcprelayGblInfo map[int]DhcpRelayAgentGlobalInfo
+	// be used to collect the global info...This is unique interface id
+	dhcprelayGblInfo map[int32]DhcpRelayAgentGlobalInfo
 
 	// PadddingToMinimumSize pads a packet so that when sent over UDP,
 	// the entire packet, is 300 bytes (which is BOOTP/DHCP min)
@@ -78,8 +83,8 @@ var (
 	dhcprelayHostServerStateSlice []string
 
 	// map key is interface id
-	dhcprelayIntfStateMap   map[int]dhcprelayd.DhcpRelayIntfState
-	dhcprelayIntfStateSlice []int
+	dhcprelayIntfStateMap   map[int32]dhcprelayd.DhcpRelayIntfState
+	dhcprelayIntfStateSlice []int32
 	// map key is interface id + server
 	dhcprelayIntfServerStateMap   map[string]dhcprelayd.DhcpRelayIntfServerState
 	dhcprelayIntfServerStateSlice []string

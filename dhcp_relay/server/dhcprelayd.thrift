@@ -2,16 +2,13 @@ namespace go dhcprelayd
 typedef i32 int
 typedef i16 uint16
 struct DhcpRelayGlobalConfig{
-	1 : string 	DhcpRelay
-	2 : bool 	Enable
+	3 : string 	DhcpRelay
+	4 : bool 	Enable
 }
 struct DhcpRelayIntfConfig{
-	1 : string 	IpSubnet
-	2 : string 	Netmask
-	3 : string 	IfIndex
-	4 : i32 	AgentSubType
+	3 : i32 	IfIndex
 	5 : bool 	Enable
-	6 : list<string> 	ServerIp
+	7 : list<string> 	ServerIp
 }
 struct DhcpRelayHostDhcpState{
 	1 : string 	MacAddr
