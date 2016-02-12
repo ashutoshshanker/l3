@@ -203,6 +203,10 @@ func (p *Path) IsExternal() bool {
 	return p.peer != nil && p.peer.IsExternal()
 }
 
+func (p *Path) IsInternal() bool {
+	return p.peer != nil && p.peer.IsInternal()
+}
+
 func (p *Path) GetNumASes() uint32 {
 	var total uint32 = 0
 	for _, attr := range p.pathAttrs {

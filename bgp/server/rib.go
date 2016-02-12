@@ -192,11 +192,14 @@ func (adjRib *AdjRib) GetLocRib() map[*Path][]packet.IPPrefix {
 func (adjRib *AdjRib) removeRoutesFromRouteList(routes []*Route) {
 	defer adjRib.routeMutex.Unlock()
 	adjRib.routeMutex.Lock()
+	adjRib.logger.Info(fmt.Sprintln("removeRoutesFromRouteList: routes =", routes))
 	for _, route := range routes {
 		idx := route.routeListIdx
 		if idx != -1 {
+			adjRib.logger.Info(fmt.Sprintln("removeRoutesFromRouteList: remove route at idx", idx, "routeList =", adjRib.routeList))
 			if !adjRib.activeGet {
 				adjRib.routeList[idx] = adjRib.routeList[len(adjRib.routeList)-1]
+				adjRib.routeList[idx].setIdx(idx)
 				adjRib.routeList[len(adjRib.routeList)-1] = nil
 				adjRib.routeList = adjRib.routeList[:len(adjRib.routeList)-1]
 			} else {
@@ -210,8 +213,10 @@ func (adjRib *AdjRib) removeRoutesFromRouteList(routes []*Route) {
 func (adjRib *AdjRib) addRoutesToRouteList(routes []*Route) {
 	defer adjRib.routeMutex.Unlock()
 	adjRib.routeMutex.Lock()
+	adjRib.logger.Info(fmt.Sprintln("addRoutesToRouteList: routes =", routes))
 	for _, route := range routes {
 		adjRib.routeList = append(adjRib.routeList, route)
+		adjRib.logger.Info(fmt.Sprintln("addRoutesToRouteList: added route at idx", len(adjRib.routeList)-1, "routeList =", adjRib.routeList))
 		route.routeListIdx = len(adjRib.routeList) - 1
 	}
 }
@@ -235,6 +240,7 @@ func (adjRib *AdjRib) ResetRouteList() {
 				break
 			}
 			adjRib.routeList[idx] = adjRib.routeList[modIdx]
+			adjRib.routeList[idx].setIdx(idx)
 			adjRib.routeList[modIdx] = nil
 			lastIdx = modIdx
 		}
