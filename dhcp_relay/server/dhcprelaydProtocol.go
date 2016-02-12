@@ -401,13 +401,6 @@ func DhcpRelayAgentSendDiscoverPacket(ch *net.UDPConn, gblEntry DhcpRelayAgentGl
 		}
 
 		DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
-		// Decode outpacket...
-		/*
-			logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
-			logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
-			logger.Info("DRA: YIAddr is " + outPacket.GetYIAddr().String())
-			logger.Info("DRA: GIAddr is " + outPacket.GetGIAddr().String())
-		*/
 		// Pad to minimum size of dhcp packet
 		outPacket.PadToMinSize()
 		// send out the packet...
@@ -418,7 +411,7 @@ func DhcpRelayAgentSendDiscoverPacket(ch *net.UDPConn, gblEntry DhcpRelayAgentGl
 			dhcprelayHostServerStateMap[hostServerStateKey] = hostServerStateEntry
 			continue
 		}
-		intfkey := strconv.Itoa(int(intfStateEntry.IntfId)) + "_" +
+		intfkey := strconv.Itoa(int(gblEntry.IntfConfig.IfIndex)) + "_" +
 			gblEntry.IntfConfig.ServerIp[i]
 		intfStateServerEntry, ok := dhcprelayIntfServerStateMap[intfkey]
 		if !ok {
@@ -470,13 +463,6 @@ func DhcpRelayAgentSendClientOptPacket(ch *net.UDPConn, gblEntry DhcpRelayAgentG
 		dhcprelayHostServerStateMap[hostServerStateKey] = hostServerStateEntry
 		return
 	}
-	/*
-		// Decode outpacket...
-		logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
-		logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
-		logger.Info("DRA: YIAddr is " + outPacket.GetYIAddr().String())
-		logger.Info("DRA: GIAddr is " + outPacket.GetGIAddr().String())
-	*/
 	// Pad to minimum size of dhcp packet
 	outPacket.PadToMinSize()
 	// send out the packet...
@@ -561,14 +547,6 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 	}
 	outPacket = DhcpRelayAgentCreateNewPacket(Reply, inReq)
 	DhcpRelayAgentAddOptionsToPacket(reqOptions, mt, &outPacket)
-	// subnet ip is the interface ip address copy the message...
-	// by creating new packet Decode outpacket...
-	/*
-		logger.Info("DRA: CIAddr is " + outPacket.GetCIAddr().String())
-		logger.Info("DRA: CHaddr is " + outPacket.GetCHAddr().String())
-		logger.Info("DRA: YIAddr is " + outPacket.GetYIAddr().String())
-		logger.Info("DRA: GIAddr is " + outPacket.GetGIAddr().String())
-	*/
 	// Pad to minimum size of dhcp packet
 	outPacket.PadToMinSize()
 
@@ -633,10 +611,13 @@ func DhcpRelayAgentSendPacketToDhcpClient(gblEntry DhcpRelayAgentGlobalInfo,
 	if ok {
 		hostServerStateEntry.ClientResponses++
 	}
-	intfkey = strconv.Itoa(int(intfStateEntry.IntfId)) + "_" + server.String()
-	intfStateServerEntry = dhcprelayIntfServerStateMap[intfkey]
-	intfStateServerEntry.Responses++
-	dhcprelayIntfServerStateMap[intfkey] = intfStateServerEntry
+	intfkey = strconv.Itoa(int(gblEntry.IntfConfig.IfIndex)) + "_" + server.String()
+	intfStateServerEntry, ok = dhcprelayIntfServerStateMap[intfkey]
+	if !ok {
+	} else {
+		intfStateServerEntry.Responses++
+		dhcprelayIntfServerStateMap[intfkey] = intfStateServerEntry
+	}
 	intfStateEntry.TotalDhcpClientTx++
 
 	logger.Info(fmt.Sprintln("DRA: Create & Send of PKT successfully to client"))
@@ -652,7 +633,6 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 	intfStateEntry *dhcprelayd.DhcpRelayIntfState) {
 	switch mType {
 	case 1, 3, 4, 7, 8:
-		//logger.Info("DRA: Handling for CLIENT -----> SERVER")
 		intfStateEntry.TotalDhcpClientRx++
 		// Updating reverse mapping with logical interface id
 		logicalId, ok := dhcprelayLogicalIntf2IfIndex[dhcprelayLogicalIntfId2LinuxIntId[cm.IfIndex]]
@@ -663,7 +643,6 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 			return
 		}
 		// Use obtained logical id to find the global interface object
-		//logger.Info(fmt.Sprintln("DRA: logical id is", logicalId))
 		gblEntry, ok := dhcprelayGblInfo[logicalId]
 		if !ok {
 			logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index?",
@@ -691,7 +670,6 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 			inReq, reqOptions, mType, intfStateEntry)
 		break
 	case 2, 5, 6:
-		//logger.Info("DRA: Handling for SERVER -----> CLIENT")
 		intfStateEntry.TotalDhcpServerRx++
 		// Get the interface from reverse mapping to send the unicast
 		// packet...
@@ -712,7 +690,6 @@ func DhcpRelayAgentSendPacket(clientHandler *net.UDPConn, cm *ipv4.ControlMessag
 			return
 		}
 		// Use obtained logical id to find the global interface object
-		logger.Info(fmt.Sprintln("DRA: logical id is", logicalId))
 		gblEntry, ok := dhcprelayGblInfo[logicalId]
 		if !ok {
 			logger.Err(fmt.Sprintln("DRA: is dra enabled on if_index",
