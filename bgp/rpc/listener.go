@@ -48,7 +48,8 @@ func (h *BGPHandler) handleGlobalConfig(dbHdl *sql.DB) error {
 	var gConf config.GlobalConfig
 	var routerIP string
 	for rows.Next() {
-		if err = rows.Scan(&gConf.AS, &routerIP); err != nil {
+		if err = rows.Scan(&gConf.AS, &routerIP, &gConf.UseMultiplePaths, &gConf.EBGPMaxPaths,
+			&gConf.EBGPAllowMultipleAS, &gConf.IBGPMaxPaths); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPGlobalConfig rows with error %s", err))
 			return err
 		}

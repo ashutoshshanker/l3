@@ -57,3 +57,7 @@ func (r *Route) update() {
 func (r *Route) setAction(action RouteAction) {
 	r.action = action
 }
+
+func (r *Route) setIdx(idx int) {
+	r.routeListIdx = idx
+}
