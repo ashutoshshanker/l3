@@ -52,7 +52,6 @@ func (h *BFDHandler) convertIntfStateToThrift(ent server.IntfState) *bfdd.BfdInt
 	intfState.AuthenticationEnabled = ent.AuthenticationEnabled
 	intfState.AuthenticationType = int32(ent.AuthenticationType)
 	intfState.AuthenticationKeyId = int32(ent.AuthenticationKeyId)
-	intfState.SequenceNumber = int32(ent.SequenceNumber)
 	intfState.AuthenticationData = string(ent.AuthenticationData)
 	return intfState
 }

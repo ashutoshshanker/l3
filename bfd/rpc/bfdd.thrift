@@ -30,8 +30,7 @@ struct BfdIntfConfig{
 	7 : bool 	AuthenticationEnabled
 	8 : i32 	AuthType
 	9 : i32 	AuthKeyId
-	10 : i32 	SequenceNumber
-	11 : string 	AuthData
+	10 : string 	AuthData
 }
 struct BfdIntfState{
 	1 : i32 	InterfaceId
@@ -45,8 +44,7 @@ struct BfdIntfState{
 	9 : bool 	AuthenticationEnabled
 	10 : i32 	AuthenticationType
 	11 : i32 	AuthenticationKeyId
-	12 : i32 	SequenceNumber
-	13 : string 	AuthenticationData
+	12 : string 	AuthenticationData
 }
 struct BfdIntfStateGetInfo {
 	1: int StartIdx

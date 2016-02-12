@@ -22,7 +22,6 @@ func (server *BFDServer) initDefaultIntfConf(ifIndex int32, ipIntfProp IpIntfPro
 		intf.conf.AuthenticationEnabled = false
 		intf.conf.AuthenticationType = 0
 		intf.conf.AuthenticationKeyId = 0
-		intf.conf.SequenceNumber = 0
 		intf.conf.AuthenticationData = ""
 		intf.property.IfName = ipIntfProp.IfName
 		intf.property.IpAddr = ipIntfProp.IpAddr
@@ -105,7 +104,6 @@ func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {
 		intf.conf.AuthenticationEnabled = ifConf.AuthenticationEnabled
 		intf.conf.AuthenticationType = ifConf.AuthenticationType
 		intf.conf.AuthenticationKeyId = ifConf.AuthenticationKeyId
-		intf.conf.SequenceNumber = ifConf.SequenceNumber
 		intf.conf.AuthenticationData = ifConf.AuthenticationData
 		server.UpdateBfdSessionsOnInterface(intf.conf.InterfaceId)
 	}
