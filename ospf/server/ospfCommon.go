@@ -40,7 +40,7 @@ func NewIpHdrMetadata() *IpHdrMetadata {
 }
 
 type EthHdrMetadata struct {
-        srcMAC      net.HardwareAddr
+	srcMAC net.HardwareAddr
 }
 
 func NewEthHdrMetadata() *EthHdrMetadata {
@@ -54,13 +54,14 @@ var (
 )
 
 const (
-	OSPF_HELLO_MIN_SIZE = 20
-	OSPF_DBD_MIN_SIZE   = 8
-        OSPF_LSA_HEADER_SIZE = 20
-	OSPF_HEADER_SIZE    = 24
-	IP_HEADER_MIN_LEN   = 20
-	OSPF_PROTO_ID       = 89
-	OSPF_VERSION_2      = 2
+	OSPF_HELLO_MIN_SIZE  = 20
+	OSPF_DBD_MIN_SIZE    = 8
+	OSPF_LSA_HEADER_SIZE = 20
+	OSPF_LSA_REQ_SIZE    = 12
+	OSPF_HEADER_SIZE     = 24
+	IP_HEADER_MIN_LEN    = 20
+	OSPF_PROTO_ID        = 89
+	OSPF_VERSION_2       = 2
 )
 
 type OspfType uint8
@@ -80,9 +81,9 @@ type IntfToNeighMsg struct {
 	NeighborIP   net.IP
 	nbrDeadTimer time.Duration
 	TwoWayStatus bool
-        nbrDR        []byte
-        nbrBDR       []byte
-        nbrMAC       net.HardwareAddr
+	nbrDR        []byte
+	nbrBDR       []byte
+	nbrMAC       net.HardwareAddr
 }
 
 type NbrStateChangeMsg struct {
@@ -110,13 +111,13 @@ type IntfRxHandle struct {
 }
 
 type AdjOKEvtMsg struct {
-        NewDRtrId         uint32
-        OldDRtrId         uint32
-        NewBDRtrId        uint32
-        OldBDRtrId        uint32
+	NewDRtrId  uint32
+	OldDRtrId  uint32
+	NewBDRtrId uint32
+	OldBDRtrId uint32
 }
 
 type NbrFullStateMsg struct {
-        FullState       bool
-        NbrRtrId        uint32
+	FullState bool
+	NbrRtrId  uint32
 }
