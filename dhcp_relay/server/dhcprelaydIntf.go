@@ -92,8 +92,8 @@ func DhcpRelayAgentUpdateIntfPortMap(msg asicdConstDefs.IPv4IntfNotifyMsg, msgTy
 			logger.Err(fmt.Sprintln("DRA: Parsing ipadd and netmask failed:", err))
 			return
 		}
-		gblEntry.IpAddr = ip.String()        //string(ip[:]) // 192.168.1.1
-		gblEntry.Netmask = ipnet.IP.String() // 192.168.1.0
+		gblEntry.IpAddr = ip.String()
+		gblEntry.Netmask = ipnet.IP.String()
 		dhcprelayGblInfo[intfId] = gblEntry
 		logger.Info(fmt.Sprintln("DRA: Added interface:", intfId, " Ip address:",
 			gblEntry.IpAddr, " netmask:", gblEntry.Netmask))
@@ -120,7 +120,7 @@ func DhcpRelayAsicdSubscriber() {
 			logger.Err(fmt.Sprintln("DRA: Recv on asicd Subscriber socket failed with error:", err))
 			continue
 		}
-		logger.Info(fmt.Sprintln("DRA: asicd Subscriber recv returned:", rxBuf))
+		//logger.Info(fmt.Sprintln("DRA: asicd Subscriber recv returned:", rxBuf))
 		var msg asicdConstDefs.AsicdNotification
 		err = json.Unmarshal(rxBuf, &msg)
 		if err != nil {

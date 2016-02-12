@@ -107,14 +107,14 @@ const DHCP_NO_IP = "0.0.0.0"
 
 // DHCP Client/Server Message Type 53
 const (
-	DhcpDiscover MessageType = 1 // From Client - Can I have an IP?
-	DhcpOffer    MessageType = 2 // From Server - Here's an IP
-	DhcpRequest  MessageType = 3 // From Client - I'll take that IP (Also start for renewals)
-	DhcpDecline  MessageType = 4 // From Client - Sorry I can't use that IP
-	DhcpACK      MessageType = 5 // From Server, Yes you can have that IP
-	DhcpNAK      MessageType = 6 // From Server, No you cannot have that IP
-	DhcpRelease  MessageType = 7 // From Client, I don't need that IP anymore
-	DhcpInform   MessageType = 8 // From Client, I have this IP and there's nothing you can do about it
+	DhcpDiscover MessageType = 1 // From Client
+	DhcpOffer    MessageType = 2 // From Server
+	DhcpRequest  MessageType = 3 // From Client
+	DhcpDecline  MessageType = 4 // From Client
+	DhcpACK      MessageType = 5 // From Server
+	DhcpNAK      MessageType = 6 // From Server
+	DhcpRelease  MessageType = 7 // From Client
+	DhcpInform   MessageType = 8 // From Client
 )
 
 // DHCP Available Options enum type.... This will cover most of the options type
@@ -219,4 +219,8 @@ const (
 	OptionTZDatabaseString DhcpOptionCode = 101
 
 	OptionClasslessRouteFormat DhcpOptionCode = 121
+)
+
+const (
+	CLIENT_CONNECTION_NOT_REQUIRED = "Connection to client is not required"
 )
