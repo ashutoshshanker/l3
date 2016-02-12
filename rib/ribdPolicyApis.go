@@ -37,8 +37,9 @@ type Policy struct {
 
 var PolicyDB = patriciaDB.NewTrie()
 var PolicyStmtDB = patriciaDB.NewTrie()
+var PolicyStmtPolicyMapDB = make(map[string] []string) //policies using this statement
 var PrefixPolicyListDB = patriciaDB.NewTrie()
-var ProtocolPolicyListDB = make(map[int][]string)//policystmt names assoociated with every protocol type
+var ProtocolPolicyListDB = make(map[string][]string)//policystmt names assoociated with every protocol type
 var ImportPolicyPrecedenceMap = make(map[int] string)
 var ExportPolicyPrecedenceMap = make(map[int] string)
 var localPolicyStmtDB []localDB
@@ -124,7 +125,7 @@ func validMatchConditions(matchConditionStr string) (valid bool) {
 	}
 	return valid
 }
-func updateProtocolPolicyTable(protoType int, name string, op int) {
+func updateProtocolPolicyTable(protoType string, name string, op int) {
 	logger.Printf("updateProtocolPolicyTable for protocol %d policy name %s op %d\n", protoType, name, op)
     var i int
     policyList := ProtocolPolicyListDB[protoType]
@@ -138,14 +139,18 @@ func updateProtocolPolicyTable(protoType int, name string, op int) {
     if op == add {
 	   policyList = append(policyList, name)
 	}
+	found :=false
 	if op == del {
 		for i =0; i< len(policyList);i++ {
 			if policyList[i] == name {
 				logger.Println("Found the policy in the protocol policy table, deleting it")
+				found = true
 				break
 			}
 		}
-		policyList = append(policyList[:i], policyList[i+1:]...)
+		if found {
+		   policyList = append(policyList[:i], policyList[i+1:]...)
+		}
 	}
 	ProtocolPolicyListDB[protoType] = policyList
 }
@@ -174,6 +179,7 @@ func updatePrefixPolicyTableWithPrefix(ipPrefix patriciaDB.Prefix, name string, 
     if op == add {
 	   policyList = append(policyList, name)
 	}
+	found :=false
 	if op == del {
 		for i =0; i< len(policyList);i++ {
 			if policyList[i] == name {
@@ -181,7 +187,9 @@ func updatePrefixPolicyTableWithPrefix(ipPrefix patriciaDB.Prefix, name string, 
 				break
 			}
 		}
-		policyList = append(policyList[:i], policyList[i+1:]...)
+		if found {
+		   policyList = append(policyList[:i], policyList[i+1:]...)
+		}
 	}
 	PrefixPolicyListDB.Set(ipPrefix, policyList)
 }
@@ -249,7 +257,37 @@ func (m RouteServiceHandler) CreatePolicyDefinitionSetsPrefixSet(cfg *ribd.Polic
 	logger.Println("CreatePolicyDefinitionSetsPrefixSet")
 	return val, err
 }
-
+func updateStatements(policy  string, stmt string, op int) (err error){
+   logger.Println("updateStatements stmt ", stmt, " with policy ", policy)
+   var i int
+    policyList := PolicyStmtPolicyMapDB[stmt]
+	if(policyList == nil) {
+		if (op == del) {
+			logger.Println("Cannot find the policy map for this stmt, so cannot delete")
+            err = errors.New("Cannot find the policy map for this stmt, so cannot delete")
+			return err
+		}
+		policyList = make([]string, 0)
+	}
+    if op == add {
+	   policyList = append(policyList, policy)
+	}
+	found :=false
+	if op == del {
+		for i =0; i< len(policyList);i++ {
+			if policyList[i] == policy {
+				logger.Println("Found the policy in the policy stmt table, deleting it")
+                 found = true
+				break
+			}
+		}
+		if found {
+		   policyList = append(policyList[:i], policyList[i+1:]...)
+		}
+	}
+	PolicyStmtPolicyMapDB[stmt] = policyList
+	return err
+}
 func updateConditions(policyStmt PolicyStmt, conditionName string, op int) (err error){
 	logger.Println("updateConditions for condition ", conditionName)
 	conditionItem := PolicyConditionsDB.Get(patriciaDB.Prefix(conditionName))
@@ -258,7 +296,7 @@ func updateConditions(policyStmt PolicyStmt, conditionName string, op int) (err 
 		switch condition.conditionType {
 			case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 			   logger.Println("PolicyConditionTypeProtocolMatch")
-			   updateProtocolPolicyTable(condition.conditionInfo.(int), policyStmt.name, op)
+			   updateProtocolPolicyTable(condition.conditionInfo.(string), policyStmt.name, op)
 			   break
 			case ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
 			   logger.Println("PolicyConditionTypeDstIpPrefixMatch")
@@ -482,6 +520,11 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
 	   for i=0;i<len(cfg.PolicyDefinitionStatements);i++ {
 		  logger.Println("Adding statement ", cfg.PolicyDefinitionStatements[i].Statement, " at precedence id ", cfg.PolicyDefinitionStatements[i].Precedence)
           newPolicy.policyStmtPrecedenceMap[int(cfg.PolicyDefinitionStatements[i].Precedence)] = cfg.PolicyDefinitionStatements[i].Statement 
+		  err = updateStatements(newPolicy.name, cfg.PolicyDefinitionStatements[i].Statement, add)
+		  if err != nil {
+			logger.Println("updateStatements returned err ", err)
+			return val,err
+		  }
 	   }
        for k:=range newPolicy.policyStmtPrecedenceMap {
 		logger.Println("key k = ", k)
@@ -539,6 +582,13 @@ func (m RouteServiceHandler) 	DeletePolicyDefinition(cfg *ribd.PolicyDefinitionC
 			logger.Println(" return value not ok for delete PolicyDB")
 			return val, err
 		}
+		for _,v:=range policyInfo.policyStmtPrecedenceMap {
+		  err = updateStatements(policyInfo.name, v, del)
+		  if err != nil {
+			logger.Println("updateStatements returned err ", err)
+			return val,err
+		  }
+		}
 		if policyInfo.exportPolicy{
 			if ExportPolicyPrecedenceMap != nil {
 				delete(ExportPolicyPrecedenceMap,int(policyInfo.precedence))
@@ -582,7 +632,7 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionState( fromIndex ribd.Int, r
 			logger.Println("Enough policies fetched")
 			break
 		}
-		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyDB[i+fromIndex].prefix))
+		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyStmtDB[i+fromIndex].prefix))
 		prefixNodeGet := PolicyDB.Get(localPolicyDB[i+fromIndex].prefix)
 		if(prefixNodeGet != nil) {
 			prefixNode := prefixNodeGet.(Policy)
