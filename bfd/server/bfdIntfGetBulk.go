@@ -28,7 +28,6 @@ func (server *BFDServer) GetBulkBfdIntfStates(idx int, cnt int) (int, int, []Int
 		result[i].AuthenticationEnabled = server.bfdGlobal.Interfaces[intfId].conf.AuthenticationEnabled
 		result[i].AuthenticationType = server.bfdGlobal.Interfaces[intfId].conf.AuthenticationType
 		result[i].AuthenticationKeyId = server.bfdGlobal.Interfaces[intfId].conf.AuthenticationKeyId
-		result[i].SequenceNumber = server.bfdGlobal.Interfaces[intfId].conf.SequenceNumber
 		result[i].AuthenticationData = server.bfdGlobal.Interfaces[intfId].conf.AuthenticationData
 	}
 	return nextIdx, count, result

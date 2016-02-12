@@ -28,7 +28,6 @@ func (h *BFDHandler) SendBfdIntfConfig(bfdIntfConfig *bfdd.BfdIntfConfig) bool {
 		AuthenticationEnabled:     bfdIntfConfig.AuthenticationEnabled,
 		AuthenticationType:        bfdIntfConfig.AuthType,
 		AuthenticationKeyId:       bfdIntfConfig.AuthKeyId,
-		SequenceNumber:            bfdIntfConfig.SequenceNumber,
 		AuthenticationData:        bfdIntfConfig.AuthData,
 	}
 	h.server.IntfConfigCh <- ifConf
