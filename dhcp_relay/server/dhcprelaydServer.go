@@ -11,6 +11,7 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
 	"log/syslog"
+	"net"
 	"os"
 	"os/signal"
 	"strconv"
@@ -188,6 +189,19 @@ func DhcpRelayAgentInitGblHandling(ifNum int32) {
 	gblEntry.IntfConfig.IfIndex = ifNum
 	gblEntry.IntfConfig.Enable = false
 	dhcprelayGblInfo[ifNum] = gblEntry
+}
+
+func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
+	logger.Info(fmt.Sprintln("DRA: Vlan update message for ",
+		VlanName, "vlan id is ", VlanId))
+	var linuxInterface *net.Interface
+	var err error
+	linuxInterface, err = net.InterfaceByName(VlanName)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
+		return
+	}
+	dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index] = VlanId
 }
 
 func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr string) error {

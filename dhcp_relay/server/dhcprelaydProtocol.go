@@ -289,7 +289,6 @@ func (o DhcpRelayAgentOptions) SelectOrderOrAll(order []byte) []Option {
  */
 func DhcpRelayAgentDecodeInPkt(data []byte, bytesRead int) (DhcpRelayAgentPacket,
 	DhcpRelayAgentOptions, MessageType) {
-	//	logger.Info(fmt.Sprintln("DRA: Decoding PKT"))
 	inRequest := DhcpRelayAgentPacket(data[:bytesRead])
 	if inRequest.GetHeaderLen() > DHCP_PACKET_HEADER_SIZE {
 		logger.Warning("Header Lenght is invalid... don't do anything")
@@ -305,10 +304,6 @@ func DhcpRelayAgentDecodeInPkt(data []byte, bytesRead int) (DhcpRelayAgentPacket
 		logger.Info(fmt.Sprintln("DRA: Cookie is ", inRequest.GetCookie()))
 	*/
 	mType := reqOptions[OptionDHCPMessageType]
-	//	mString := ParseMessageTypeToString(MessageType(mType[0]))
-	//	logger.Info(fmt.Sprintln("DRA: mtype is", mType, "mtype [0] is ", MessageType(mType[0])))
-	//	logger.Info(fmt.Sprintln("DRA: Decoding of Pkt done"))
-
 	return inRequest, reqOptions, MessageType(mType[0])
 }
 

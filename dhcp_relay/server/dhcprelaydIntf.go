@@ -192,6 +192,8 @@ func DhcpRelayInitPortParams() error {
 	// Logical Id to Unique If Index, for e.g vlan 9
 	// 9 will map to 33554441
 	dhcprelayLogicalIntf2IfIndex = make(map[int32]int32, 10)
+	// Get Port State Information
+	logger.Info("DRA: Doing port initialization")
 	for {
 		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortState(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
@@ -216,7 +218,40 @@ func DhcpRelayInitPortParams() error {
 			break
 		}
 	}
-	//@TODO: GetBulkVlan
+	// Get Vlans Information
+	/*
+	   type Vlan struct {
+	   	VlanId           int32  `thrift:"VlanId,1" json:"VlanId"`
+	   	VlanName         string `thrift:"VlanName,2" json:"VlanName"`
+	   	OperState        string `thrift:"OperState,3" json:"OperState"`
+	   	IfIndex          int32  `thrift:"IfIndex,4" json:"IfIndex"`
+	   	IfIndexList      string `thrift:"IfIndexList,5" json:"IfIndexList"`
+	   	UntagIfIndexList string `thrift:"UntagIfIndexList,6" json:"UntagIfIndexList"`
+	   }
+	*/
+	currMarker = 0
+	more = false
+	count = 10
+	logger.Info("DRA: Initializing Vlan Info (if any)")
+	for {
+		bulkInfo, err := asicdClient.ClientHdl.GetBulkVlan(
+			asicdServices.Int(currMarker), asicdServices.Int(count))
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: getting bulk vlan config",
+				"from asicd failed with reason", err))
+			return nil // relay agent will update the info with asicd subscriber
+		}
+		objCount = int(bulkInfo.Count)
+		more = bool(bulkInfo.More)
+		currMarker = int64(bulkInfo.EndIdx)
+		for i := 0; i < objCount; i++ {
+			DhcpRelayAgentInitVlanInfo(bulkInfo.VlanList[i].VlanName,
+				bulkInfo.VlanList[i].VlanId)
+		}
+		if more == false {
+			break
+		}
+	}
 	logger.Info("DRA: initialized Port Parameters & Global Info successfully")
 	return nil
 }
