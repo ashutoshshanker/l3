@@ -2,6 +2,7 @@
 package relayServer
 
 import (
+	"asicd/asicdConstDefs"
 	"asicdServices"
 	"dhcprelayd"
 	"encoding/json"
@@ -179,7 +180,7 @@ func DhcpRelayAgentInitIntfState(IntfId int32) {
 	dhcprelayIntfStateSlice = append(dhcprelayIntfStateSlice, IntfId)
 }
 
-func DhcpRelayAgentInitGblHandling(ifNum int32) {
+func DhcpRelayAgentInitGblHandling(ifNum int32, enable bool) {
 	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(int(ifNum)))
 	// Created a global Entry for Interface
 	gblEntry := dhcprelayGblInfo[ifNum]
@@ -187,8 +188,49 @@ func DhcpRelayAgentInitGblHandling(ifNum int32) {
 	gblEntry.IpAddr = ""
 	gblEntry.Netmask = ""
 	gblEntry.IntfConfig.IfIndex = ifNum
-	gblEntry.IntfConfig.Enable = false
+	gblEntry.IntfConfig.Enable = enable
 	dhcprelayGblInfo[ifNum] = gblEntry
+}
+
+func DhcpRelayAgentUpdateIntfServerIp(ifNum int32, serverIp string) {
+	logger.Info("DRA: Updating Interface " + strconv.Itoa(int(ifNum)) +
+		" with server ip " + serverIp)
+	gblEntry, ok := dhcprelayGblInfo[ifNum]
+	if !ok {
+		logger.Err("No entry found in database")
+		return
+	}
+	gblEntry.IntfConfig.ServerIp = append(gblEntry.IntfConfig.ServerIp, serverIp)
+	dhcprelayGblInfo[ifNum] = gblEntry
+}
+
+func DhcpRelayAgentUpdateIntfIpAddr(ifIndexList []int32) {
+	logger.Info(fmt.Sprintln("DRA: updating address for ", ifIndexList))
+	DhcpRelayAgentGetIpv4IntfList()
+	//@TODO: Once asicd supports Get then replace GetBulk with Get
+
+	for i := 0; i < len(ifIndexList); i++ {
+		obj, ok := dhcprelayIntfIpv4Map[ifIndexList[i]]
+		if !ok {
+			logger.Err(fmt.Sprintln("DRA: Get bulkd didn't return any info for",
+				ifIndexList[i]))
+			continue
+		}
+		logicalId := int32(asicdConstDefs.GetIntfIdFromIfIndex(obj.IfIndex))
+		dhcprelayLogicalIntf2IfIndex[logicalId] = obj.IfIndex
+		gblEntry := dhcprelayGblInfo[ifIndexList[i]]
+		ip, ipnet, err := net.ParseCIDR(obj.IpAddr)
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: Parsing ipadd and netmask failed:", err))
+			continue
+		}
+		gblEntry.IpAddr = ip.String()
+		gblEntry.Netmask = ipnet.IP.String()
+		dhcprelayGblInfo[ifIndexList[i]] = gblEntry
+		logger.Info(fmt.Sprintln("DRA: Updated interface:", obj.IfIndex,
+			" Ip address:", gblEntry.IpAddr,
+			" netmask:", gblEntry.Netmask))
+	}
 }
 
 func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
@@ -206,6 +248,15 @@ func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
 
 func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr string) error {
 	logger = log
+	// Allocate Memory for Global DS
+	DhcpRelayAgentAllocateMemory()
+	// Initialize DB
+	err := DhcpRelayAgentInitDB()
+	if err != nil {
+		logger.Err("DRA: Init of DB failed")
+	} else {
+		DhcpRelayAgentReadDB()
+	}
 	// Initialize port information and packet handler for dhcp
 	go InitDhcpRelayPortPktHandler()
 	dhcprelayEnable = false

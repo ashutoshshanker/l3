@@ -1,6 +1,8 @@
 package relayServer
 
 import (
+	"asicdServices"
+	"database/sql"
 	"dhcprelayd"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
@@ -65,6 +67,7 @@ var (
 	dhcprelayClientConn               *ipv4.PacketConn
 	dhcprelayServerConn               *ipv4.PacketConn
 	logger                            *syslog.Writer
+	dhcprelayDbHdl                    *sql.DB
 
 	// map key would be if_name
 	// When we receive a udp packet... we will get interface id and that can
@@ -85,9 +88,13 @@ var (
 	// map key is interface id
 	dhcprelayIntfStateMap   map[int32]dhcprelayd.DhcpRelayIntfState
 	dhcprelayIntfStateSlice []int32
+
 	// map key is interface id + server
 	dhcprelayIntfServerStateMap   map[string]dhcprelayd.DhcpRelayIntfServerState
 	dhcprelayIntfServerStateSlice []string
+
+	// map key is interface id and value is IPV4Intf
+	dhcprelayIntfIpv4Map map[int32]asicdServices.IPv4Intf
 )
 
 // Dhcp OpCodes Types
@@ -104,6 +111,7 @@ const DHCP_SERVER_PORT = 67
 const DHCP_CLIENT_PORT = 68
 const DHCP_BROADCAST_IP = "255.255.255.255"
 const DHCP_NO_IP = "0.0.0.0"
+const USR_CONF_DB = "/UsrConfDb.db"
 
 // DHCP Client/Server Message Type 53
 const (
