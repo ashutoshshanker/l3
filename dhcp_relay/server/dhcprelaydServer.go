@@ -7,7 +7,7 @@ import (
 	"dhcprelayd"
 	"encoding/json"
 	"errors"
-	"flag"
+	_ "flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
@@ -102,10 +102,7 @@ func DhcpRelayAgentConnectToClients(client ClientJson) error {
  */
 func InitDhcpRelayPortPktHandler() error {
 	// connecting to asicd
-	params_dir := flag.String("params", "",
-		"Directory Location for config files")
-	flag.Parse()
-	configFile := *params_dir + "/clients.json"
+	configFile := paramsDir + "/clients.json"
 	logger.Info(fmt.Sprintln("DRA: configFile is ", configFile))
 	bytes, err := ioutil.ReadFile(configFile)
 	if err != nil {
@@ -257,6 +254,7 @@ func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr stri
 	} else {
 		DhcpRelayAgentReadDB()
 	}
+	logger.Info("DRA: Continuining with port init")
 	// Initialize port information and packet handler for dhcp
 	go InitDhcpRelayPortPktHandler()
 	dhcprelayEnable = false

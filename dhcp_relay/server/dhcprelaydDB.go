@@ -10,9 +10,10 @@ import (
 
 func DhcpRelayAgentInitDB() error {
 	logger.Info("DRA: initializing SQL DB")
-	paramsDir := flag.String("params", "", "Directory Location for config files")
+	params_dir := flag.String("params", "", "Directory Location for config files")
 	flag.Parse()
-	dbName := *paramsDir + USR_CONF_DB
+	paramsDir = *params_dir
+	dbName := paramsDir + USR_CONF_DB
 	logger.Info("DRA: location of DB is " + dbName)
 	dhcprelayDbHdl, err := sql.Open("sqlite3", dbName)
 	if err != nil {
@@ -24,36 +25,6 @@ func DhcpRelayAgentInitDB() error {
 		logger.Err(fmt.Sprintln("Failed to keep db connection alive", err))
 		return err
 	}
-	/*
-		logger.Info("DRA: Creating DhcpRelayIntfConfig DB Table")
-		dbCmd := "CREATE TABLE IF NOT EXISTS DhcpRelayIntfConfig " +
-			"( " +
-			"IfIndex INTEGER, " +
-			"Enable INTEGER, " +
-			"PRIMARY KEY(IfIndex) " +
-			")"
-
-		_, err = dbutils.ExecuteSQLStmt(dbCmd, dhcprelayDbHdl)
-		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: creating DhcpRelayIntfConfig table failed"))
-			return err
-		}
-		logger.Info("DRA: Creating DhcpRelayIntfConfigServer DB Table")
-		dbCmd = "CREATE TABLE IF NOT EXISTS DhcpRelayIntfConfigServer " +
-			"( " +
-			"IfIndex TEXT, " +
-			"ServerIp TEXT,\n" +
-			`CONSTRAINT FK_DhcpRelayServerList
-			   FOREIGN KEY (IfIndex)
-			   REFERENCES DhcpRelayIntfConfig (IfIndex)
-			   ON DELETE CASCADE` +
-			")"
-		_, err = dbutils.ExecuteSQLStmt(dbCmd, dhcprelayDbHdl)
-		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: creating DhcpRelayIntfConfig table failed"))
-			return err
-		}
-	*/
 	return err
 }
 

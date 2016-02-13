@@ -68,6 +68,7 @@ var (
 	dhcprelayServerConn               *ipv4.PacketConn
 	logger                            *syslog.Writer
 	dhcprelayDbHdl                    *sql.DB
+	paramsDir                         string
 
 	// map key would be if_name
 	// When we receive a udp packet... we will get interface id and that can
