@@ -7,6 +7,7 @@ import (
 	"l3/bfd/server"
 	//"log/syslog"
 	//"net"
+	"l3/bfd/bfddCommonDefs"
 )
 
 func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobalConfig) bool {
@@ -50,4 +51,14 @@ func (h *BFDHandler) CreateBfdIntfConfig(bfdIntfConf *bfdd.BfdIntfConfig) (bool,
 	}
 	h.logger.Info(fmt.Sprintln("Create interface config attrs:", bfdIntfConf))
 	return h.SendBfdIntfConfig(bfdIntfConf), nil
+}
+
+func (h *BFDHandler) CreateBfdSessionConfig(bfdSessionConf *bfdd.BfdSessionConfig) (bool, error) {
+	bfdSessionCommand := bfddCommonDefs.BfdSessionConfig{
+		DestIp:    bfdSessionConf.IpAddr,
+		Protocol:  int(bfdSessionConf.Owner),
+		Operation: int(bfdSessionConf.Operation),
+	}
+	h.server.SessionConfigCh <- bfdSessionCommand
+	return true, nil
 }

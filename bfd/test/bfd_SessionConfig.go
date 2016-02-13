@@ -2,9 +2,9 @@
 package main
 
 import (
+	"bfdd"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	"ospfd"
 )
 
 const CONF_IP string = "localhost" //"10.0.2.15"
@@ -16,7 +16,7 @@ func main() {
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
-	clientTransport, err := thrift.NewTSocket("localhost:" + CONF_PORT)
+	clientTransport, err := thrift.NewTSocket(CONF_IP + ":" + CONF_PORT)
 	if err != nil {
 		fmt.Println("NewTSocket failed with error:", err)
 		return
@@ -27,12 +27,17 @@ func main() {
 		fmt.Println("Failed to open the socket, error:", err)
 	}
 
-	client := ospfd.NewBFDServerClientFactory(clientTransport, protocolFactory)
+	client := bfdd.NewBFDDServicesClientFactory(clientTransport, protocolFactory)
 
-	fmt.Println("calling BfdSessionConfig with attr:", ifConfigArgs)
-	ret, err := client.ExecuteBfdCommand("10.1.1.1", 1, 1)
+	sessionConfigArgs := bfdd.NewBfdSessionConfig()
+	sessionConfigArgs.IpAddr = "10.10.0.130"
+	sessionConfigArgs.Owner = 1
+	sessionConfigArgs.Operation = 1
+	fmt.Println("Creating BFD Session: ", sessionConfigArgs)
+	ret, err := client.CreateBfdSessionConfig(sessionConfigArgs)
 	if !ret {
 		fmt.Println("BfdSessionConfig FAILED, ret:", ret, "err:", err)
+	} else {
+		fmt.Println("Bfd session configured")
 	}
-	fmt.Println("Bfd session configured")
 }
