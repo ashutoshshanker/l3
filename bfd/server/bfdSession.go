@@ -49,7 +49,6 @@ func (server *BFDServer) GetNewSessionId() int32 {
 	s1 := rand.NewSource(time.Now().UnixNano())
 	r1 := rand.New(s1)
 	sessionId := r1.Int31n(MAX_NUM_SESSIONS)
-	server.bfdGlobal.SessionsIdSlice = append(server.bfdGlobal.SessionsIdSlice, sessionId)
 	return sessionId
 }
 
@@ -66,7 +65,8 @@ func (server *BFDServer) NewBfdSession(DestIp string, protocol int) *BfdSession 
 	ifIndex, _ := server.GetIfIndexAndLocalIpFromDestIp(DestIp)
 	if server.bfdGlobal.Interfaces[ifIndex].Enabled {
 		bfdSession := &BfdSession{}
-		bfdSession.state.SessionId = server.GetNewSessionId()
+		sessionId := server.GetNewSessionId()
+		bfdSession.state.SessionId = sessionId
 		bfdSession.state.RemoteIpAddr = DestIp
 		bfdSession.state.InterfaceId = ifIndex
 		bfdSession.state.RegisteredProtocols = make([]bool, bfddCommonDefs.MAX_NUM_PROTOCOLS)
@@ -88,10 +88,12 @@ func (server *BFDServer) NewBfdSession(DestIp string, protocol int) *BfdSession 
 			bfdSession.authKeyId = uint32(intf.conf.AuthenticationKeyId)
 			bfdSession.authData = intf.conf.AuthenticationData
 		}
-		server.logger.Info(fmt.Sprintln("New session : ", bfdSession.state.SessionId, " created on : ", server.bfdGlobal.Interfaces[ifIndex].property.IfName))
+		server.bfdGlobal.Sessions[sessionId] = bfdSession
+		server.bfdGlobal.SessionsIdSlice = append(server.bfdGlobal.SessionsIdSlice, sessionId)
+		server.logger.Info(fmt.Sprintln("New session : ", sessionId, " created on : ", ifIndex))
 		return bfdSession
 	} else {
-		server.logger.Info(fmt.Sprintln("Bfd not enabled on interface ", server.bfdGlobal.Interfaces[ifIndex].property.IfName))
+		server.logger.Info(fmt.Sprintln("Bfd not enabled on interface ", ifIndex))
 	}
 	return nil
 }
@@ -271,7 +273,7 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	var event BfdSessionEvent
 	canProcess := session.CanProcessBfdControlPacket(bfdPacket)
 	if canProcess {
-		sessionTimeoutMS := time.Duration((session.state.RequiredMinRxInterval * session.state.DetectionMultiplier) / 1000)
+		sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier)
 		session.sessionTimer.Reset(sessionTimeoutMS)
 		session.state.RemoteSessionState = bfdPacket.State
 		session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
@@ -341,8 +343,8 @@ func (session *BfdSession) StopBfdSession() error {
 
 // Restart session that was stopped earlier due to global Bfd disable.
 func (session *BfdSession) StartBfdSession() error {
-	sessionTimeoutMS := time.Duration((session.state.RequiredMinRxInterval * session.state.DetectionMultiplier) / 1000)
-	txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
+	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier)
+	txTimerMS := time.Duration(session.state.DesiredMinTxInterval)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session })
 	session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session })
 	session.EventHandler(ADMIN_UP)
@@ -439,8 +441,8 @@ func (session *BfdSession) StartSessionClient() error {
 	if err != nil {
 		fmt.Println("Failed DialUDP ", ClientAddr, ServerAddr, err)
 	}
-	sessionTimeoutMS := time.Duration((session.state.RequiredMinRxInterval * session.state.DetectionMultiplier) / 1000)
-	txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
+	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier)
+	txTimerMS := time.Duration(session.state.DesiredMinTxInterval)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session })
 	session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session })
 	session.txTimer.Reset(0)
@@ -473,7 +475,7 @@ func (session *BfdSession) RemoteChangedDemandMode(bfdPacket *BfdControlPacket) 
 	if session.state.RemoteDemandMode {
 		session.txTimer.Stop()
 	} else {
-		txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
+		txTimerMS := time.Duration(session.state.DesiredMinTxInterval)
 		session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session })
 	}
 	return nil

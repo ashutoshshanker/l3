@@ -1,18 +1,14 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
 	"fmt"
 	"net"
-	//"time"
-	//"l3/bfd/rpc"
-	//"l3/rib/ribdCommonDefs"
-	//"github.com/google/gopacket/pcap"
 )
 
 func (server *BFDServer) initDefaultIntfConf(ifIndex int32, ipIntfProp IpIntfProperty) {
-	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
+	_, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if !exist {
+		intf := &BfdInterface{}
 		intf.conf.InterfaceId = ifIndex
 		intf.conf.LocalMultiplier = DEFAULT_DETECT_MULTI
 		intf.conf.DesiredMinTxInterval = DEFAULT_DESIRED_MIN_TX_INTERVAL
@@ -23,11 +19,11 @@ func (server *BFDServer) initDefaultIntfConf(ifIndex int32, ipIntfProp IpIntfPro
 		intf.conf.AuthenticationType = 0
 		intf.conf.AuthenticationKeyId = 0
 		intf.conf.AuthenticationData = ""
-		intf.property.IfName = ipIntfProp.IfName
 		intf.property.IpAddr = ipIntfProp.IpAddr
 		intf.property.NetMask = ipIntfProp.NetMask
-		intf.property.MacAddr = ipIntfProp.MacAddr
+		server.bfdGlobal.Interfaces[ifIndex] = intf
 		server.bfdGlobal.InterfacesIdSlice = append(server.bfdGlobal.InterfacesIdSlice, ifIndex)
+		server.logger.Info(fmt.Sprintln("Intf initialized ", ifIndex))
 	} else {
 		server.logger.Info(fmt.Sprintln("Intf Conf is not initialized ", ifIndex))
 	}
@@ -39,33 +35,18 @@ func (server *BFDServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		server.logger.Err(fmt.Sprintln("Unable to parse IP address", msg.IpAddr))
 		return
 	}
-	ifName, err := server.getLinuxIntfName(msg.IfId, msg.IfType)
-	if err != nil {
-		server.logger.Err("No Such Interface exists")
-		return
-	}
-	server.logger.Info(fmt.Sprintln("create IPIntf for ", msg))
-
-	macAddr, err := getMacAddrIntfName(ifName)
-	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to get MacAddress of Interface exists", ifName))
-		return
-	}
 	ipIntfProp := IpIntfProperty{
-		IfName:  ifName,
 		IpAddr:  ip,
 		NetMask: ipNet.Mask,
-		MacAddr: macAddr,
 	}
-	ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(msg.IfId), int(msg.IfType))
-	server.initDefaultIntfConf(ifIndex, ipIntfProp)
-	_, exist := server.bfdGlobal.Interfaces[ifIndex]
+	server.initDefaultIntfConf(msg.IfId, ipIntfProp)
+	_, exist := server.bfdGlobal.Interfaces[msg.IfId]
 	if !exist {
 		server.logger.Err("No such inteface exists")
 		return
 	}
 	if server.bfdGlobal.Enabled {
-		server.StartSendRecvPkts(ifIndex)
+		server.StartSendRecvPkts(msg.IfId)
 	}
 }
 
@@ -73,18 +54,17 @@ func (server *BFDServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 	var i int
 	server.logger.Info(fmt.Sprintln("delete IPIntfConfMap for ", msg))
 
-	ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(msg.IfId), int(msg.IfType))
-	_, exist := server.bfdGlobal.Interfaces[ifIndex]
+	_, exist := server.bfdGlobal.Interfaces[msg.IfId]
 	if !exist {
 		server.logger.Err("No such inteface exists")
 		return
 	}
 	if server.bfdGlobal.Enabled {
-		server.StopSendRecvPkts(ifIndex)
+		server.StopSendRecvPkts(msg.IfId)
 	}
-	delete(server.bfdGlobal.Interfaces, ifIndex)
+	delete(server.bfdGlobal.Interfaces, msg.IfId)
 	for i = 0; i < len(server.bfdGlobal.InterfacesIdSlice); i++ {
-		if server.bfdGlobal.InterfacesIdSlice[i] == ifIndex {
+		if server.bfdGlobal.InterfacesIdSlice[i] == msg.IfId {
 			break
 		}
 	}
@@ -105,6 +85,7 @@ func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {
 		intf.conf.AuthenticationType = ifConf.AuthenticationType
 		intf.conf.AuthenticationKeyId = ifConf.AuthenticationKeyId
 		intf.conf.AuthenticationData = ifConf.AuthenticationData
+		server.bfdGlobal.Interfaces[ifConf.InterfaceId] = intf
 		server.UpdateBfdSessionsOnInterface(intf.conf.InterfaceId)
 	}
 }
@@ -131,6 +112,7 @@ func (server *BFDServer) StopSendRecvPkts(ifIndex int32) {
 	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if exist {
 		intf.Enabled = false
+		server.bfdGlobal.Interfaces[ifIndex] = intf
 	}
 }
 
@@ -138,5 +120,6 @@ func (server *BFDServer) StartSendRecvPkts(ifIndex int32) {
 	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if exist {
 		intf.Enabled = true
+		server.bfdGlobal.Interfaces[ifIndex] = intf
 	}
 }
