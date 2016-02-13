@@ -2,6 +2,7 @@
 package server
 
 import (
+	"asicd/asicdConstDefs"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -33,6 +34,11 @@ type PeerGroupUpdate struct {
 	AttrSet  []bool
 }
 
+type IfState struct {
+	idx   int32
+	state uint8
+}
+
 type BGPServer struct {
 	logger           *syslog.Writer
 	ribdClient       *ribd.RouteServiceClient
@@ -52,6 +58,7 @@ type BGPServer struct {
 	Neighbors      []*Peer
 	AdjRib         *AdjRib
 	connRoutesPath *Path
+	ifacePeerMap   map[int32][]string
 }
 
 func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *BGPServer {
@@ -71,6 +78,7 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.PeerMap = make(map[string]*Peer)
 	bgpServer.Neighbors = make([]*Peer, 0)
 	bgpServer.AdjRib = NewAdjRib(bgpServer)
+	bgpServer.ifacePeerMap = make(map[int32][]string)
 	return bgpServer
 }
 
@@ -99,27 +107,27 @@ func (server *BGPServer) listenForPeers(acceptCh chan *net.TCPConn) {
 	}
 }
 
-func (server *BGPServer) setupRibSubSocket(address string) (*nanomsg.SubSocket, error) {
+func (server *BGPServer) setupSubSocket(address string) (*nanomsg.SubSocket, error) {
 	var err error
 	var socket *nanomsg.SubSocket
 	if socket, err = nanomsg.NewSubSocket(); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to create RIB subscribe socket, error:", err))
+		server.logger.Err(fmt.Sprintf("Failed to create subscribe socket %s, error:%s", address, err))
 		return nil, err
 	}
 
 	if err = socket.Subscribe(""); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to subscribe to \"\" on RIB subscribe socket, error:", err))
+		server.logger.Err(fmt.Sprintf("Failed to subscribe to \"\" on subscribe socket %s, error:%s", address, err))
 		return nil, err
 	}
 
 	if _, err = socket.Connect(address); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to connect to RIB publisher socket, address:", address, "error:", err))
+		server.logger.Err(fmt.Sprintf("Failed to connect to publisher socket %s, error:%s", address, err))
 		return nil, err
 	}
 
-	server.logger.Info(fmt.Sprintln("Connected to RIB publisher at address:", address))
+	server.logger.Info(fmt.Sprintf("Connected to publisher socker %s", address))
 	if err = socket.SetRecvBuffer(1024 * 1024); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to set the buffer size for RIB publisher socket, error:", err))
+		server.logger.Err(fmt.Sprintln("Failed to set the buffer size for subsriber socket %s, error:", address, err))
 		return nil, err
 	}
 	return socket, nil
@@ -148,7 +156,7 @@ func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 	for err := decoder.Decode(&msg); err == nil; err = decoder.Decode(&msg) {
 		err = json.Unmarshal(msg.MsgBuf, &route)
 		if err != nil {
-			server.logger.Err("Err in processing routes from RIB")
+			server.logger.Err(fmt.Sprintf("Unmarshal RIB route update failed with err %s", err))
 		}
 		server.logger.Info(fmt.Sprintln("Remove connected route, dest:", route.RouteInfo.Ipaddr, "netmask:", route.RouteInfo.Mask, "nexthop:", route.RouteInfo.NextHopIp))
 		routes = append(routes, &route.RouteInfo)
@@ -164,6 +172,39 @@ func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 		}
 	} else {
 		server.logger.Err(fmt.Sprintf("**** Received RIB update type %d with no routes ****", msg.MsgType))
+	}
+}
+
+func (server *BGPServer) listenForAsicdEvents(socket *nanomsg.SubSocket, ifStateCh chan IfState) {
+	for {
+		server.logger.Info("Read on Asicd subscriber socket...")
+		rxBuf, err := socket.Recv(0)
+		if err != nil {
+			server.logger.Info(fmt.Sprintln("Error in receiving Asicd events", err))
+			return
+		}
+
+		server.logger.Info(fmt.Sprintln("Asicd subscriber recv returned", rxBuf))
+		event := asicdConstDefs.AsicdNotification{}
+		err = json.Unmarshal(rxBuf, &event)
+		if err != nil {
+			server.logger.Err(fmt.Sprintf("Unmarshal Asicd event failed with err %s", err))
+			return
+		}
+
+		switch event.MsgType {
+		case asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE:
+			var msg asicdConstDefs.L3IntfStateNotifyMsg
+			err = json.Unmarshal(event.Msg, &msg)
+			if err != nil {
+				server.logger.Err(fmt.Sprintf("Unmarshal Asicd L3INTF event failed with err %s", err))
+				return
+			}
+
+			server.logger.Info(fmt.Sprintf("Asicd L3INTF event idx %d ip %s state %d\n", msg.IfIndex, msg.IpAddr,
+				msg.IfState))
+			ifStateCh <- IfState{msg.IfIndex, msg.IfState}
+		}
 	}
 }
 
@@ -307,13 +348,15 @@ func (server *BGPServer) StartServer() {
 	server.connRoutesPath = NewPath(server, nil, pathAttrs, false, false, RouteTypeConnected)
 
 	server.logger.Info("Listen for RIBd updates")
-	ribSubSocket, _ := server.setupRibSubSocket(ribdCommonDefs.PUB_SOCKET_ADDR)
-	ribSubBGPSocket, _ := server.setupRibSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
+	ribSubSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_ADDR)
+	ribSubBGPSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
+	asicdL3IntfSubSocket, _ := server.setupSubSocket(asicdConstDefs.PUB_SOCKET_ADDR)
 
 	ribSubSocketCh := make(chan []byte)
 	ribSubSocketErrCh := make(chan error)
 	ribSubBGPSocketCh := make(chan []byte)
 	ribSubBGPSocketErrCh := make(chan error)
+	asicdL3IntfStateCh := make(chan IfState)
 
 	server.logger.Info("Setting up Peer connections")
 	acceptCh := make(chan *net.TCPConn)
@@ -324,6 +367,7 @@ func (server *BGPServer) StartServer() {
 
 	go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
 	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
+	go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
 
 	for {
 		select {
@@ -460,6 +504,20 @@ func (server *BGPServer) StartServer() {
 				server.logger.Info(fmt.Sprintf("Failed to process FSM connection success, Peer %s does not exist", peerIP))
 				break
 			}
+
+			reachInfo, err := server.ribdClient.GetRouteReachabilityInfo(peerIP)
+			if err != nil {
+				server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
+			} else {
+				ifIdx := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
+				server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d", peerIP, ifIdx))
+				if _, ok := server.ifacePeerMap[ifIdx]; !ok {
+					server.ifacePeerMap[ifIdx] = make([]string, 0)
+				}
+				server.ifacePeerMap[ifIdx] = append(server.ifacePeerMap[ifIdx], peerIP)
+				peer.setIfIdx(ifIdx)
+			}
+
 			server.SendAllRoutesToPeer(peer)
 
 		case peerIP := <-server.PeerConnBrokenCh:
@@ -469,6 +527,20 @@ func (server *BGPServer) StartServer() {
 				server.logger.Info(fmt.Sprintf("Failed to process FSM connection failure, Peer %s does not exist", peerIP))
 				break
 			}
+			ifIdx := peer.getIfIdx()
+			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection broken ifIdx %v", peerIP, ifIdx))
+			if peerList, ok := server.ifacePeerMap[ifIdx]; ok {
+				for idx, ip := range peerList {
+					if ip == peerIP {
+						server.ifacePeerMap[ifIdx] = append(server.ifacePeerMap[ifIdx][:idx], server.ifacePeerMap[ifIdx][idx+1:]...)
+						if len(server.ifacePeerMap[ifIdx]) == 0 {
+							delete(server.ifacePeerMap, ifIdx)
+						}
+						break
+					}
+				}
+			}
+			peer.setIfIdx(-1)
 			server.ProcessRemoveNeighbor(peerIP, peer)
 
 		case pktInfo := <-server.BGPPktSrc:
@@ -488,6 +560,17 @@ func (server *BGPServer) StartServer() {
 
 		case err := <-ribSubBGPSocketErrCh:
 			server.logger.Info(fmt.Sprintf("Server: RIB BGP subscriber socket returned err:%s", err))
+
+		case ifState := <-asicdL3IntfStateCh:
+			server.logger.Info(fmt.Sprintf("Server: Received update on Asicd sub socket %+v, ifacePeerMap %+v",
+				ifState, server.ifacePeerMap))
+			if peerList, ok := server.ifacePeerMap[ifState.idx]; ok && ifState.state == asicdConstDefs.INTF_STATE_DOWN {
+				for _, peerIP := range peerList {
+					if peer, ok := server.PeerMap[peerIP]; ok {
+						peer.StopFSM("Interface Down")
+					}
+				}
+			}
 		}
 	}
 }
