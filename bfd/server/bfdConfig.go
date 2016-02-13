@@ -25,7 +25,6 @@ type IntfConfig struct {
 	AuthenticationEnabled     bool
 	AuthenticationType        int32
 	AuthenticationKeyId       int32
-	SequenceNumber            int32
 	AuthenticationData        string
 }
 
@@ -41,7 +40,6 @@ type IntfState struct {
 	AuthenticationEnabled     bool
 	AuthenticationType        int32
 	AuthenticationKeyId       int32
-	SequenceNumber            int32
 	AuthenticationData        string
 }
 

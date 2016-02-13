@@ -82,6 +82,11 @@ func (server *BFDServer) NewBfdSession(DestIp string, protocol int) *BfdSession 
 			bfdSession.state.RequiredMinRxInterval = intf.conf.RequiredMinRxInterval
 			bfdSession.state.DetectionMultiplier = intf.conf.LocalMultiplier
 			bfdSession.state.DemandMode = intf.conf.DemandEnabled
+			bfdSession.authEnabled = intf.conf.AuthenticationEnabled
+			bfdSession.authType = AuthenticationType(intf.conf.AuthenticationType)
+			bfdSession.authSeqNum = 1
+			bfdSession.authKeyId = uint32(intf.conf.AuthenticationKeyId)
+			bfdSession.authData = intf.conf.AuthenticationData
 		}
 		server.logger.Info(fmt.Sprintln("New session : ", bfdSession.state.SessionId, " created on : ", server.bfdGlobal.Interfaces[ifIndex].property.IfName))
 		return bfdSession
@@ -101,6 +106,10 @@ func (server *BFDServer) UpdateBfdSessionsOnInterface(ifIndex int32) error {
 				session.state.RequiredMinRxInterval = intf.conf.RequiredMinRxInterval
 				session.state.DetectionMultiplier = intf.conf.LocalMultiplier
 				session.state.DemandMode = intf.conf.DemandEnabled
+				session.authEnabled = intf.conf.AuthenticationEnabled
+				session.authType = AuthenticationType(intf.conf.AuthenticationType)
+				session.authKeyId = uint32(intf.conf.AuthenticationKeyId)
+				session.authData = intf.conf.AuthenticationData
 				session.InitiatePollSequence()
 			}
 		}
@@ -296,6 +305,20 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 	session.bfdPacket.Poll = session.pollSequence
 	session.bfdPacket.Final = session.pollSequenceFinal
 	session.pollSequenceFinal = false
+	if session.authEnabled {
+		session.bfdPacket.AuthPresent = true
+		session.bfdPacket.AuthHeader.Type = session.authType
+		if session.authType != BFD_AUTH_TYPE_SIMPLE {
+			session.bfdPacket.AuthHeader.SequenceNumber = session.authSeqNum
+		}
+		if session.authType == BFD_AUTH_TYPE_METICULOUS_MD5 || session.authType == BFD_AUTH_TYPE_METICULOUS_SHA1 {
+			session.authSeqNum++
+		}
+		session.bfdPacket.AuthHeader.AuthKeyID = uint8(session.authKeyId)
+		session.bfdPacket.AuthHeader.AuthData = []byte(session.authData)
+	} else {
+		session.bfdPacket.AuthPresent = false
+	}
 	return nil
 }
 
@@ -382,6 +405,9 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 
 func (session *BfdSession) MoveToDownState() error {
 	session.state.SessionState = STATE_DOWN
+	if session.authType == BFD_AUTH_TYPE_KEYED_MD5 || session.authType == BFD_AUTH_TYPE_KEYED_SHA1 {
+		session.authSeqNum++
+	}
 	session.txTimer.Reset(0)
 	return nil
 }

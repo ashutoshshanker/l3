@@ -63,6 +63,11 @@ type BfdSession struct {
 	SessionDeleteCh   chan bool
 	pollSequence      bool
 	pollSequenceFinal bool
+	authEnabled       bool
+	authType          AuthenticationType
+	authSeqNum        uint32
+	authKeyId         uint32
+	authData          string
 }
 
 type BfdGlobal struct {
