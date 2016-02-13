@@ -22,6 +22,7 @@ type Peer struct {
 	ASSize     uint8
 	afiSafiMap map[uint32]bool
 	PeerConf   config.NeighborConfig
+	ifIdx      int32
 }
 
 func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *config.PeerGroupConfig, peerConf config.NeighborConfig) *Peer {
@@ -37,6 +38,7 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 		BGPId:      net.IP{},
 		afiSafiMap: make(map[uint32]bool),
 		PeerConf:   config.NeighborConfig{},
+		ifIdx:      -1,
 	}
 
 	peer.Neighbor.State = config.NeighborState{
@@ -76,6 +78,10 @@ func (p *Peer) Init() {
 func (p *Peer) Cleanup() {
 	p.fsmManager.closeCh <- true
 	p.fsmManager = nil
+}
+
+func (p *Peer) StopFSM(msg string) {
+	p.fsmManager.stopFSMCh <- msg
 }
 
 func (p *Peer) UpdateNeighborConf(nConf config.NeighborConfig) {
@@ -162,6 +168,14 @@ func (p *Peer) GetConfFromNeighbor(inConf *config.NeighborConfig, outConf *confi
 	}
 	outConf.NeighborAddress = inConf.NeighborAddress
 	outConf.PeerGroup = inConf.PeerGroup
+}
+
+func (p *Peer) setIfIdx(ifIdx int32) {
+	p.ifIdx = ifIdx
+}
+
+func (p *Peer) getIfIdx() int32 {
+	return p.ifIdx
 }
 
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
