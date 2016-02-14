@@ -632,7 +632,7 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionState( fromIndex ribd.Int, r
 			logger.Println("Enough policies fetched")
 			break
 		}
-		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyStmtDB[i+fromIndex].prefix))
+		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyDB[i+fromIndex].prefix))
 		prefixNodeGet := PolicyDB.Get(localPolicyDB[i+fromIndex].prefix)
 		if(prefixNodeGet != nil) {
 			prefixNode := prefixNodeGet.(Policy)
