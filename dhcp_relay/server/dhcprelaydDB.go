@@ -2,20 +2,20 @@ package relayServer
 
 import (
 	"database/sql"
-	_ "dhcprelayd"
 	"flag"
 	"fmt"
-	_ "utils/dbutils"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func DhcpRelayAgentInitDB() error {
 	logger.Info("DRA: initializing SQL DB")
+	var err error
 	params_dir := flag.String("params", "", "Directory Location for config files")
 	flag.Parse()
 	paramsDir = *params_dir
 	dbName := paramsDir + USR_CONF_DB
 	logger.Info("DRA: location of DB is " + dbName)
-	dhcprelayDbHdl, err := sql.Open("sqlite3", dbName)
+	dhcprelayDbHdl, err = sql.Open("sqlite3", dbName)
 	if err != nil {
 		logger.Err(fmt.Sprintln("DRA: Failed to create db handle", err))
 		return err
@@ -25,18 +25,21 @@ func DhcpRelayAgentInitDB() error {
 		logger.Err(fmt.Sprintln("Failed to keep db connection alive", err))
 		return err
 	}
+	logger.Info("DRA: SQL DB init success")
 	return err
 }
 
 func DhcpRelayAgentReadDB() {
-	logger.Info("DRA: Populate Dhcp Relay Info from DB entries")
-	readIfIndex := make([]int32, 0)
-	rows, err := dhcprelayDbHdl.Query("SELECT * FROM DhcpRelayIntfConfig")
+	dbCmd := "SELECT * FROM DhcpRelayIntfConfig"
+	logger.Info("DRA: Populate Dhcp Relay Info via " + dbCmd)
+	rows, err := dhcprelayDbHdl.Query(dbCmd)
 	if err != nil {
 		logger.Err(fmt.Sprintln("DRA: Unable to querry DB:", err))
+		dhcprelayDbHdl.Close()
 		return
 	}
 
+	readIfIndex := make([]int32, 0)
 	for rows.Next() {
 		var IfIndex int32
 		var Enable int
@@ -44,6 +47,7 @@ func DhcpRelayAgentReadDB() {
 		if err != nil {
 			logger.Info(fmt.Sprintln("DRA: Unable to scan entries from DB",
 				err))
+			dhcprelayDbHdl.Close()
 			return
 		}
 		logger.Info(fmt.Sprintln("DRA: ifindex:", IfIndex,
@@ -52,10 +56,12 @@ func DhcpRelayAgentReadDB() {
 		DhcpRelayAgentInitIntfState(IfIndex)
 		readIfIndex = append(readIfIndex, IfIndex)
 	}
-
-	rows, err = dhcprelayDbHdl.Query("SELECT * FROM DhcpRelayIntfConfigServer")
+	dbCmd = "SELECT * FROM DhcpRelayIntfConfigServer"
+	logger.Info("DRA: Populate Dhcp Relay Server Info via " + dbCmd)
+	rows, err = dhcprelayDbHdl.Query(dbCmd)
 	if err != nil {
 		logger.Err(fmt.Sprintln("DRA: Unable to querry DB:", err))
+		dhcprelayDbHdl.Close()
 		return
 	}
 
@@ -66,6 +72,7 @@ func DhcpRelayAgentReadDB() {
 		if err != nil {
 			logger.Info(fmt.Sprintln("DRA: Unable to scan entried from DB",
 				err))
+			dhcprelayDbHdl.Close()
 			return
 		}
 		logger.Info(fmt.Sprintln("DRA: ifindex:", IfIndex, "Server Ip:",
@@ -75,5 +82,7 @@ func DhcpRelayAgentReadDB() {
 
 	if len(readIfIndex) > 0 {
 		go DhcpRelayAgentUpdateIntfIpAddr(readIfIndex)
+	} else {
+		dhcprelayDbHdl.Close()
 	}
 }
