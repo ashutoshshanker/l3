@@ -228,9 +228,7 @@ func (server *BFDServer) AdminUpBfdSession(sessionMgmt BfdSessionMgmt) error {
 	server.logger.Info(fmt.Sprintln("AdminDownSession ", DestIp, Protocol))
 	sessionId, found := server.FindBfdSession(DestIp)
 	if found {
-		if server.bfdGlobal.Sessions[sessionId].state.RegisteredProtocols[Protocol] == true {
-			server.bfdGlobal.Sessions[sessionId].StartBfdSession()
-		}
+		server.bfdGlobal.Sessions[sessionId].StartBfdSession()
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
 	}
@@ -244,9 +242,7 @@ func (server *BFDServer) AdminDownBfdSession(sessionMgmt BfdSessionMgmt) error {
 	server.logger.Info(fmt.Sprintln("AdminDownSession ", DestIp, Protocol))
 	sessionId, found := server.FindBfdSession(DestIp)
 	if found {
-		if server.bfdGlobal.Sessions[sessionId].state.RegisteredProtocols[Protocol] == true {
-			server.bfdGlobal.Sessions[sessionId].StopBfdSession()
-		}
+		server.bfdGlobal.Sessions[sessionId].StopBfdSession()
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
 	}
