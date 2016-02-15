@@ -31,6 +31,7 @@ type FSMManager struct {
 	acceptCh    chan net.Conn
 	acceptErrCh chan error
 	closeCh     chan bool
+	stopFSMCh   chan string
 	acceptConn  bool
 	commandCh   chan int
 	activeFSM   uint8
@@ -50,6 +51,7 @@ func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config
 	mgr.acceptErrCh = make(chan error)
 	mgr.acceptConn = false
 	mgr.closeCh = make(chan bool)
+	mgr.stopFSMCh = make(chan string)
 	mgr.commandCh = make(chan int)
 	mgr.activeFSM = uint8(config.ConnDirInvalid)
 	mgr.newConnCh = make(chan PeerFSMConnState)
@@ -105,6 +107,9 @@ func (mgr *FSMManager) Init() {
 				mgr.pConf.NeighborAddress, newConn.id))
 			newId := mgr.getNewId(newConn.id)
 			mgr.handleAnotherConnection(newId, newConn.connDir, newConn.conn)
+
+		case stopMsg := <-mgr.stopFSMCh:
+			mgr.StopFSM(stopMsg)
 
 		case <-mgr.closeCh:
 			mgr.Cleanup()
@@ -171,6 +176,18 @@ func (mgr *FSMManager) Cleanup() {
 			mgr.fsmBroken(id, true)
 			mgr.fsms[id] = nil
 			delete(mgr.fsms, id)
+		}
+	}
+}
+
+func (mgr *FSMManager) StopFSM(stopMsg string) {
+	defer mgr.fsmMutex.Unlock()
+	mgr.fsmMutex.Lock()
+
+	for id, fsm := range mgr.fsms {
+		if fsm != nil {
+			mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s FSM %d - Stop FSM", mgr.pConf.NeighborAddress, id))
+			fsm.eventRxCh <- BGPEventTcpConnFails
 		}
 	}
 }

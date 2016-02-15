@@ -35,13 +35,13 @@ func (server *BFDServer) listenForASICdUpdates(address string) error {
 		return err
 	}
 
-	if err = server.asicdSubSocket.Subscribe(""); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to subscribe to \"\" on ASICd subscribe socket, error:", err))
+	if _, err = server.asicdSubSocket.Connect(address); err != nil {
+		server.logger.Err(fmt.Sprintln("Failed to connect to ASICd publisher socket, address:", address, "error:", err))
 		return err
 	}
 
-	if _, err = server.asicdSubSocket.Connect(address); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to connect to ASICd publisher socket, address:", address, "error:", err))
+	if err = server.asicdSubSocket.Subscribe(""); err != nil {
+		server.logger.Err(fmt.Sprintln("Failed to subscribe to \"\" on ASICd subscribe socket, error:", err))
 		return err
 	}
 
@@ -70,22 +70,21 @@ func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
 			return
 		}
 		ipv4IntfMsg.IpAddr = NewIpv4IntfMsg.IpAddr
-		ipv4IntfMsg.IfType = uint8(asicdConstDefs.GetIntfTypeFromIfIndex(NewIpv4IntfMsg.IfIndex))
-		ipv4IntfMsg.IfId = uint16(asicdConstDefs.GetIntfIdFromIfIndex(NewIpv4IntfMsg.IfIndex))
+		ipv4IntfMsg.IfId = NewIpv4IntfMsg.IfIndex
 		if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_CREATE", ipv4IntfMsg))
 			server.createIPIntfConfMap(ipv4IntfMsg)
-			if ipv4IntfMsg.IfType == commonDefs.L2RefTypePort { // PHY
+			if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
-			} else if ipv4IntfMsg.IfType == commonDefs.L2RefTypeVlan { // Vlan
+			} else if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypeVlan { // Vlan
 				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
 			}
 		} else {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_DELETE", ipv4IntfMsg))
 			server.deleteIPIntfConfMap(ipv4IntfMsg)
-			if ipv4IntfMsg.IfType == commonDefs.L2RefTypePort { // PHY
+			if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
-			} else if ipv4IntfMsg.IfType == commonDefs.L2RefTypeVlan { // Vlan
+			} else if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypeVlan { // Vlan
 				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
 			}
 		}
@@ -100,5 +99,37 @@ func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
 		}
 		server.updatePortPropertyMap(vlanNotifyMsg, msg.MsgType)
 		server.updateVlanPropertyMap(vlanNotifyMsg, msg.MsgType)
+	}
+}
+
+func (server *BFDServer) GetIPv4Interfaces() error {
+	server.logger.Info("Getting IPv4 interfaces from asicd")
+	var currMarker asicdServices.Int
+	var count asicdServices.Int
+	count = 100
+	for {
+		var ipv4IntfMsg IPv4IntfNotifyMsg
+		server.logger.Info(fmt.Sprintf("Getting %d objects from currMarker %d\n", count, currMarker))
+		IPIntfBulk, err := server.asicdClient.ClientHdl.GetBulkIPv4Intf(currMarker, count)
+		if err != nil {
+			server.logger.Info(fmt.Sprintln("GetBulkIPv4Intf with err ", err))
+			return err
+		}
+		if IPIntfBulk.Count == 0 {
+			server.logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4Intf"))
+			return nil
+		}
+		server.logger.Info(fmt.Sprintln("Got IPv4 interfaces - len  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfList), IPIntfBulk.Count))
+		for i := 0; i < int(IPIntfBulk.Count); i++ {
+			ipv4IntfMsg.IpAddr = IPIntfBulk.IPv4IntfList[i].IpAddr
+			ipv4IntfMsg.IfId = IPIntfBulk.IPv4IntfList[i].IfIndex
+			server.createIPIntfConfMap(ipv4IntfMsg)
+			server.logger.Info(fmt.Sprintln("Created IPv4 interface (%d : %s)\n", ipv4IntfMsg.IfId, ipv4IntfMsg.IpAddr))
+		}
+		if IPIntfBulk.More == false {
+			server.logger.Info(fmt.Sprintln("Get IPv4 interfaces - more returned as false, so no more get bulks"))
+			return nil
+		}
+		currMarker = asicdServices.Int(IPIntfBulk.EndIdx)
 	}
 }

@@ -49,6 +49,7 @@ type OspfNeighborEntry struct {
 }
 
 var OspfNeighborLastDbd map[NeighborConfKey]ospfDatabaseDescriptionData
+var ospfNeighborIPToMAC map[uint32]net.HardwareAddr
 
 type ospfNeighborConfMsg struct {
 	ospfNbrConfKey NeighborConfKey
@@ -66,7 +67,7 @@ func (server *OSPFServer) InitNeighborStateMachine() {
 	server.neighborBulkSlice = []uint32{}
 	INVALID_NEIGHBOR_CONF_KEY = 0
 	OspfNeighborLastDbd = make(map[NeighborConfKey]ospfDatabaseDescriptionData)
-
+	ospfNeighborIPToMAC = make(map[uint32]net.HardwareAddr)
 	go server.refreshNeighborSlice()
 	server.logger.Info("NBRINIT: Neighbor FSM init done..")
 }
