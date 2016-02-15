@@ -125,15 +125,15 @@ func (server *OSPFServer) processOspfHeader(ospfPkt []byte, key IntfConfKey, md 
 func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packet) {
 	//server.logger.Info(fmt.Sprintf("Recevied Ospf Packet"))
 
-        ethLayer := pkt.Layer(layers.LayerTypeEthernet)
-        if ethLayer == nil {
+	ethLayer := pkt.Layer(layers.LayerTypeEthernet)
+	if ethLayer == nil {
 		server.logger.Err("Not an Ethernet frame")
 		return
-        }
+	}
 	eth := ethLayer.(*layers.Ethernet)
 
 	ethHdrMd := NewEthHdrMetadata()
-        ethHdrMd.srcMAC = eth.SrcMAC
+	ethHdrMd.srcMAC = eth.SrcMAC
 
 	ipLayer := pkt.Layer(layers.LayerTypeIPv4)
 	if ipLayer == nil {
@@ -183,7 +183,8 @@ func (server *OSPFServer) processOspfData(data []byte, ethHdrMd *EthHdrMetadata,
 	case HelloType:
 		err = server.processRxHelloPkt(data, ospfHdrMd, ipHdrMd, ethHdrMd, key)
 	case DBDescriptionType:
-		err = server.processRxDbdPkt(data, ospfHdrMd, ipHdrMd, key)
+
+		err = server.processRxDbdPkt(data, ospfHdrMd, ipHdrMd, key, ethHdrMd.srcMAC)
 
 	case LSRequestType:
 
