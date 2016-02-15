@@ -7,8 +7,8 @@ import (
 	"log/syslog"
 )
 
-const IP string = "localhost"
-const DHCP_RELAY_PORT string = "9000"
+const IP = "localhost"
+const DHCP_RELAY_PORT = "9000"
 
 func main() {
 	fmt.Printf("Start the logger\n")
