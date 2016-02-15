@@ -228,6 +228,7 @@ func DhcpRelayAgentUpdateIntfIpAddr(ifIndexList []int32) {
 			" Ip address:", gblEntry.IpAddr,
 			" netmask:", gblEntry.Netmask))
 	}
+	dhcprelayDbHdl.Close()
 }
 
 func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
