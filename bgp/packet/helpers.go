@@ -255,6 +255,28 @@ func GetASSize(openMsg *BGPOpen) uint8 {
 	return 2
 }
 
+func GetAddPathFamily(openMsg *BGPOpen) map[AFI]map[SAFI]uint8 {
+	addPathFamily := make(map[AFI]map[SAFI]uint8)
+	for _, optParam := range openMsg.OptParams {
+		if capabilities, ok := optParam.(*BGPOptParamCapability); ok {
+			for _, capability := range capabilities.Value {
+				if addPathCap, ok := capability.(*BGPCapAddPath); ok {
+					for _, val := range addPathCap.Value {
+						if _, ok := addPathFamily[val.AFI]; !ok {
+							addPathFamily[val.AFI] = make(map[SAFI]uint8)
+						}
+						if _, ok := addPathFamily[val.AFI][val.SAFI]; !ok {
+							addPathFamily[val.AFI][val.SAFI] = val.Flags
+						}
+					}
+					return addPathFamily
+				}
+			}
+		}
+	}
+	return addPathFamily
+}
+
 func GetNumASes(updateMsg *BGPMessage, asType BGPPathAttrType) uint32 {
 	var total uint32 = 0
 

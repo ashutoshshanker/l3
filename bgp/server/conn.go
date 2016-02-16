@@ -133,6 +133,7 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 
 			if header.Type == packet.BGPMsgTypeOpen {
 				p.peerAttrs.ASSize = packet.GetASSize(msg.Body.(*packet.BGPOpen))
+				p.peerAttrs.AddPathFamily = packet.GetAddPathFamily(msg.Body.(*packet.BGPOpen))
 			}
 			p.fsm.pktRxCh <- bgpPktInfo
 			doneCh <- msgOk
