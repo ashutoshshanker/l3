@@ -74,8 +74,8 @@ func (server *BFDServer) NewBfdSession(DestIp string, protocol int) *BfdSession 
 	ifIndex, _ := server.GetIfIndexAndLocalIpFromDestIp(DestIp)
 	// Hack to test BFD. RIB is not able to provide ifIndex for a destination IP at this point
 	if ifIndex == 0 {
-		//ifIndex = 46
-		return nil
+		ifIndex = 46
+		//return nil
 	}
 	if server.bfdGlobal.Interfaces[ifIndex].Enabled {
 		bfdSession := &BfdSession{}
@@ -327,31 +327,40 @@ func (session *BfdSession) CanProcessBfdControlPacket(bfdPacket *BfdControlPacke
 	return canProcess
 }
 
+func (session *BfdSession) AuthenticateReceivedControlPacket(bfdPacket *BfdControlPacket) bool {
+	var authenticated bool
+	return authenticated
+}
+
 func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	var event BfdSessionEvent
 	canProcess := session.CanProcessBfdControlPacket(bfdPacket)
 	if canProcess == false {
 		fmt.Sprintln("Can't process received bfd packet for session ", session.state.SessionId)
+		return nil
 	}
-	if canProcess {
-		session.state.RemoteSessionState = bfdPacket.State
-		session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
-		session.state.RemoteMinRxInterval = int32(bfdPacket.RequiredMinRxInterval)
-		switch session.state.RemoteSessionState {
-		case STATE_DOWN:
-			event = REMOTE_DOWN
-		case STATE_INIT:
-			event = REMOTE_INIT
-		case STATE_UP:
-			event = REMOTE_UP
-		}
-		session.EventHandler(event)
-		session.RemoteChangedDemandMode(bfdPacket)
-		session.ProcessPollSequence(bfdPacket)
-		session.sessionTimer.Stop()
-		sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier)
-		session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
+	authenticated := session.AuthenticateReceivedControlPacket(bfdPacket)
+	if authenticated == false {
+		fmt.Sprintln("Can't authenticatereceived bfd packet for session ", session.state.SessionId)
+		return nil
 	}
+	session.state.RemoteSessionState = bfdPacket.State
+	session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
+	session.state.RemoteMinRxInterval = int32(bfdPacket.RequiredMinRxInterval)
+	switch session.state.RemoteSessionState {
+	case STATE_DOWN:
+		event = REMOTE_DOWN
+	case STATE_INIT:
+		event = REMOTE_INIT
+	case STATE_UP:
+		event = REMOTE_UP
+	}
+	session.EventHandler(event)
+	session.RemoteChangedDemandMode(bfdPacket)
+	session.ProcessPollSequence(bfdPacket)
+	session.sessionTimer.Stop()
+	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier)
+	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
 	return nil
 }
 
@@ -540,10 +549,14 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 }
 
 func (session *BfdSession) RemoteChangedDemandMode(bfdPacket *BfdControlPacket) error {
+	var wasDemandMode, isDemandMode bool
+	wasDemandMode = session.state.RemoteDemandMode
 	session.state.RemoteDemandMode = bfdPacket.Demand
 	if session.state.RemoteDemandMode {
+		isDemandMode = true
 		session.txTimer.Stop()
-	} else {
+	}
+	if wasDemandMode && !isDemandMode {
 		txTimerMS := time.Duration(session.state.DesiredMinTxInterval)
 		session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session.state.SessionId })
 	}

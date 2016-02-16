@@ -2,9 +2,11 @@ package server
 
 import (
 	"bytes"
+	"crypto/md5"
+	"crypto/sha1"
 	"encoding/binary"
 	"errors"
-	//"fmt"
+	"fmt"
 	"time"
 )
 
@@ -151,6 +153,22 @@ func (p *BfdControlPacket) CreateBfdControlPacket() ([]byte, error) {
 
 	if len(auth) > 0 {
 		binary.Write(buf, binary.BigEndian, auth)
+	}
+
+	// Fill in MD5 or SHA1 auth data
+	if p.AuthHeader.Type != BFD_AUTH_TYPE_SIMPLE {
+		if p.AuthHeader.Type == BFD_AUTH_TYPE_KEYED_MD5 || p.AuthHeader.Type == BFD_AUTH_TYPE_METICULOUS_MD5 {
+			var authData [16]byte
+			authData = md5.Sum(buf.Bytes())
+			//binary.Write(buf, binary.BigEndian, authData)
+			fmt.Println("MD5 sum ", authData)
+		}
+		if p.AuthHeader.Type == BFD_AUTH_TYPE_KEYED_SHA1 || p.AuthHeader.Type == BFD_AUTH_TYPE_METICULOUS_SHA1 {
+			var authData [20]byte
+			authData = sha1.Sum(buf.Bytes())
+			//binary.Write(buf, binary.BigEndian, authData)
+			fmt.Println("SHA1 sum ", authData)
+		}
 	}
 
 	return buf.Bytes(), nil
