@@ -55,8 +55,8 @@ type BfdSession struct {
 	state             SessionState
 	sessionTimer      *time.Timer
 	txTimer           *time.Timer
-	TxTimeoutCh       chan *BfdSession
-	SessionTimeoutCh  chan *BfdSession
+	TxTimeoutCh       chan int32
+	SessionTimeoutCh  chan int32
 	bfdPacket         *BfdControlPacket
 	SessionDeleteCh   chan bool
 	pollSequence      bool
@@ -95,6 +95,8 @@ type BFDServer struct {
 	IPIntfPropertyMap   map[string]IPIntfProperty
 	CreateSessionCh     chan BfdSessionMgmt
 	DeleteSessionCh     chan BfdSessionMgmt
+	AdminUpSessionCh    chan BfdSessionMgmt
+	AdminDownSessionCh  chan BfdSessionMgmt
 	SessionConfigCh     chan bfddCommonDefs.BfdSessionConfig
 	bfddPubSocket       *nanomsg.PubSocket
 	bfdGlobal           BfdGlobal

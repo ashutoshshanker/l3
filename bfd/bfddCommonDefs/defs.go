@@ -6,15 +6,19 @@ const (
 	PUB_SOCKET_ADDR = "ipc:///tmp/bfdd.ipc"
 )
 
+// Owner
 const (
-	BGP = iota + 1
+	USER = iota + 1
+	BGP
 	OSPF
 	MAX_NUM_PROTOCOLS
 )
 
+// Operation
 const (
 	CREATE = iota + 1
 	DELETE
+	ADMINUP
 	ADMINDOWN
 )
 

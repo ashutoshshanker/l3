@@ -52,11 +52,13 @@ func StartServer(logger *syslog.Writer, handler *BFDHandler, fileName string) {
 	}
 	processor := bfdd.NewBFDDServicesProcessor(handler)
 	server := thrift.NewTSimpleServer4(processor, serverTransport, transportFactory, protocolFactory)
+	logger.Info(fmt.Sprintln("StartServer: Starting"))
 	err = server.Serve()
+	logger.Info(fmt.Sprintln("StartServer: Started"))
 	if err != nil {
 		logger.Info(fmt.Sprintln("Failed to start the listener, err:", err))
 	}
-	logger.Info(fmt.Sprintln("Start the listener successfully"))
+	logger.Info(fmt.Sprintln("Started the listener successfully"))
 	return
 }
 

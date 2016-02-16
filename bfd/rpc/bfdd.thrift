@@ -53,6 +53,11 @@ struct BfdIntfStateGetInfo {
 	4: bool More
 	5: list<BfdIntfState> BfdIntfStateList
 }
+struct BfdSessionConfig{
+	1 : string 	IpAddr
+	2 : i32 	Owner
+	3 : i32 	Operation
+}
 struct BfdSessionState{
 	1 : i32 	SessionId
 	2 : string 	LocalIpAddr
@@ -93,5 +98,9 @@ service BFDDServices {
 	bool DeleteBfdIntfConfig(1: BfdIntfConfig config);
 
 	BfdIntfStateGetInfo GetBulkBfdIntfState(1: int fromIndex, 2: int count);
+	bool CreateBfdSessionConfig(1: BfdSessionConfig config);
+	bool UpdateBfdSessionConfig(1: BfdSessionConfig origconfig, 2: BfdSessionConfig newconfig, 3: list<bool> attrset);
+	bool DeleteBfdSessionConfig(1: BfdSessionConfig config);
+
 	BfdSessionStateGetInfo GetBulkBfdSessionState(1: int fromIndex, 2: int count);
 }
