@@ -76,10 +76,8 @@ func (server *BFDServer) GetIfIndexAndLocalIpFromDestIp(DestIp string) (int32, s
 
 func (server *BFDServer) NewBfdSession(DestIp string, protocol int) *BfdSession {
 	ifIndex, _ := server.GetIfIndexAndLocalIpFromDestIp(DestIp)
-	// Hack to test BFD. RIB is not able to provide ifIndex for a destination IP at this point
 	if ifIndex == 0 {
-		ifIndex = 46
-		//return nil
+		return nil
 	}
 	if server.bfdGlobal.Interfaces[ifIndex].Enabled {
 		bfdSession := &BfdSession{}
