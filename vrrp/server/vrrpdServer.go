@@ -8,10 +8,14 @@ func NewVrrpServer() *VrrpServiceHandler {
 	return &VrrpServiceHandler{}
 }
 
+func VrrpAllocateMemoryToGlobalDS() {
+	vrrpGblInfo = make(map[int32]VrrpGlobalInfo, 10)
+}
+
 func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) error {
 	logger = log
-	// @TODO: Allocate Memory for Global DS
-
+	logger.Info("VRRP: allocating memory to global ds")
+	VrrpAllocateMemoryToGlobalDS()
 	// @TODO: Initialize DB
 
 	// @TODO: Initialize port information and packet handler for vrrp using
