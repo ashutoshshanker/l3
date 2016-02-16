@@ -1,6 +1,10 @@
 package server
 
 import (
+	"bytes"
+	"crypto/md5"
+	"crypto/sha1"
+	"encoding/binary"
 	"fmt"
 	"l3/bfd/bfddCommonDefs"
 	"math/rand"
@@ -276,15 +280,17 @@ func (session *BfdSession) StartSessionServer(bfdServer *BFDServer) error {
 			fmt.Println("Failed to read from ", ServerAddr)
 		} else {
 			if len >= DEFAULT_CONTROL_PACKET_LEN {
-				bfdPacket, _ := DecodeBfdControlPacket(buf[0:len])
-				//fmt.Println("Received ", string(buf[0:len]), " from ", addr, " bfdPacket ", bfdPacket)
-				sessionId := int32(bfdPacket.YourDiscriminator)
-				fmt.Println("Received bfd packet for session ", sessionId, " from ", addr)
-				if sessionId == 0 {
-					fmt.Println("Ignore bfd packet for session ", sessionId, " from ", addr)
-				} else {
-					bfdSession := bfdServer.bfdGlobal.Sessions[sessionId]
-					bfdSession.ProcessBfdPacket(bfdPacket)
+				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
+				if err != nil {
+					//fmt.Println("Received ", string(buf[0:len]), " from ", addr, " bfdPacket ", bfdPacket)
+					sessionId := int32(bfdPacket.YourDiscriminator)
+					fmt.Println("Received bfd packet for session ", sessionId, " from ", addr)
+					if sessionId == 0 {
+						fmt.Println("Ignore bfd packet for session ", sessionId, " from ", addr)
+					} else {
+						bfdSession := bfdServer.bfdGlobal.Sessions[sessionId]
+						bfdSession.ProcessBfdPacket(bfdPacket)
+					}
 				}
 			}
 		}
@@ -329,19 +335,65 @@ func (session *BfdSession) CanProcessBfdControlPacket(bfdPacket *BfdControlPacke
 
 func (session *BfdSession) AuthenticateReceivedControlPacket(bfdPacket *BfdControlPacket) bool {
 	var authenticated bool
+	if !bfdPacket.AuthPresent {
+		authenticated = true
+	} else {
+		copiedPacket := &BfdControlPacket{}
+		*copiedPacket = *bfdPacket
+		authType := bfdPacket.AuthHeader.Type
+		keyId := uint32(bfdPacket.AuthHeader.AuthKeyID)
+		authData := bfdPacket.AuthHeader.AuthData
+		seqNum := bfdPacket.AuthHeader.SequenceNumber
+		if authType == session.authType {
+			if authType == BFD_AUTH_TYPE_SIMPLE {
+				fmt.Sprintln("Authentication type simple: keyId, authData ", keyId, string(authData))
+				if keyId == session.authKeyId && string(authData) == session.authData {
+					authenticated = true
+				}
+			} else {
+				if seqNum >= session.state.ReceivedAuthSeq && keyId == session.authKeyId {
+					var binBuf bytes.Buffer
+					copiedPacket.AuthHeader.AuthData = []byte(session.authData)
+					binary.Write(&binBuf, binary.BigEndian, copiedPacket)
+					switch authType {
+					case BFD_AUTH_TYPE_KEYED_MD5, BFD_AUTH_TYPE_METICULOUS_MD5:
+						var authDataSum [16]byte
+						authDataSum = md5.Sum(binBuf.Bytes())
+						if bytes.Equal(authData[:], authDataSum[:]) {
+							authenticated = true
+						} else {
+							fmt.Sprintln("Authentication data did't match for type: ", authType)
+						}
+					case BFD_AUTH_TYPE_KEYED_SHA1, BFD_AUTH_TYPE_METICULOUS_SHA1:
+						var authDataSum [20]byte
+						authDataSum = sha1.Sum(binBuf.Bytes())
+						if bytes.Equal(authData[:], authDataSum[:]) {
+							authenticated = true
+						} else {
+							fmt.Sprintln("Authentication data did't match for type: ", authType)
+						}
+					}
+				} else {
+					fmt.Sprintln("Sequence number and key id check failed: ", seqNum, session.state.ReceivedAuthSeq, keyId, session.authKeyId)
+				}
+			}
+		} else {
+			fmt.Sprintln("Authentication type did't match: ", authType, session.authType)
+		}
+	}
 	return authenticated
 }
 
 func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	var event BfdSessionEvent
-	canProcess := session.CanProcessBfdControlPacket(bfdPacket)
-	if canProcess == false {
-		fmt.Sprintln("Can't process received bfd packet for session ", session.state.SessionId)
-		return nil
-	}
 	authenticated := session.AuthenticateReceivedControlPacket(bfdPacket)
 	if authenticated == false {
 		fmt.Sprintln("Can't authenticatereceived bfd packet for session ", session.state.SessionId)
+		return nil
+	}
+	canProcess := session.CanProcessBfdControlPacket(bfdPacket)
+	if canProcess == false {
+		fmt.Sprintln("Can't process received bfd packet for session ", session.state.SessionId)
 		return nil
 	}
 	session.state.RemoteSessionState = bfdPacket.State
