@@ -27,7 +27,8 @@ func NewBGPPktSrc(src string, msg *BGPMessage) *BGPPktSrc {
 }
 
 type BGPPeerAttrs struct {
-	ASSize uint8
+	ASSize        uint8
+	AddPathFamily map[AFI]map[SAFI]uint8
 }
 
 const BGPASTrans uint16 = 23456
@@ -107,12 +108,14 @@ type BGPCapabilityType uint8
 const (
 	_ BGPCapabilityType = iota
 	BGPCapTypeMPExt
-	BGPCapTypeAS4Path = 65
+	BGPCapTypeAS4Path BGPCapabilityType = 65
+	BGPCapTypeAddPath BGPCapabilityType = 69
 )
 
 var BGPCapTypeToStruct = map[BGPCapabilityType]BGPCapability{
 	BGPCapTypeMPExt:   &BGPCapMPExt{},
 	BGPCapTypeAS4Path: &BGPCapAS4Path{},
+	BGPCapTypeAddPath: &BGPCapAddPath{},
 }
 
 type BGPPathAttrFlag uint8
@@ -378,6 +381,95 @@ func NewBGPCap4ByteASPath(as uint32) *BGPCapAS4Path {
 			Len:  4,
 		},
 		Value: as,
+	}
+}
+
+type AddPathAFISAFI struct {
+	AFI   AFI
+	SAFI  SAFI
+	Flags uint8
+}
+
+func (a *AddPathAFISAFI) Encode(pkt []byte) error {
+	binary.BigEndian.PutUint16(pkt, uint16(a.AFI))
+	pkt[2] = uint8(a.SAFI)
+	pkt[3] = a.Flags
+	return nil
+}
+
+func (a *AddPathAFISAFI) Decode(pkt []byte) error {
+	if len(pkt) < 4 {
+		return BGPMessageError{BGPOpenMsgError, BGPUnspecific, nil, "Not enough data to decode Add path capability"}
+	}
+
+	a.AFI = AFI(binary.BigEndian.Uint16(pkt))
+	a.SAFI = SAFI(pkt[2])
+	a.Flags = pkt[3]
+	return nil
+}
+
+func (a *AddPathAFISAFI) Len() uint8 {
+	return 4
+}
+
+func NewAddPathAFISAFI(afi AFI, safi SAFI, flags uint8) *AddPathAFISAFI {
+	return &AddPathAFISAFI{
+		AFI:   afi,
+		SAFI:  safi,
+		Flags: flags,
+	}
+}
+
+type BGPCapAddPath struct {
+	BGPCapabilityBase
+	Value []AddPathAFISAFI
+}
+
+func (msg *BGPCapAddPath) Encode() ([]byte, error) {
+	pkt, err := msg.BGPCapabilityBase.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	offset := uint8(2)
+	for _, val := range msg.Value {
+		val.Encode(pkt[offset:])
+		offset += val.Len()
+	}
+	return pkt, nil
+}
+
+func (msg *BGPCapAddPath) Decode(pkt []byte) error {
+	err := msg.BGPCapabilityBase.Decode(pkt)
+	if err != nil {
+		return err
+	}
+
+	offset := uint8(2)
+	for offset < msg.Len {
+		addPathAFISAFI := AddPathAFISAFI{}
+		err := addPathAFISAFI.Decode(pkt[offset:])
+		if err != nil {
+			return err
+		}
+		msg.Value = append(msg.Value, addPathAFISAFI)
+		offset += addPathAFISAFI.Len()
+	}
+	return nil
+}
+
+func (msg *BGPCapAddPath) AddAddPathAFISAFI(apAFISAFI *AddPathAFISAFI) {
+	msg.Value = append(msg.Value, *apAFISAFI)
+	msg.Len += apAFISAFI.Len()
+}
+
+func NewBGPCapAddPath(as uint32) *BGPCapAddPath {
+	return &BGPCapAddPath{
+		BGPCapabilityBase: BGPCapabilityBase{
+			Type: BGPCapTypeAddPath,
+			Len:  2,
+		},
+		Value: make([]AddPathAFISAFI, 0),
 	}
 }
 
@@ -693,6 +785,13 @@ func NewBGPNotificationMessage(errorCode uint8, errorSubCode uint8, data []byte)
 	}
 }
 
+type NLRI interface {
+	Clone() NLRI
+	Encode() ([]byte, error)
+	Decode([]byte) error
+	Len() uint32
+}
+
 type IPPrefix struct {
 	Length uint8
 	Prefix net.IP
@@ -731,6 +830,48 @@ func (ip *IPPrefix) Len() uint32 {
 func NewIPPrefix(prefix net.IP, length uint8) *IPPrefix {
 	return &IPPrefix{
 		Length: length,
+		Prefix: prefix,
+	}
+}
+
+type ExtNLRI struct {
+	PathId uint32
+	Prefix IPPrefix
+}
+
+func (n *ExtNLRI) Clone() NLRI {
+	x := *n
+	//prefix := n.Prefix.Clone()
+	//x.Prefix = *prefix.(*IPPrefix)
+	x.Prefix = *n.Prefix.Clone()
+	return &x
+}
+
+func (n *ExtNLRI) Len() uint32 {
+	return n.Prefix.Len() + 4
+}
+
+func (n *ExtNLRI) Encode() ([]byte, error) {
+	pkt := make([]byte, 4)
+	binary.BigEndian.PutUint32(pkt, n.PathId)
+	ipBytes, err := n.Prefix.Encode()
+	if err != nil {
+		return nil, err
+	}
+	pkt = append(pkt, ipBytes...)
+	return pkt, nil
+}
+
+func (n *ExtNLRI) Decode(pkt []byte) error {
+	n.PathId = binary.BigEndian.Uint32(pkt[:4])
+	n.Prefix = IPPrefix{}
+	err := n.Prefix.Decode(pkt[4:])
+	return err
+}
+
+func NewExtNLRI(pathId uint32, prefix IPPrefix) *ExtNLRI {
+	return &ExtNLRI{
+		PathId: pathId,
 		Prefix: prefix,
 	}
 }
@@ -1683,7 +1824,7 @@ func (r *BGPPathAttrMPReachNLRI) Encode() ([]byte, error) {
 }
 
 func (r *BGPPathAttrMPReachNLRI) Decode(pkt []byte, data interface{}) error {
-	pkt, err := r.BGPPathAttrBase.Encode()
+	err := r.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
@@ -1764,7 +1905,7 @@ func (u *BGPPathAttrMPUnreachNLRI) Encode() ([]byte, error) {
 }
 
 func (u *BGPPathAttrMPUnreachNLRI) Decode(pkt []byte, data interface{}) error {
-	pkt, err := u.BGPPathAttrBase.Encode()
+	err := u.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
@@ -1917,7 +2058,7 @@ func (msg *BGPUpdate) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (msg *BGPUpdate) decodeIPPrefix(pkt []byte, ipPrefix *[]IPPrefix, length uint32) (uint32, error) {
+func (msg *BGPUpdate) decodeIPPrefix(pkt []byte, ipPrefix *[]IPPrefix, length uint32, data interface{}) (uint32, error) {
 	ptr := uint32(0)
 
 	if length > uint32(len(pkt)) {
@@ -1926,6 +2067,7 @@ func (msg *BGPUpdate) decodeIPPrefix(pkt []byte, ipPrefix *[]IPPrefix, length ui
 
 	for ptr < length {
 		ip := IPPrefix{}
+
 		err := ip.Decode(pkt[ptr:])
 		if err != nil {
 			return ptr, err
@@ -1974,7 +2116,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 	}
 
 	msg.WithdrawnRoutes = make([]IPPrefix, 0)
-	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.WithdrawnRoutes, length)
+	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.WithdrawnRoutes, length, data)
 	if err != nil {
 		return nil
 	}
@@ -2000,7 +2142,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 
 	msg.NLRI = make([]IPPrefix, 0)
 	length = header.Len() - 23 - uint32(msg.WithdrawnRoutesLen) - uint32(msg.TotalPathAttrLen)
-	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.NLRI, length)
+	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.NLRI, length, data)
 	if err != nil {
 		return nil
 	}
