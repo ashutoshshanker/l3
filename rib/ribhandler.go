@@ -88,6 +88,7 @@ type localDB struct {
 	prefix  patriciaDB.Prefix
 	isValid bool
 	precedence int
+	nextHopIp string
 }
 type IntfEntry struct {
 	name string
@@ -151,7 +152,7 @@ func processL3IntfDownEvent(ipAddr string) {
 			RIBD_PUB.Send(buf, nanomsg.DontWait)
 */
 			//Delete this route
-			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask,ribdCommonDefs.CONNECTED, FIBOnly,ribdCommonDefs.RoutePolicyStateChangeNoChange)
+			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask,"CONNECTED", ConnectedRoutes[i].NextHopIp,FIBOnly,ribdCommonDefs.RoutePolicyStateChangeNoChange)
 		}
 	}
 }
@@ -215,7 +216,7 @@ func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int) {
 			RIBD_PUB.Send(buf, nanomsg.DontWait)
 
 			//Delete this route
-			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, 0, FIBOnly,ribdCommonDefs.RoutePolicyStateChangeNoChange)
+			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, "CONNECTED", ConnectedRoutes[i].NextHopIp,FIBOnly,ribdCommonDefs.RoutePolicyStateChangeNoChange)
 		}
 	}
 }

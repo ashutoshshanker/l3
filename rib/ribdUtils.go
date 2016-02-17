@@ -12,15 +12,17 @@ import (
 	"asicd/asicdConstDefs"
 	"l3/rib/ribdCommonDefs"
 	"time"
+	"sort"
 )
 type RouteDistanceConfig struct{
 	defaultDistance int
 	configuredDistance int
 }
+type AdminDistanceSlice []ribd.RouteDistanceState
 var RouteProtocolTypeMapDB = make(map[string]int)
 var ReverseRouteProtoTypeMapDB = make(map[int]string)
-var ProtocolAdminDistanceMapDB = make(map[int]RouteDistanceConfig)
-var ProtocolAdminDistanceSlice []ribd.RouteDistanceState 
+var ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
+var ProtocolAdminDistanceSlice AdminDistanceSlice 
 
 func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["CONNECTED"] = ribdCommonDefs.CONNECTED
@@ -33,10 +35,20 @@ func BuildRouteProtocolTypeMapDB() {
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.STATIC] = "STATIC"
 }
 func BuildProtocolAdminDistanceMapDB() {
-	ProtocolAdminDistanceMapDB[ribdCommonDefs.CONNECTED] = RouteDistanceConfig{defaultDistance:0}
-	ProtocolAdminDistanceMapDB[ribdCommonDefs.STATIC]       = RouteDistanceConfig{defaultDistance:1}	
-	ProtocolAdminDistanceMapDB[ribdCommonDefs.BGP]       = RouteDistanceConfig{defaultDistance:200}
-	ProtocolAdminDistanceMapDB[ribdCommonDefs.OSPF]       = RouteDistanceConfig{defaultDistance:110}
+	ProtocolAdminDistanceMapDB["CONNECTED"] = RouteDistanceConfig{defaultDistance:0}
+	ProtocolAdminDistanceMapDB["STATIC"]       = RouteDistanceConfig{defaultDistance:1}	
+	ProtocolAdminDistanceMapDB["BGP"]       = RouteDistanceConfig{defaultDistance:200}
+	ProtocolAdminDistanceMapDB["OSPF"]       = RouteDistanceConfig{defaultDistance:110}
+}
+func (slice AdminDistanceSlice ) Len() int {
+	return len(slice )
+}
+func (slice AdminDistanceSlice ) Less(i,j int) bool {
+	return slice[i].Distance < slice[j].Distance
+}
+func (slice AdminDistanceSlice ) Swap(i,j int) {
+     slice[i].Protocol,slice[j].Protocol = slice[j].Protocol, slice[i].Protocol
+     slice[i].Distance,slice[j].Distance = slice[j].Distance, slice[i].Distance
 }
 func BuildProtocolAdminDistanceSlice() {
 	distance :=0
@@ -44,7 +56,7 @@ func BuildProtocolAdminDistanceSlice() {
 	ProtocolAdminDistanceSlice = nil
 	ProtocolAdminDistanceSlice = make([]ribd.RouteDistanceState,0)
 	for k,v:=range ProtocolAdminDistanceMapDB {
-		protocol=ReverseRouteProtoTypeMapDB[k]
+		protocol=k
 		distance = v.defaultDistance
 		if v.configuredDistance != 0 {
 			distance = v.configuredDistance
@@ -52,8 +64,9 @@ func BuildProtocolAdminDistanceSlice() {
 		routeDistance:=ribd.RouteDistanceState{Protocol:protocol,Distance:ribd.Int(distance)}
 		ProtocolAdminDistanceSlice = append(ProtocolAdminDistanceSlice,routeDistance)
 	}
+	sort.Sort(ProtocolAdminDistanceSlice)
 }
-func isBetterRoute(selectedRoute RouteInfoRecord, routeInfoRecord RouteInfoRecord) (isBetter bool){ 
+/*func isBetterRoute(selectedRoute RouteInfoRecord, routeInfoRecord RouteInfoRecord) (isBetter bool){ 
    logger.Println("isBetterRoute ")
    if (selectedRoute.protocol == PROTOCOL_NONE && routeInfoRecord.protocol != PROTOCOL_NONE) {
       logger.Println("new route is better route because the the current route protocol is ", PROTOCOL_NONE)
@@ -69,6 +82,31 @@ func isBetterRoute(selectedRoute RouteInfoRecord, routeInfoRecord RouteInfoRecor
       isBetter = true	
    }
    return isBetter
+}*/
+func findRouteWithNextHop(routeInfoList []RouteInfoRecord, nextHopIP string) (found bool, routeInfoRecord RouteInfoRecord, index int) {
+	logger.Println("findRouteWithNextHop")
+	index = -1
+	for i:=0;i<len(routeInfoList);i++ {
+		if routeInfoList[i].nextHopIp.String() == nextHopIP {
+			logger.Println("Next hop IP present")
+			found = true
+			routeInfoRecord = routeInfoList[i]
+			index = i
+			break
+		}
+	}
+	return found, routeInfoRecord, index
+}
+func newNextHopIP(ip string, routeInfoList []RouteInfoRecord) (isNewNextHopIP bool) {
+	logger.Println("newNextHopIP")
+	isNewNextHopIP = true
+	for i:=0;i<len(routeInfoList);i++ {
+		if routeInfoList[i].nextHopIp.String() == ip {
+			logger.Println("Next hop IP already present")
+			isNewNextHopIP = false
+		}
+	}
+	return isNewNextHopIP
 }
 func isSameRoute(selectedRoute ribd.Routes, route ribd.Routes) (same bool) {
 	logger.Println("isSameRoute")
