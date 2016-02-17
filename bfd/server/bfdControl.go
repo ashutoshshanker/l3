@@ -2,9 +2,11 @@ package server
 
 import (
 	"bytes"
+	"crypto/md5"
+	"crypto/sha1"
 	"encoding/binary"
 	"errors"
-	//"fmt"
+	"fmt"
 	"time"
 )
 
@@ -65,8 +67,8 @@ type BfdControlPacket struct {
 const (
 	DEFAULT_BFD_VERSION                   = 1
 	DEFAULT_DETECT_MULTI                  = 3
-	DEFAULT_DESIRED_MIN_TX_INTERVAL       = 1000000
-	DEFAULT_REQUIRED_MIN_RX_INTERVAL      = 1000000
+	DEFAULT_DESIRED_MIN_TX_INTERVAL       = 1000
+	DEFAULT_REQUIRED_MIN_RX_INTERVAL      = 1000
 	DEFAULT_REQUIRED_MIN_ECHO_RX_INTERVAL = 0
 	DEFAULT_CONTROL_PACKET_LEN            = 24
 	MAX_NUM_SESSIONS                      = 1024
@@ -107,8 +109,9 @@ var BfdControlPacketDefaults = BfdControlPacket{
  * Create a control packet
  */
 func (p *BfdControlPacket) CreateBfdControlPacket() ([]byte, error) {
-	var auth []byte
-	var err error
+	//var auth []byte
+	//var err error
+	var authLength uint8
 	buf := bytes.NewBuffer([]uint8{})
 	flags := uint8(0)
 	length := uint8(DEFAULT_CONTROL_PACKET_LEN)
@@ -126,11 +129,15 @@ func (p *BfdControlPacket) CreateBfdControlPacket() ([]byte, error) {
 	}
 	if p.AuthPresent && (p.AuthHeader != nil) {
 		flags |= BFD_AUTH_PRESENT
-		auth, err = p.AuthHeader.createBfdAuthHeader()
-		if err != nil {
-			return nil, err
-		}
-		length += uint8(len(auth))
+		/*
+			auth, err = p.AuthHeader.createBfdAuthHeader()
+			if err != nil {
+				return nil, err
+			}
+		*/
+		authLength = p.AuthHeader.getBfdAuthenticationLength()
+		length += authLength
+		//length += uint8(len(auth))
 	}
 	if p.Demand {
 		flags |= BFD_DEMAND
@@ -149,8 +156,31 @@ func (p *BfdControlPacket) CreateBfdControlPacket() ([]byte, error) {
 	binary.Write(buf, binary.BigEndian, uint32(p.RequiredMinRxInterval))
 	binary.Write(buf, binary.BigEndian, uint32(p.RequiredMinEchoRxInterval))
 
-	if len(auth) > 0 {
-		binary.Write(buf, binary.BigEndian, auth)
+	if authLength > 0 {
+		binary.Write(buf, binary.BigEndian, p.AuthHeader.Type)
+		binary.Write(buf, binary.BigEndian, authLength)
+		binary.Write(buf, binary.BigEndian, p.AuthHeader.AuthKeyID)
+		if p.AuthHeader.Type != BFD_AUTH_TYPE_SIMPLE {
+			binary.Write(buf, binary.BigEndian, uint8(0))
+			binary.Write(buf, binary.BigEndian, p.AuthHeader.SequenceNumber)
+		}
+		copiedBuf := bytes.NewBuffer(buf.Bytes())
+		switch p.AuthHeader.Type {
+		case BFD_AUTH_TYPE_SIMPLE:
+			binary.Write(buf, binary.BigEndian, p.AuthHeader.AuthData)
+		case BFD_AUTH_TYPE_KEYED_MD5, BFD_AUTH_TYPE_METICULOUS_MD5:
+			var authData [16]byte
+			binary.Write(copiedBuf, binary.BigEndian, p.AuthHeader.AuthData)
+			authData = md5.Sum(copiedBuf.Bytes())
+			binary.Write(buf, binary.BigEndian, authData)
+			fmt.Println("MD5 sum ", authData)
+		case BFD_AUTH_TYPE_KEYED_SHA1, BFD_AUTH_TYPE_METICULOUS_SHA1:
+			var authData [20]byte
+			binary.Write(copiedBuf, binary.BigEndian, p.AuthHeader.AuthData)
+			authData = sha1.Sum(copiedBuf.Bytes())
+			binary.Write(buf, binary.BigEndian, authData)
+			fmt.Println("SHA1 sum ", authData)
+		}
 	}
 
 	return buf.Bytes(), nil

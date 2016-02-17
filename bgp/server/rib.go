@@ -237,6 +237,7 @@ func (adjRib *AdjRib) ResetRouteList() {
 			for modIdx := lastIdx; modIdx > idx && adjRib.routeList[modIdx] == nil; modIdx-- {
 			}
 			if modIdx <= idx {
+				lastIdx = idx
 				break
 			}
 			adjRib.routeList[idx] = adjRib.routeList[modIdx]

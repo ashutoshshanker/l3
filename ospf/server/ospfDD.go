@@ -198,7 +198,7 @@ func constructDatabaseDescriptionPaket(intf IntfConf, nbr OspfNeighborEntry) {
 }
 */
 func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
-	nbrConf OspfNeighborEntry, dbdData ospfDatabaseDescriptionData) (data []byte) {
+	nbrConf OspfNeighborEntry, dbdData ospfDatabaseDescriptionData, dstMAC net.HardwareAddr) (data []byte) {
 	ospfHdr := OSPFHeader{
 		ver:      OSPF_VERSION_2,
 		pktType:  uint8(DBDescriptionType),
@@ -236,12 +236,12 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 		TTL:      uint8(1),
 		Protocol: layers.IPProtocol(OSPF_PROTO_ID),
 		SrcIP:    ent.IfIpAddr,
-		DstIP:    net.IP{20, 0, 1, 2},
+		DstIP:    nbrConf.OspfNbrIPAddr, //net.IP{40, 1, 1, 2},
 	}
 
 	ethLayer := layers.Ethernet{
 		SrcMAC:       ent.IfMacAddr,
-		DstMAC:       net.HardwareAddr{0xd8, 0xeb, 0x97, 0xb6, 0x49, 0x7f},
+		DstMAC:       dstMAC, //net.HardwareAddr{0x00, 0xe0, 0x4c, 0x68, 0x00, 0x81},
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 
@@ -260,14 +260,13 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 }
 
 func (server *OSPFServer) SendDBDPkt(nbrKey uint32) {
-	// get interface conf
 	for {
 		nbrConf, _ := server.NeighborConfigMap[nbrKey]
 		intConf, _ := server.IntfConfMap[nbrConf.intfConfKey]
-
+		dstMac, _ := ospfNeighborIPToMAC[nbrKey]
 		select {
 		case dbd_mdata := <-nbrConf.ospfNbrDBDSendCh:
-			data := server.BuildDBDPkt(nbrConf.intfConfKey, intConf, nbrConf, dbd_mdata)
+			data := server.BuildDBDPkt(nbrConf.intfConfKey, intConf, nbrConf, dbd_mdata, dstMac)
 			//case <-nbrConf.ospfNbrDBDTickerCh.C: // retransmit interval over
 			server.SendOspfPkt(nbrConf.intfConfKey, data)
 		case lsa_data := <-nbrConf.ospfNbrLsaSendCh:
@@ -283,7 +282,8 @@ func (server *OSPFServer) SendDBDPkt(nbrKey uint32) {
 
 }
 
-func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadata, ipHdrMd *IpHdrMetadata, key IntfConfKey) error {
+func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadata,
+	ipHdrMd *IpHdrMetadata, key IntfConfKey, srcMAC net.HardwareAddr) error {
 	//ent, _ := server.IntfConfMap[key]
 	ospfdbd_data := newOspfDatabaseDescriptionData()
 	ospfdbd_data.lsa_headers = []ospfLSAHeader{}
@@ -291,6 +291,7 @@ func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadat
 	pktlen := ospfHdrMd.pktlen
 	/*  TODO check min length
 	 */
+
 	decodeDatabaseDescriptionData(data, ospfdbd_data, pktlen)
 
 	dbdNbrMsg := ospfNeighborDBDMsg{
@@ -299,6 +300,7 @@ func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadat
 		},
 		ospfNbrDBDData: *ospfdbd_data,
 	}
+	ospfNeighborIPToMAC[dbdNbrMsg.ospfNbrConfKey.OspfNbrRtrId] = srcMAC
 	fmt.Println(" lsa_header length = ", len(ospfdbd_data.lsa_headers))
 	dbdNbrMsg.ospfNbrDBDData.lsa_headers = []ospfLSAHeader{}
 

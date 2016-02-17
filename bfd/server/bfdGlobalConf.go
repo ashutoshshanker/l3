@@ -5,6 +5,7 @@ import (
 )
 
 func (server *BFDServer) initBfdGlobalConfDefault() error {
+	server.bfdGlobal.Enabled = true
 	return nil
 }
 

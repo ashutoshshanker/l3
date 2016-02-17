@@ -2,19 +2,22 @@
 package relayServer
 
 import (
+	"asicd/asicdConstDefs"
 	"asicdServices"
 	"dhcprelayd"
 	"encoding/json"
-	"flag"
+	"errors"
+	_ "flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
 	"log/syslog"
+	"net"
 	"os"
 	"os/signal"
 	"strconv"
-	_ "strings"
 	"syscall"
+	"time"
 	"utils/ipcutils"
 )
 
@@ -22,56 +25,6 @@ import (
 
 func NewDhcpRelayServer() *DhcpRelayServiceHandler {
 	return &DhcpRelayServiceHandler{}
-}
-
-/*
- *  ConnectToClients:
- *	    This API will accept configFile location and from that it will
- *	    connect to clients like asicd, etc..
- */
-func DhcpRelayAgentConnectToClients(paramsFile string) error {
-	var clientsList []ClientJson
-	bytes, err := ioutil.ReadFile(paramsFile)
-	if err != nil {
-		logger.Err(fmt.Sprintln("DRA:Error while reading configuration file",
-			paramsFile))
-		return err
-	}
-	logger.Info("DRA: Connecting to Clients")
-	err = json.Unmarshal(bytes, &clientsList)
-	if err != nil {
-		logger.Err("DRA: Error in Unmarshalling Json")
-		return err
-	}
-
-	// Start connection.. to only to those which is needed as of now
-	for _, client := range clientsList {
-		logger.Info(fmt.Sprintln("DRA: Client name is", client.Name))
-		if client.Name == "asicd" {
-			logger.Info(fmt.Sprintln("DRA: Connecting to asicd at port",
-				client.Port))
-			asicdClient.Address = "localhost:" +
-				strconv.Itoa(client.Port)
-			asicdClient.Transport,
-				asicdClient.PtrProtocolFactory, err =
-				ipcutils.CreateIPCHandles(asicdClient.Address)
-			if asicdClient.Transport == nil ||
-				asicdClient.PtrProtocolFactory == nil ||
-				err != nil {
-				logger.Err(fmt.Sprintln("DRA: Connecting to",
-					client.Name, "failed ", err))
-				return err
-			}
-			asicdClient.ClientHdl =
-				asicdServices.NewASICDServicesClientFactory(
-					asicdClient.Transport,
-					asicdClient.PtrProtocolFactory)
-			asicdClient.IsConnected = true
-			logger.Info("DRA: is connected to asicd")
-		}
-	}
-	logger.Info("DRA: successfully connected to clients")
-	return nil
 }
 
 /*
@@ -104,6 +57,44 @@ func DhcpRelayAgentOSSignalHandle() {
 	go DhcpRelaySignalHandler(sigChannel)
 }
 
+func DhcpRelayConnectToAsicd(client ClientJson) error {
+	logger.Info(fmt.Sprintln("DRA: Connecting to asicd at port",
+		client.Port))
+	var err error
+	asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
+	asicdClient.Transport, asicdClient.PtrProtocolFactory, err =
+		ipcutils.CreateIPCHandles(asicdClient.Address)
+	if asicdClient.Transport == nil ||
+		asicdClient.PtrProtocolFactory == nil ||
+		err != nil {
+		logger.Err(fmt.Sprintln("DRA: Connecting to",
+			client.Name, "failed ", err))
+		return err
+	}
+	asicdClient.ClientHdl =
+		asicdServices.NewASICDServicesClientFactory(
+			asicdClient.Transport,
+			asicdClient.PtrProtocolFactory)
+	asicdClient.IsConnected = true
+	logger.Info("DRA: is connected to asicd")
+	return nil
+}
+
+/*
+ *  ConnectToClients:
+ *	    This API will accept configFile location and from that it will
+ *	    connect to clients like asicd, etc..
+ */
+func DhcpRelayAgentConnectToClients(client ClientJson) error {
+	logger.Info(fmt.Sprintln("DRA: Client name is", client.Name))
+	switch client.Name {
+	case "asicd":
+		return DhcpRelayConnectToAsicd(client)
+	default:
+		return errors.New(CLIENT_CONNECTION_NOT_REQUIRED)
+	}
+}
+
 /*
  *  InitDhcpRelayPktHandler:
  *	    This API is used to initialize all the data structures varialbe that
@@ -111,25 +102,53 @@ func DhcpRelayAgentOSSignalHandle() {
  */
 func InitDhcpRelayPortPktHandler() error {
 	// connecting to asicd
-	params_dir := flag.String("params", "",
-		"Directory Location for config files")
-	flag.Parse()
-	configFile := *params_dir + "/clients.json"
+	configFile := paramsDir + "/clients.json"
 	logger.Info(fmt.Sprintln("DRA: configFile is ", configFile))
-	// connect to client
-	err := DhcpRelayAgentConnectToClients(configFile)
+	bytes, err := ioutil.ReadFile(configFile)
 	if err != nil {
+		logger.Err(fmt.Sprintln("DRA:Error while reading configuration file",
+			configFile))
 		return err
 	}
-	// OS signal channel listener thread
-	DhcpRelayAgentOSSignalHandle()
+	var unConnectedClients []ClientJson
+	err = json.Unmarshal(bytes, &unConnectedClients)
+	if err != nil {
+		logger.Err("DRA: Error in Unmarshalling Json")
+		return err
+	}
 
-	// Initialize port parameters
+	logger.Info("DRA: Connecting to Clients")
+	// connect to client
+	for {
+		time.Sleep(time.Millisecond * 500)
+		for i := 0; i < len(unConnectedClients); i++ {
+			err := DhcpRelayAgentConnectToClients(unConnectedClients[i])
+			if err == nil {
+				logger.Info("DRA: Connected to " +
+					unConnectedClients[i].Name)
+				unConnectedClients = append(unConnectedClients[:i],
+					unConnectedClients[i+1:]...)
+
+			} else if err.Error() == CLIENT_CONNECTION_NOT_REQUIRED {
+				logger.Info("DRA: connection to " + unConnectedClients[i].Name +
+					" not required")
+				unConnectedClients = append(unConnectedClients[:i],
+					unConnectedClients[i+1:]...)
+			}
+		}
+		if len(unConnectedClients) == 0 {
+			logger.Info("DRA: all clients connected successfully")
+			break
+		}
+	}
+	// Initialize port parameters after client is connected
 	err = DhcpRelayInitPortParams()
 	if err != nil {
 		logger.Err("DRA: initializing port paramters failed")
 		return err
 	}
+	// OS signal channel listener thread
+	DhcpRelayAgentOSSignalHandle()
 
 	return nil
 }
@@ -158,26 +177,87 @@ func DhcpRelayAgentInitIntfState(IntfId int32) {
 	dhcprelayIntfStateSlice = append(dhcprelayIntfStateSlice, IntfId)
 }
 
-func DhcpRelayAgentInitGblHandling(ifNum int32) {
+func DhcpRelayAgentInitGblHandling(ifNum int32, enable bool) {
 	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(int(ifNum)))
 	// Created a global Entry for Interface
 	gblEntry := dhcprelayGblInfo[ifNum]
 	// Setting up default values for globalEntry
 	gblEntry.IpAddr = ""
 	gblEntry.Netmask = ""
-	gblEntry.IntfConfig.IfIndex = ifNum //strconv.Itoa(int(ifNum)) //ifName
-	//gblEntry.IntfConfig.AgentSubType = 0
-	gblEntry.IntfConfig.Enable = false
+	gblEntry.IntfConfig.IfIndex = ifNum
+	gblEntry.IntfConfig.Enable = enable
 	dhcprelayGblInfo[ifNum] = gblEntry
+}
+
+func DhcpRelayAgentUpdateIntfServerIp(ifNum int32, serverIp string) {
+	logger.Info("DRA: Updating Interface " + strconv.Itoa(int(ifNum)) +
+		" with server ip " + serverIp)
+	gblEntry, ok := dhcprelayGblInfo[ifNum]
+	if !ok {
+		logger.Err("No entry found in database")
+		return
+	}
+	gblEntry.IntfConfig.ServerIp = append(gblEntry.IntfConfig.ServerIp, serverIp)
+	dhcprelayGblInfo[ifNum] = gblEntry
+}
+
+func DhcpRelayAgentUpdateIntfIpAddr(ifIndexList []int32) {
+	logger.Info(fmt.Sprintln("DRA: updating address for ", ifIndexList))
+	DhcpRelayAgentGetIpv4IntfList()
+	//@TODO: Once asicd supports Get then replace GetBulk with Get
+
+	for i := 0; i < len(ifIndexList); i++ {
+		obj, ok := dhcprelayIntfIpv4Map[ifIndexList[i]]
+		if !ok {
+			logger.Err(fmt.Sprintln("DRA: Get bulkd didn't return any info for",
+				ifIndexList[i]))
+			continue
+		}
+		logicalId := int32(asicdConstDefs.GetIntfIdFromIfIndex(obj.IfIndex))
+		dhcprelayLogicalIntf2IfIndex[logicalId] = obj.IfIndex
+		gblEntry := dhcprelayGblInfo[ifIndexList[i]]
+		ip, ipnet, err := net.ParseCIDR(obj.IpAddr)
+		if err != nil {
+			logger.Err(fmt.Sprintln("DRA: Parsing ipadd and netmask failed:", err))
+			continue
+		}
+		gblEntry.IpAddr = ip.String()
+		gblEntry.Netmask = ipnet.IP.String()
+		dhcprelayGblInfo[ifIndexList[i]] = gblEntry
+		logger.Info(fmt.Sprintln("DRA: Updated interface:", obj.IfIndex,
+			" Ip address:", gblEntry.IpAddr,
+			" netmask:", gblEntry.Netmask))
+	}
+	dhcprelayDbHdl.Close()
+}
+
+func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
+	logger.Info(fmt.Sprintln("DRA: Vlan update message for ",
+		VlanName, "vlan id is ", VlanId))
+	var linuxInterface *net.Interface
+	var err error
+	linuxInterface, err = net.InterfaceByName(VlanName)
+	if err != nil {
+		logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
+		return
+	}
+	dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index] = VlanId
 }
 
 func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr string) error {
 	logger = log
-	// Initialize port information and packet handler for dhcp
-	err := InitDhcpRelayPortPktHandler()
+	// Allocate Memory for Global DS
+	DhcpRelayAgentAllocateMemory()
+	// Initialize DB
+	err := DhcpRelayAgentInitDB()
 	if err != nil {
-		return err
+		logger.Err("DRA: Init of DB failed")
+	} else {
+		DhcpRelayAgentReadDB()
 	}
+	logger.Info("DRA: Continuining with port init")
+	// Initialize port information and packet handler for dhcp
+	go InitDhcpRelayPortPktHandler()
 	dhcprelayEnable = false
 	// create transport and protocol for server
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)

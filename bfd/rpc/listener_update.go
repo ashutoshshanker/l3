@@ -20,3 +20,7 @@ func (h *BFDHandler) UpdateBfdIntfConfig(origConf *bfdd.BfdIntfConfig, newConf *
 	h.logger.Info(fmt.Sprintln("New interface config attrs:", newConf))
 	return true, nil
 }
+
+func (h *BFDHandler) UpdateBfdSessionConfig(origConf *bfdd.BfdSessionConfig, newConf *bfdd.BfdSessionConfig, attrset []bool) (bool, error) {
+	return true, nil
+}

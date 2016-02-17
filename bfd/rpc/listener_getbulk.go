@@ -64,11 +64,9 @@ func (h *BFDHandler) GetBulkBfdIntfState(fromIdx bfdd.Int, count bfdd.Int) (*bfd
 		return nil, err
 	}
 	bfdIntfResponse := make([]*bfdd.BfdIntfState, len(bfdIntfStates))
-	/*
-		for idx, item := range bfdIntfStates {
-			bfdIntfResponse[idx] = h.convertIntfStateToThrift(item)
-		}
-	*/
+	for idx, item := range bfdIntfStates {
+		bfdIntfResponse[idx] = h.convertIntfStateToThrift(item)
+	}
 	BfdIntfStateGetInfo := bfdd.NewBfdIntfStateGetInfo()
 	BfdIntfStateGetInfo.Count = bfdd.Int(currCount)
 	BfdIntfStateGetInfo.StartIdx = bfdd.Int(fromIdx)

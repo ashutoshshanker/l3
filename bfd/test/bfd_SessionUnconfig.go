@@ -33,7 +33,7 @@ func main() {
 	sessionConfigArgs := bfdd.NewBfdSessionConfig()
 	sessionConfigArgs.IpAddr = "10.10.0.130"
 	sessionConfigArgs.Owner = 1
-	sessionConfigArgs.Operation = 1
+	sessionConfigArgs.Operation = 3
 	fmt.Println("Creating BFD Session: ", sessionConfigArgs)
 	ret, err := client.CreateBfdSessionConfig(sessionConfigArgs)
 	if !ret {

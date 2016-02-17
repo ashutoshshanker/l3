@@ -3,9 +3,8 @@ package server
 import (
 	"asicd/asicdConstDefs"
 	"asicdServices"
-	"errors"
+	"fmt"
 	"net"
-	"utils/commonDefs"
 )
 
 type PortProperty struct {
@@ -28,11 +27,9 @@ type IPIntfProperty struct {
 	NetMask []byte
 }
 
-//FIXME: Old ipv4intf notify msg format from asic. Needs to be cleaned up later
 type IPv4IntfNotifyMsg struct {
 	IpAddr string
-	IfId   uint16
-	IfType uint8
+	IfId   int32
 }
 
 func (server *BFDServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
@@ -63,12 +60,12 @@ func (server *BFDServer) updateIpInPortPropertyMap(msg IPv4IntfNotifyMsg, msgTyp
 
 func (server *BFDServer) updateVlanPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
 	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
-		ent := server.vlanPropertyMap[vlanNotifyMsg.VlanId]
+		ent := server.vlanPropertyMap[int32(vlanNotifyMsg.VlanId)]
 		ent.Name = vlanNotifyMsg.VlanName
 		ent.UntagPorts = vlanNotifyMsg.UntagPorts
-		server.vlanPropertyMap[vlanNotifyMsg.VlanId] = ent
+		server.vlanPropertyMap[int32(vlanNotifyMsg.VlanId)] = ent
 	} else { // Delete Vlan
-		delete(server.vlanPropertyMap, vlanNotifyMsg.VlanId)
+		delete(server.vlanPropertyMap, int32(vlanNotifyMsg.VlanId))
 	}
 }
 
@@ -96,12 +93,15 @@ func (server *BFDServer) BuildPortPropertyMap() {
 		server.logger.Info("Calling asicd for port property")
 		count := 10
 		for {
+			server.logger.Info(fmt.Sprintln("Calling bulkget port ", currMarker, count))
 			bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPortState(asicdServices.Int(currMarker), asicdServices.Int(count))
 			if bulkInfo == nil {
+				server.logger.Info("Bulkget port got nothing")
 				return
 			}
 			objCount := int(bulkInfo.Count)
 			more := bool(bulkInfo.More)
+			server.logger.Info(fmt.Sprintln("Bulkget port got ", objCount, more))
 			currMarker = asicdServices.Int(bulkInfo.EndIdx)
 			for i := 0; i < objCount; i++ {
 				portNum := bulkInfo.PortStateList[i].PortNum
@@ -116,26 +116,4 @@ func (server *BFDServer) BuildPortPropertyMap() {
 			}
 		}
 	}
-}
-
-func (server *BFDServer) getLinuxIntfName(ifId uint16, ifType uint8) (ifName string, err error) {
-	if ifType == commonDefs.L2RefTypeVlan { // Vlan
-		ifName = server.vlanPropertyMap[ifId].Name
-	} else if ifType == commonDefs.L2RefTypePort { // PHY
-		ifName = server.portPropertyMap[int32(ifId)].Name
-	} else {
-		ifName = ""
-		err = errors.New("Invalid Interface Type")
-	}
-	return ifName, err
-}
-
-func getMacAddrIntfName(ifName string) (macAddr net.HardwareAddr, err error) {
-
-	ifi, err := net.InterfaceByName(ifName)
-	if err != nil {
-		return macAddr, err
-	}
-	macAddr = ifi.HardwareAddr
-	return macAddr, nil
 }

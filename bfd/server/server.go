@@ -35,10 +35,8 @@ type RibdClient struct {
 }
 
 type IpIntfProperty struct {
-	IfName  string
 	IpAddr  net.IP
 	NetMask []byte
-	MacAddr net.HardwareAddr
 }
 
 type BfdInterface struct {
@@ -57,8 +55,8 @@ type BfdSession struct {
 	state             SessionState
 	sessionTimer      *time.Timer
 	txTimer           *time.Timer
-	TxTimeoutCh       chan *BfdSession
-	SessionTimeoutCh  chan *BfdSession
+	TxTimeoutCh       chan int32
+	SessionTimeoutCh  chan int32
 	bfdPacket         *BfdControlPacket
 	SessionDeleteCh   chan bool
 	pollSequence      bool
@@ -73,7 +71,7 @@ type BfdSession struct {
 type BfdGlobal struct {
 	Enabled              bool
 	NumInterfaces        uint32
-	Interfaces           map[int32]BfdInterface
+	Interfaces           map[int32]*BfdInterface
 	InterfacesIdSlice    []int32
 	NumSessions          uint32
 	Sessions             map[int32]*BfdSession
@@ -93,10 +91,12 @@ type BFDServer struct {
 	asicdSubSocketCh    chan []byte
 	asicdSubSocketErrCh chan error
 	portPropertyMap     map[int32]PortProperty
-	vlanPropertyMap     map[uint16]VlanProperty
+	vlanPropertyMap     map[int32]VlanProperty
 	IPIntfPropertyMap   map[string]IPIntfProperty
 	CreateSessionCh     chan BfdSessionMgmt
 	DeleteSessionCh     chan BfdSessionMgmt
+	AdminUpSessionCh    chan BfdSessionMgmt
+	AdminDownSessionCh  chan BfdSessionMgmt
 	SessionConfigCh     chan bfddCommonDefs.BfdSessionConfig
 	bfddPubSocket       *nanomsg.PubSocket
 	bfdGlobal           BfdGlobal
@@ -110,11 +110,11 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.asicdSubSocketCh = make(chan []byte)
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)
-	bfdServer.vlanPropertyMap = make(map[uint16]VlanProperty)
+	bfdServer.vlanPropertyMap = make(map[int32]VlanProperty)
 	bfdServer.SessionConfigCh = make(chan bfddCommonDefs.BfdSessionConfig)
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
-	bfdServer.bfdGlobal.Interfaces = make(map[int32]BfdInterface)
+	bfdServer.bfdGlobal.Interfaces = make(map[int32]*BfdInterface)
 	bfdServer.bfdGlobal.InterfacesIdSlice = []int32{}
 	bfdServer.bfdGlobal.NumSessions = 0
 	bfdServer.bfdGlobal.Sessions = make(map[int32]*BfdSession)
@@ -186,14 +186,19 @@ func (server *BFDServer) InitPublisher(pub_str string) (pub *nanomsg.PubSocket) 
 func (server *BFDServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Bfd Server"))
 	server.ConnectToClients(paramFile)
-	server.BuildPortPropertyMap()
 	server.initBfdGlobalConfDefault()
+	server.BuildPortPropertyMap()
+	server.GetIPv4Interfaces()
 	/*
 		server.logger.Info("Listen for RIBd updates")
 		server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
 		go createRIBSubscriber()
 		server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
 	*/
+}
+
+func (server *BFDServer) StartServer(paramFile string) {
+	server.InitServer(paramFile)
 	server.logger.Info("Listen for ASICd updates")
 	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
@@ -201,10 +206,6 @@ func (server *BFDServer) InitServer(paramFile string) {
 	go server.StartSessionHandler()
 	// Initialize publisher
 	server.bfddPubSocket = server.InitPublisher(bfddCommonDefs.PUB_SOCKET_ADDR)
-}
-
-func (server *BFDServer) StartServer(paramFile string) {
-	server.InitServer(paramFile)
 	for {
 		select {
 		case gConf := <-server.GlobalConfigCh:
