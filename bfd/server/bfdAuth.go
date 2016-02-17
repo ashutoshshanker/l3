@@ -51,6 +51,19 @@ func (h *BfdAuthHeader) createBfdAuthHeader() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (h *BfdAuthHeader) getBfdAuthenticationLength() uint8 {
+	var length uint8
+	switch h.Type {
+	case BFD_AUTH_TYPE_SIMPLE:
+		length = uint8(len(h.AuthData) + 3)
+	case BFD_AUTH_TYPE_KEYED_MD5, BFD_AUTH_TYPE_METICULOUS_MD5:
+		length = uint8(24)
+	case BFD_AUTH_TYPE_KEYED_SHA1, BFD_AUTH_TYPE_METICULOUS_SHA1:
+		length = uint8(28)
+	}
+	return length
+}
+
 /*
  * Decode the Auth header section
  */

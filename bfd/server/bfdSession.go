@@ -1,6 +1,10 @@
 package server
 
 import (
+	"bytes"
+	"crypto/md5"
+	"crypto/sha1"
+	"encoding/binary"
 	"fmt"
 	"l3/bfd/bfddCommonDefs"
 	"math/rand"
@@ -74,8 +78,8 @@ func (server *BFDServer) NewBfdSession(DestIp string, protocol int) *BfdSession 
 	ifIndex, _ := server.GetIfIndexAndLocalIpFromDestIp(DestIp)
 	// Hack to test BFD. RIB is not able to provide ifIndex for a destination IP at this point
 	if ifIndex == 0 {
-		//ifIndex = 46
-		return nil
+		ifIndex = 46
+		//return nil
 	}
 	if server.bfdGlobal.Interfaces[ifIndex].Enabled {
 		bfdSession := &BfdSession{}
@@ -276,15 +280,17 @@ func (session *BfdSession) StartSessionServer(bfdServer *BFDServer) error {
 			fmt.Println("Failed to read from ", ServerAddr)
 		} else {
 			if len >= DEFAULT_CONTROL_PACKET_LEN {
-				bfdPacket, _ := DecodeBfdControlPacket(buf[0:len])
-				//fmt.Println("Received ", string(buf[0:len]), " from ", addr, " bfdPacket ", bfdPacket)
-				sessionId := int32(bfdPacket.YourDiscriminator)
-				fmt.Println("Received bfd packet for session ", sessionId, " from ", addr)
-				if sessionId == 0 {
-					fmt.Println("Ignore bfd packet for session ", sessionId, " from ", addr)
-				} else {
-					bfdSession := bfdServer.bfdGlobal.Sessions[sessionId]
-					bfdSession.ProcessBfdPacket(bfdPacket)
+				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
+				if err != nil {
+					//fmt.Println("Received ", string(buf[0:len]), " from ", addr, " bfdPacket ", bfdPacket)
+					sessionId := int32(bfdPacket.YourDiscriminator)
+					fmt.Println("Received bfd packet for session ", sessionId, " from ", addr)
+					if sessionId == 0 {
+						fmt.Println("Ignore bfd packet for session ", sessionId, " from ", addr)
+					} else {
+						bfdSession := bfdServer.bfdGlobal.Sessions[sessionId]
+						bfdSession.ProcessBfdPacket(bfdPacket)
+					}
 				}
 			}
 		}
@@ -327,31 +333,86 @@ func (session *BfdSession) CanProcessBfdControlPacket(bfdPacket *BfdControlPacke
 	return canProcess
 }
 
+func (session *BfdSession) AuthenticateReceivedControlPacket(bfdPacket *BfdControlPacket) bool {
+	var authenticated bool
+	if !bfdPacket.AuthPresent {
+		authenticated = true
+	} else {
+		copiedPacket := &BfdControlPacket{}
+		*copiedPacket = *bfdPacket
+		authType := bfdPacket.AuthHeader.Type
+		keyId := uint32(bfdPacket.AuthHeader.AuthKeyID)
+		authData := bfdPacket.AuthHeader.AuthData
+		seqNum := bfdPacket.AuthHeader.SequenceNumber
+		if authType == session.authType {
+			if authType == BFD_AUTH_TYPE_SIMPLE {
+				fmt.Sprintln("Authentication type simple: keyId, authData ", keyId, string(authData))
+				if keyId == session.authKeyId && string(authData) == session.authData {
+					authenticated = true
+				}
+			} else {
+				if seqNum >= session.state.ReceivedAuthSeq && keyId == session.authKeyId {
+					var binBuf bytes.Buffer
+					copiedPacket.AuthHeader.AuthData = []byte(session.authData)
+					binary.Write(&binBuf, binary.BigEndian, copiedPacket)
+					switch authType {
+					case BFD_AUTH_TYPE_KEYED_MD5, BFD_AUTH_TYPE_METICULOUS_MD5:
+						var authDataSum [16]byte
+						authDataSum = md5.Sum(binBuf.Bytes())
+						if bytes.Equal(authData[:], authDataSum[:]) {
+							authenticated = true
+						} else {
+							fmt.Sprintln("Authentication data did't match for type: ", authType)
+						}
+					case BFD_AUTH_TYPE_KEYED_SHA1, BFD_AUTH_TYPE_METICULOUS_SHA1:
+						var authDataSum [20]byte
+						authDataSum = sha1.Sum(binBuf.Bytes())
+						if bytes.Equal(authData[:], authDataSum[:]) {
+							authenticated = true
+						} else {
+							fmt.Sprintln("Authentication data did't match for type: ", authType)
+						}
+					}
+				} else {
+					fmt.Sprintln("Sequence number and key id check failed: ", seqNum, session.state.ReceivedAuthSeq, keyId, session.authKeyId)
+				}
+			}
+		} else {
+			fmt.Sprintln("Authentication type did't match: ", authType, session.authType)
+		}
+	}
+	return authenticated
+}
+
 func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	var event BfdSessionEvent
+	authenticated := session.AuthenticateReceivedControlPacket(bfdPacket)
+	if authenticated == false {
+		fmt.Sprintln("Can't authenticatereceived bfd packet for session ", session.state.SessionId)
+		return nil
+	}
 	canProcess := session.CanProcessBfdControlPacket(bfdPacket)
 	if canProcess == false {
 		fmt.Sprintln("Can't process received bfd packet for session ", session.state.SessionId)
+		return nil
 	}
-	if canProcess {
-		session.state.RemoteSessionState = bfdPacket.State
-		session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
-		session.state.RemoteMinRxInterval = int32(bfdPacket.RequiredMinRxInterval)
-		switch session.state.RemoteSessionState {
-		case STATE_DOWN:
-			event = REMOTE_DOWN
-		case STATE_INIT:
-			event = REMOTE_INIT
-		case STATE_UP:
-			event = REMOTE_UP
-		}
-		session.EventHandler(event)
-		session.RemoteChangedDemandMode(bfdPacket)
-		session.ProcessPollSequence(bfdPacket)
-		session.sessionTimer.Stop()
-		sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier)
-		session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
+	session.state.RemoteSessionState = bfdPacket.State
+	session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
+	session.state.RemoteMinRxInterval = int32(bfdPacket.RequiredMinRxInterval)
+	switch session.state.RemoteSessionState {
+	case STATE_DOWN:
+		event = REMOTE_DOWN
+	case STATE_INIT:
+		event = REMOTE_INIT
+	case STATE_UP:
+		event = REMOTE_UP
 	}
+	session.EventHandler(event)
+	session.RemoteChangedDemandMode(bfdPacket)
+	session.ProcessPollSequence(bfdPacket)
+	session.sessionTimer.Stop()
+	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier)
+	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
 	return nil
 }
 
@@ -540,10 +601,14 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 }
 
 func (session *BfdSession) RemoteChangedDemandMode(bfdPacket *BfdControlPacket) error {
+	var wasDemandMode, isDemandMode bool
+	wasDemandMode = session.state.RemoteDemandMode
 	session.state.RemoteDemandMode = bfdPacket.Demand
 	if session.state.RemoteDemandMode {
+		isDemandMode = true
 		session.txTimer.Stop()
-	} else {
+	}
+	if wasDemandMode && !isDemandMode {
 		txTimerMS := time.Duration(session.state.DesiredMinTxInterval)
 		session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session.state.SessionId })
 	}
