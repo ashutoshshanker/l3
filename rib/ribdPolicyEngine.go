@@ -579,8 +579,8 @@ func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (matc
 		break
 		case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 		  logger.Println("PolicyConditionTypeProtocolMatch case")
-		  matchProto := condition.conditionInfo.(int)
-		  if matchProto == int(route.Prototype) {
+		  matchProto := condition.conditionInfo.(string)
+		  if matchProto == ReverseRouteProtoTypeMapDB[int(route.Prototype)] {
 			logger.Println("Protocol condition matches")
 			anyConditionsMatch = true
 			addConditiontoList = true
@@ -1091,7 +1091,7 @@ func policyEngineApplyGlobalPolicyStmt(policy Policy, policyStmt PolicyStmt) {
 			    case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 			      routeDistanceConfig := RouteDistanceConfig{configuredDistance:int(actionInfo.actionInfo.(ribd.Int))}
 			      ProtocolAdminDistanceMapDB[conditionInfo.conditionInfo.(string)] =  routeDistanceConfig
-			      logger.Println("Setting distance of prototype ", ReverseRouteProtoTypeMapDB[conditionInfo.conditionInfo.(int)], " to value ", actionInfo.actionInfo.(ribd.Int))
+			      logger.Println("Setting distance of prototype ", conditionInfo.conditionInfo.(string), " to value ", actionInfo.actionInfo.(ribd.Int))
 				  break
 				default:
 				  logger.Println("Invalid condition type provided for set admin distance")
@@ -1165,7 +1165,7 @@ func policyEngineReverseGlobalPolicyStmt(policy Policy, policyStmt PolicyStmt) {
 			    case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 			      routeDistanceConfig := RouteDistanceConfig{configuredDistance:0}
 			      ProtocolAdminDistanceMapDB[conditionInfo.conditionInfo.(string)] =  routeDistanceConfig
-			      logger.Println("Setting configured distance of prototype ", ReverseRouteProtoTypeMapDB[conditionInfo.conditionInfo.(int)], " to value ", 0)
+			      logger.Println("Setting configured distance of prototype ", conditionInfo.conditionInfo.(string), " to value ", 0)
 				  break
 				default:
 				  logger.Println("Invalid condition type provided for set admin distance")
