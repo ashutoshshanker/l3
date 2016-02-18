@@ -233,14 +233,14 @@ func (server *BGPServer) sendUpdateMsgToAllPeers(msg *packet.BGPMessage, path *P
 	}
 }
 
-func (server *BGPServer) SendUpdate(updated map[*Path][]packet.IPPrefix, withdrawn []packet.IPPrefix, withdrawPath *Path) {
+func (server *BGPServer) SendUpdate(updated map[*Path][]packet.NLRI, withdrawn []packet.NLRI, withdrawPath *Path) {
 	if len(withdrawn) > 0 {
 		updateMsg := packet.NewBGPUpdateMessage(withdrawn, nil, nil)
 		server.sendUpdateMsgToAllPeers(updateMsg, withdrawPath)
 	}
 
 	for path, dest := range updated {
-		updateMsg := packet.NewBGPUpdateMessage(make([]packet.IPPrefix, 0), path.pathAttrs, dest)
+		updateMsg := packet.NewBGPUpdateMessage(make([]packet.NLRI, 0), path.pathAttrs, dest)
 		server.sendUpdateMsgToAllPeers(updateMsg, path)
 	}
 }
@@ -258,11 +258,11 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
-func (server *BGPServer) convertDestIPToIPPrefix(routes []*ribd.Routes) []packet.IPPrefix {
-	dest := make([]packet.IPPrefix, 0, len(routes))
+func (server *BGPServer) convertDestIPToIPPrefix(routes []*ribd.Routes) []packet.NLRI {
+	dest := make([]packet.NLRI, 0, len(routes))
 	for _, r := range routes {
 		ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
-		dest = append(dest, *ipPrefix)
+		dest = append(dest, ipPrefix)
 	}
 	return dest
 }
@@ -282,7 +282,7 @@ func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
 }
 
 func (server *BGPServer) SendAllRoutesToPeer(peer *Peer) {
-	withdrawn := make([]packet.IPPrefix, 0)
+	withdrawn := make([]packet.NLRI, 0)
 	updated := server.AdjRib.GetLocRib()
 	for path, dest := range updated {
 		updateMsg := packet.NewBGPUpdateMessage(withdrawn, path.pathAttrs, dest)

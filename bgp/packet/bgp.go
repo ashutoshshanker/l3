@@ -790,6 +790,8 @@ type NLRI interface {
 	Encode() ([]byte, error)
 	Decode([]byte) error
 	Len() uint32
+	GetPrefix() *IPPrefix
+	GetPathId() uint32
 }
 
 type IPPrefix struct {
@@ -797,7 +799,7 @@ type IPPrefix struct {
 	Prefix net.IP
 }
 
-func (ip *IPPrefix) Clone() *IPPrefix {
+func (ip *IPPrefix) Clone() NLRI {
 	x := *ip
 	x.Prefix = make(net.IP, len(ip.Prefix), cap(ip.Prefix))
 	copy(x.Prefix, ip.Prefix)
@@ -827,6 +829,14 @@ func (ip *IPPrefix) Len() uint32 {
 	return uint32(((ip.Length + 7) / 8) + 1)
 }
 
+func (ip *IPPrefix) GetPrefix() *IPPrefix {
+	return ip
+}
+
+func (ip *IPPrefix) GetPathId() uint32 {
+	return 0
+}
+
 func NewIPPrefix(prefix net.IP, length uint8) *IPPrefix {
 	return &IPPrefix{
 		Length: length,
@@ -835,26 +845,25 @@ func NewIPPrefix(prefix net.IP, length uint8) *IPPrefix {
 }
 
 type ExtNLRI struct {
+	IPPrefix
 	PathId uint32
-	Prefix IPPrefix
 }
 
 func (n *ExtNLRI) Clone() NLRI {
 	x := *n
-	//prefix := n.Prefix.Clone()
-	//x.Prefix = *prefix.(*IPPrefix)
-	x.Prefix = *n.Prefix.Clone()
+	prefix := n.IPPrefix.Clone()
+	x.IPPrefix = *prefix.(*IPPrefix)
 	return &x
 }
 
 func (n *ExtNLRI) Len() uint32 {
-	return n.Prefix.Len() + 4
+	return n.IPPrefix.Len() + 4
 }
 
 func (n *ExtNLRI) Encode() ([]byte, error) {
 	pkt := make([]byte, 4)
 	binary.BigEndian.PutUint32(pkt, n.PathId)
-	ipBytes, err := n.Prefix.Encode()
+	ipBytes, err := n.IPPrefix.Encode()
 	if err != nil {
 		return nil, err
 	}
@@ -864,15 +873,23 @@ func (n *ExtNLRI) Encode() ([]byte, error) {
 
 func (n *ExtNLRI) Decode(pkt []byte) error {
 	n.PathId = binary.BigEndian.Uint32(pkt[:4])
-	n.Prefix = IPPrefix{}
-	err := n.Prefix.Decode(pkt[4:])
+	n.IPPrefix = IPPrefix{}
+	err := n.IPPrefix.Decode(pkt[4:])
 	return err
+}
+
+func (n *ExtNLRI) GetPrefix() *IPPrefix {
+	return &n.IPPrefix
+}
+
+func (n *ExtNLRI) GetPathId() uint32 {
+	return n.PathId
 }
 
 func NewExtNLRI(pathId uint32, prefix IPPrefix) *ExtNLRI {
 	return &ExtNLRI{
-		PathId: pathId,
-		Prefix: prefix,
+		IPPrefix: prefix,
+		PathId:   pathId,
 	}
 }
 
@@ -1987,18 +2004,18 @@ func BGPGetPathAttr(pkt []byte) BGPPathAttr {
 
 type BGPUpdate struct {
 	WithdrawnRoutesLen uint16
-	WithdrawnRoutes    []IPPrefix
+	WithdrawnRoutes    []NLRI
 	TotalPathAttrLen   uint16
 	PathAttributes     []BGPPathAttr
-	NLRI               []IPPrefix
+	NLRI               []NLRI
 }
 
 func (msg *BGPUpdate) Clone() BGPBody {
 	x := *msg
-	x.WithdrawnRoutes = make([]IPPrefix, 0, cap(msg.WithdrawnRoutes))
+	x.WithdrawnRoutes = make([]NLRI, 0, cap(msg.WithdrawnRoutes))
 	for i := 0; i < len(msg.WithdrawnRoutes); i++ {
 		//x.WithdrawnRoutes[i] = *msg.WithdrawnRoutes[i].Clone()
-		x.WithdrawnRoutes = append(x.WithdrawnRoutes, *msg.WithdrawnRoutes[i].Clone())
+		x.WithdrawnRoutes = append(x.WithdrawnRoutes, msg.WithdrawnRoutes[i].Clone())
 	}
 
 	x.PathAttributes = make([]BGPPathAttr, 0, cap(msg.PathAttributes))
@@ -2012,10 +2029,10 @@ func (msg *BGPUpdate) Clone() BGPBody {
 		x.PathAttributes = append(x.PathAttributes, msg.PathAttributes[i].Clone())
 	}
 
-	x.NLRI = make([]IPPrefix, 0, cap(msg.NLRI))
+	x.NLRI = make([]NLRI, 0, cap(msg.NLRI))
 	for i := 0; i < len(msg.NLRI); i++ {
 		//x.NLRI[i] = *msg.NLRI[i].Clone()
-		x.NLRI = append(x.NLRI, *msg.NLRI[i].Clone())
+		x.NLRI = append(x.NLRI, msg.NLRI[i].Clone())
 	}
 	return &x
 }
@@ -2058,15 +2075,23 @@ func (msg *BGPUpdate) Encode() ([]byte, error) {
 	return pkt, nil
 }
 
-func (msg *BGPUpdate) decodeIPPrefix(pkt []byte, ipPrefix *[]IPPrefix, length uint32, data interface{}) (uint32, error) {
+func (msg *BGPUpdate) decodeIPPrefix(pkt []byte, ipPrefix *[]NLRI, length uint32, data interface{}) (uint32, error) {
 	ptr := uint32(0)
 
 	if length > uint32(len(pkt)) {
 		return ptr, BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
 
+	var ip NLRI
+	peerAttrs := data.(BGPPeerAttrs)
+	addPathFamily := peerAttrs.AddPathFamily
+
 	for ptr < length {
-		ip := IPPrefix{}
+		if _, ok := addPathFamily[AfiIP]; ok {
+			ip = &ExtNLRI{}
+		} else {
+			ip = &IPPrefix{}
+		}
 
 		err := ip.Decode(pkt[ptr:])
 		if err != nil {
@@ -2115,7 +2140,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
 
-	msg.WithdrawnRoutes = make([]IPPrefix, 0)
+	msg.WithdrawnRoutes = make([]NLRI, 0)
 	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.WithdrawnRoutes, length, data)
 	if err != nil {
 		return nil
@@ -2140,7 +2165,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 		length -= pa.TotalLen()
 	}
 
-	msg.NLRI = make([]IPPrefix, 0)
+	msg.NLRI = make([]NLRI, 0)
 	length = header.Len() - 23 - uint32(msg.WithdrawnRoutesLen) - uint32(msg.TotalPathAttrLen)
 	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.NLRI, length, data)
 	if err != nil {
@@ -2149,7 +2174,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 	return nil
 }
 
-func NewBGPUpdateMessage(wdRoutes []IPPrefix, pa []BGPPathAttr, nlri []IPPrefix) *BGPMessage {
+func NewBGPUpdateMessage(wdRoutes []NLRI, pa []BGPPathAttr, nlri []NLRI) *BGPMessage {
 	return &BGPMessage{
 		Header: BGPHeader{Type: BGPMsgTypeUpdate},
 		Body:   &BGPUpdate{WithdrawnRoutes: wdRoutes, PathAttributes: pa, NLRI: nlri},

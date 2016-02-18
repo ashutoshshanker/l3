@@ -80,7 +80,8 @@ func (h *BGPHandler) handlePeerGroup(dbHdl *sql.DB) error {
 	for rows.Next() {
 		if err = rows.Scan(&group.PeerAS, &group.LocalAS, &group.AuthPassword, &group.Description, &group.Name,
 			&group.RouteReflectorClusterId, &group.RouteReflectorClient, &group.MultiHopEnable, &group.MultiHopTTL,
-			&group.ConnectRetryTime, &group.HoldTime, &group.KeepaliveTime); err != nil {
+			&group.ConnectRetryTime, &group.HoldTime, &group.KeepaliveTime, &group.AddPathsRx,
+			&group.AddPathsMaxTx); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPPeerGroup rows with error %s", err))
 			return err
 		}
@@ -106,7 +107,8 @@ func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
 	for rows.Next() {
 		if err = rows.Scan(&nConf.PeerAS, &nConf.LocalAS, &nConf.AuthPassword, &nConf.Description, &neighborIP,
 			&nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable, &nConf.MultiHopTTL,
-			&nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime, &nConf.PeerGroup); err != nil {
+			&nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime, &nConf.AddPathsRx, &nConf.AddPathsMaxTx,
+			&nConf.PeerGroup); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighborConfig rows with error %s", err))
 			return err
 		}
@@ -230,6 +232,8 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 			ConnectRetryTime:        uint32(bgpNeighbor.ConnectRetryTime),
 			HoldTime:                uint32(bgpNeighbor.HoldTime),
 			KeepaliveTime:           uint32(bgpNeighbor.KeepaliveTime),
+			AddPathsRx:              bgpNeighbor.AddPathsRx,
+			AddPathsMaxTx:           uint8(bgpNeighbor.AddPathsMaxTx),
 		},
 		NeighborAddress: ip,
 		PeerGroup:       bgpNeighbor.PeerGroup,
@@ -273,6 +277,8 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.ConnectRetryTime = int32(neighborState.ConnectRetryTime)
 	bgpNeighborResponse.HoldTime = int32(neighborState.HoldTime)
 	bgpNeighborResponse.KeepaliveTime = int32(neighborState.KeepaliveTime)
+	bgpNeighborResponse.AddPathsRx = neighborState.AddPathsRx
+	bgpNeighborResponse.AddPathsMaxTx = int8(neighborState.AddPathsMaxTx)
 
 	received := bgpd.NewBgpCounters()
 	received.Notification = int64(neighborState.Messages.Received.Notification)
@@ -356,6 +362,8 @@ func (h *BGPHandler) ValidateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (config.
 			ConnectRetryTime:        uint32(peerGroup.ConnectRetryTime),
 			HoldTime:                uint32(peerGroup.HoldTime),
 			KeepaliveTime:           uint32(peerGroup.KeepaliveTime),
+			AddPathsRx:              peerGroup.AddPathsRx,
+			AddPathsMaxTx:           uint8(peerGroup.AddPathsMaxTx),
 		},
 		Name: peerGroup.Name,
 	}

@@ -64,6 +64,8 @@ type BaseConfig struct {
 	ConnectRetryTime        uint32
 	HoldTime                uint32
 	KeepaliveTime           uint32
+	AddPathsRx              bool
+	AddPathsMaxTx           uint8
 }
 
 type NeighborConfig struct {
@@ -89,6 +91,8 @@ type NeighborState struct {
 	ConnectRetryTime        uint32
 	HoldTime                uint32
 	KeepaliveTime           uint32
+	AddPathsRx              bool
+	AddPathsMaxTx           uint8
 }
 
 type TransportConfig struct {

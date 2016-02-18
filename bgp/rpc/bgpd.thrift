@@ -54,7 +54,9 @@ struct BGPNeighborConfig {
 	10: i32 ConnectRetryTime,
 	11: i32 HoldTime,
 	12: i32 KeepaliveTime,
-	13: string PeerGroup,
+	13: bool AddPathsRx,
+	14: byte AddPathsMaxTx,
+	15: string PeerGroup,
 }
 
 struct BGPNeighborState {
@@ -74,7 +76,9 @@ struct BGPNeighborState {
 	14: i32 ConnectRetryTime,
 	15: i32 HoldTime,
 	16: i32 KeepaliveTime,
-    17: string GroupName,
+	17: bool AddPathsRx,
+	18: byte AddPathsMaxTx,
+	19: string GroupName,
 }
 
 struct BGPNeighborStateBulk {
@@ -98,6 +102,8 @@ struct BGPPeerGroup {
 	10: i32 ConnectRetryTime,
 	11: i32 HoldTime,
 	12: i32 KeepaliveTime,
+	13: bool AddPathsRx,
+	14: byte AddPathsMaxTx,
 }
 
 struct BGPRoute {
