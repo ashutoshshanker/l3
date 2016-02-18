@@ -23,7 +23,7 @@ func main() {
 	handler := vrrpServer.NewVrrpServer()
 	err = vrrpServer.StartServer(logger, handler, addr)
 	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: Cannot start dhcp server", err))
+		logger.Err(fmt.Sprintln("VRRP: Cannot start dhcp server", err))
 		return
 	}
 	logger.Info("VRRP: started successfully")

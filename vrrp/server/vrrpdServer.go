@@ -29,7 +29,7 @@ func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) e
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
 	transport, err := thrift.NewTServerSocket(addr)
 	if err != nil {
-		logger.Info(fmt.Sprintln("DRA: StartServer: NewTServerSocket "+
+		logger.Info(fmt.Sprintln("VRRP: StartServer: NewTServerSocket "+
 			"failed with error:", err))
 		return err
 	}
@@ -38,7 +38,7 @@ func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) e
 		transportFactory, protocolFactory)
 	err = server.Serve()
 	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: Failed to start the listener, err:", err))
+		logger.Err(fmt.Sprintln("VRRP: Failed to start the listener, err:", err))
 		return err
 	}
 	logger.Info("VRRP: Started the Server successfully")
