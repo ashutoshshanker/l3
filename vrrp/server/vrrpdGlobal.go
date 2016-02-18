@@ -1,6 +1,7 @@
 package vrrpServer
 
 import (
+	"database/sql"
 	"log/syslog"
 	"vrrpd"
 )
@@ -45,9 +46,12 @@ type VrrpGlobalInfo struct {
 
 var (
 	logger      *syslog.Writer
+	vrrpDbHdl   *sql.DB
+	paramsDir   string
 	vrrpGblInfo map[int32]VrrpGlobalInfo
 )
 
 const (
+	USR_CONF_DB  = "/UsrConfDb.db"
 	INVALID_VRID = "VRID is invalid"
 )
