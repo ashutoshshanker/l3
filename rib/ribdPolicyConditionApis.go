@@ -14,7 +14,7 @@ type MatchPrefixConditionInfo struct {
 	prefixSet string
 	dstIpMatch     bool
 	srcIpMatch     bool
-	prefix ribd.PolicyDefinitionSetsPrefix
+	prefix ribd.PolicyPrefix
 }
 type PolicyCondition struct {
 	name          string
@@ -33,8 +33,9 @@ func updateLocalConditionsDB(prefix patriciaDB.Prefix) {
 	localPolicyConditionsDB = append(localPolicyConditionsDB, localDBRecord)
 
 }
-func (m RouteServiceHandler) CreatePolicyDefinitionStmtDstIpMatchPrefixSetCondition(cfg *ribd.PolicyDefinitionStmtDstIpMatchPrefixSetCondition) (val bool, err error) {
-	logger.Println("CreatePolicyDefinitionStmtDstIpMatchPrefixSetCondition")
+func CreatePolicyDstIpMatchPrefixSetCondition(inCfg *ribd.PolicyConditionConfig) (val bool, err error) {
+	logger.Println("CreatePolicyDstIpMatchPrefixSetCondition")
+	cfg := inCfg.MatchDstIpPrefixConditionInfo
 	var conditionInfo MatchPrefixConditionInfo
 	var conditionGetBulkInfo string
     if len(cfg.PrefixSet) == 0 && cfg.Prefix == nil {
@@ -58,16 +59,16 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStmtDstIpMatchPrefixSetCondit
 	    conditionGetBulkInfo = "match destination Prefix " + cfg.PrefixSet
 	}
 	conditionInfo.dstIpMatch = true
-	policyCondition := PolicyConditionsDB.Get(patriciaDB.Prefix(cfg.Name))
+	policyCondition := PolicyConditionsDB.Get(patriciaDB.Prefix(inCfg.Name))
 	if(policyCondition == nil) {
-	   logger.Println("Defining a new policy condition with name ", cfg.Name)
-	   newPolicyCondition := PolicyCondition{name:cfg.Name,conditionType:ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch,conditionInfo:conditionInfo ,localDBSliceIdx:(len(localPolicyConditionsDB))}
+	   logger.Println("Defining a new policy condition with name ", inCfg.Name)
+	   newPolicyCondition := PolicyCondition{name:inCfg.Name,conditionType:ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch,conditionInfo:conditionInfo ,localDBSliceIdx:(len(localPolicyConditionsDB))}
        newPolicyCondition.conditionGetBulkInfo = conditionGetBulkInfo 
-	   if ok := PolicyConditionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyCondition); ok != true {
+	   if ok := PolicyConditionsDB.Insert(patriciaDB.Prefix(inCfg.Name), newPolicyCondition); ok != true {
 	   logger.Println(" return value not ok")
 	   return val, err
 	}
-	updateLocalConditionsDB(patriciaDB.Prefix(cfg.Name))
+	updateLocalConditionsDB(patriciaDB.Prefix(inCfg.Name))
     } else {
 		logger.Println("Duplicate Condition name")
 		err = errors.New("Duplicate policy condition definition")
@@ -76,14 +77,15 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStmtDstIpMatchPrefixSetCondit
 	return val, err
 }
 
-func (m RouteServiceHandler) CreatePolicyDefinitionStmtMatchProtocolCondition(cfg *ribd.PolicyDefinitionStmtMatchProtocolCondition) (val bool, err error) {
-	logger.Println("CreatePolicyDefinitionStmtMatchProtocolCondition")
+func CreatePolicyMatchProtocolCondition(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+	logger.Println("CreatePolicyMatchProtocolCondition")
 
 	policyCondition := PolicyConditionsDB.Get(patriciaDB.Prefix(cfg.Name))
 	if(policyCondition == nil) {
 	   logger.Println("Defining a new policy condition with name ", cfg.Name)
-	   newPolicyCondition := PolicyCondition{name:cfg.Name,conditionType:ribdCommonDefs.PolicyConditionTypeProtocolMatch,conditionInfo:cfg.InstallProtocolEq ,localDBSliceIdx:(len(localPolicyConditionsDB))}
-       newPolicyCondition.conditionGetBulkInfo = "match Protocol " + cfg.InstallProtocolEq
+	   matchProto := *cfg.MatchProtocolConditionInfo
+	   newPolicyCondition := PolicyCondition{name:cfg.Name,conditionType:ribdCommonDefs.PolicyConditionTypeProtocolMatch,conditionInfo:matchProto ,localDBSliceIdx:(len(localPolicyConditionsDB))}
+       newPolicyCondition.conditionGetBulkInfo = "match Protocol " + matchProto
 		if ok := PolicyConditionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyCondition); ok != true {
 			logger.Println(" return value not ok")
 			return val, err
@@ -95,6 +97,21 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStmtMatchProtocolCondition(cf
 		return val, err
 	}
 	return val, err
+}
+func (m RouteServiceHandler) CreatePolicyCondition(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+	logger.Println("CreatePolicyConditioncfg")
+	switch cfg.ConditionType {
+		case "MatchDstIpPrefix":
+		   CreatePolicyDstIpMatchPrefixSetCondition(cfg)
+		   break
+		case "MatchProtocol":
+		   CreatePolicyMatchProtocolCondition(cfg)
+		   break
+		default:
+		   logger.Println("Unknown condition type ", cfg.ConditionType)
+		   err = errors.New("Unknown condition type")
+	}
+	return val,err
 }
 /*
 func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtMatchProtocolConditions( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStmtMatchProtocolConditionsGetInfo, err error){
@@ -153,13 +170,13 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtMatchProtocolConditions(
 	return policyConditions, err
 }
 */
-func (m RouteServiceHandler) GetBulkPolicyDefinitionConditionState( fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyDefinitionConditionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
-	logger.Println("GetBulkPolicyDefinitionConditionState")
+func (m RouteServiceHandler) GetBulkPolicyConditionState( fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyConditionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
+	logger.Println("GetBulkPolicyConditionState")
     var i, validCount, toIndex ribd.Int
-	var tempNode []ribd.PolicyDefinitionConditionState = make ([]ribd.PolicyDefinitionConditionState, rcount)
-	var nextNode *ribd.PolicyDefinitionConditionState
-    var returnNodes []*ribd.PolicyDefinitionConditionState
-	var returnGetInfo ribd.PolicyDefinitionConditionStateGetInfo
+	var tempNode []ribd.PolicyConditionState = make ([]ribd.PolicyConditionState, rcount)
+	var nextNode *ribd.PolicyConditionState
+    var returnNodes []*ribd.PolicyConditionState
+	var returnGetInfo ribd.PolicyConditionStateGetInfo
 	i = 0
 	policyConditions = &returnGetInfo
 	more := true
@@ -197,14 +214,14 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionConditionState( fromIndex ri
 			}
  			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
 			if(len(returnNodes) == 0){
-				returnNodes = make([]*ribd.PolicyDefinitionConditionState, 0)
+				returnNodes = make([]*ribd.PolicyConditionState, 0)
 			}
 			returnNodes = append(returnNodes, nextNode)
 			validCount++
 		}
 	}
 	logger.Printf("Returning %d list of policyConditions", validCount)
-	policyConditions.PolicyDefinitionConditionStateList = returnNodes
+	policyConditions.PolicyConditionStateList = returnNodes
 	policyConditions.StartIdx = fromIndex
 	policyConditions.EndIdx = toIndex+1
 	policyConditions.More = more

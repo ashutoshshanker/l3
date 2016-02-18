@@ -253,8 +253,8 @@ func updatePrefixPolicyTable(conditionInfo interface{}, name string, op int) {
 }
 
 
-func (m RouteServiceHandler) CreatePolicyDefinitionSetsPrefixSet(cfg *ribd.PolicyDefinitionSetsPrefixSet ) (val bool, err error) {
-	logger.Println("CreatePolicyDefinitionSetsPrefixSet")
+func (m RouteServiceHandler) CreatePolicyPrefixSet(cfg *ribd.PolicyPrefixSet ) (val bool, err error) {
+	logger.Println("CreatePolicyPrefixSet")
 	return val, err
 }
 func updateStatements(policy  string, stmt string, op int) (err error){
@@ -333,8 +333,8 @@ func updateActions(policyStmt PolicyStmt, actionName string, op int) (err error)
 	return err
 }
 
-func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStmtConfig) (val bool, err error) {
-	logger.Println("CreatePolicyDefinitionStatement")
+func (m RouteServiceHandler) CreatePolicyStatement(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
+	logger.Println("CreatePolicyStatement")
 
 	policyStmt := PolicyStmtDB.Get(patriciaDB.Prefix(cfg.Name))
 	var i int
@@ -391,8 +391,8 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStatement(cfg *ribd.PolicyDef
 	return val, err
 }
 
-func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDefinitionStmtConfig) (val bool, err error) {
-	logger.Println("DeletePolicyDefinitionStatement for name ", cfg.Name)
+func (m RouteServiceHandler) 	DeletePolicyStatement(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
+	logger.Println("DeletePolicyStatement for name ", cfg.Name)
 	ok := PolicyStmtDB.Match(patriciaDB.Prefix(cfg.Name))
 	if !ok {
 		err = errors.New("No policy statement with this name found")
@@ -427,13 +427,13 @@ func (m RouteServiceHandler) 	DeletePolicyDefinitionStatement(cfg *ribd.PolicyDe
 	return val, err
 }
 
-func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtState( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStmtStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
-	logger.Println("GetBulkPolicyDefinitionStmtState")
+func (m RouteServiceHandler) GetBulkPolicyStmtState( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyStmtStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
+	logger.Println("GetBulkPolicyStmtState")
     var i, validCount, toIndex ribd.Int
-	var tempNode []ribd.PolicyDefinitionStmtState = make ([]ribd.PolicyDefinitionStmtState, rcount)
-	var nextNode *ribd.PolicyDefinitionStmtState
-    var returnNodes []*ribd.PolicyDefinitionStmtState
-	var returnGetInfo ribd.PolicyDefinitionStmtStateGetInfo
+	var tempNode []ribd.PolicyStmtState = make ([]ribd.PolicyStmtState, rcount)
+	var nextNode *ribd.PolicyStmtState
+    var returnNodes []*ribd.PolicyStmtState
+	var returnGetInfo ribd.PolicyStmtStateGetInfo
 	i = 0
 	policyStmts = &returnGetInfo
 	more := true
@@ -466,14 +466,14 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtState( fromIndex ribd.In
 			nextNode.Actions = prefixNode.actions
 			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
 			if(len(returnNodes) == 0){
-				returnNodes = make([]*ribd.PolicyDefinitionStmtState, 0)
+				returnNodes = make([]*ribd.PolicyStmtState, 0)
 			}
 			returnNodes = append(returnNodes, nextNode)
 			validCount++
 		}
 	}
 	logger.Printf("Returning %d list of policyStmts", validCount)
-	policyStmts.PolicyDefinitionStmtStateList = returnNodes
+	policyStmts.PolicyStmtStateList = returnNodes
 	policyStmts.StartIdx = fromIndex
 	policyStmts.EndIdx = toIndex+1
 	policyStmts.More = more
