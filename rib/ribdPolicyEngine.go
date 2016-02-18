@@ -55,6 +55,37 @@ func actionListHasAction(actionList []string, actionType int, action string) (ma
 	}
 	return match
 }
+func PolicyEngineCheck(route ribd.Routes, policyType int) (actionList []string){
+    protocol := ReverseRouteProtoTypeMapDB[int(route.Prototype)]
+	logger.Println("PolicyEngineTest to see if there are amny policies for match protocol ", protocol)
+    policyStmtList := ProtocolPolicyListDB[protocol]
+	if policyStmtList == nil || len (policyStmtList) == 0{
+		logger.Println("no policy statements configured for this protocol")
+		return nil
+	}
+	for i:=0;i<len(policyStmtList);i++ {
+		logger.Println("Found policy stmt ", policyStmtList[i], " for this protocol")
+        policyList := PolicyStmtPolicyMapDB[policyStmtList[i]]
+		if policyList == nil || len(policyList) == 0 {
+			logger.Println("No policies configured for this protocol")
+			return nil
+		}
+		for j:=0;j<len(policyList);j++ {
+			logger.Println("Found policy ", policyList[j], "for this statement")
+			policyStmtInfo := PolicyStmtDB.Get(patriciaDB.Prefix(policyStmtList[i]))
+			if policyStmtInfo == nil {
+				logger.Println("Did not find this stmt in the DB")
+				return nil
+			}
+			policyStmt := policyStmtInfo.(PolicyStmt)
+			if conditionCheckValid(route, policyStmt.conditions) {
+				logger.Println("All conditions valid for this route, so this policy will be potentially applied to this route")
+                 return policyStmt.actions
+			}
+		}
+	}
+	return actionList
+}
 func conditionCheckValid(route ribd.Routes,conditionsList []string) (valid bool) {
    logger.Println("conditionCheckValid")	
    valid = true
@@ -106,8 +137,8 @@ func conditionCheckValid(route ribd.Routes,conditionsList []string) (valid bool)
 		break
 		case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 		  logger.Println("PolicyConditionTypeProtocolMatch case")
-		  matchProto := conditionInfo.conditionInfo.(int)
-		  if matchProto == int(route.Prototype) {
+		  matchProto := conditionInfo.conditionInfo.(string)
+		  if matchProto == ReverseRouteProtoTypeMapDB[int(route.Prototype)] {
 			logger.Println("Protocol condition matches")
 		  } 
 		break
@@ -122,7 +153,7 @@ func conditionCheckValid(route ribd.Routes,conditionsList []string) (valid bool)
 func policyEngineActionRejectRoute(route ribd.Routes, params interface{}) {
     logger.Println("policyEngineActionRejectRoute for route ", route.Ipaddr, " ", route.Mask)
 	routeInfo := params.(RouteParams)
-  _, err := routeServiceHandler.DeleteV4Route(routeInfo.destNetIp, routeInfo.networkMask, ReverseRouteProtoTypeMapDB[int(routeInfo.routeType)],)// FIBAndRIB)//,ribdCommonDefs.RoutePolicyStateChangetoInValid)
+  _, err := routeServiceHandler.DeleteV4Route(routeInfo.destNetIp, routeInfo.networkMask, ReverseRouteProtoTypeMapDB[int(routeInfo.routeType)],routeInfo.nextHopIp)// FIBAndRIB)//,ribdCommonDefs.RoutePolicyStateChangetoInValid)
 	  if err != nil {
 		logger.Println("deleting v4 route failed with err ", err)
 		return
@@ -548,8 +579,8 @@ func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (matc
 		break
 		case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 		  logger.Println("PolicyConditionTypeProtocolMatch case")
-		  matchProto := condition.conditionInfo.(int)
-		  if matchProto == int(route.Prototype) {
+		  matchProto := condition.conditionInfo.(string)
+		  if matchProto == ReverseRouteProtoTypeMapDB[int(route.Prototype)] {
 			logger.Println("Protocol condition matches")
 			anyConditionsMatch = true
 			addConditiontoList = true
@@ -611,18 +642,30 @@ func policyEngineApplyPolicyStmt(route *ribd.Routes, policy Policy, policyStmt P
 	}
     routeInfoRecordList := RouteInfoMap.Get(ipPrefix)
     if routeInfoRecordList == nil {
-	   logger.Println("this route no longer exists")
+	   logger.Println("Route for this prefix no longer exists")
 	   *routeDeleted = true
 	} else {
-		selectedRoute,err:=getSelectedRoute(routeInfoRecordList.(RouteInfoRecordList))
-		if err != nil {
-			logger.Println("getSelectedRoute err ", err)
+		if routeInfoRecordList.(RouteInfoRecordList).selectedRouteProtocol != ReverseRouteProtoTypeMapDB[int(route.Prototype)] {
+			logger.Println("this protocol is not the selected route anymore", err)
 			*routeDeleted = true
 		} else {
-			selectedRouteInfo := ribd.Routes{Ipaddr:selectedRoute.destNetIp.String(), Mask:selectedRoute.networkMask.String(), Prototype:ribd.Int(selectedRoute.protocol)}
-             if !isSameRoute(selectedRouteInfo, *route) {
-			   logger.Println("The route is no longer the selected route")
-			   *routeDeleted = true
+			routeInfoList := routeInfoRecordList.(RouteInfoRecordList).routeInfoProtocolMap[routeInfoRecordList.(RouteInfoRecordList).selectedRouteProtocol]
+            if routeInfoList == nil {
+				logger.Println("Route no longer exists for this protocol")
+				*routeDeleted = true
+			} else {
+				routeFound := false
+				for i:=0;i<len(routeInfoList);i++ {
+                     testRoute := ribd.Routes{Ipaddr: routeInfoList[i].destNetIp.String(), Mask: routeInfoList[i].networkMask.String(), NextHopIp: routeInfoList[i].nextHopIp.String(), NextHopIfType: ribd.Int(routeInfoList[i].nextHopIfType), IfIndex: routeInfoList[i].nextHopIfIndex, Metric: routeInfoList[i].metric, Prototype: ribd.Int(routeInfoList[i].protocol), IsPolicyBasedStateValid:routeInfoList[i].isPolicyBasedStateValid}
+					if isSameRoute(testRoute,*route) {
+						logger.Println("Route still exists")
+						routeFound = true
+					}
+				}
+				if !routeFound {
+				   logger.Println("This specific route no longer exists")
+				   *routeDeleted = true
+				}
 			}
 		}
 	}
@@ -680,23 +723,6 @@ func policyEngineApplyPolicy(route *ribd.Routes, policy Policy, policyPath int,p
 			}
 		}
 	}
-}
-func policyEngineCheckPolicy(route *ribd.Routes, params interface {}) {
-	logger.Println("policyEngineCheckPolicy")
-	
-	//Protocol based policy checks
-	policyList := ProtocolPolicyListDB[int(route.Prototype)]
-	if(policyList == nil) {
-		logger.Println("No policy configured for this route type ", route.Prototype)
-		//return 0, err
-	}
-	logger.Printf("Number of policies configured for this route type %d is %d\n", route.Prototype, len(policyList))
-	for policyNum :=0;policyNum < len(policyList);policyNum++ {
-		logger.Printf("policy number %d name %s\n", policyNum, policyList[policyNum])
-//		policyEngineApplyPolicy(route, policyList[policyNum], params)
-	}
-	
-	//Prefix based policy checks
 }
 func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 	logger.Println("PolicyEngineFilter")
@@ -891,18 +917,24 @@ func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, h
    policy := handle.(Policy)
    rmapInfoRecordList := item.(RouteInfoRecordList)
    policyHit := false
-   if len(rmapInfoRecordList.routeInfoList) == 0 {
-      logger.Println("len(rmapInfoRecordList.routeInfoList) == 0")
+   if rmapInfoRecordList.routeInfoProtocolMap == nil {
+      logger.Println("rmapInfoRecordList.routeInfoProtocolMap) = nil")
 	  return err	
    }
-   logger.Println("Selected route index = ", rmapInfoRecordList.selectedRouteIdx)
-   selectedRouteInfoRecord := rmapInfoRecordList.routeInfoList[rmapInfoRecordList.selectedRouteIdx]
-   policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid:rmapInfoRecordList.isPolicyBasedStateValid}
-   params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
-   if rmapInfoRecordList.policyList == nil {
+   logger.Println("Selected route protocol = ", rmapInfoRecordList.selectedRouteProtocol)
+   selectedRouteList := rmapInfoRecordList.routeInfoProtocolMap[rmapInfoRecordList.selectedRouteProtocol]
+   if len(selectedRouteList) == 0 {
+      logger.Println("len(selectedRouteList) == 0")
+	  return err	
+  }
+  for i:=0;i<len(selectedRouteList);i++ {
+     selectedRouteInfoRecord := selectedRouteList[i]	
+     policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid:rmapInfoRecordList.isPolicyBasedStateValid}
+     params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
+     if len(rmapInfoRecordList.policyList) == 0 {
 	  logger.Println("This route has no policy applied to it so far, just apply the new policy")
       policyEngineApplyPolicy(&policyRoute, policy, ribdCommonDefs.PolicyPath_All,params, &policyHit)
-   } else {
+     } else {
       logger.Println("This route already has policy applied to it - len(route.PolicyList) - ", len(rmapInfoRecordList.policyList))
     
 	  for i:=0;i<len(rmapInfoRecordList.policyList);i++ {
@@ -925,7 +957,8 @@ func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, h
 		   }
 		}
 	  }	
-   }
+    }
+  }
    return err
 }
 func PolicyEngineTraverseAndApply(policy Policy) {
@@ -996,13 +1029,19 @@ func policyEngineUpdateRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, han
 	logger.Println("policyEngineUpdateRoute for ", prefix)
 	
    rmapInfoRecordList := item.(RouteInfoRecordList)
-   if len(rmapInfoRecordList.routeInfoList) == 0 {
-      logger.Println("len(rmapInfoRecordList.routeInfoList) == 0")
+   if rmapInfoRecordList.routeInfoProtocolMap == nil {
+      logger.Println("No routes configured for this prefix")
 	  return err	
    }
-   logger.Println("Selected route index = ", rmapInfoRecordList.selectedRouteIdx)
-   selectedRouteInfoRecord := rmapInfoRecordList.routeInfoList[rmapInfoRecordList.selectedRouteIdx]
+   routeInfoList := rmapInfoRecordList.routeInfoProtocolMap[rmapInfoRecordList.selectedRouteProtocol]
+   if len(routeInfoList) == 0 {
+      logger.Println("len(routeInfoList) == 0")
+	  return err	
+   }
+   logger.Println("Selected route protocol = ", rmapInfoRecordList.selectedRouteProtocol)
+   selectedRouteInfoRecord := routeInfoList[rmapInfoRecordList.selectedRouteIdx]
    route := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid:rmapInfoRecordList.isPolicyBasedStateValid}
+   //Even though we could potentially have multiple selected routes, calling update once for this prefix should suffice
    routeServiceHandler.UpdateIPV4Route(&route, nil, nil)
    return err
 }
@@ -1051,8 +1090,8 @@ func policyEngineApplyGlobalPolicyStmt(policy Policy, policyStmt PolicyStmt) {
 			  switch conditionInfo.conditionType {
 			    case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 			      routeDistanceConfig := RouteDistanceConfig{configuredDistance:int(actionInfo.actionInfo.(ribd.Int))}
-			      ProtocolAdminDistanceMapDB[int(conditionInfo.conditionInfo.(int))] =  routeDistanceConfig
-			      logger.Println("Setting distance of prototype ", ReverseRouteProtoTypeMapDB[conditionInfo.conditionInfo.(int)], " to value ", actionInfo.actionInfo.(ribd.Int))
+			      ProtocolAdminDistanceMapDB[conditionInfo.conditionInfo.(string)] =  routeDistanceConfig
+			      logger.Println("Setting distance of prototype ", conditionInfo.conditionInfo.(string), " to value ", actionInfo.actionInfo.(ribd.Int))
 				  break
 				default:
 				  logger.Println("Invalid condition type provided for set admin distance")
@@ -1125,8 +1164,8 @@ func policyEngineReverseGlobalPolicyStmt(policy Policy, policyStmt PolicyStmt) {
 			  switch conditionInfo.conditionType {
 			    case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 			      routeDistanceConfig := RouteDistanceConfig{configuredDistance:0}
-			      ProtocolAdminDistanceMapDB[int(conditionInfo.conditionInfo.(int))] =  routeDistanceConfig
-			      logger.Println("Setting configured distance of prototype ", ReverseRouteProtoTypeMapDB[conditionInfo.conditionInfo.(int)], " to value ", 0)
+			      ProtocolAdminDistanceMapDB[conditionInfo.conditionInfo.(string)] =  routeDistanceConfig
+			      logger.Println("Setting configured distance of prototype ", conditionInfo.conditionInfo.(string), " to value ", 0)
 				  break
 				default:
 				  logger.Println("Invalid condition type provided for set admin distance")

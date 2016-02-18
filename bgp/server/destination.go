@@ -302,7 +302,7 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 				if !path.IsLocal() {
 					d.logger.Info(fmt.Sprintf("Remove route for ip=%s", d.nlri.Prefix.String()))
 					ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
-						constructNetmaskFromLen(int(d.nlri.Length), 32).String(), "BGP")
+						constructNetmaskFromLen(int(d.nlri.Length), 32).String(), "BGP",path.NextHop)
 					if err != nil {
 						d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 					}
@@ -329,7 +329,7 @@ func (d *Destination) updateRoute(path *Path) {
 	d.logger.Info(fmt.Sprintf("Remove route for ip=%s, mask=%s", d.nlri.Prefix.String(),
 		constructNetmaskFromLen(int(d.nlri.Length), 32).String()))
 	ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
-		constructNetmaskFromLen(int(d.nlri.Length), 32).String(), "BGP")
+		constructNetmaskFromLen(int(d.nlri.Length), 32).String(), "BGP",path.NextHop)
 	if err != nil {
 		d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 	}
