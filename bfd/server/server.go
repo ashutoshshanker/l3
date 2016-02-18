@@ -48,7 +48,7 @@ type BfdInterface struct {
 
 type BfdSessionMgmt struct {
 	DestIp   string
-	Protocol int
+	Protocol int32
 }
 
 type BfdSession struct {
@@ -97,7 +97,7 @@ type BFDServer struct {
 	DeleteSessionCh     chan BfdSessionMgmt
 	AdminUpSessionCh    chan BfdSessionMgmt
 	AdminDownSessionCh  chan BfdSessionMgmt
-	SessionConfigCh     chan bfddCommonDefs.BfdSessionConfig
+	SessionConfigCh     chan SessionConfig
 	bfddPubSocket       *nanomsg.PubSocket
 	bfdGlobal           BfdGlobal
 }
@@ -111,7 +111,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)
 	bfdServer.vlanPropertyMap = make(map[int32]VlanProperty)
-	bfdServer.SessionConfigCh = make(chan bfddCommonDefs.BfdSessionConfig)
+	bfdServer.SessionConfigCh = make(chan SessionConfig)
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]*BfdInterface)

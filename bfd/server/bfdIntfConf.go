@@ -77,15 +77,15 @@ func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {
 	if exist {
 		intf.conf.InterfaceId = ifConf.InterfaceId
 		intf.conf.LocalMultiplier = ifConf.LocalMultiplier
-		intf.conf.DesiredMinTxInterval = ifConf.DesiredMinTxInterval
-		intf.conf.RequiredMinRxInterval = ifConf.RequiredMinRxInterval
-		intf.conf.RequiredMinEchoRxInterval = ifConf.RequiredMinEchoRxInterval
+		intf.conf.DesiredMinTxInterval = ifConf.DesiredMinTxInterval * 1000
+		intf.conf.RequiredMinRxInterval = ifConf.RequiredMinRxInterval * 1000
+		intf.conf.RequiredMinEchoRxInterval = ifConf.RequiredMinEchoRxInterval * 1000
 		intf.conf.DemandEnabled = ifConf.DemandEnabled
 		intf.conf.AuthenticationEnabled = ifConf.AuthenticationEnabled
 		intf.conf.AuthenticationType = ifConf.AuthenticationType
 		intf.conf.AuthenticationKeyId = ifConf.AuthenticationKeyId
 		intf.conf.AuthenticationData = ifConf.AuthenticationData
-		server.bfdGlobal.Interfaces[ifConf.InterfaceId] = intf
+		//server.bfdGlobal.Interfaces[ifConf.InterfaceId] = intf
 		server.UpdateBfdSessionsOnInterface(intf.conf.InterfaceId)
 	}
 }
@@ -112,7 +112,7 @@ func (server *BFDServer) StopSendRecvPkts(ifIndex int32) {
 	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if exist {
 		intf.Enabled = false
-		server.bfdGlobal.Interfaces[ifIndex] = intf
+		//server.bfdGlobal.Interfaces[ifIndex] = intf
 	}
 }
 
@@ -120,6 +120,6 @@ func (server *BFDServer) StartSendRecvPkts(ifIndex int32) {
 	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if exist {
 		intf.Enabled = true
-		server.bfdGlobal.Interfaces[ifIndex] = intf
+		//server.bfdGlobal.Interfaces[ifIndex] = intf
 	}
 }

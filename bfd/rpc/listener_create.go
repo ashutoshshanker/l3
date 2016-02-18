@@ -54,11 +54,16 @@ func (h *BFDHandler) CreateBfdIntfConfig(bfdIntfConf *bfdd.BfdIntfConfig) (bool,
 }
 
 func (h *BFDHandler) CreateBfdSessionConfig(bfdSessionConf *bfdd.BfdSessionConfig) (bool, error) {
-	bfdSessionCommand := bfddCommonDefs.BfdSessionConfig{
-		DestIp:    bfdSessionConf.IpAddr,
-		Protocol:  int(bfdSessionConf.Owner),
-		Operation: int(bfdSessionConf.Operation),
+	if bfdSessionConf == nil {
+		err := errors.New("Invalid Session Configuration")
+		return false, err
 	}
-	h.server.SessionConfigCh <- bfdSessionCommand
+	h.logger.Info(fmt.Sprintln("Create session config attrs:", bfdSessionConf))
+	sessionConf := server.SessionConfig{
+		DestIp:    bfdSessionConf.IpAddr,
+		Protocol:  bfdSessionConf.Owner,
+		Operation: bfddCommonDefs.CREATE,
+	}
+	h.server.SessionConfigCh <- sessionConf
 	return true, nil
 }
