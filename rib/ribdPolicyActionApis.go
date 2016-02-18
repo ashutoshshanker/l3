@@ -30,13 +30,23 @@ func updateLocalActionsDB(prefix patriciaDB.Prefix) {
 	} 
 	localPolicyActionsDB = append(localPolicyActionsDB, localDBRecord)
 }
-func (m RouteServiceHandler) 	CreatePolicyDefinitionStmtRouteDispositionAction(cfg *ribd.PolicyDefinitionStmtRouteDispositionAction )(val bool, err error) {
-	logger.Println("CreatePolicyDefinitionStmtRouteDispositionAction")
+func CreatePolicyRouteDispositionAction(cfg *ribd.PolicyActionConfig )(val bool, err error) {
+	logger.Println("CreateRouteDispositionAction")
 	policyAction := PolicyActionsDB.Get(patriciaDB.Prefix(cfg.Name))
 	if(policyAction == nil) {
 	   logger.Println("Defining a new policy action with name ", cfg.Name)
-	   newPolicyAction := PolicyAction{name:cfg.Name,actionType:ribdCommonDefs.PolicyActionTypeRouteDisposition,actionInfo:cfg.RouteDisposition ,localDBSliceIdx:(len(localPolicyActionsDB))}
-       newPolicyAction.actionGetBulkInfo =   cfg.RouteDisposition
+	   routeDispositionAction := ""
+	   if cfg.Accept == true {
+	      routeDispositionAction = "Accept"	
+	   } else if cfg.Reject == true {
+	      routeDispositionAction = "Reject"	
+	   } else {
+	      logger.Println("User should set either one of accept/reject to true for this action type")
+		  err = errors.New("User should set either one of accept/reject to true for this action type")
+		  return val,err	
+	   }
+	   newPolicyAction := PolicyAction{name:cfg.Name,actionType:ribdCommonDefs.PolicyActionTypeRouteDisposition,actionInfo:routeDispositionAction ,localDBSliceIdx:(len(localPolicyActionsDB))}
+       newPolicyAction.actionGetBulkInfo =   routeDispositionAction
 		if ok := PolicyActionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyAction); ok != true {
 			logger.Println(" return value not ok")
 			return val, err
@@ -50,13 +60,13 @@ func (m RouteServiceHandler) 	CreatePolicyDefinitionStmtRouteDispositionAction(c
 	return val, err
 }
 
-func (m RouteServiceHandler) CreatePolicyDefinitionStmtAdminDistanceAction(cfg *ribd.PolicyDefinitionStmtAdminDistanceAction) (val bool, err error) {
-	logger.Println("CreatePolicyDefinitionStmtAdminDistanceAction")
+func CreatePolicyAdminDistanceAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {
+	logger.Println("CreatePolicyAdminDistanceAction")
 	policyAction := PolicyActionsDB.Get(patriciaDB.Prefix(cfg.Name))
 	if(policyAction == nil) {
-	   logger.Println("Defining a new policy action with name ", cfg.Name)
-	   newPolicyAction := PolicyAction{name:cfg.Name,actionType:ribdCommonDefs.PoilcyActionTypeSetAdminDistance,actionInfo:cfg.Value ,localDBSliceIdx:(len(localPolicyActionsDB))}
-       newPolicyAction.actionGetBulkInfo =  "Set admin distance to value "+strconv.Itoa(int(cfg.Value))
+	   logger.Println("Defining a new policy action with name ", cfg.Name, "Setting admin distance value to ", cfg.SetAdminDistanceValue)
+	   newPolicyAction := PolicyAction{name:cfg.Name,actionType:ribdCommonDefs.PoilcyActionTypeSetAdminDistance,actionInfo:cfg.SetAdminDistanceValue ,localDBSliceIdx:(len(localPolicyActionsDB))}
+       newPolicyAction.actionGetBulkInfo =  "Set admin distance to value "+strconv.Itoa(int(cfg.SetAdminDistanceValue))
 		if ok := PolicyActionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyAction); ok != true {
 			logger.Println(" return value not ok")
 			return val, err
@@ -70,27 +80,32 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStmtAdminDistanceAction(cfg *
 	return val, err
 }
 
-func (m RouteServiceHandler) CreatePolicyDefinitionStmtRedistributionAction(cfg *ribd.PolicyDefinitionStmtRedistributionAction) (val bool, err error) {
-	logger.Println("CreatePolicyDefinitionStmtRedistributionAction")
+func CreatePolicyRedistributionAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {
+	logger.Println("CreatePolicyRedistributionAction")
 	targetProtoType := -1
 
 	policyAction := PolicyActionsDB.Get(patriciaDB.Prefix(cfg.Name))
 	if(policyAction == nil) {
 	   logger.Println("Defining a new policy action with name ", cfg.Name)
-	   retProto,found := RouteProtocolTypeMapDB[cfg.RedistributeTargetProtocol]
+	   retProto,found := RouteProtocolTypeMapDB[cfg.RedistributeActionInfo.RedistributeTargetProtocol]
 	   if(found == false ) {
-          logger.Println("Invalid target protocol type for redistribution %s ", cfg.RedistributeTargetProtocol)
+          logger.Println("Invalid target protocol type for redistribution %s ", cfg.RedistributeActionInfo.RedistributeTargetProtocol)
 		  return val,err
 	   }
 	   targetProtoType = retProto
-	   logger.Printf("target protocol for RedistributeTargetProtocol %s is %d\n", cfg.RedistributeTargetProtocol, targetProtoType)
-	   redistributeActionInfo := RedistributeActionInfo{redistribute:cfg.Redistribute, redistributeTargetProtocol:targetProtoType}
-	   newPolicyAction := PolicyAction{name:cfg.Name,actionType:ribdCommonDefs.PolicyActionTypeRouteRedistribute,actionInfo:redistributeActionInfo ,localDBSliceIdx:(len(localPolicyActionsDB))}
-       redistributeAction := " "
-	   if redistributeActionInfo.redistribute == false {
-          redistributeAction = "Don't"		
+	   logger.Printf("target protocol for RedistributeTargetProtocol %s is %d\n", cfg.RedistributeActionInfo.RedistributeTargetProtocol, targetProtoType)
+	   redistributeActionInfo := RedistributeActionInfo{ redistributeTargetProtocol:targetProtoType}
+       if cfg.RedistributeActionInfo.Redistribute == "Allow" {
+	      redistributeActionInfo.redistribute = true	
+	   } else if cfg.RedistributeActionInfo.Redistribute == "Block" {
+	      redistributeActionInfo.redistribute = false	
+	   } else {
+	      logger.Println("Invalid redistribute option ",cfg.RedistributeActionInfo.Redistribute," - should be either Allow/Block")	
+          err = errors.New("Invalid redistribute option")
+		  return val,err
 	   }
-       newPolicyAction.actionGetBulkInfo = redistributeAction + " Redistribute to Target Protocol " + cfg.RedistributeTargetProtocol
+	   newPolicyAction := PolicyAction{name:cfg.Name,actionType:ribdCommonDefs.PolicyActionTypeRouteRedistribute,actionInfo:redistributeActionInfo ,localDBSliceIdx:(len(localPolicyActionsDB))}
+       newPolicyAction.actionGetBulkInfo = cfg.RedistributeActionInfo.Redistribute + " Redistribute to Target Protocol " + cfg.RedistributeActionInfo.RedistributeTargetProtocol
 		if ok := PolicyActionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyAction); ok != true {
 			logger.Println(" return value not ok")
 			return val, err
@@ -103,6 +118,25 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStmtRedistributionAction(cfg 
 	}
 	return val, err
 }
+func (m RouteServiceHandler) CreatePolicyAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {
+	logger.Println("CreatePolicyAction")
+	switch cfg.ActionType {
+		case "RouteDisposition":
+		   CreatePolicyRouteDispositionAction(cfg)
+		   break
+		case "Redistribution":
+		   CreatePolicyRedistributionAction(cfg)
+		   break
+        case "SetAdminDistance":
+		   CreatePolicyAdminDistanceAction(cfg)
+		   break
+		default:
+		   logger.Println("Unknown action type ", cfg.ActionType)
+		   err = errors.New("Unknown action type")
+	}
+	return val,err
+}
+
 /*
 func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtRedistributionActions( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStmtRedistributionActionsGetInfo, err error){
 	logger.Println("getBulkPolicyDefinitionStmtRedistributionActions")
@@ -160,13 +194,13 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionStmtRedistributionActions( f
 	return policyActions, err
 }*/
 
-func (m RouteServiceHandler) GetBulkPolicyDefinitionActionState( fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyDefinitionActionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
-	logger.Println("GetBulkPolicyDefinitionActionState")
+func (m RouteServiceHandler) GetBulkPolicyActionState( fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyActionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
+	logger.Println("GetBulkPolicyActionState")
     var i, validCount, toIndex ribd.Int
-	var tempNode []ribd.PolicyDefinitionActionState = make ([]ribd.PolicyDefinitionActionState, rcount)
-	var nextNode *ribd.PolicyDefinitionActionState
-    var returnNodes []*ribd.PolicyDefinitionActionState
-	var returnGetInfo ribd.PolicyDefinitionActionStateGetInfo
+	var tempNode []ribd.PolicyActionState = make ([]ribd.PolicyActionState, rcount)
+	var nextNode *ribd.PolicyActionState
+    var returnNodes []*ribd.PolicyActionState
+	var returnGetInfo ribd.PolicyActionStateGetInfo
 	i = 0
 	policyActions = &returnGetInfo
 	more := true
@@ -204,14 +238,14 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionActionState( fromIndex ribd.
 			}
  			toIndex = ribd.Int(prefixNode.localDBSliceIdx)
 			if(len(returnNodes) == 0){
-				returnNodes = make([]*ribd.PolicyDefinitionActionState, 0)
+				returnNodes = make([]*ribd.PolicyActionState, 0)
 			}
 			returnNodes = append(returnNodes, nextNode)
 			validCount++
 		}
 	}
 	logger.Printf("Returning %d list of policyActions", validCount)
-	policyActions.PolicyDefinitionActionStateList = returnNodes
+	policyActions.PolicyActionStateList = returnNodes
 	policyActions.StartIdx = fromIndex
 	policyActions.EndIdx = toIndex+1
 	policyActions.More = more
