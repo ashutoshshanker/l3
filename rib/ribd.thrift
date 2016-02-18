@@ -262,7 +262,7 @@ service RouteService
     int createV4Route (1:string destNetIp, 2:string networkMask, 3:int metric, 4:string nextHopIp, 5: int nextHopIfType, 6:int nextHopIfIndex, 7:string routeType);
     //void updateV4Route (1:string destNetIp, 2:string networkMask, 3:int routeType, 4:string nextHopIp, 5:int nextHopIfIndex, 6:int metric);
 	bool UpdateIPV4Route(1: Routes origconfig, 2: Routes newconfig, 3: list<bool> attrset);
-    int deleteV4Route (1:string destNetIp, 2:string networkMask, 3:string routeType);
+    int deleteV4Route (1:string destNetIp, 2:string networkMask, 3:string routeType, 4:string nextHopIp);
     NextHopInfo getRouteReachabilityInfo(1: string desIPv4MasktNet);
 	list<Routes> getConnectedRoutesInfo();
     void printV4Routes();

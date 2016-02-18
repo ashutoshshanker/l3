@@ -78,19 +78,11 @@ func (m RouteServiceHandler) CreatePolicyDefinitionStmtDstIpMatchPrefixSetCondit
 
 func (m RouteServiceHandler) CreatePolicyDefinitionStmtMatchProtocolCondition(cfg *ribd.PolicyDefinitionStmtMatchProtocolCondition) (val bool, err error) {
 	logger.Println("CreatePolicyDefinitionStmtMatchProtocolCondition")
-	protoType := -1
 
 	policyCondition := PolicyConditionsDB.Get(patriciaDB.Prefix(cfg.Name))
 	if(policyCondition == nil) {
 	   logger.Println("Defining a new policy condition with name ", cfg.Name)
-	   retProto,found := RouteProtocolTypeMapDB[cfg.InstallProtocolEq]
-	   if(found == false ) {
-          logger.Println("Invalid protocol type %s ", cfg.InstallProtocolEq)
-		  return val,err
-	   }
-	   protoType = retProto
-	   logger.Printf("protoType for installProtocolEq %s is %d\n", cfg.InstallProtocolEq, protoType)
-	   newPolicyCondition := PolicyCondition{name:cfg.Name,conditionType:ribdCommonDefs.PolicyConditionTypeProtocolMatch,conditionInfo:protoType ,localDBSliceIdx:(len(localPolicyConditionsDB))}
+	   newPolicyCondition := PolicyCondition{name:cfg.Name,conditionType:ribdCommonDefs.PolicyConditionTypeProtocolMatch,conditionInfo:cfg.InstallProtocolEq ,localDBSliceIdx:(len(localPolicyConditionsDB))}
        newPolicyCondition.conditionGetBulkInfo = "match Protocol " + cfg.InstallProtocolEq
 		if ok := PolicyConditionsDB.Insert(patriciaDB.Prefix(cfg.Name), newPolicyCondition); ok != true {
 			logger.Println(" return value not ok")
