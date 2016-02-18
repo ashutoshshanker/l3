@@ -1,4 +1,4 @@
-package vrrp
+package vrrpServer
 
 import (
 	"log/syslog"
