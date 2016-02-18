@@ -20,11 +20,11 @@ func main() {
 	var addr = IP + ":" + VRRP_PORT
 	logger.Info("Starting VRRP....")
 	// Create a handler
-	handler := vrrp.NewVrrpServer()
-	err = vrrp.StartServer(logger, handler, addr)
+	handler := vrrpServer.NewVrrpServer()
+	err = vrrpServer.StartServer(logger, handler, addr)
 	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: Cannot start dhcp server", err))
+		logger.Err(fmt.Sprintln("VRRP: Cannot start vrrp server", err))
 		return
 	}
-	logger.Info("VRRP: started successfully")
+	logger.Info("VRRP: Server Started Successfully at " + addr)
 }
