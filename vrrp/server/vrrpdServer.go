@@ -41,7 +41,7 @@ func VrrpInitGblInfo(IfIndex int32, IfName string, IpAddr string) {
 	vrrpGblInfo[IfIndex] = gblInfo
 }
 
-func VrrpUpdateGblInfo(IfIndex int32) {
+func VrrpUpdateGblInfoTimers(IfIndex int32) {
 	gblInfo := vrrpGblInfo[IfIndex]
 	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
 	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {

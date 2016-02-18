@@ -70,7 +70,7 @@ func VrrpGetVlanList() {
 
 }
 
-func VrrpUpdateIPv4IntfInfo(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
+func VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
 	gblInfo := vrrpGblInfo[msg.IfIndex]
 	switch msgType {
 	case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
@@ -79,6 +79,8 @@ func VrrpUpdateIPv4IntfInfo(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8)
 		gblInfo.IpAddr = ""
 	}
 	vrrpGblInfo[msg.IfIndex] = gblInfo
+	logger.Info(fmt.Sprintln("VRRP: ip address for ifindex ", msg.IfIndex,
+		"is", gblInfo.IpAddr))
 }
 
 func VrrpUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
@@ -122,7 +124,7 @@ func VrrpAsicdSubscriber() {
 				logger.Err(fmt.Sprintln("VRRP: Unable to Unmarshal ipv4IntfNotifyMsg:", msg.Msg))
 				continue
 			}
-			VrrpUpdateIPv4IntfInfo(ipv4IntfNotifyMsg, msg.MsgType)
+			VrrpUpdateIPv4GblInfo(ipv4IntfNotifyMsg, msg.MsgType)
 		} else if msg.MsgType == asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE {
 			//INTF_STATE_CHANGE
 			var l3IntfStateNotifyMsg asicdConstDefs.L3IntfStateNotifyMsg
