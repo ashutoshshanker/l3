@@ -277,6 +277,5 @@ func StartServer(log *syslog.Writer, handler *DhcpRelayServiceHandler, addr stri
 		return err
 	}
 
-	logger.Info("DRA:Started the Server successfully")
 	return nil
 }

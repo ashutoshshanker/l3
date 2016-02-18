@@ -110,6 +110,8 @@ func (h *BFDHandler) convertSessionStateToThrift(ent server.SessionState) *bfdd.
 	sessionState.AuthSeqKnown = ent.AuthSeqKnown
 	sessionState.ReceivedAuthSeq = int32(ent.ReceivedAuthSeq)
 	sessionState.SentAuthSeq = int32(ent.SentAuthSeq)
+	sessionState.NumTxPackets = int32(ent.NumTxPackets)
+	sessionState.NumRxPackets = int32(ent.NumRxPackets)
 	return sessionState
 }
 
