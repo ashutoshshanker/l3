@@ -1089,7 +1089,8 @@ func policyEngineApplyGlobalPolicyStmt(policy Policy, policyStmt PolicyStmt) {
 			  conditionInfo := conditionItem.(PolicyCondition)
 			  switch conditionInfo.conditionType {
 			    case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
-			      routeDistanceConfig := RouteDistanceConfig{configuredDistance:int(actionInfo.actionInfo.(ribd.Int))}
+			      routeDistanceConfig := ProtocolAdminDistanceMapDB[conditionInfo.conditionInfo.(string)]
+				  routeDistanceConfig.configuredDistance = int(actionInfo.actionInfo.(ribd.Int))
 			      ProtocolAdminDistanceMapDB[conditionInfo.conditionInfo.(string)] =  routeDistanceConfig
 			      logger.Println("Setting distance of prototype ", conditionInfo.conditionInfo.(string), " to value ", actionInfo.actionInfo.(ribd.Int))
 				  break
@@ -1163,9 +1164,10 @@ func policyEngineReverseGlobalPolicyStmt(policy Policy, policyStmt PolicyStmt) {
 			  conditionInfo := conditionItem.(PolicyCondition)
 			  switch conditionInfo.conditionType {
 			    case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
-			      routeDistanceConfig := RouteDistanceConfig{configuredDistance:0}
+			      routeDistanceConfig := ProtocolAdminDistanceMapDB[conditionInfo.conditionInfo.(string)]
+				  routeDistanceConfig.configuredDistance = -1
 			      ProtocolAdminDistanceMapDB[conditionInfo.conditionInfo.(string)] =  routeDistanceConfig
-			      logger.Println("Setting configured distance of prototype ", conditionInfo.conditionInfo.(string), " to value ", 0)
+			      logger.Println("Setting configured distance of prototype ", conditionInfo.conditionInfo.(string), " to value ", 0, " default distance of this protocol is ", routeDistanceConfig.defaultDistance)
 				  break
 				default:
 				  logger.Println("Invalid condition type provided for set admin distance")
