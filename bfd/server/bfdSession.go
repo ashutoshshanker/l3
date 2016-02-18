@@ -407,6 +407,7 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	switch session.state.RemoteSessionState {
 	case STATE_DOWN:
 		event = REMOTE_DOWN
+		session.state.LocalDiagType = DIAG_NEIGHBOR_SIGNAL_DOWN
 	case STATE_INIT:
 		event = REMOTE_INIT
 	case STATE_UP:
@@ -464,6 +465,7 @@ func (session *BfdSession) CheckIfAnyProtocolRegistered() bool {
 // Stop session as Bfd is disabled globally. Do not delete
 func (session *BfdSession) StopBfdSession() error {
 	session.EventHandler(ADMIN_DOWN)
+	session.state.LocalDiagType = DIAG_ADMIN_DOWN
 	session.txTimer.Stop()
 	session.sessionTimer.Stop()
 	return nil
@@ -553,6 +555,7 @@ func (session *BfdSession) MoveToInitState() error {
 
 func (session *BfdSession) MoveToUpState() error {
 	session.state.SessionState = STATE_UP
+	session.state.LocalDiagType = DIAG_NONE
 	session.txTimer.Reset(0)
 	return nil
 }
@@ -599,6 +602,7 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 			}
 		case sessionId := <-session.SessionTimeoutCh:
 			bfdSession := server.bfdGlobal.Sessions[sessionId]
+			bfdSession.state.LocalDiagType = DIAG_TIME_EXPIRED
 			bfdSession.EventHandler(TIMEOUT)
 			sessionTimeoutMS = time.Duration(bfdSession.state.RequiredMinRxInterval * bfdSession.state.DetectionMultiplier / 1000)
 			bfdSession.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { bfdSession.SessionTimeoutCh <- bfdSession.state.SessionId })
