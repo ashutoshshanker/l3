@@ -70,4 +70,6 @@ type SessionState struct {
 	AuthSeqKnown          bool
 	ReceivedAuthSeq       uint32
 	SentAuthSeq           uint32
+	NumTxPackets          uint32
+	NumRxPackets          uint32
 }

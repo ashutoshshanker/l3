@@ -79,6 +79,8 @@ struct BfdSessionState{
 	18 : i32 	AuthType
 	19 : i32 	ReceivedAuthSeq
 	20 : i32 	SentAuthSeq
+	21 : i32 	NumTxPackets
+	22 : i32 	NumRxPackets
 }
 struct BfdSessionStateGetInfo {
 	1: int StartIdx

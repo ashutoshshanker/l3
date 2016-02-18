@@ -45,9 +45,11 @@ func (server *BFDServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		server.logger.Err("No such inteface exists")
 		return
 	}
-	if server.bfdGlobal.Enabled {
-		server.StartSendRecvPkts(msg.IfId)
-	}
+	/*
+		if server.bfdGlobal.Enabled {
+			server.StartSendRecvPkts(msg.IfId)
+		}
+	*/
 }
 
 func (server *BFDServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
@@ -113,6 +115,7 @@ func (server *BFDServer) StopSendRecvPkts(ifIndex int32) {
 	if exist {
 		intf.Enabled = false
 		//server.bfdGlobal.Interfaces[ifIndex] = intf
+		server.bfdGlobal.NumInterfaces--
 	}
 }
 
@@ -121,5 +124,6 @@ func (server *BFDServer) StartSendRecvPkts(ifIndex int32) {
 	if exist {
 		intf.Enabled = true
 		//server.bfdGlobal.Interfaces[ifIndex] = intf
+		server.bfdGlobal.NumInterfaces++
 	}
 }

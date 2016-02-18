@@ -106,6 +106,8 @@ func (server *BFDServer) NewBfdSession(DestIp string, protocol int32) *BfdSessio
 			bfdSession.authData = intf.conf.AuthenticationData
 		}
 		server.bfdGlobal.Sessions[sessionId] = bfdSession
+		server.bfdGlobal.Interfaces[ifIndex].NumSessions++
+		server.bfdGlobal.NumSessions++
 		server.bfdGlobal.SessionsIdSlice = append(server.bfdGlobal.SessionsIdSlice, sessionId)
 		server.logger.Info(fmt.Sprintln("New session : ", sessionId, " created on : ", ifIndex))
 		return bfdSession
@@ -205,11 +207,14 @@ func (server *BFDServer) DeleteBfdSession(sessionMgmt BfdSessionMgmt) error {
 	server.logger.Info(fmt.Sprintln("DeleteSession ", DestIp, Protocol))
 	sessionId, found := server.FindBfdSession(DestIp)
 	if found {
-		server.bfdGlobal.Sessions[sessionId].state.RegisteredProtocols[Protocol] = false
-		if server.bfdGlobal.Sessions[sessionId].CheckIfAnyProtocolRegistered() == false {
-			server.bfdGlobal.Sessions[sessionId].txTimer.Stop()
-			server.bfdGlobal.Sessions[sessionId].sessionTimer.Stop()
-			server.bfdGlobal.Sessions[sessionId].SessionDeleteCh <- true
+		session := server.bfdGlobal.Sessions[sessionId]
+		session.state.RegisteredProtocols[Protocol] = false
+		if session.CheckIfAnyProtocolRegistered() == false {
+			session.txTimer.Stop()
+			session.sessionTimer.Stop()
+			session.SessionDeleteCh <- true
+			server.bfdGlobal.Interfaces[session.state.InterfaceId].NumSessions--
+			server.bfdGlobal.NumSessions--
 			delete(server.bfdGlobal.Sessions, sessionId)
 			for i = 0; i < len(server.bfdGlobal.SessionsIdSlice); i++ {
 				if server.bfdGlobal.SessionsIdSlice[i] == sessionId {
@@ -288,6 +293,7 @@ func (session *BfdSession) StartSessionServer(bfdServer *BFDServer) error {
 						fmt.Println("Ignore bfd packet for session ", sessionId, " from ", addr)
 					} else {
 						bfdSession := bfdServer.bfdGlobal.Sessions[sessionId]
+						bfdSession.state.NumRxPackets++
 						bfdSession.ProcessBfdPacket(bfdPacket)
 					}
 				}
@@ -584,6 +590,8 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 				_, err = Conn.Write(buf)
 				if err != nil {
 					fmt.Println("failed to send control packet for session ", bfdSession.state.SessionId)
+				} else {
+					bfdSession.state.NumTxPackets++
 				}
 				bfdSession.txTimer.Stop()
 				txTimerMS = time.Duration(bfdSession.state.DesiredMinTxInterval / 1000)
@@ -592,7 +600,7 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 		case sessionId := <-session.SessionTimeoutCh:
 			bfdSession := server.bfdGlobal.Sessions[sessionId]
 			bfdSession.EventHandler(TIMEOUT)
-			sessionTimeoutMS = time.Duration(bfdSession.state.RequiredMinRxInterval * bfdSession.state.DetectionMultiplier / 100)
+			sessionTimeoutMS = time.Duration(bfdSession.state.RequiredMinRxInterval * bfdSession.state.DetectionMultiplier / 1000)
 			bfdSession.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { bfdSession.SessionTimeoutCh <- bfdSession.state.SessionId })
 		case <-session.SessionDeleteCh:
 			return nil
@@ -616,6 +624,7 @@ func (session *BfdSession) RemoteChangedDemandMode(bfdPacket *BfdControlPacket) 
 }
 
 func (session *BfdSession) InitiatePollSequence() error {
+	fmt.Println("Starting poll sequence for session ", session.state.SessionId)
 	session.pollSequence = true
 	session.txTimer.Reset(0)
 	return nil
@@ -623,9 +632,11 @@ func (session *BfdSession) InitiatePollSequence() error {
 
 func (session *BfdSession) ProcessPollSequence(bfdPacket *BfdControlPacket) error {
 	if bfdPacket.Poll {
+		fmt.Println("Received packet with poll bit for session ", session.state.SessionId)
 		session.pollSequenceFinal = true
 	}
 	if bfdPacket.Final {
+		fmt.Println("Received packet with final bit for session ", session.state.SessionId)
 		session.pollSequence = false
 	}
 	session.txTimer.Reset(0)
