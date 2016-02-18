@@ -2,24 +2,28 @@ package vrrpServer
 
 import (
 	"errors"
+	"fmt"
 	"vrrpd"
 )
 
+/*
+	IfIndex                 int32  `SNAPROUTE: "KEY", ACCESS:"w",  MULTIPLICITY:"*"`
+	VRID                    int32  // no default for VRID
+	Priority                int32  // default value is 100
+	VirtualIPv4Addr         string // No Default for Virtual IPv4 addr.. Can support one or more
+	AdvertisementInterval   int32  // Default is 100 centiseconds which is 1 SEC
+	PreemptMode             bool   // False to prohibit preemption. Default is True.
+	AcceptMode              bool   // The default is False.
+	VirtualRouterMACAddress string // MAC address used for the source MAC address in VRRP advertisements
+*/
+
 func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
-	//logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex "), config.IfIndex)
-	/*
-		2 : i32 VRID
-		3 : i32 Priority
-		4 : string IPv4Addr
-		5 : i32 AdvertisementInterval
-		6 : bool PreemptMode
-		7 : bool AcceptMode
-		8 : string VirtualRouterMACAddress
-	*/
-	gblInfo := vrrpGblInfo[0] // @TODO: Fix this once Hari have the fix for thrift file
+	logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
+		config.IfIndex))
+	gblInfo := vrrpGblInfo[config.IfIndex]
 	if config.VRID == 0 {
 		logger.Info("VRRP: Invalid VRID")
-		return false, errors.New(INVALID_VRID)
+		return false, errors.New(VRRP_INVALID_VRID)
 	}
 	if config.Priority == 0 {
 		logger.Info("VRRP: Setting default priority which is 100")
@@ -27,6 +31,7 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 	} else {
 		gblInfo.IntfConfig.Priority = config.Priority
 	}
+	vrrpGblInfo[config.IfIndex] = gblInfo
 	return true, nil
 }
 func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,

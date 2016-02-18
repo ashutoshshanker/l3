@@ -9,7 +9,7 @@ import (
 func VrrpInitDB() error {
 	logger.Info("VRRP: Initializing SQL DB")
 	var err error
-	dbName := paramsDir + USR_CONF_DB
+	dbName := paramsDir + VRRP_USR_CONF_DB
 	logger.Info("VRRP: location for DB is " + dbName)
 	vrrpDbHdl, err = sql.Open("sqlite3", dbName)
 	if err != nil {

@@ -1,7 +1,10 @@
 package vrrpServer
 
 import (
+	"asicdServices"
 	"database/sql"
+	"git.apache.org/thrift.git/lib/go/thrift"
+	nanomsg "github.com/op/go-nanomsg"
 	"log/syslog"
 	"vrrpd"
 )
@@ -34,6 +37,23 @@ import (
 type VrrpServiceHandler struct {
 }
 
+type VrrpClientJson struct {
+	Name string `json:Name`
+	Port int    `json:Port`
+}
+
+type VrrpClientBase struct {
+	Address            string
+	Transport          thrift.TTransport
+	PtrProtocolFactory *thrift.TBinaryProtocolFactory
+	IsConnected        bool
+}
+
+type VrrpAsicdClient struct {
+	VrrpClientBase
+	ClientHdl *asicdServices.ASICDServicesClient
+}
+
 type VrrpGlobalInfo struct {
 	IntfConfig vrrpd.VrrpIntfConfig
 	// The initial value is the same as Advertisement_Interval.
@@ -42,16 +62,21 @@ type VrrpGlobalInfo struct {
 	SkewTime int32
 	// (3 * Master_Adver_Interval) + Skew_time
 	MasterDownInterval int32
+	// IfIndex IpAddr which needs to be used if no Virtual Ip is specified
+	IpAddr string
 }
 
 var (
-	logger      *syslog.Writer
-	vrrpDbHdl   *sql.DB
-	paramsDir   string
-	vrrpGblInfo map[int32]VrrpGlobalInfo
+	logger         *syslog.Writer
+	vrrpDbHdl      *sql.DB
+	paramsDir      string
+	asicdClient    VrrpAsicdClient
+	asicdSubSocket *nanomsg.SubSocket
+	vrrpGblInfo    map[int32]VrrpGlobalInfo
 )
 
 const (
-	USR_CONF_DB  = "/UsrConfDb.db"
-	INVALID_VRID = "VRID is invalid"
+	VRRP_USR_CONF_DB                    = "/UsrConfDb.db"
+	VRRP_INVALID_VRID                   = "VRID is invalid"
+	VRRP_CLIENT_CONNECTION_NOT_REQUIRED = "Connection to Client is not required"
 )
