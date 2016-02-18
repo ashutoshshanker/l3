@@ -41,6 +41,5 @@ func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) e
 		logger.Err(fmt.Sprintln("VRRP: Failed to start the listener, err:", err))
 		return err
 	}
-	logger.Info("VRRP: Started the Server successfully")
 	return nil
 }
