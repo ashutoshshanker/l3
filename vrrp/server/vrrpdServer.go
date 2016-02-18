@@ -127,7 +127,7 @@ func VrrpConnectAndInitPortVlan() error {
 }
 
 func VrrpAllocateMemoryToGlobalDS() {
-	vrrpGblInfo = make(map[int32]VrrpGlobalInfo, 10)
+	vrrpGblInfo = make(map[int32]VrrpGlobalInfo, 50)
 }
 
 func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) error {
