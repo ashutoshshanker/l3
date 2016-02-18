@@ -43,6 +43,12 @@ type IntfState struct {
 	AuthenticationData        string
 }
 
+type SessionConfig struct {
+	DestIp    string
+	Protocol  int32
+	Operation int32
+}
+
 type SessionState struct {
 	SessionId             int32
 	LocalIpAddr           string
@@ -64,4 +70,6 @@ type SessionState struct {
 	AuthSeqKnown          bool
 	ReceivedAuthSeq       uint32
 	SentAuthSeq           uint32
+	NumTxPackets          uint32
+	NumRxPackets          uint32
 }

@@ -2,11 +2,9 @@ package rpc
 
 import (
 	"bfdd"
+	"errors"
 	"fmt"
-	//    "l3/bfd/config"
-	//    "l3/bfd/server"
-	//    "log/syslog"
-	//    "net"
+	"l3/bfd/server"
 )
 
 func (h *BFDHandler) UpdateBfdGlobalConfig(origConf *bfdd.BfdGlobalConfig, newConf *bfdd.BfdGlobalConfig, attrset []bool) (bool, error) {
@@ -22,5 +20,16 @@ func (h *BFDHandler) UpdateBfdIntfConfig(origConf *bfdd.BfdIntfConfig, newConf *
 }
 
 func (h *BFDHandler) UpdateBfdSessionConfig(origConf *bfdd.BfdSessionConfig, newConf *bfdd.BfdSessionConfig, attrset []bool) (bool, error) {
+	if newConf == nil {
+		err := errors.New("Invalid Session Configuration")
+		return false, err
+	}
+	h.logger.Info(fmt.Sprintln("Update session config attrs:", newConf))
+	sessionConf := server.SessionConfig{
+		DestIp:    newConf.IpAddr,
+		Protocol:  newConf.Owner,
+		Operation: newConf.Operation,
+	}
+	h.server.SessionConfigCh <- sessionConf
 	return true, nil
 }
