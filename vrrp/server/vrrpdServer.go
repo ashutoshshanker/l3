@@ -20,6 +20,37 @@ func NewVrrpServer() *VrrpServiceHandler {
 	return &VrrpServiceHandler{}
 }
 
+/*
+	// The initial value is the same as Advertisement_Interval.
+	MasterAdverInterval int32
+	// (((256 - priority) * Master_Adver_Interval) / 256)
+	SkewTime int32
+	// (3 * Master_Adver_Interval) + Skew_time
+	MasterDownInterval int32
+	// IfIndex IpAddr which needs to be used if no Virtual Ip is specified
+	IpAddr string
+*/
+
+func VrrpInitGblInfo(IfIndex int32, IfName string, IpAddr string) {
+	gblInfo := vrrpGblInfo[IfIndex]
+	gblInfo.MasterAdverInterval = 0
+	gblInfo.SkewTime = 0
+	gblInfo.MasterDownInterval = 0
+	gblInfo.IpAddr = IpAddr
+	gblInfo.IfName = IfName
+	vrrpGblInfo[IfIndex] = gblInfo
+}
+
+func VrrpUpdateGblInfo(IfIndex int32) {
+	gblInfo := vrrpGblInfo[IfIndex]
+	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
+	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
+		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) * gblInfo.MasterAdverInterval) / 256
+	}
+	gblInfo.MasterDownInterval = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
+	vrrpGblInfo[IfIndex] = gblInfo
+}
+
 func VrrpConnectToAsicd(client VrrpClientJson) error {
 	logger.Info(fmt.Sprintln("VRRP: Connecting to asicd at port",
 		client.Port))
@@ -51,7 +82,7 @@ func VrrpConnectToUnConnectedClient(client VrrpClientJson) error {
 	}
 }
 
-func VrrpConnectToClients() error {
+func VrrpConnectAndInitPortVlan() error {
 
 	configFile := paramsDir + "/clients.json"
 	bytes, err := ioutil.ReadFile(configFile)
@@ -90,6 +121,8 @@ func VrrpConnectToClients() error {
 			break
 		}
 	}
+
+	VrrpGetInfoFromAsicd()
 	return err
 }
 
@@ -116,7 +149,7 @@ func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) e
 		VrrpReadDB()
 	}
 
-	go VrrpConnectToClients()
+	go VrrpConnectAndInitPortVlan()
 
 	// create transport and protocol for server
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)

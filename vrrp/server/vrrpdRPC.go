@@ -3,6 +3,7 @@ package vrrpServer
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"vrrpd"
 )
 
@@ -21,17 +22,50 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 	logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
 		config.IfIndex))
 	gblInfo := vrrpGblInfo[config.IfIndex]
+
 	if config.VRID == 0 {
 		logger.Info("VRRP: Invalid VRID")
 		return false, errors.New(VRRP_INVALID_VRID)
 	}
+	gblInfo.IntfConfig.VRID = config.VRID
+
 	if config.Priority == 0 {
 		logger.Info("VRRP: Setting default priority which is 100")
 		gblInfo.IntfConfig.Priority = 100
 	} else {
 		gblInfo.IntfConfig.Priority = config.Priority
 	}
+
+	gblInfo.IntfConfig.VirtualIPv4Addr = config.VirtualIPv4Addr
+
+	if config.AdvertisementInterval == 0 {
+		logger.Info("VRRP: Setting default advertisment interval to 1 sec")
+		gblInfo.IntfConfig.AdvertisementInterval = 1
+	} else {
+		gblInfo.IntfConfig.AdvertisementInterval = config.AdvertisementInterval
+	}
+
+	if config.PreemptMode == false {
+		gblInfo.IntfConfig.PreemptMode = false
+	} else {
+		gblInfo.IntfConfig.PreemptMode = true
+	}
+
+	if config.AcceptMode == true {
+		gblInfo.IntfConfig.AcceptMode = true
+	} else {
+		gblInfo.IntfConfig.AcceptMode = false
+	}
+
+	if config.VirtualRouterMACAddress != "" {
+		gblInfo.IntfConfig.VirtualRouterMACAddress = config.VirtualRouterMACAddress
+	} else {
+		gblInfo.IntfConfig.VirtualRouterMACAddress = "00-00-5E-00-01-" +
+			strconv.Itoa(int(gblInfo.IntfConfig.VRID))
+	}
+
 	vrrpGblInfo[config.IfIndex] = gblInfo
+	go VrrpUpdateGblInfo(config.IfIndex)
 	return true, nil
 }
 func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,

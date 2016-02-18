@@ -64,6 +64,8 @@ type VrrpGlobalInfo struct {
 	MasterDownInterval int32
 	// IfIndex IpAddr which needs to be used if no Virtual Ip is specified
 	IpAddr string
+	// cached info for IfName is required in future
+	IfName string
 }
 
 var (
