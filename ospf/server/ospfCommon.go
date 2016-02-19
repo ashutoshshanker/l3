@@ -123,3 +123,8 @@ type NbrFullStateMsg struct {
 	FullState bool
 	NbrRtrId  uint32
 }
+
+const (
+	LsdbEntryFound    = 0
+	LsdbEntryNotFound = 1
+)

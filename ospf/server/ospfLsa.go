@@ -548,3 +548,58 @@ func decodeASExternalLsa(data []byte, lsa *ASExternalLsa, lsakey *LsaKey) {
 		start = end
 	}
 }
+
+func (server *OSPFServer) getRouterLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa RouterLsa, retVal int) {
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+	lsa, exist := lsDbEnt.RouterLsaMap[lsaKey]
+	if !exist {
+		return lsa, LsdbEntryNotFound
+	}
+	return lsa, LsdbEntryFound
+}
+
+func (server *OSPFServer) getNetworkLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa NetworkLsa, retVal int) {
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+	lsa, exist := lsDbEnt.NetworkLsaMap[lsaKey]
+	if !exist {
+		return lsa, LsdbEntryNotFound
+	}
+	return lsa, LsdbEntryFound
+}
+
+func (server *OSPFServer) getSummaryLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa SummaryLsa, retVal int) {
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+	if lsaKey.LSType == Summary3LSA {
+		lsa, exist := lsDbEnt.Summary3LsaMap[lsaKey]
+		if !exist {
+			return lsa, LsdbEntryNotFound
+		}
+	} else if lsaKey.LSType == Summary4LSA {
+		lsa, exist := lsDbEnt.Summary4LsaMap[lsaKey]
+		if !exist {
+			return lsa, LsdbEntryNotFound
+		}
+	}
+	return lsa, LsdbEntryFound
+}
+
+func (server *OSPFServer) getASExternalLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa ASExternalLsa, retVal int) {
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+	lsa, exist := lsDbEnt.ASExternalLsaMap[lsaKey]
+	if !exist {
+		return lsa, LsdbEntryNotFound
+	}
+	return lsa, LsdbEntryFound
+}
