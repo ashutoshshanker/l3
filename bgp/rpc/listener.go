@@ -123,6 +123,43 @@ func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
 	return nil
 }
 
+func (h *BGPHandler) handleBGPAggregate(dbHdl *sql.DB) error {
+	dbCmd := "select * from BGPAggregate"
+	rows, err := dbHdl.Query(dbCmd)
+	if err != nil {
+		h.logger.Err(fmt.Sprintf("handleBGPAggregate: DB method Query failed for %s with error %s", dbCmd, err))
+		return err
+	}
+
+	defer rows.Close()
+
+	var agg config.BGPAggregate
+	var ipPrefix string
+	for rows.Next() {
+		if err = rows.Scan(&ipPrefix, &agg.GenerateASSet, &agg.SendSummaryOnly); err != nil {
+			h.logger.Err(fmt.Sprintf("handleBGPAggregate: DB method Next() failed on BGPAggregate with error %s", err))
+			return err
+		}
+
+		_, ipNet, err := net.ParseCIDR(ipPrefix)
+		if err != nil {
+			h.logger.Info(fmt.Sprintln("SendBGPAggregate: ParseCIDR for IPPrefix", ipPrefix, "failed with err", err))
+			return err
+		}
+
+		ones, _ := ipNet.Mask.Size()
+		ipPrefix := config.IPPrefix{
+			Prefix: ipNet.IP,
+			Length: uint8(ones),
+		}
+		agg.IPPrefix = ipPrefix
+
+		h.server.AddAggCh <- server.AggUpdate{config.BGPAggregate{}, agg, make([]bool, 0)}
+	}
+
+	return nil
+}
+
 func (h *BGPHandler) readConfigFromDB(filePath string) error {
 	var dbPath string = filePath + DBName
 
@@ -408,4 +445,60 @@ func (h *BGPHandler) BulkGetBGPRoutes(index int64, count int64) (*bgpd.BGPRouteB
 	bgpRoutesBulk.RouteList = bgpRoutes
 
 	return bgpRoutesBulk, nil
+}
+
+func (h *BGPHandler) validateBGPAgg(bgpAgg *bgpd.BGPAggregate) (config.BGPAggregate, error) {
+	if bgpAgg == nil {
+		return config.BGPAggregate{}, nil
+	}
+
+	_, ipNet, err := net.ParseCIDR(bgpAgg.IPPrefix)
+	if err != nil {
+		h.logger.Info(fmt.Sprintln("SendBGPAggregate: ParseCIDR for IPPrefix", bgpAgg.IPPrefix, "failed with err", err))
+		return config.BGPAggregate{}, err
+	}
+
+	ones, _ := ipNet.Mask.Size()
+	ipPrefix := config.IPPrefix{
+		Prefix: ipNet.IP,
+		Length: uint8(ones),
+	}
+
+	agg := config.BGPAggregate{
+		IPPrefix:        ipPrefix,
+		GenerateASSet:   bgpAgg.GenerateASSet,
+		SendSummaryOnly: bgpAgg.SendSummaryOnly,
+	}
+	return agg, nil
+}
+
+func (h *BGPHandler) SendBGPAggregate(oldAgg *bgpd.BGPAggregate, newAgg *bgpd.BGPAggregate, attrSet []bool) bool {
+	oldBGPAgg, err := h.validateBGPAgg(oldAgg)
+	if err != nil {
+		return false
+	}
+
+	newBGPAgg, err := h.validateBGPAgg(newAgg)
+	if err != nil {
+		return false
+	}
+
+	h.server.AddAggCh <- server.AggUpdate{oldBGPAgg, newBGPAgg, attrSet}
+	return true
+}
+
+func (h *BGPHandler) CreateBGPAggregate(bgpAgg *bgpd.BGPAggregate) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Create BGP aggregate attrs:", bgpAgg))
+	return h.SendBGPAggregate(nil, bgpAgg, make([]bool, 0)), nil
+}
+
+func (h *BGPHandler) UpdateBGPAggregate(oldAgg *bgpd.BGPAggregate, newAgg *bgpd.BGPAggregate, attrSet []bool) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Update BGP aggregate attrs:", newAgg))
+	return h.SendBGPAggregate(oldAgg, newAgg, attrSet), nil
+}
+
+func (h *BGPHandler) DeleteBGPAggregate(name string) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Delete BGP aggregate:", name))
+	h.server.RemAggCh <- name
+	return true, nil
 }

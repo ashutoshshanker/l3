@@ -34,6 +34,12 @@ type PeerGroupUpdate struct {
 	AttrSet  []bool
 }
 
+type AggUpdate struct {
+	OldAgg  config.BGPAggregate
+	NewAgg  config.BGPAggregate
+	AttrSet []bool
+}
+
 type IfState struct {
 	idx   int32
 	state uint8
@@ -48,6 +54,8 @@ type BGPServer struct {
 	RemPeerCh        chan string
 	AddPeerGroupCh   chan PeerGroupUpdate
 	RemPeerGroupCh   chan string
+	AddAggCh         chan AggUpdate
+	RemAggCh         chan string
 	PeerConnEstCh    chan string
 	PeerConnBrokenCh chan string
 	PeerCommandCh    chan config.PeerCommand
@@ -70,6 +78,8 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.RemPeerCh = make(chan string)
 	bgpServer.AddPeerGroupCh = make(chan PeerGroupUpdate)
 	bgpServer.RemPeerGroupCh = make(chan string)
+	bgpServer.AddAggCh = make(chan AggUpdate)
+	bgpServer.RemAggCh = make(chan string)
 	bgpServer.PeerConnEstCh = make(chan string)
 	bgpServer.PeerConnBrokenCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)

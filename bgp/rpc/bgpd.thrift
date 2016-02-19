@@ -118,6 +118,12 @@ struct BGPRouteBulk {
 	5: list<BGPRoute> RouteList,
 }
 
+struct BGPAggregate {
+	1: string IPPrefix
+	2: bool GenerateASSet
+	3: bool SendSummaryOnly
+}
+
 service BGPServer
 {
 	bool CreateBGPGlobal(1: BGPGlobalConfig bgpConf);
@@ -137,4 +143,8 @@ service BGPServer
 
 	list<BGPRoute> GetBGPRoute(1: string ip);
 	BGPRouteBulk BulkGetBGPRoutes(1: i64 index, 2: i64 count);
+
+	bool CreateBGPAggregate(1: BGPAggregate agg);
+	bool UpdateBGPAggregate(1: BGPAggregate origAgg, 2: BGPAggregate updatedAgg, 3: list<bool> attrSet);
+	bool DeleteBGPAggregate(1: string ipPrefix);
 }
