@@ -160,6 +160,12 @@ func (h *OSPFHandler) GetBulkOspfExtLsdbEntryState(fromIdx ospfd.Int, count ospf
 	return ospfExtLsdbResponse, nil
 }
 
+func (h *OSPFHandler) GetBulkOspfHostEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfHostEntryStateGetInfo, error) {
+	h.logger.Info(fmt.Sprintln("Get Host Entry State attrs"))
+	ospfHostEntryResponse := ospfd.NewOspfHostEntryStateGetInfo()
+	return ospfHostEntryResponse, nil
+}
+
 /*
 func (h *OSPFHandler) GetOspfAreaAggregateEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfAreaAggregateEntryStateGetInfo, error) {
     h.logger.Info(fmt.Sprintln("Get Area Aggregate State attrs"))

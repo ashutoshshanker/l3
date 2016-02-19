@@ -275,7 +275,20 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 	return
 }
 
-func (server *OSPFServer) processNewRecvdRouterLsa(data []byte, areaId uint32) bool {
+func (server *OSPFServer) processDeleteRouterLsa(data []byte, areaId uint32) bool {
+	lsakey := NewLsaKey()
+	routerLsa := NewRouterLsa()
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	decodeRouterLsa(data, routerLsa, lsakey)
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        delete(lsDbEnt.RouterLsaMap, *lsakey)
+	server.AreaLsdb[lsdbKey] = lsDbEnt
+        return true
+}
+
+func (server *OSPFServer) processRecvdRouterLsa(data []byte, areaId uint32) bool {
 	lsakey := NewLsaKey()
 	routerLsa := NewRouterLsa()
 	lsdbKey := LsdbKey{
@@ -310,7 +323,21 @@ func (server *OSPFServer) processNewRecvdRouterLsa(data []byte, areaId uint32) b
 	return true
 }
 
-func (server *OSPFServer) processNewRecvdNetworkLsa(data []byte, areaId uint32) bool {
+func (server *OSPFServer) processDeleteNetworkLsa(data []byte, areaId uint32) bool {
+	lsakey := NewLsaKey()
+	networkLsa := NewNetworkLsa()
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	decodeNetworkLsa(data, networkLsa, lsakey)
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        delete(lsDbEnt.NetworkLsaMap, *lsakey)
+	server.AreaLsdb[lsdbKey] = lsDbEnt
+
+        return true
+}
+
+func (server *OSPFServer) processRecvdNetworkLsa(data []byte, areaId uint32) bool {
 	lsakey := NewLsaKey()
 	networkLsa := NewNetworkLsa()
 	lsdbKey := LsdbKey{
@@ -346,7 +373,25 @@ func (server *OSPFServer) processNewRecvdNetworkLsa(data []byte, areaId uint32) 
 	return true
 }
 
-func (server *OSPFServer) processNewRecvdSummaryLsa(data []byte, areaId uint32, lsaType uint8) bool {
+func (server *OSPFServer) processDeleteSummaryLsa(data []byte, areaId uint32, lsaType uint8) bool {
+	lsakey := NewLsaKey()
+	summaryLsa := NewSummaryLsa()
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	decodeSummaryLsa(data, summaryLsa, lsakey)
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        if lsaType == Summary3LSA {
+                delete(lsDbEnt.Summary3LsaMap, *lsakey)
+        } else if lsaType == Summary4LSA {
+                delete(lsDbEnt.Summary4LsaMap, *lsakey)
+        }
+	server.AreaLsdb[lsdbKey] = lsDbEnt
+
+        return true
+}
+
+func (server *OSPFServer) processRecvdSummaryLsa(data []byte, areaId uint32, lsaType uint8) bool {
 	lsakey := NewLsaKey()
 	summaryLsa := NewSummaryLsa()
 	lsdbKey := LsdbKey{
@@ -398,7 +443,21 @@ func (server *OSPFServer) processNewRecvdSummaryLsa(data []byte, areaId uint32, 
 	return true
 }
 
-func (server *OSPFServer) processNewRecvdASExternalLsa(data []byte, areaId uint32) bool {
+func (server *OSPFServer) processDeleteASExternalLsa(data []byte, areaId uint32) bool {
+	lsakey := NewLsaKey()
+	asExtLsa := NewASExternalLsa()
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	decodeASExternalLsa(data, asExtLsa, lsakey)
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+        delete(lsDbEnt.ASExternalLsaMap, *lsakey)
+	server.AreaLsdb[lsdbKey] = lsDbEnt
+
+        return true
+}
+
+func (server *OSPFServer) processRecvdASExternalLsa(data []byte, areaId uint32) bool {
 	lsakey := NewLsaKey()
 	asExtLsa := NewASExternalLsa()
 	lsdbKey := LsdbKey{
@@ -434,18 +493,36 @@ func (server *OSPFServer) processNewRecvdASExternalLsa(data []byte, areaId uint3
 	return true
 }
 
-func (server *OSPFServer) processNewRecvdLsa(data []byte, areaId uint32) bool {
+func (server *OSPFServer) processRecvdLsa(data []byte, areaId uint32) bool {
 	LSType := uint8(data[3])
 	if LSType == RouterLSA {
-		return server.processNewRecvdRouterLsa(data, areaId)
+		return server.processRecvdRouterLsa(data, areaId)
 	} else if LSType == NetworkLSA {
-		return server.processNewRecvdNetworkLsa(data, areaId)
+		return server.processRecvdNetworkLsa(data, areaId)
 	} else if LSType == Summary3LSA {
-		return server.processNewRecvdSummaryLsa(data, areaId, LSType)
+		return server.processRecvdSummaryLsa(data, areaId, LSType)
 	} else if LSType == Summary4LSA {
-		return server.processNewRecvdSummaryLsa(data, areaId, LSType)
+		return server.processRecvdSummaryLsa(data, areaId, LSType)
 	} else if LSType == ASExternalLSA {
-		return server.processNewRecvdASExternalLsa(data, areaId)
+		return server.processRecvdASExternalLsa(data, areaId)
+	} else {
+		return false
+	}
+}
+
+func (server *OSPFServer) processDeleteLsa(data []byte, areaId uint32) bool {
+	LSType := uint8(data[3])
+
+	if LSType == RouterLSA {
+		return server.processDeleteRouterLsa(data, areaId)
+	} else if LSType == NetworkLSA {
+		return server.processDeleteNetworkLsa(data, areaId)
+	} else if LSType == Summary3LSA {
+		return server.processDeleteSummaryLsa(data, areaId, LSType)
+	} else if LSType == Summary4LSA {
+		return server.processDeleteSummaryLsa(data, areaId, LSType)
+	} else if LSType == ASExternalLSA {
+		return server.processDeleteASExternalLsa(data, areaId)
 	} else {
 		return false
 	}
@@ -458,12 +535,16 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 			if msg.MsgType == LsdbAdd {
 				server.logger.Info("Adding LS in the Lsdb")
 				server.logger.Info("Received New LSA")
-				ret := server.processNewRecvdLsa(msg.Data, msg.AreaId)
+				ret := server.processRecvdLsa(msg.Data, msg.AreaId)
 				server.LsaUpdateRetCodeCh <- ret
 			} else if msg.MsgType == LsdbDel {
 				server.logger.Info("Deleting LS in the Lsdb")
+                                ret := server.processDeleteLsa(msg.Data, msg.AreaId)
+				server.LsaUpdateRetCodeCh <- ret
 			} else if msg.MsgType == LsdbUpdate {
 				server.logger.Info("Deleting LS in the Lsdb")
+                                ret := server.processRecvdLsa(msg.Data, msg.AreaId)
+				server.LsaUpdateRetCodeCh <- ret
 			}
 		case msg := <-server.IntfStateChangeCh:
 			server.logger.Info(fmt.Sprintf("Interface State change msg", msg))
