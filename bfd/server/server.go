@@ -87,6 +87,7 @@ type BFDServer struct {
 	asicdClient         AsicdClient
 	GlobalConfigCh      chan GlobalConfig
 	IntfConfigCh        chan IntfConfig
+	IntfConfigDeleteCh  chan int32
 	asicdSubSocket      *nanomsg.SubSocket
 	asicdSubSocketCh    chan []byte
 	asicdSubSocketErrCh chan error
@@ -107,6 +108,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.logger = logger
 	bfdServer.GlobalConfigCh = make(chan GlobalConfig)
 	bfdServer.IntfConfigCh = make(chan IntfConfig)
+	bfdServer.IntfConfigDeleteCh = make(chan int32)
 	bfdServer.asicdSubSocketCh = make(chan []byte)
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)
@@ -214,10 +216,14 @@ func (server *BFDServer) StartServer(paramFile string) {
 		case ifConf := <-server.IntfConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Intf Configuration", ifConf))
 			server.processIntfConfig(ifConf)
+		case ifIndex := <-server.IntfConfigDeleteCh:
+			server.logger.Info(fmt.Sprintln("Received call for performing Intf delete", ifIndex))
+			server.processIntfConfigDelete(ifIndex)
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:
 		case sessionConfig := <-server.SessionConfigCh:
+			server.logger.Info(fmt.Sprintln("Received call for performing Session Configuration", sessionConfig))
 			server.processSessionConfig(sessionConfig)
 			/*
 				case ribrxBuf := <-server.ribSubSocketCh:
