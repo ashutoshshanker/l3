@@ -15,6 +15,7 @@ type OspfHdrMetadata struct {
 	pktlen   uint16
 	backbone bool
 	routerId []byte
+	areaId   uint32
 }
 
 func NewOspfHdrMetadata() *OspfHdrMetadata {
@@ -62,6 +63,7 @@ const (
 	IP_HEADER_MIN_LEN    = 20
 	OSPF_PROTO_ID        = 89
 	OSPF_VERSION_2       = 2
+	OSPA_NO_OF_LSA_FIELD = 4
 )
 
 type OspfType uint8
