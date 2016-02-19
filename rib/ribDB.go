@@ -43,15 +43,15 @@ func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
 
 func UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
       logger.Println("UpdatePolicyConditionsFromDB")
-    dbCmd := "select * from PolicyDefinitionStmtMatchProtocolCondition"
+    dbCmd := "select * from PolicyConditionConfig"
 	rows, err := dbHdl.Query(dbCmd)
 	if(err != nil) {
 		logger.Printf("DB Query failed for %s with err %s\n", dbCmd, err)
 		return err
 	}
-	var condition ribd.PolicyDefinitionStmtMatchProtocolCondition
+	//var condition ribd.PolicyConditionConfig
 	for rows.Next() {
-		if err = rows.Scan(&condition.Name, &condition.InstallProtocolEq); err != nil {
+/*		if err = rows.Scan(&condition.Name, &condition.ConditionType); err != nil {
 			logger.Printf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err)
 			return err
 		}
@@ -59,7 +59,7 @@ func UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
 		if(err != nil) {
 			logger.Printf("Condition create failed with err %s\n", err)
 			return err
-		}
+		}*/
 	}
 	return err
 }
