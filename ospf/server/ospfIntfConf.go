@@ -94,7 +94,16 @@ type IntfConf struct {
         IfMtu                   int32
 }
 
-func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfProperty) {
+func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfProperty, ifType int) {
+        var intfType config.IfType
+        if ifType == numberedP2P ||
+                ifType == unnumberedP2P {
+                intfType = config.PointToPoint
+                server.logger.Info("Creating point2point")
+        } else {
+                intfType = config.Broadcast
+                server.logger.Info("Creating broadcast")
+        }
 	ent, exist := server.IntfConfMap[key]
 	if !exist {
 		areaId := convertAreaOrRouterId("0.0.0.0")
@@ -102,7 +111,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 			return
 		}
 		ent.IfAreaId = areaId
-		ent.IfType = config.Broadcast
+		ent.IfType = intfType
 		ent.IfAdminStat = config.Enabled
 		ent.IfRtrPriority = uint8(config.DesignatedRouterPriority(1))
 		ent.IfTransitDelay = config.UpToMaxAge(1)
@@ -129,10 +138,22 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		ent.WaitTimer = nil
 		ent.HelloIntervalTicker = nil
                 ent.NeighborMap = make(map[NeighborKey]NeighborData)
-		ent.IfNetmask = ipIntfProp.NetMask
+                if ifType == broadcast {
+                        ent.IfNetmask = ipIntfProp.NetMask
+                        ent.IfIpAddr = ipIntfProp.IpAddr
+                } else if ifType == unnumberedP2P {
+                        ent.IfNetmask = []byte {0, 0, 0, 0}
+                        // IP address of a loopback interface
+                        ent.IfIpAddr = net.ParseIP("20.0.1.141")
+                } else if ifType == numberedP2P {
+                        ent.IfNetmask = []byte {0, 0, 0, 0}
+                        ent.IfIpAddr = ipIntfProp.IpAddr
+                } else {
+                        server.logger.Err("Invalid Interface type.")
+                        return
+                }
 		ent.IfName = ipIntfProp.IfName
 		ent.IfMtu = ipIntfProp.Mtu
-		ent.IfIpAddr = ipIntfProp.IpAddr
 		ent.IfMacAddr = ipIntfProp.MacAddr
                 ent.IfDRIp = []byte {0, 0, 0, 0}
                 ent.IfBDRIp = []byte {0, 0, 0, 0}
@@ -181,24 +202,29 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 	}
 }
 
-func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg, mtu int32) {
+func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg, mtu int32, ifIndex int32, ifType int) {
+        var ifIdx int32
 	ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to parse IP address", msg.IpAddr))
 		return
 	}
+        if ip.String() == "0.0.0.0" {
+                ifIdx = ifIndex
+        } else {
+                ifIdx = 0
+        }
 	ifName, err := server.getLinuxIntfName(msg.IfId, msg.IfType)
 	if err != nil {
 		server.logger.Err("No Such Interface exists")
 		return
 	}
-	server.logger.Info(fmt.Sprintln("create IPIntfConfMap for ", msg))
+	server.logger.Info(fmt.Sprintln("create IPIntfConfMap for ", msg, "ifIdx:", ifIdx))
 
 	// Set ifIdx = 0 for time being --- Need to be revisited
 	intfConfKey := IntfConfKey{
 		IPAddr: config.IpAddress(ip.String()),
-		//IntfIdx:    int(msg.IfIdx),
-		IntfIdx: config.InterfaceIndexOrZero(0),
+		IntfIdx: config.InterfaceIndexOrZero(ifIdx),
 	}
 	macAddr, err := getMacAddrIntfName(ifName)
 	if err != nil {
@@ -212,7 +238,8 @@ func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg, mtu int32) 
 		NetMask: ipNet.Mask,
                 Mtu:    mtu,
 	}
-	server.initDefaultIntfConf(intfConfKey, ipIntfProp)
+
+	server.initDefaultIntfConf(intfConfKey, ipIntfProp, ifType)
 	_, exist := server.IntfConfMap[intfConfKey]
 	if !exist {
 		server.logger.Err("No such inteface exists")
@@ -227,8 +254,9 @@ func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg, mtu int32) 
 	}
 }
 
-func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
+func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg, ifIndex int32) {
         var flag bool = false
+        var ifIdx int32
         server.logger.Info(fmt.Sprintln("calling deleteIPIntfConfMap for....:", msg))
 	ip, _, err := net.ParseCIDR(msg.IpAddr)
 	if err != nil {
@@ -236,13 +264,17 @@ func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		return
 	}
 
-	server.logger.Info(fmt.Sprintln("delete IPIntfConfMap for ", msg))
+        if ip.String() == "0.0.0.0" {
+                ifIdx = ifIndex
+        } else {
+                ifIdx = 0
+        }
+	server.logger.Info(fmt.Sprintln("delete IPIntfConfMap for ", msg, "ifIndex:", ifIdx))
 
 	// Set ifIdx = 0 for time being --- Need to be revisited
 	intfConfKey := IntfConfKey{
 		IPAddr: config.IpAddress(ip.String()),
-		//IntfIdx:    int(msg.IfIdx),
-		IntfIdx: config.InterfaceIndexOrZero(0),
+		IntfIdx: config.InterfaceIndexOrZero(ifIdx),
 	}
 	ent, exist := server.IntfConfMap[intfConfKey]
 	if !exist {
@@ -321,6 +353,23 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
 		server.logger.Err("No such L3 interface exists")
 		return
 	}
+        if intfConfKey.IPAddr == "0.0.0.0" &&
+                ifConf.IfType == config.PointToPoint {
+                flag := false
+                for key, _ := range server.IntfConfMap {
+                        if key.IPAddr != "0.0.0.0" {
+                                flag = true
+                                break
+                        }
+                }
+
+                if flag == false {
+                        server.logger.Err("Invalid Configuration")
+                        server.logger.Err("Unnumbered PointToPoint Interface cannot be configured without having any other IP interface")
+                        return
+                }
+        }
+
 	if ent.IfAdminStat == config.Enabled &&
 		server.ospfGlobalConf.AdminStat == config.Enabled {
 		server.StopSendRecvPkts(intfConfKey)
@@ -351,13 +400,19 @@ func (server *OSPFServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
 func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
 	ent, _ := server.IntfConfMap[intfConfKey]
 	helloInterval := time.Duration(ent.IfHelloInterval) * time.Second
-	waitTime := time.Duration(ent.IfRtrDeadInterval) * time.Second
-	// rtrDeadInterval := time.Duration(ent.IfRtrDeadInterval * time.Second)
 	ent.HelloIntervalTicker = time.NewTicker(helloInterval)
-	ent.WaitTimer = time.NewTimer(waitTime)
+        if ent.IfType == config.Broadcast {
+                waitTime := time.Duration(ent.IfRtrDeadInterval) * time.Second
+                ent.WaitTimer = time.NewTimer(waitTime)
+        }
+	// rtrDeadInterval := time.Duration(ent.IfRtrDeadInterval * time.Second)
         ent.NeighborMap = make(map[NeighborKey]NeighborData)
         ent.IfEvents = ent.IfEvents + 1
-        ent.IfFSMState = config.Waiting
+        if ent.IfType == config.Broadcast {
+                ent.IfFSMState = config.Waiting
+        } else if ent.IfType == config.PointToPoint {
+                ent.IfFSMState = config.P2P
+        }
 	server.IntfConfMap[intfConfKey] = ent
 	server.logger.Info("Start Sending Hello Pkt")
 	go server.StartOspfIntfFSM(intfConfKey)

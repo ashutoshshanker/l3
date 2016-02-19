@@ -148,7 +148,7 @@ const (
 	Down                   IfState = 1
 	Loopback               IfState = 2
 	Waiting                IfState = 3
-	PiontToPoint           IfState = 4
+	P2P                    IfState = 4
 	OtherDesignatedRouter  IfState = 5
 	DesignatedRouter       IfState = 6
 	BackupDesignatedRouter IfState = 7
