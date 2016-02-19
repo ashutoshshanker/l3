@@ -247,6 +247,18 @@ struct OspfAreaLsaCountEntryStateGetInfo {
 	4: bool More
 	5: list<OspfAreaLsaCountEntryState> OspfAreaLsaCountEntryStateList
 }
+struct OspfHostEntryState{
+        1 : i32 HostTOSKey
+        2 : string HostIpAddressKey
+        3 : string HostAreaID
+}
+struct OspfHostEntryStateGetInfo {
+        1: int StartIdx
+        2: int EndIdx
+        3: int Count
+        4: bool More
+        5: list<OspfHostEntryState> OspfHostEntryStateList
+}
 struct OspfGlobalConfig{
 	1 : string 	RouterIdKey
 	2 : i32 	AdminStat
@@ -302,6 +314,7 @@ service OSPFDServices {
 	bool UpdateOspfAreaRangeEntryConfig(1: OspfAreaRangeEntryConfig origconfig, 2: OspfAreaRangeEntryConfig newconfig, 3: list<bool> attrset);
 	bool DeleteOspfAreaRangeEntryConfig(1: OspfAreaRangeEntryConfig config);
 
+        OspfHostEntryStateGetInfo GetBulkOspfHostEntryState(1: int fromIndex, 2: int count);
 	bool CreateOspfHostEntryConfig(1: OspfHostEntryConfig config);
 	bool UpdateOspfHostEntryConfig(1: OspfHostEntryConfig origconfig, 2: OspfHostEntryConfig newconfig, 3: list<bool> attrset);
 	bool DeleteOspfHostEntryConfig(1: OspfHostEntryConfig config);
