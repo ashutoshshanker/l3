@@ -5,7 +5,9 @@ const (
       CONNECTED  = 0
       STATIC     = 1
       OSPF       = 89
-      BGP        = 8
+      EBGP        = 8
+      IBGP        = 9
+	  BGP         = 17
 	  PolicyConditionTypeDstIpPrefixMatch = 0
 	  PolicyConditionTypeProtocolMatch = 1
 	  PolicyActionTypeRouteDisposition = 0

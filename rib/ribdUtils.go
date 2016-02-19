@@ -26,18 +26,23 @@ var ProtocolAdminDistanceSlice AdminDistanceSlice
 
 func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["CONNECTED"] = ribdCommonDefs.CONNECTED
+	RouteProtocolTypeMapDB["EBGP"]       = ribdCommonDefs.EBGP
+	RouteProtocolTypeMapDB["IBGP"]       = ribdCommonDefs.IBGP
 	RouteProtocolTypeMapDB["BGP"]       = ribdCommonDefs.BGP
 	RouteProtocolTypeMapDB["STATIC"]       = ribdCommonDefs.STATIC
 	
 	//reverse
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.CONNECTED] = "CONNECTED"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.IBGP] = "IBGP"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.EBGP] = "EBGP"
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.BGP] = "BGP"
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.STATIC] = "STATIC"
 }
 func BuildProtocolAdminDistanceMapDB() {
 	ProtocolAdminDistanceMapDB["CONNECTED"] = RouteDistanceConfig{defaultDistance:0, configuredDistance:-1}
 	ProtocolAdminDistanceMapDB["STATIC"]       = RouteDistanceConfig{defaultDistance:1, configuredDistance:-1}	
-	ProtocolAdminDistanceMapDB["BGP"]       = RouteDistanceConfig{defaultDistance:200, configuredDistance:-1}
+	ProtocolAdminDistanceMapDB["EBGP"]       = RouteDistanceConfig{defaultDistance:20, configuredDistance:-1}
+	ProtocolAdminDistanceMapDB["IBGP"]       = RouteDistanceConfig{defaultDistance:200, configuredDistance:-1}
 	ProtocolAdminDistanceMapDB["OSPF"]       = RouteDistanceConfig{defaultDistance:110, configuredDistance:-1}
 }
 func (slice AdminDistanceSlice ) Len() int {

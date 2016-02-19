@@ -276,10 +276,14 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 				if !paths[0].IsLocal() {
 					d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.nlri.Prefix.String(),
 						constructNetmaskFromLen(int(d.nlri.Length), 32).String(), paths[0].NextHop))
+						protocol := "IBGP"
+		                 if paths[0].IsExternal() {
+			                protocol = "EBGP"
+		                }
 					ret, err := d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(),
 						constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
 						paths[0].Metric, paths[0].NextHop, paths[0].NextHopIfType,
-						paths[0].NextHopIfIdx, "BGP")
+						paths[0].NextHopIfIdx, protocol)
 					if err != nil {
 						d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
 					}
@@ -301,8 +305,12 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 				route.setAction(RouteActionDelete)
 				if !path.IsLocal() {
 					d.logger.Info(fmt.Sprintf("Remove route for ip=%s", d.nlri.Prefix.String()))
+					    protocol := "IBGP"
+		                if path.IsExternal() {
+			               protocol = "EBGP"
+		                }
 					ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
-						constructNetmaskFromLen(int(d.nlri.Length), 32).String(), "BGP",path.NextHop)
+						constructNetmaskFromLen(int(d.nlri.Length), 32).String(), protocol,path.NextHop)
 					if err != nil {
 						d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 					}
@@ -328,8 +336,12 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 func (d *Destination) updateRoute(path *Path) {
 	d.logger.Info(fmt.Sprintf("Remove route for ip=%s, mask=%s", d.nlri.Prefix.String(),
 		constructNetmaskFromLen(int(d.nlri.Length), 32).String()))
+		protocol := "IBGP"
+		if path.IsExternal() {
+			protocol = "EBGP"
+		}
 	ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
-		constructNetmaskFromLen(int(d.nlri.Length), 32).String(), "BGP",path.NextHop)
+		constructNetmaskFromLen(int(d.nlri.Length), 32).String(), protocol,path.NextHop)
 	if err != nil {
 		d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 	}
@@ -340,7 +352,7 @@ func (d *Destination) updateRoute(path *Path) {
 		ret, err = d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(),
 			constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
 			path.Metric, path.NextHop, path.NextHopIfType,
-			path.NextHopIfIdx, "BGP")
+			path.NextHopIfIdx, protocol)
 		if err != nil {
 			d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
 		}
