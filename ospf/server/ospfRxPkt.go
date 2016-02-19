@@ -119,6 +119,7 @@ func (server *OSPFServer) processOspfHeader(ospfPkt []byte, key IntfConfKey, md 
 	md.pktType = OspfType(ospfHdr.pktType)
 	md.pktlen = ospfHdr.pktlen
 	md.routerId = ospfHdr.routerId
+	md.areaId = binary.BigEndian.Uint32(ospfHdr.areaId)
 	return nil
 }
 
@@ -179,19 +180,27 @@ func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packe
 
 func (server *OSPFServer) processOspfData(data []byte, ethHdrMd *EthHdrMetadata, ipHdrMd *IpHdrMetadata, ospfHdrMd *OspfHdrMetadata, key IntfConfKey) error {
 	var err error = nil
+	routerid := binary.BigEndian.Uint32(ospfHdrMd.routerId)
+	exist := server.neighborExist(routerid)
 	switch ospfHdrMd.pktType {
 	case HelloType:
 		err = server.processRxHelloPkt(data, ospfHdrMd, ipHdrMd, ethHdrMd, key)
 	case DBDescriptionType:
-
-		err = server.processRxDbdPkt(data, ospfHdrMd, ipHdrMd, key, ethHdrMd.srcMAC)
-
+		if exist {
+			err = server.processRxDbdPkt(data, ospfHdrMd, ipHdrMd, key, ethHdrMd.srcMAC)
+		}
 	case LSRequestType:
-
+		if exist {
+			err = server.ProcessLSAReqPkt(data, ospfHdrMd, ipHdrMd, key)
+		}
 	case LSUpdateType:
-
+		/*if exist {
+			err = server.ProcessLsaUpdPkt(data, ospfHdrMd, ipHdrMd, key)
+		} */
 	case LSAckType:
-
+		if exist {
+			err = server.ProcessLSAAckPkt(data, ospfHdrMd, ipHdrMd, key)
+		}
 	default:
 		err = errors.New("Invalid Ospf packet type")
 	}
