@@ -285,10 +285,8 @@ func (session *BfdSession) StartSessionServer(bfdServer *BFDServer) error {
 		} else {
 			if len >= DEFAULT_CONTROL_PACKET_LEN {
 				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
-				if err != nil {
-					//fmt.Println("Received ", string(buf[0:len]), " from ", addr, " bfdPacket ", bfdPacket)
+				if err == nil {
 					sessionId := int32(bfdPacket.YourDiscriminator)
-					fmt.Println("Received bfd packet for session ", sessionId, " from ", addr)
 					if sessionId == 0 {
 						fmt.Println("Ignore bfd packet for session ", sessionId, " from ", addr)
 					} else {
@@ -296,6 +294,8 @@ func (session *BfdSession) StartSessionServer(bfdServer *BFDServer) error {
 						bfdSession.state.NumRxPackets++
 						bfdSession.ProcessBfdPacket(bfdPacket)
 					}
+				} else {
+					fmt.Println("Failed to decode packet - ", err)
 				}
 			}
 		}
@@ -431,7 +431,18 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 	session.bfdPacket.DesiredMinTxInterval = time.Duration(session.state.DesiredMinTxInterval)
 	session.bfdPacket.RequiredMinRxInterval = time.Duration(session.state.RequiredMinRxInterval)
 	if session.state.SessionState == STATE_UP && session.state.RemoteSessionState == STATE_UP {
+		wasDemand := session.bfdPacket.Demand
 		session.bfdPacket.Demand = session.state.DemandMode
+		isDemand := session.bfdPacket.Demand
+		if !wasDemand && isDemand {
+			fmt.Sprintln("Enabled demand for session ", session.state.SessionId)
+			session.sessionTimer.Stop()
+		}
+		if wasDemand && !isDemand {
+			fmt.Sprintln("Disabled demand for session ", session.state.SessionId)
+			sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier / 1000)
+			session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
+		}
 	}
 	session.bfdPacket.Poll = session.pollSequence
 	session.bfdPacket.Final = session.pollSequenceFinal
@@ -579,7 +590,6 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 	txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
 	session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session.state.SessionId })
-	session.txTimer.Reset(0)
 	defer Conn.Close()
 	for {
 		select {
@@ -604,6 +614,7 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 			bfdSession := server.bfdGlobal.Sessions[sessionId]
 			bfdSession.state.LocalDiagType = DIAG_TIME_EXPIRED
 			bfdSession.EventHandler(TIMEOUT)
+			bfdSession.sessionTimer.Stop()
 			sessionTimeoutMS = time.Duration(bfdSession.state.RequiredMinRxInterval * bfdSession.state.DetectionMultiplier / 1000)
 			bfdSession.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { bfdSession.SessionTimeoutCh <- bfdSession.state.SessionId })
 		case <-session.SessionDeleteCh:
