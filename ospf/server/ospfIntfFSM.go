@@ -7,8 +7,80 @@ import (
     "encoding/binary"
 )
 
+func (server *OSPFServer) StartOspfIntfFSM(key IntfConfKey) {
+        ent, _ := server.IntfConfMap[key]
+        if ent.IfType == config.PointToPoint {
+                server.StartOspfP2PIntfFSM(key)
+        } else if ent.IfType == config.Broadcast {
+                server.StartOspfBroadcastIntfFSM(key)
+        }
+}
 
-func (server *OSPFServer)StartOspfIntfFSM(key IntfConfKey) {
+func (server *OSPFServer) StartOspfP2PIntfFSM(key IntfConfKey) {
+        server.StartSendHelloPkt(key)
+        for {
+                ent, _ := server.IntfConfMap[key]
+                select {
+                case <-ent.HelloIntervalTicker.C:
+                        server.StartSendHelloPkt(key)
+                case createMsg := <-ent.NeighCreateCh:
+                    if bytesEqual(createMsg.DRtr, []byte{0, 0, 0, 0}) == false ||
+                        bytesEqual(createMsg.BDRtr, []byte{0, 0, 0, 0}) == false {
+                        server.logger.Err("DR or BDR is non zero")
+                        continue
+                    }
+                        neighborKey := NeighborKey{
+                                RouterId: createMsg.RouterId,
+                        }
+                        neighborEntry, exist := ent.NeighborMap[neighborKey]
+                        if !exist {
+                                neighborEntry.NbrIP = createMsg.NbrIP
+                                neighborEntry.TwoWayStatus = createMsg.TwoWayStatus
+                                neighborEntry.RtrPrio = createMsg.RtrPrio
+                                neighborEntry.FullState = false
+                                ent.NeighborMap[neighborKey] = neighborEntry
+                                server.IntfConfMap[key] = ent
+                                server.logger.Info(fmt.Sprintln("1 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap, "neighborKey:", neighborKey))
+                        }
+                case changeMsg:= <-ent.NeighChangeCh:
+                    if bytesEqual(changeMsg.DRtr, []byte{0, 0, 0, 0}) == false ||
+                        bytesEqual(changeMsg.BDRtr, []byte{0, 0, 0, 0}) == false {
+                        server.logger.Err("DR or BDR is non zero")
+                        continue
+                    }
+                    neighborKey := NeighborKey {
+                        RouterId:       changeMsg.RouterId,
+                    }
+                    neighborEntry, exist := ent.NeighborMap[neighborKey]
+                    if exist {
+                        server.logger.Info(fmt.Sprintln("Change msg: ", changeMsg, "neighbor entry:", neighborEntry, "neighbor key:", neighborKey))
+                        neighborEntry.NbrIP = changeMsg.NbrIP
+                        neighborEntry.TwoWayStatus = changeMsg.TwoWayStatus
+                        neighborEntry.RtrPrio = changeMsg.RtrPrio
+                        neighborEntry.DRtr = changeMsg.DRtr
+                        neighborEntry.BDRtr = changeMsg.BDRtr
+                        ent.NeighborMap[neighborKey] = neighborEntry
+                        server.IntfConfMap[key] = ent
+                        server.logger.Info(fmt.Sprintln("2 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap))
+                    } else {
+                        server.logger.Err(fmt.Sprintln("Neighbor entry does not exists", neighborKey.RouterId))
+                    }
+                case nbrStateChangeMsg := <-ent.NbrStateChangeCh:
+                    // Only when Neighbor Went Down from TwoWayStatus
+                    server.logger.Info(fmt.Sprintf("Recev Neighbor State Change message", nbrStateChangeMsg))
+                    server.processNbrDownEvent(nbrStateChangeMsg, key, true)
+                case state := <-ent.FSMCtrlCh:
+                        if state == false {
+                                server.StopSendHelloPkt(key)
+                                ent.FSMCtrlStatusCh <- false
+                                return
+                        }
+                }
+        }
+
+}
+
+func (server *OSPFServer) StartOspfBroadcastIntfFSM(key IntfConfKey) {
     server.StartSendHelloPkt(key)
     for {
         ent, _ := server.IntfConfMap[key]
@@ -86,7 +158,7 @@ func (server *OSPFServer)StartOspfIntfFSM(key IntfConfKey) {
             // Only when Neighbor Went Down from TwoWayStatus
             // Todo: Handle NbrIP: Ashutosh
             server.logger.Info(fmt.Sprintf("Recev Neighbor State Change message", nbrStateChangeMsg))
-            server.processNbrDownEvent(nbrStateChangeMsg, key)
+            server.processNbrDownEvent(nbrStateChangeMsg, key, false)
         case state := <-ent.FSMCtrlCh:
             if state == false {
                 server.StopSendHelloPkt(key)
@@ -102,7 +174,7 @@ func (server *OSPFServer)StartOspfIntfFSM(key IntfConfKey) {
 }
 
 func (server *OSPFServer)processNbrDownEvent(msg NbrStateChangeMsg,
-    key IntfConfKey) {
+    key IntfConfKey, p2p bool) {
     ent, _ := server.IntfConfMap[key]
     nbrKey := NeighborKey {
         RouterId:   msg.RouterId,
@@ -113,14 +185,15 @@ func (server *OSPFServer)processNbrDownEvent(msg NbrStateChangeMsg,
         delete(ent.NeighborMap, nbrKey)
         server.logger.Info(fmt.Sprintln("Deleting", nbrKey))
         server.IntfConfMap[key] = ent
-        if ent.IfFSMState > config.Waiting {
-            // RFC2328 Section 9.2 (Neighbor Change Event)
-            if oldTwoWayStatus == true {
-                server.ElectBDRAndDR(key)
-            }
+        if p2p == false {
+                if ent.IfFSMState > config.Waiting {
+                    // RFC2328 Section 9.2 (Neighbor Change Event)
+                    if oldTwoWayStatus == true {
+                        server.ElectBDRAndDR(key)
+                    }
+                }
         }
     }
-    server.logger.Info(fmt.Sprintln("Hello", server.IntfConfMap))
 }
 
 // Nbr State machine has to send FullState change msg and then

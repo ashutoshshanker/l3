@@ -5,6 +5,7 @@ import (
 	"asicdServices"
 	"encoding/json"
 	"fmt"
+        "net"
 	nanomsg "github.com/op/go-nanomsg"
 	"utils/commonDefs"
 )
@@ -75,7 +76,20 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 		if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_CREATE", ipv4IntfMsg))
                         mtu := server.computeMinMTU(ipv4IntfMsg)
-			server.createIPIntfConfMap(ipv4IntfMsg, mtu)
+                        // We need more information from Asicd about numbered/unnumbered p2p
+                        // or broadcast
+                        //Start
+                        ip, _, _ := net.ParseCIDR(ipv4IntfMsg.IpAddr)
+                        if ip.String() == "40.0.1.10" {
+                                server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, unnumberedP2P)
+                        } else if ip.String() == "40.0.1.15" {
+                                server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, numberedP2P)
+                        } else {
+                                server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, broadcast)
+                        }
+
+                        //End
+			//server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex)
 			if ipv4IntfMsg.IfType == commonDefs.L2RefTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
 			} else if ipv4IntfMsg.IfType == commonDefs.L2RefTypeVlan { // Vlan
@@ -83,7 +97,7 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 			}
 		} else {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_DELETE", ipv4IntfMsg))
-			server.deleteIPIntfConfMap(ipv4IntfMsg)
+			server.deleteIPIntfConfMap(ipv4IntfMsg, NewIpv4IntfMsg.IfIndex)
 			if ipv4IntfMsg.IfType == commonDefs.L2RefTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
 			} else if ipv4IntfMsg.IfType == commonDefs.L2RefTypeVlan { // Vlan
@@ -103,3 +117,9 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 		server.updateVlanPropertyMap(vlanNotifyMsg, msg.MsgType)
 	}
 }
+
+const (
+        numberedP2P int = 0
+        unnumberedP2P int = 1
+        broadcast int = 2
+)
