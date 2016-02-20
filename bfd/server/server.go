@@ -191,7 +191,7 @@ func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
 	dbCmd := "SELECT * FROM BfdGlobalConfig"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to querry DB - BfdGlobalConfig: ", err))
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdGlobalConfig: ", err))
 		dbHdl.Close()
 		return err
 	}
@@ -227,7 +227,7 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 	dbCmd := "SELECT * FROM BfdIntfConfig"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to querry DB - BfdIntfConfig: ", err))
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdIntfConfig: ", err))
 		dbHdl.Close()
 		return err
 	}
@@ -284,7 +284,7 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 	dbCmd := "SELECT * FROM BfdSessionConfig"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to querry DB - BfdSessionConfig: ", err))
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdSessionConfig: ", err))
 		dbHdl.Close()
 		return err
 	}

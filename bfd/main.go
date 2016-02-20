@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	_ "github.com/mattn/go-sqlite3"
 	"l3/bfd/rpc"
 	"l3/bfd/server"
 	"log/syslog"
@@ -27,11 +28,13 @@ func main() {
 	}
 	fileName = fileName + "clients.json"
 
-	logger.Info(fmt.Sprintln("Opening Config DB"))
 	dbName := *paramsDir + "/UsrConfDb.db"
+	logger.Info(fmt.Sprintln("Opening Config DB: ", dbName))
 	dbHdl, err := sql.Open("sqlite3", dbName)
 	if err != nil {
-		logger.Err("Failed to open connection to DB")
+		fmt.Println("Failed to open connection to DB. ", err)
+		logger.Err("Exiting!!")
+		return
 	}
 
 	logger.Info(fmt.Sprintln("Starting BFD Server..."))
