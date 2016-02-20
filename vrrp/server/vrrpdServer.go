@@ -20,6 +20,20 @@ func NewVrrpServer() *VrrpServiceHandler {
 	return &VrrpServiceHandler{}
 }
 
+func VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
+	logger.Info(fmt.Sprintln("VRID:", gblInfo.IntfConfig.VRID))
+	logger.Info(fmt.Sprintln("IpAddr:", gblInfo.IpAddr))
+	logger.Info(fmt.Sprintln("IfIndex:", gblInfo.IntfConfig.IfIndex))
+	logger.Info(fmt.Sprintln("Priority:", gblInfo.IntfConfig.Priority))
+	logger.Info(fmt.Sprintln("Preempt Mode:", gblInfo.IntfConfig.PreemptMode))
+	logger.Info(fmt.Sprintln("Virt Mac Addr:", gblInfo.IntfConfig.VirtualRouterMACAddress))
+	logger.Info(fmt.Sprintln("VirtualIPv4Addr:", gblInfo.IntfConfig.VirtualIPv4Addr))
+	logger.Info(fmt.Sprintln("AdvertisementTime:", gblInfo.IntfConfig.AdvertisementInterval))
+	logger.Info(fmt.Sprintln("MasterAdverInterval:", gblInfo.MasterAdverInterval))
+	logger.Info(fmt.Sprintln("Skew Time:", gblInfo.SkewTime))
+	logger.Info(fmt.Sprintln("Master Down Interval:", gblInfo.MasterDownInterval))
+}
+
 /*
 	// The initial value is the same as Advertisement_Interval.
 	MasterAdverInterval int32
@@ -49,6 +63,7 @@ func VrrpUpdateGblInfoTimers(IfIndex int32) {
 	}
 	gblInfo.MasterDownInterval = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
 	vrrpGblInfo[IfIndex] = gblInfo
+	VrrpDumpIntfInfo(gblInfo)
 }
 
 func VrrpConnectToAsicd(client VrrpClientJson) error {

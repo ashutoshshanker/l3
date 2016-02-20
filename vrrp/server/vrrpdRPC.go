@@ -23,6 +23,7 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 		config.IfIndex))
 	gblInfo := vrrpGblInfo[config.IfIndex]
 
+	gblInfo.IntfConfig.IfIndex = config.IfIndex
 	if config.VRID == 0 {
 		logger.Info("VRRP: Invalid VRID")
 		return false, errors.New(VRRP_INVALID_VRID)
@@ -45,11 +46,16 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 		gblInfo.IntfConfig.AdvertisementInterval = config.AdvertisementInterval
 	}
 
-	if config.PreemptMode == false {
-		gblInfo.IntfConfig.PreemptMode = false
-	} else {
-		gblInfo.IntfConfig.PreemptMode = true
-	}
+	/* @TODO: hack for setting it to TRUE right until default is taken care
+	* off
+		* if config.PreemptMode == false {
+			gblInfo.IntfConfig.PreemptMode = false
+		} else {
+
+			gblInfo.IntfConfig.PreemptMode = true
+		}
+	*/
+	gblInfo.IntfConfig.PreemptMode = true
 
 	if config.AcceptMode == true {
 		gblInfo.IntfConfig.AcceptMode = true
