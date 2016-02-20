@@ -120,6 +120,7 @@ func (server *BFDServer) NewBfdSession(DestIp string, protocol int32) *BfdSessio
 func (server *BFDServer) UpdateBfdSessionsOnInterface(ifIndex int32) error {
 	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if exist {
+		intfEnabled := intf.Enabled
 		for _, session := range server.bfdGlobal.Sessions {
 			if session.state.InterfaceId == ifIndex {
 				session.state.LocalIpAddr = intf.property.IpAddr.String()
@@ -131,7 +132,11 @@ func (server *BFDServer) UpdateBfdSessionsOnInterface(ifIndex int32) error {
 				session.authType = AuthenticationType(intf.conf.AuthenticationType)
 				session.authKeyId = uint32(intf.conf.AuthenticationKeyId)
 				session.authData = intf.conf.AuthenticationData
-				session.InitiatePollSequence()
+				if intfEnabled {
+					session.InitiatePollSequence()
+				} else {
+					session.StopBfdSession()
+				}
 			}
 		}
 	}
@@ -517,7 +522,7 @@ ADMIN_UP, DOWN|    | INIT |--------------------->|  UP  |    |INIT, UP, ADMIN_UP
 func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 	switch session.state.SessionState {
 	case STATE_ADMIN_DOWN:
-		fmt.Printf("Received %d event in ADMINDOWN state. No change in state\n", event)
+		fmt.Printf("Received %d event in ADMINDOWN state\n", event)
 	case STATE_DOWN:
 		switch event {
 		case REMOTE_DOWN:
@@ -527,7 +532,6 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 		case ADMIN_UP:
 			session.MoveToDownState()
 		case ADMIN_DOWN, TIMEOUT, REMOTE_UP:
-			fmt.Printf("Received %d event in DOWN state. No change in state\n", event)
 		}
 	case STATE_INIT:
 		switch event {
@@ -536,14 +540,12 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 		case ADMIN_DOWN, TIMEOUT:
 			session.MoveToDownState()
 		case REMOTE_DOWN, ADMIN_UP:
-			fmt.Printf("Received %d event in INIT state. No change in state\n", event)
 		}
 	case STATE_UP:
 		switch event {
 		case REMOTE_DOWN, ADMIN_DOWN, TIMEOUT:
 			session.MoveToDownState()
 		case REMOTE_INIT, REMOTE_UP, ADMIN_UP:
-			fmt.Printf("Received %d event in UP state. No change in state\n", event)
 		}
 	}
 	return nil
@@ -646,14 +648,16 @@ func (session *BfdSession) InitiatePollSequence() error {
 }
 
 func (session *BfdSession) ProcessPollSequence(bfdPacket *BfdControlPacket) error {
-	if bfdPacket.Poll {
-		fmt.Println("Received packet with poll bit for session ", session.state.SessionId)
-		session.pollSequenceFinal = true
+	if session.state.SessionState != STATE_ADMIN_DOWN {
+		if bfdPacket.Poll {
+			fmt.Println("Received packet with poll bit for session ", session.state.SessionId)
+			session.pollSequenceFinal = true
+		}
+		if bfdPacket.Final {
+			fmt.Println("Received packet with final bit for session ", session.state.SessionId)
+			session.pollSequence = false
+		}
+		session.txTimer.Reset(0)
 	}
-	if bfdPacket.Final {
-		fmt.Println("Received packet with final bit for session ", session.state.SessionId)
-		session.pollSequence = false
-	}
-	session.txTimer.Reset(0)
 	return nil
 }

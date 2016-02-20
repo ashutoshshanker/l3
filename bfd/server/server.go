@@ -3,6 +3,7 @@ package server
 import (
 	"asicd/pluginManager/pluginCommon"
 	"asicdServices"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
@@ -87,6 +88,7 @@ type BFDServer struct {
 	asicdClient         AsicdClient
 	GlobalConfigCh      chan GlobalConfig
 	IntfConfigCh        chan IntfConfig
+	IntfConfigDeleteCh  chan int32
 	asicdSubSocket      *nanomsg.SubSocket
 	asicdSubSocketCh    chan []byte
 	asicdSubSocketErrCh chan error
@@ -107,6 +109,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.logger = logger
 	bfdServer.GlobalConfigCh = make(chan GlobalConfig)
 	bfdServer.IntfConfigCh = make(chan IntfConfig)
+	bfdServer.IntfConfigDeleteCh = make(chan int32)
 	bfdServer.asicdSubSocketCh = make(chan []byte)
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)
@@ -183,6 +186,150 @@ func (server *BFDServer) InitPublisher(pub_str string) (pub *nanomsg.PubSocket) 
 	return pub
 }
 
+func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
+	server.logger.Info("Reading BfdGlobalConfig")
+	dbCmd := "SELECT * FROM BfdGlobalConfig"
+	rows, err := dbHdl.Query(dbCmd)
+	if err != nil {
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdGlobalConfig: ", err))
+		dbHdl.Close()
+		return err
+	}
+
+	for rows.Next() {
+		var rtrBfd string
+		var enable int
+		var enableBool bool
+		err = rows.Scan(&rtrBfd, &enable)
+		if err != nil {
+			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdGlobalConfig: ", err))
+			dbHdl.Close()
+			return err
+		}
+		if enable == 1 {
+			enableBool = true
+		} else {
+			enableBool = false
+		}
+		server.logger.Info(fmt.Sprintln("BfdGlobalConfig - Enable: ", enableBool))
+		if !enableBool {
+			gConf := GlobalConfig{
+				Enable: enableBool,
+			}
+			server.GlobalConfigCh <- gConf
+		}
+	}
+	return nil
+}
+
+func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
+	server.logger.Info("Reading BfdIntfConfig")
+	dbCmd := "SELECT * FROM BfdIntfConfig"
+	rows, err := dbHdl.Query(dbCmd)
+	if err != nil {
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdIntfConfig: ", err))
+		dbHdl.Close()
+		return err
+	}
+
+	for rows.Next() {
+		var interfaceId int32
+		var localMultiplier int32
+		var desiredMinTxInterval int32
+		var requiredMinRxInterval int32
+		var requiredMinEchoRxInterval int32
+		var demandEnabled int
+		var demandEnabledBool bool
+		var authenticationEnabled int
+		var authenticationEnabledBool bool
+		var authenticationType int32
+		var authenticationKeyId int32
+		var authenticationData string
+		err = rows.Scan(&interfaceId, &localMultiplier, &desiredMinTxInterval, &requiredMinRxInterval, &requiredMinEchoRxInterval, &demandEnabled, &authenticationEnabled, &authenticationType, &authenticationKeyId, &authenticationData)
+		if err != nil {
+			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdIntfConfig: ", err))
+			dbHdl.Close()
+			return err
+		}
+		if demandEnabled == 1 {
+			demandEnabledBool = true
+		} else {
+			demandEnabledBool = false
+		}
+		if demandEnabled == 1 {
+			demandEnabledBool = true
+		} else {
+			demandEnabledBool = false
+		}
+		ifConf := IntfConfig{
+			InterfaceId:               interfaceId,
+			LocalMultiplier:           localMultiplier,
+			DesiredMinTxInterval:      desiredMinTxInterval,
+			RequiredMinRxInterval:     requiredMinRxInterval,
+			RequiredMinEchoRxInterval: requiredMinEchoRxInterval,
+			DemandEnabled:             demandEnabledBool,
+			AuthenticationEnabled:     authenticationEnabledBool,
+			AuthenticationType:        authenticationType,
+			AuthenticationKeyId:       authenticationKeyId,
+			AuthenticationData:        authenticationData,
+		}
+		server.logger.Info(fmt.Sprintln("BfdIntfConfig - ", ifConf))
+		server.IntfConfigCh <- ifConf
+	}
+	return nil
+}
+
+func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
+	server.logger.Info("Reading BfdSessionConfig")
+	dbCmd := "SELECT * FROM BfdSessionConfig"
+	rows, err := dbHdl.Query(dbCmd)
+	if err != nil {
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdSessionConfig: ", err))
+		dbHdl.Close()
+		return err
+	}
+
+	for rows.Next() {
+		var dstIp string
+		var owner int32
+		var operation int32
+		err = rows.Scan(&dstIp, &owner, &operation)
+		if err != nil {
+			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSessionConfig: ", err))
+			dbHdl.Close()
+			return err
+		}
+		sessionConf := SessionConfig{
+			DestIp:    dstIp,
+			Protocol:  bfddCommonDefs.USER,
+			Operation: bfddCommonDefs.CREATE,
+		}
+		server.logger.Info(fmt.Sprintln("BfdSessionConfig : ", sessionConf))
+		server.SessionConfigCh <- sessionConf
+	}
+	return nil
+}
+
+func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB) error {
+	var err error
+	// BfdGlobalConfig
+	err = server.ReadGlobalConfigFromDB(dbHdl)
+	if err != nil {
+		return err
+	}
+	// BfdIntfConfig
+	err = server.ReadIntfConfigFromDB(dbHdl)
+	if err != nil {
+		return err
+	}
+	// BfdSessionConfig
+	err = server.ReadSessionConfigFromDB(dbHdl)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (server *BFDServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Bfd Server"))
 	server.ConnectToClients(paramFile)
@@ -197,7 +344,7 @@ func (server *BFDServer) InitServer(paramFile string) {
 	*/
 }
 
-func (server *BFDServer) StartServer(paramFile string) {
+func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	server.InitServer(paramFile)
 	server.logger.Info("Listen for ASICd updates")
 	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
@@ -206,6 +353,7 @@ func (server *BFDServer) StartServer(paramFile string) {
 	go server.StartSessionHandler()
 	// Initialize publisher
 	server.bfddPubSocket = server.InitPublisher(bfddCommonDefs.PUB_SOCKET_ADDR)
+	go server.ReadConfigFromDB(dbHdl)
 	for {
 		select {
 		case gConf := <-server.GlobalConfigCh:
@@ -214,10 +362,14 @@ func (server *BFDServer) StartServer(paramFile string) {
 		case ifConf := <-server.IntfConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Intf Configuration", ifConf))
 			server.processIntfConfig(ifConf)
+		case ifIndex := <-server.IntfConfigDeleteCh:
+			server.logger.Info(fmt.Sprintln("Received call for performing Intf delete", ifIndex))
+			server.processIntfConfigDelete(ifIndex)
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:
 		case sessionConfig := <-server.SessionConfigCh:
+			server.logger.Info(fmt.Sprintln("Received call for performing Session Configuration", sessionConfig))
 			server.processSessionConfig(sessionConfig)
 			/*
 				case ribrxBuf := <-server.ribSubSocketCh:
