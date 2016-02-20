@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
 	"l3/bfd/rpc"
@@ -26,9 +27,16 @@ func main() {
 	}
 	fileName = fileName + "clients.json"
 
+	logger.Info(fmt.Sprintln("Opening Config DB"))
+	dbName := *paramsDir + "/UsrConfDb.db"
+	dbHdl, err := sql.Open("sqlite3", dbName)
+	if err != nil {
+		logger.Err("Failed to open connection to DB")
+	}
+
 	logger.Info(fmt.Sprintln("Starting BFD Server..."))
 	bfdServer := server.NewBFDServer(logger)
-	go bfdServer.StartServer(fileName)
+	go bfdServer.StartServer(fileName, dbHdl)
 
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewBFDHandler(logger, bfdServer)

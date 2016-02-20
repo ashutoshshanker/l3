@@ -648,14 +648,16 @@ func (session *BfdSession) InitiatePollSequence() error {
 }
 
 func (session *BfdSession) ProcessPollSequence(bfdPacket *BfdControlPacket) error {
-	if bfdPacket.Poll {
-		fmt.Println("Received packet with poll bit for session ", session.state.SessionId)
-		session.pollSequenceFinal = true
+	if session.state.SessionState != STATE_ADMIN_DOWN {
+		if bfdPacket.Poll {
+			fmt.Println("Received packet with poll bit for session ", session.state.SessionId)
+			session.pollSequenceFinal = true
+		}
+		if bfdPacket.Final {
+			fmt.Println("Received packet with final bit for session ", session.state.SessionId)
+			session.pollSequence = false
+		}
+		session.txTimer.Reset(0)
 	}
-	if bfdPacket.Final {
-		fmt.Println("Received packet with final bit for session ", session.state.SessionId)
-		session.pollSequence = false
-	}
-	session.txTimer.Reset(0)
 	return nil
 }
