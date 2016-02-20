@@ -311,12 +311,22 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 }
 
 func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB) error {
+	var err error
 	// BfdGlobalConfig
-	server.ReadGlobalConfigFromDB(dbHdl)
+	err = server.ReadGlobalConfigFromDB(dbHdl)
+	if err != nil {
+		return err
+	}
 	// BfdIntfConfig
-	server.ReadIntfConfigFromDB(dbHdl)
+	err = server.ReadIntfConfigFromDB(dbHdl)
+	if err != nil {
+		return err
+	}
 	// BfdSessionConfig
-	server.ReadSessionConfigFromDB(dbHdl)
+	err = server.ReadSessionConfigFromDB(dbHdl)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
