@@ -162,9 +162,11 @@ func processArpRequest(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_
 func processArpPackets(arpLayer gopacket.Layer, port_id int, myMac net.HardwareAddr, if_Name string) {
         arp := arpLayer.(*layers.ARP)
         if arp == nil {
+                logWriter.Err("Arp layer returns nil")
                 return
         }
         if bytes.Equal([]byte(myMac), arp.SourceHwAddress) {
+                logWriter.Err("Received ARP Packet with our own MAC Address, hence not processing it")
                 return
         }
 
