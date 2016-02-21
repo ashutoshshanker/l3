@@ -903,6 +903,7 @@ func updateArpCache() {
 						arp_cache.arpMap[msg.ip] = ent
 					}
 					logWriter.Err(fmt.Sprintf("Asicd Update rv: ", rv, " error : ", error))
+                                        printArpEntries()
 				} else {
 					logWriter.Err("1. Asicd client is not connected.")
 				}
@@ -955,6 +956,7 @@ func updateArpCache() {
 						rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(ip,
 							"00:00:00:00:00:00", 0, 0)
 						logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
+                                                printArpEntries()
 					} else if ((arp.counter <= (min_cnt+retry_cnt+1) &&
 						arp.counter >= (min_cnt+1)) ||
 						arp.counter == (timeout_counter/2) ||
@@ -1071,6 +1073,7 @@ func updateArpCache() {
 						arp_cache.arpMap[msg.ip] = ent
 					}
 					logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                                        printArpEntries()
 				} else {
 					logWriter.Err("2. Asicd client is not connected.")
 				}
@@ -1121,6 +1124,7 @@ func updateArpCache() {
 						arp_cache.arpMap[msg.ip] = ent
 					}
 					logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                                        printArpEntries()
 				} else {
 					logWriter.Err("2. Asicd client is not connected.")
 				}
@@ -1171,6 +1175,7 @@ func updateArpCache() {
 						arp_cache.arpMap[msg.ip] = ent
 					}
 					logWriter.Err(fmt.Sprintf("Asicd Update rv: ", rv, " error : ", error))
+                                        printArpEntries()
 				} else {
 					logWriter.Err("6. Asicd client is not connected.")
 				}
