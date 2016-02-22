@@ -209,19 +209,31 @@ func ConnectToClients(paramsFile string) {
 	}
 
 	for _, client := range clientsList {
-		logWriter.Err("#### Client name is ")
-		logWriter.Err(client.Name)
 		if client.Name == "asicd" {
+                        logWriter.Info("Arpd Client is connecting to Asicd")
 			//logger.Printf("found asicd at port %d", client.Port)
 			logWriter.Info(fmt.Sprintln("found asicd at port", client.Port))
 			asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			asicdClient.Transport, asicdClient.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdClient.Address)
-			if asicdClient.Transport != nil && asicdClient.PtrProtocolFactory != nil {
-				logWriter.Info("connecting to asicd")
-				asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdClient.Transport, asicdClient.PtrProtocolFactory)
-				asicdClient.IsConnected = true
-			}
-
+			asicdClient.Transport, asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(asicdClient.Address)
+                        if err != nil {
+                                logWriter.Info(fmt.Sprintf("Failed to connect to Asicd, retrying until connection is successful"))
+                                count := 0
+                                ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
+                                for _ = range ticker.C {
+                                        asicdClient.Transport, asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(asicdClient.Address)
+                                        if err == nil {
+                                                ticker.Stop()
+                                                break
+                                        }
+                                        count++
+                                        if (count % 10) == 0 {
+                                                logWriter.Info("Still can't connect to Asicd, retrying...")
+                                        }
+                                }
+                        }
+                        logWriter.Info("Arpd is connected to Asicd")
+                        asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdClient.Transport, asicdClient.PtrProtocolFactory)
+                        asicdClient.IsConnected = true
 		}
 	}
 }
@@ -891,6 +903,7 @@ func updateArpCache() {
 						arp_cache.arpMap[msg.ip] = ent
 					}
 					logWriter.Err(fmt.Sprintf("Asicd Update rv: ", rv, " error : ", error))
+                                        printArpEntries()
 				} else {
 					logWriter.Err("1. Asicd client is not connected.")
 				}
@@ -943,6 +956,7 @@ func updateArpCache() {
 						rv, error := asicdClient.ClientHdl.DeleteIPv4Neighbor(ip,
 							"00:00:00:00:00:00", 0, 0)
 						logWriter.Err(fmt.Sprintf("Asicd Del rv: ", rv, " error : ", error))
+                                                printArpEntries()
 					} else if ((arp.counter <= (min_cnt+retry_cnt+1) &&
 						arp.counter >= (min_cnt+1)) ||
 						arp.counter == (timeout_counter/2) ||
@@ -1059,6 +1073,7 @@ func updateArpCache() {
 						arp_cache.arpMap[msg.ip] = ent
 					}
 					logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                                        printArpEntries()
 				} else {
 					logWriter.Err("2. Asicd client is not connected.")
 				}
@@ -1109,6 +1124,7 @@ func updateArpCache() {
 						arp_cache.arpMap[msg.ip] = ent
 					}
 					logWriter.Err(fmt.Sprintf("Asicd Create rv: ", rv, " error : ", error))
+                                        printArpEntries()
 				} else {
 					logWriter.Err("2. Asicd client is not connected.")
 				}
@@ -1159,6 +1175,7 @@ func updateArpCache() {
 						arp_cache.arpMap[msg.ip] = ent
 					}
 					logWriter.Err(fmt.Sprintf("Asicd Update rv: ", rv, " error : ", error))
+                                        printArpEntries()
 				} else {
 					logWriter.Err("6. Asicd client is not connected.")
 				}

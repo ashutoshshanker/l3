@@ -26,19 +26,24 @@ var ProtocolAdminDistanceSlice AdminDistanceSlice
 
 func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["CONNECTED"] = ribdCommonDefs.CONNECTED
+	RouteProtocolTypeMapDB["EBGP"]       = ribdCommonDefs.EBGP
+	RouteProtocolTypeMapDB["IBGP"]       = ribdCommonDefs.IBGP
 	RouteProtocolTypeMapDB["BGP"]       = ribdCommonDefs.BGP
 	RouteProtocolTypeMapDB["STATIC"]       = ribdCommonDefs.STATIC
 	
 	//reverse
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.CONNECTED] = "CONNECTED"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.IBGP] = "IBGP"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.EBGP] = "EBGP"
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.BGP] = "BGP"
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.STATIC] = "STATIC"
 }
 func BuildProtocolAdminDistanceMapDB() {
-	ProtocolAdminDistanceMapDB["CONNECTED"] = RouteDistanceConfig{defaultDistance:0}
-	ProtocolAdminDistanceMapDB["STATIC"]       = RouteDistanceConfig{defaultDistance:1}	
-	ProtocolAdminDistanceMapDB["BGP"]       = RouteDistanceConfig{defaultDistance:200}
-	ProtocolAdminDistanceMapDB["OSPF"]       = RouteDistanceConfig{defaultDistance:110}
+	ProtocolAdminDistanceMapDB["CONNECTED"] = RouteDistanceConfig{defaultDistance:0, configuredDistance:-1}
+	ProtocolAdminDistanceMapDB["STATIC"]       = RouteDistanceConfig{defaultDistance:1, configuredDistance:-1}	
+	ProtocolAdminDistanceMapDB["EBGP"]       = RouteDistanceConfig{defaultDistance:20, configuredDistance:-1}
+	ProtocolAdminDistanceMapDB["IBGP"]       = RouteDistanceConfig{defaultDistance:200, configuredDistance:-1}
+	ProtocolAdminDistanceMapDB["OSPF"]       = RouteDistanceConfig{defaultDistance:110, configuredDistance:-1}
 }
 func (slice AdminDistanceSlice ) Len() int {
 	return len(slice )
@@ -58,7 +63,7 @@ func BuildProtocolAdminDistanceSlice() {
 	for k,v:=range ProtocolAdminDistanceMapDB {
 		protocol=k
 		distance = v.defaultDistance
-		if v.configuredDistance != 0 {
+		if v.configuredDistance != -1 {
 			distance = v.configuredDistance
 		}
 		routeDistance:=ribd.RouteDistanceState{Protocol:protocol,Distance:ribd.Int(distance)}

@@ -59,7 +59,8 @@ type ospfDatabaseDescriptionData struct {
 
 type ospfLSAHeader struct {
 	ls_age          uint16
-	ls_type         uint16
+	options         uint8
+	ls_type         uint8
 	link_state_id   uint32
 	adv_router_id   uint32
 	ls_sequence_num uint32
@@ -70,6 +71,10 @@ type ospfLSAHeader struct {
 
 func newOspfDatabaseDescriptionData() *ospfDatabaseDescriptionData {
 	return &ospfDatabaseDescriptionData{}
+}
+
+func newospfLSAHeader() *ospfLSAHeader {
+	return &ospfLSAHeader{}
 }
 
 func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptionData, pktlen uint16) {
@@ -133,7 +138,8 @@ LSA headers
 
 func decodeLSAHeader(data []byte) (lsa_header ospfLSAHeader) {
 	lsa_header.ls_age = binary.BigEndian.Uint16(data[0:2])
-	lsa_header.ls_type = binary.BigEndian.Uint16(data[2:4])
+	lsa_header.ls_type = data[3]
+	lsa_header.options = data[2]
 	lsa_header.link_state_id = binary.BigEndian.Uint32(data[4:8])
 	lsa_header.adv_router_id = binary.BigEndian.Uint32(data[8:12])
 	lsa_header.ls_sequence_num = binary.BigEndian.Uint32(data[12:16])
@@ -154,7 +160,8 @@ func encodeLSAHeader(dd_data ospfDatabaseDescriptionData) []byte {
 		lsa_header := dd_data.lsa_headers[index]
 		pkt_index := 20 * index
 		binary.BigEndian.PutUint16(pkt[pkt_index:pkt_index+2], lsa_header.ls_age)
-		binary.BigEndian.PutUint16(pkt[pkt_index+2:pkt_index+4], lsa_header.ls_type)
+		lsa_header.options = pkt[pkt_index+2]
+		lsa_header.ls_type = pkt[pkt_index+3]
 		binary.BigEndian.PutUint32(pkt[pkt_index+4:pkt_index+8], lsa_header.link_state_id)
 		binary.BigEndian.PutUint32(pkt[pkt_index+8:pkt_index+12], lsa_header.adv_router_id)
 		binary.BigEndian.PutUint32(pkt[pkt_index+12:pkt_index+16], lsa_header.ls_sequence_num)
@@ -271,8 +278,12 @@ func (server *OSPFServer) SendDBDPkt(nbrKey uint32) {
 			server.SendOspfPkt(nbrConf.intfConfKey, data)
 		case lsa_data := <-nbrConf.ospfNbrLsaSendCh:
 			server.logger.Info(fmt.Sprintln("Send LSA: nbrconf ,  lsa_data", nbrConf, lsa_data))
-			data := server.BuildLSAReqPkt(nbrConf.intfConfKey, intConf, nbrConf, lsa_data)
+			data := server.BuildLSAReqPkt(nbrConf.intfConfKey, intConf, nbrConf, lsa_data, dstMac)
 			server.SendOspfPkt(nbrConf.intfConfKey, data)
+
+		case lsa_upd_pkt := <-nbrConf.ospfNbrLsaUpdSendCh:
+			server.SendOspfPkt(nbrConf.intfConfKey, lsa_upd_pkt)
+
 		case stop := <-nbrConf.ospfNbrDBDStopCh:
 			if stop == true {
 				return
@@ -313,6 +324,42 @@ func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadat
 	server.neighborDBDEventCh <- dbdNbrMsg
 	fmt.Println("msg lsa_header length = ", len(dbdNbrMsg.ospfNbrDBDData.lsa_headers))
 	return nil
+}
+
+func (server *OSPFServer) ConstructAndSendDbdPacket(nbrKey NeighborConfKey, lsa_attach uint8,
+	ibit bool, mbit bool, msbit bool,
+	seq uint32, append_lsa bool, is_duplicate bool) (dbd_mdata ospfDatabaseDescriptionData) {
+	nbrCon, exists := server.NeighborConfigMap[nbrKey.OspfNbrRtrId]
+	if !exists {
+		server.logger.Info(fmt.Sprintln("DBD: Failed to send initial dbd packet as nbr doesnt exist. nbr", nbrKey.OspfNbrRtrId))
+		return dbd_mdata
+	}
+	dbd_mdata.ibit = ibit
+	dbd_mdata.mbit = mbit
+	dbd_mdata.msbit = msbit
+
+	dbd_mdata.interface_mtu = INTF_MTU_MIN
+	dbd_mdata.options = INTF_OPTIONS
+	dbd_mdata.dd_sequence_number = seq
+
+	if append_lsa && exists {
+		dbd_mdata.lsa_headers = []ospfLSAHeader{}
+		fmt.Sprintln("DBD: add lsa to the packet..")
+		var index uint8
+		nbrCon.db_summary_list_mutex.Lock()
+		db_list := ospfNeighborDBSummary_list[nbrKey.OspfNbrRtrId]
+		for index = 0; index < lsa_attach; index++ {
+			dbd_mdata.lsa_headers[index] = db_list[nbrCon.ospfNbrLsaIndex+index].lsa_headers
+			db_list[nbrCon.ospfNbrLsaIndex+index].valid = false
+		}
+		nbrCon.db_summary_list_mutex.Unlock()
+
+	}
+	server.logger.Info(fmt.Sprintln("DBDSEND: nbr state ", nbrCon.OspfNbrState,
+		" imms ", dbd_mdata.ibit, dbd_mdata.mbit, dbd_mdata.msbit,
+		" seq num ", seq, "options ", dbd_mdata.options))
+	nbrCon.ospfNbrDBDSendCh <- dbd_mdata
+	return dbd_mdata
 }
 
 /*

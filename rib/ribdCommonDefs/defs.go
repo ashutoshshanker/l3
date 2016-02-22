@@ -5,12 +5,15 @@ const (
       CONNECTED  = 0
       STATIC     = 1
       OSPF       = 89
-      BGP        = 8
+      EBGP        = 8
+      IBGP        = 9
+	  BGP         = 17
 	  PolicyConditionTypeDstIpPrefixMatch = 0
 	  PolicyConditionTypeProtocolMatch = 1
 	  PolicyActionTypeRouteDisposition = 0
 	  PolicyActionTypeRouteRedistribute = 1
 	  PoilcyActionTypeSetAdminDistance = 2
+	  PolicyActionTypeAggregate=3
 	  PUB_SOCKET_ADDR = "ipc:///tmp/ribd.ipc"	
 	  PUB_SOCKET_BGPD_ADDR = "ipc:///tmp/ribd_bgpd.ipc"
 	  NOTIFY_ROUTE_CREATED = 1
