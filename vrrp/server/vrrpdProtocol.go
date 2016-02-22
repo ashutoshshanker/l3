@@ -23,8 +23,7 @@ func VrrpReceivePackets() {
 
 func VrrpInitPacketListener() {
 	var err error
-	vrrpNetPktConn, err = net.ListenPacket("ip4:VRRP_PROTOCOL_VALUE",
-		"224.0.0.18")
+	vrrpNetPktConn, err = net.ListenPacket("ip4:112", "224.0.0.18")
 	if err != nil {
 		logger.Err(fmt.Sprintln("Creating VRRP listerner failed",
 			err))

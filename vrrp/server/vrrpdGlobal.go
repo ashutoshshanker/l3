@@ -90,6 +90,4 @@ const (
 	// Control Message
 	vrrpCtrlFlag = ipv4.FlagTTL | ipv4.FlagSrc |
 		ipv4.FlagDst | ipv4.FlagInterface
-	// IP VRRP Protocol Value
-	VRRP_PROTOCOL_VALUE = 112
 )
