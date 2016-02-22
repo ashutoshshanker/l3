@@ -66,13 +66,20 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 	if config.VirtualRouterMACAddress != "" {
 		gblInfo.IntfConfig.VirtualRouterMACAddress = config.VirtualRouterMACAddress
 	} else {
-		gblInfo.IntfConfig.VirtualRouterMACAddress = "00-00-5E-00-01-" +
-			strconv.Itoa(int(gblInfo.IntfConfig.VRID))
+		if gblInfo.IntfConfig.VRID < 10 {
+			gblInfo.IntfConfig.VirtualRouterMACAddress = "00-00-5E-00-01-0" +
+				strconv.Itoa(int(gblInfo.IntfConfig.VRID))
+
+		} else {
+			gblInfo.IntfConfig.VirtualRouterMACAddress = "00-00-5E-00-01-" +
+				strconv.Itoa(int(gblInfo.IntfConfig.VRID))
+		}
 	}
 
 	vrrpGblInfo[config.IfIndex] = gblInfo
 	go VrrpUpdateGblInfoTimers(config.IfIndex)
 	go VrrpMapIfIndexToLinuxIfIndex(config.IfIndex)
+	go VrrpInitPacketListener()
 	return true, nil
 }
 func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,

@@ -56,20 +56,6 @@ func VrrpInitGblInfo(IfIndex int32, IfName string, IpAddr string) {
 	vrrpGblInfo[IfIndex] = gblInfo
 }
 
-func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
-	// @TODO: is this bug if ifindex is higher value??
-	linuxInterface, err := net.InterfaceByIndex(int(IfIndex))
-	if err != nil {
-		logger.Err(fmt.Sprintln("Getting linux If index for",
-			" IfIndex:", IfIndex, " failed with ERROR:", err))
-	}
-	logger.Info(fmt.Sprintln("Linux Id:", linuxInterface.Index,
-		"maps to IfIndex:", IfIndex))
-	entry := vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index]
-	entry = IfIndex
-	vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index] = entry
-}
-
 func VrrpUpdateGblInfoTimers(IfIndex int32) {
 	gblInfo := vrrpGblInfo[IfIndex]
 	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
@@ -79,6 +65,21 @@ func VrrpUpdateGblInfoTimers(IfIndex int32) {
 	gblInfo.MasterDownInterval = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
 	vrrpGblInfo[IfIndex] = gblInfo
 	VrrpDumpIntfInfo(gblInfo)
+}
+
+func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
+	// @TODO: is this bug if ifindex is higher value??
+	linuxInterface, err := net.InterfaceByIndex(int(IfIndex))
+	if err != nil {
+		logger.Err(fmt.Sprintln("Getting linux If index for",
+			" IfIndex:", IfIndex, " failed with ERROR:", err))
+		return
+	}
+	logger.Info(fmt.Sprintln("Linux Id:", linuxInterface.Index,
+		"maps to IfIndex:", IfIndex))
+	entry := vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index]
+	entry = IfIndex
+	vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index] = entry
 }
 
 func VrrpConnectToAsicd(client VrrpClientJson) error {

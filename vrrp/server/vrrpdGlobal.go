@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	nanomsg "github.com/op/go-nanomsg"
+	"golang.org/x/net/ipv4"
 	"log/syslog"
+	"net"
 	"vrrpd"
 )
 
@@ -75,11 +77,19 @@ var (
 	asicdClient                   VrrpAsicdClient
 	asicdSubSocket                *nanomsg.SubSocket
 	vrrpGblInfo                   map[int32]VrrpGlobalInfo
+	vrrpNetPktConn                net.PacketConn
+	vrrpListener                  *ipv4.PacketConn
 	vrrpLinuxIfIndex2AsicdIfIndex map[int]int32
 )
 
 const (
+	// Error Message
 	VRRP_USR_CONF_DB                    = "/UsrConfDb.db"
 	VRRP_INVALID_VRID                   = "VRID is invalid"
 	VRRP_CLIENT_CONNECTION_NOT_REQUIRED = "Connection to Client is not required"
+	// Control Message
+	vrrpCtrlFlag = ipv4.FlagTTL | ipv4.FlagSrc |
+		ipv4.FlagDst | ipv4.FlagInterface
+	// IP VRRP Protocol Value
+	VRRP_PROTOCOL_VALUE = 112
 )
