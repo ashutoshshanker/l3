@@ -1,7 +1,7 @@
 package vrrpServer
 
 import (
-	_ "asicd/asicdConstDefs"
+	"asicd/asicdConstDefs"
 	"asicdServices"
 	"encoding/json"
 	"errors"
@@ -11,7 +11,10 @@ import (
 	"io/ioutil"
 	"log/syslog"
 	"net"
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 	"utils/ipcutils"
 	"vrrpd"
@@ -68,11 +71,16 @@ func VrrpUpdateGblInfoTimers(IfIndex int32) {
 }
 
 func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
-	// @TODO: is this bug if ifindex is higher value??
-	linuxInterface, err := net.InterfaceByIndex(int(IfIndex))
+	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
+	vlanName, ok := vrrpVlanId2Name[vlanId]
+	if ok == false {
+		logger.Err(fmt.Sprintln("no mapping for vlan", vlanId))
+		return
+	}
+	linuxInterface, err := net.InterfaceByName(vlanName)
 	if err != nil {
 		logger.Err(fmt.Sprintln("Getting linux If index for",
-			" IfIndex:", IfIndex, " failed with ERROR:", err))
+			"IfIndex:", IfIndex, "failed with ERROR:", err))
 		return
 	}
 	logger.Info(fmt.Sprintln("Linux Id:", linuxInterface.Index,
@@ -111,6 +119,23 @@ func VrrpConnectToUnConnectedClient(client VrrpClientJson) error {
 	default:
 		return errors.New(VRRP_CLIENT_CONNECTION_NOT_REQUIRED)
 	}
+}
+
+func VrrpSignalHandler(sigChannel <-chan os.Signal) {
+	signal := <-sigChannel
+	switch signal {
+	case syscall.SIGHUP:
+		logger.Alert("Received SIGHUP Signal")
+	default:
+		logger.Info(fmt.Sprintln("Unhandled Signal:", signal))
+	}
+}
+
+func VrrpOSSignalHandle() {
+	sigChannel := make(chan os.Signal, 1)
+	signalList := []os.Signal{syscall.SIGHUP}
+	signal.Notify(sigChannel, signalList...)
+	go VrrpSignalHandler(sigChannel)
 }
 
 func VrrpConnectAndInitPortVlan() error {
@@ -154,12 +179,16 @@ func VrrpConnectAndInitPortVlan() error {
 	}
 
 	VrrpGetInfoFromAsicd()
+
+	// OS Signal channel listener thread
+	VrrpOSSignalHandle()
 	return err
 }
 
 func VrrpAllocateMemoryToGlobalDS() {
 	vrrpGblInfo = make(map[int32]VrrpGlobalInfo, 50)
 	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int]int32, 5)
+	vrrpVlanId2Name = make(map[int]string, 5)
 }
 
 func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) error {

@@ -80,6 +80,7 @@ var (
 	vrrpNetPktConn                net.PacketConn
 	vrrpListener                  *ipv4.PacketConn
 	vrrpLinuxIfIndex2AsicdIfIndex map[int]int32
+	vrrpVlanId2Name               map[int]string
 )
 
 const (
