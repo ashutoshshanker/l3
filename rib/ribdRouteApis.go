@@ -813,7 +813,8 @@ func deleteRoutes (destNetPrefix patriciaDB.Prefix,
 func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 	routeInfoRecordList RouteInfoRecordList,  //the current list of routes for this prefix
 	routeInfoRecord RouteInfoRecord,          //the route to be added or deleted or invalidated or validated
-	op ribd.Int) (err error) {
+	op ribd.Int,
+	opType int) (err error) {
 //	index int) (err error) {
    logger.Println("Selecting the best Route for destNetPrefix ", destNetPrefix)
    if op == add {
@@ -826,7 +827,7 @@ func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 	  addNewRoute(destNetPrefix, routeInfoRecord,routeInfoRecordList, ribdCommonDefs.PolicyPath_Export)
    } else if op == del {
 	    logger.Println("Op is to delete new route")
-	    deleteRoute(destNetPrefix, routeInfoRecord, routeInfoRecordList, ribdCommonDefs.PolicyPath_Export, FIBAndRIB)	
+	    deleteRoute(destNetPrefix, routeInfoRecord, routeInfoRecordList, ribdCommonDefs.PolicyPath_Export, opType)	
 		addRouteList,_,newSelectedProtocol := SelectBestRoute(routeInfoRecordList)
 	    routeInfoRecordList.selectedRouteProtocol = newSelectedProtocol
 	    if len(addRouteList) > 0 {
@@ -1306,7 +1307,7 @@ func createV4Route(destNetIp string,
 			routeInfoRecordList.isPolicyBasedStateValid = true
 		}
 		if callSelectRoute {
-		   err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, add)//, len(routeInfoRecordList.routeInfoList)-1)
+		   err = SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, add,int(addType))//, len(routeInfoRecordList.routeInfoList)-1)
         }
 	}
 	if addType != FIBOnly && routePrototype == ribdCommonDefs.CONNECTED { //PROTOCOL_CONNECTED {
@@ -1418,7 +1419,7 @@ func deleteV4Route(destNetIp string,
 		logger.Println("Route with nextHop IP ", nextHopIP, " not found")
 		return 0, err
 	}
-	SelectV4Route(destNet,routeInfoRecordList,routeInfoRecord,del)
+	SelectV4Route(destNet,routeInfoRecordList,routeInfoRecord,del,int(delType))
 /*	routeInfoRecord := routeInfoRecordList.routeInfoList[idxList[0]]
 	var prefixNodeRouteList RouteInfoRecordList
 	var prefixNodeRoute RouteInfoRecord
