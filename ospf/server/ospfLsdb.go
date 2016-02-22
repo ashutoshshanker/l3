@@ -283,9 +283,9 @@ func (server *OSPFServer) processDeleteRouterLsa(data []byte, areaId uint32) boo
 	}
 	decodeRouterLsa(data, routerLsa, lsakey)
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-        delete(lsDbEnt.RouterLsaMap, *lsakey)
+	delete(lsDbEnt.RouterLsaMap, *lsakey)
 	server.AreaLsdb[lsdbKey] = lsDbEnt
-        return true
+	return true
 }
 
 func (server *OSPFServer) processRecvdRouterLsa(data []byte, areaId uint32) bool {
@@ -320,7 +320,15 @@ func (server *OSPFServer) processRecvdRouterLsa(data []byte, areaId uint32) bool
 	//Add entry in LSADatabase
 	lsDbEnt.RouterLsaMap[*lsakey] = *routerLsa
 	server.AreaLsdb[lsdbKey] = lsDbEnt
+	server.printRouterLsa()
 	return true
+}
+
+func (server *OSPFServer) printRouterLsa() {
+	server.logger.Info("AREA  LSDB")
+	for key, val := range server.AreaLsdb {
+		server.logger.Info(fmt.Sprintln("key ", key, " LSA ", val))
+	}
 }
 
 func (server *OSPFServer) processDeleteNetworkLsa(data []byte, areaId uint32) bool {
@@ -331,10 +339,10 @@ func (server *OSPFServer) processDeleteNetworkLsa(data []byte, areaId uint32) bo
 	}
 	decodeNetworkLsa(data, networkLsa, lsakey)
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-        delete(lsDbEnt.NetworkLsaMap, *lsakey)
+	delete(lsDbEnt.NetworkLsaMap, *lsakey)
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 
-        return true
+	return true
 }
 
 func (server *OSPFServer) processRecvdNetworkLsa(data []byte, areaId uint32) bool {
@@ -370,6 +378,7 @@ func (server *OSPFServer) processRecvdNetworkLsa(data []byte, areaId uint32) boo
 	//Add entry in LSADatabase
 	lsDbEnt.NetworkLsaMap[*lsakey] = *networkLsa
 	server.AreaLsdb[lsdbKey] = lsDbEnt
+	server.printRouterLsa()
 	return true
 }
 
@@ -381,14 +390,14 @@ func (server *OSPFServer) processDeleteSummaryLsa(data []byte, areaId uint32, ls
 	}
 	decodeSummaryLsa(data, summaryLsa, lsakey)
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-        if lsaType == Summary3LSA {
-                delete(lsDbEnt.Summary3LsaMap, *lsakey)
-        } else if lsaType == Summary4LSA {
-                delete(lsDbEnt.Summary4LsaMap, *lsakey)
-        }
+	if lsaType == Summary3LSA {
+		delete(lsDbEnt.Summary3LsaMap, *lsakey)
+	} else if lsaType == Summary4LSA {
+		delete(lsDbEnt.Summary4LsaMap, *lsakey)
+	}
 	server.AreaLsdb[lsdbKey] = lsDbEnt
-
-        return true
+	server.printRouterLsa()
+	return true
 }
 
 func (server *OSPFServer) processRecvdSummaryLsa(data []byte, areaId uint32, lsaType uint8) bool {
@@ -451,10 +460,10 @@ func (server *OSPFServer) processDeleteASExternalLsa(data []byte, areaId uint32)
 	}
 	decodeASExternalLsa(data, asExtLsa, lsakey)
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-        delete(lsDbEnt.ASExternalLsaMap, *lsakey)
+	delete(lsDbEnt.ASExternalLsaMap, *lsakey)
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 
-        return true
+	return true
 }
 
 func (server *OSPFServer) processRecvdASExternalLsa(data []byte, areaId uint32) bool {
@@ -496,16 +505,21 @@ func (server *OSPFServer) processRecvdASExternalLsa(data []byte, areaId uint32) 
 func (server *OSPFServer) processRecvdLsa(data []byte, areaId uint32) bool {
 	LSType := uint8(data[3])
 	if LSType == RouterLSA {
+		server.logger.Info("LSDB: Received router lsa")
 		return server.processRecvdRouterLsa(data, areaId)
 	} else if LSType == NetworkLSA {
+		server.logger.Info("LSDB: Received network lsa")
 		return server.processRecvdNetworkLsa(data, areaId)
 	} else if LSType == Summary3LSA {
+		server.logger.Info("LSDB: Received summary3 lsa")
 		return server.processRecvdSummaryLsa(data, areaId, LSType)
 	} else if LSType == Summary4LSA {
+		server.logger.Info("LSDB: Received summary4 lsa")
 		return server.processRecvdSummaryLsa(data, areaId, LSType)
 	} else if LSType == ASExternalLSA {
 		return server.processRecvdASExternalLsa(data, areaId)
 	} else {
+		server.logger.Info("LSDB: Invalid LSA packet from nbr")
 		return false
 	}
 }
@@ -539,11 +553,11 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 				server.LsaUpdateRetCodeCh <- ret
 			} else if msg.MsgType == LsdbDel {
 				server.logger.Info("Deleting LS in the Lsdb")
-                                ret := server.processDeleteLsa(msg.Data, msg.AreaId)
+				ret := server.processDeleteLsa(msg.Data, msg.AreaId)
 				server.LsaUpdateRetCodeCh <- ret
 			} else if msg.MsgType == LsdbUpdate {
 				server.logger.Info("Deleting LS in the Lsdb")
-                                ret := server.processRecvdLsa(msg.Data, msg.AreaId)
+				ret := server.processRecvdLsa(msg.Data, msg.AreaId)
 				server.LsaUpdateRetCodeCh <- ret
 			}
 		case msg := <-server.IntfStateChangeCh:

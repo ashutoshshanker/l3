@@ -194,9 +194,9 @@ func (server *OSPFServer) processOspfData(data []byte, ethHdrMd *EthHdrMetadata,
 			err = server.ProcessLSAReqPkt(data, ospfHdrMd, ipHdrMd, key)
 		}
 	case LSUpdateType:
-		/*if exist {
+		if exist {
 			err = server.ProcessLsaUpdPkt(data, ospfHdrMd, ipHdrMd, key)
-		} */
+		}
 	case LSAckType:
 		if exist {
 			err = server.ProcessLSAAckPkt(data, ospfHdrMd, ipHdrMd, key)

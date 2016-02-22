@@ -252,9 +252,7 @@ func (server *OSPFServer) BuildLsaUpdPkt(intfKey IntfConfKey, ent IntfConf,
 	}
 
 	ospfPktlen := OSPF_HEADER_SIZE
-	//lsa_header_size := OSPF_LSA_HEADER_SIZE
 	ospfPktlen = ospfPktlen + lsa_pkt_size
-
 	ospfHdr.pktlen = uint16(ospfPktlen)
 
 	ospfEncHdr := encodeOspfHdr(ospfHdr)
@@ -320,15 +318,23 @@ func (server *OSPFServer) ProcessLsaUpdPkt(data []byte, ospfHdrMd *OspfHdrMetada
 
 /*
 @fn processLSAUpdEvent
- Get total lsas. Update LSDB for each LSA
+ Get total lsas.
+For each LSA :
+		1) decode LSA
+		2) get LSA instance from LSDB
+		3) perform sanity check on LSA.
+		4) update/delete/reject based on sanity.
+
 */
 
 func (server *OSPFServer) processLSAUpdEvent(msg ospfNeighborLSAUpdMsg) {
+
 	nbr, exists := server.NeighborConfigMap[msg.nbrKey]
 	if !exists {
 		return
 	}
 
+	/*TODO implement discard */
 	discard := server.lsaUpdDiscardCheck(nbr)
 	if discard {
 		return
@@ -336,6 +342,7 @@ func (server *OSPFServer) processLSAUpdEvent(msg ospfNeighborLSAUpdMsg) {
 
 	no_lsa := binary.BigEndian.Uint32(msg.data[0:4])
 	server.logger.Info(fmt.Sprintln("LSAUPD: Nbr, No of LSAs ", msg.nbrKey, no_lsa, "  len  ", len(msg.data)))
+	server.logger.Info(fmt.Sprintln("LSUPD:LSA pkt ", msg.data))
 	lsa_header := NewLsaHeader()
 	/* decode each LSA and send to lsdb
 	 */
@@ -354,11 +361,84 @@ func (server *OSPFServer) processLSAUpdEvent(msg ospfNeighborLSAUpdMsg) {
 		lsdb_msg.AreaId = msg.areaId
 		lsdb_msg.MsgType = LsdbAdd /* TODO Correct the message type */
 		lsdb_msg.Data = make([]byte, end_index-i)
-		server.logger.Info(fmt.Sprintln("LSAUPD: send to lsdb. lsa ", i, " start ", index, " end ", end_index))
 		copy(lsdb_msg.Data, msg.data[index:end_index])
 		index = end_index
-		server.LsdbUpdateCh <- *lsdb_msg
+
+		lsa_key := NewLsaKey()
+		switch lsa_header.LSType {
+		case RouterLSA:
+			rlsa := NewRouterLsa()
+			decodeRouterLsa(lsdb_msg.Data, rlsa, lsa_key)
+			drlsa, ret := server.getRouterLsaFromLsdb(msg.areaId, *lsa_key)
+			discard, op := sanityCheckRouterLsa(*rlsa, drlsa, ret)
+			if !discard {
+				server.logger.Info(fmt.Sprintln("LSAUPD: op ", op, "lsa data ", lsdb_msg.Data))
+				server.LsdbUpdateCh <- *lsdb_msg
+			}
+
+		case NetworkLSA:
+			nlsa := NewNetworkLsa()
+			decodeNetworkLsa(lsdb_msg.Data, nlsa, lsa_key)
+			dnlsa, ret := server.getNetworkLsaFromLsdb(msg.areaId, *lsa_key)
+			discard, op := sanityCheckNetworkLsa(*nlsa, dnlsa, ret)
+			if !discard {
+				server.logger.Info(fmt.Sprintln("LSAUPD: op ", op, "lsa data ", lsdb_msg.Data))
+				server.LsdbUpdateCh <- *lsdb_msg
+			}
+
+		case Summary3LSA:
+		case Summary4LSA:
+			slsa := NewSummaryLsa()
+			decodeSummaryLsa(lsdb_msg.Data, slsa, lsa_key)
+			dslsa, ret := server.getSummaryLsaFromLsdb(msg.areaId, *lsa_key)
+			discard, op := sanityCheckSummaryLsa(*slsa, dslsa, ret)
+			if !discard {
+				server.logger.Info(fmt.Sprintln("LSAUPD: op ", op, "lsa data ", lsdb_msg.Data))
+				server.LsdbUpdateCh <- *lsdb_msg
+			}
+
+		case ASExternalLSA:
+			alsa := NewASExternalLsa()
+			decodeASExternalLsa(lsdb_msg.Data, alsa, lsa_key)
+			dalsa, ret := server.getASExternalLsaFromLsdb(msg.areaId, *lsa_key)
+			discard, op := sanityCheckASExternalLsa(*alsa, dalsa, ret)
+			if !discard {
+				server.logger.Info(fmt.Sprintln("LSAUPD: op ", op, "lsa data ", lsdb_msg.Data))
+				server.LsdbUpdateCh <- *lsdb_msg
+			}
+
+		}
+
+		//server.LsdbUpdateCh <- *lsdb_msg
 	}
+}
+
+func sanityCheckRouterLsa(rlsa RouterLsa, drlsa RouterLsa, exist int) (discard bool, op uint8) {
+	discard = false
+	op = LsdbAdd
+
+	return discard, op
+}
+
+func sanityCheckNetworkLsa(nlsa NetworkLsa, dnlsa NetworkLsa, exist int) (discard bool, op uint8) {
+	discard = false
+	op = LsdbAdd
+
+	return discard, op
+}
+
+func sanityCheckSummaryLsa(slsa SummaryLsa, dslsa SummaryLsa, exist int) (discard bool, op uint8) {
+	discard = false
+	op = LsdbAdd
+
+	return discard, op
+}
+
+func sanityCheckASExternalLsa(alsa ASExternalLsa, dalsa ASExternalLsa, exist int) (discard bool, op uint8) {
+	discard = false
+	op = LsdbAdd
+
+	return discard, op
 }
 
 /* link state ACK packet
