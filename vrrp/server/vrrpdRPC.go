@@ -72,6 +72,7 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 
 	vrrpGblInfo[config.IfIndex] = gblInfo
 	go VrrpUpdateGblInfoTimers(config.IfIndex)
+	go VrrpMapIfIndexToLinuxIfIndex(config.IfIndex)
 	return true, nil
 }
 func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,

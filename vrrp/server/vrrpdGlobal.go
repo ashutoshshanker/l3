@@ -69,12 +69,13 @@ type VrrpGlobalInfo struct {
 }
 
 var (
-	logger         *syslog.Writer
-	vrrpDbHdl      *sql.DB
-	paramsDir      string
-	asicdClient    VrrpAsicdClient
-	asicdSubSocket *nanomsg.SubSocket
-	vrrpGblInfo    map[int32]VrrpGlobalInfo
+	logger                        *syslog.Writer
+	vrrpDbHdl                     *sql.DB
+	paramsDir                     string
+	asicdClient                   VrrpAsicdClient
+	asicdSubSocket                *nanomsg.SubSocket
+	vrrpGblInfo                   map[int32]VrrpGlobalInfo
+	vrrpLinuxIfIndex2AsicdIfIndex map[int]int32
 )
 
 const (

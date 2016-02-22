@@ -10,6 +10,7 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
 	"log/syslog"
+	"net"
 	"strconv"
 	"time"
 	"utils/ipcutils"
@@ -53,6 +54,20 @@ func VrrpInitGblInfo(IfIndex int32, IfName string, IpAddr string) {
 	gblInfo.IpAddr = IpAddr
 	gblInfo.IfName = IfName
 	vrrpGblInfo[IfIndex] = gblInfo
+}
+
+func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
+	// @TODO: is this bug if ifindex is higher value??
+	linuxInterface, err := net.InterfaceByIndex(int(IfIndex))
+	if err != nil {
+		logger.Err(fmt.Sprintln("Getting linux If index for",
+			" IfIndex:", IfIndex, " failed with ERROR:", err))
+	}
+	logger.Info(fmt.Sprintln("Linux Id:", linuxInterface.Index,
+		"maps to IfIndex:", IfIndex))
+	entry := vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index]
+	entry = IfIndex
+	vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index] = entry
 }
 
 func VrrpUpdateGblInfoTimers(IfIndex int32) {
@@ -143,6 +158,7 @@ func VrrpConnectAndInitPortVlan() error {
 
 func VrrpAllocateMemoryToGlobalDS() {
 	vrrpGblInfo = make(map[int32]VrrpGlobalInfo, 50)
+	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int]int32, 5)
 }
 
 func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) error {
