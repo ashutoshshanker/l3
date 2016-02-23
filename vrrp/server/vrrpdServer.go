@@ -135,6 +135,9 @@ func VrrpSignalHandler(sigChannel <-chan os.Signal) {
 	switch signal {
 	case syscall.SIGHUP:
 		logger.Alert("Received SIGHUP Signal")
+		vrrpListener.Close()
+		vrrpNetPktConn.Close()
+		logger.Info("Closed vrrp pkt handlers")
 	default:
 		logger.Info(fmt.Sprintln("Unhandled Signal:", signal))
 	}
@@ -199,6 +202,13 @@ func VrrpAllocateMemoryToGlobalDS() {
 	vrrpIfIndexIpAddr = make(map[int32]string, 5)
 	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int]int32, 5)
 	vrrpVlanId2Name = make(map[int]string, 5)
+}
+
+func VrrpDeAllocateMemoryToGlobalDS() {
+	vrrpGblInfo = nil
+	vrrpIfIndexIpAddr = nil
+	vrrpLinuxIfIndex2AsicdIfIndex = nil
+	vrrpVlanId2Name = nil
 }
 
 func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) error {
