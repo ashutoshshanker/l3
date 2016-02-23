@@ -21,7 +21,9 @@ import (
 func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
 	logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
 		config.IfIndex))
-	gblInfo := vrrpGblInfo[config.IfIndex]
+	key := config.IfIndex + config.VRID
+	logger.Info(fmt.Sprintln("Key is ", key))
+	gblInfo := vrrpGblInfo[key]
 
 	gblInfo.IntfConfig.IfIndex = config.IfIndex
 	if config.VRID == 0 {
@@ -76,8 +78,8 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 		}
 	}
 
-	vrrpGblInfo[config.IfIndex] = gblInfo
-	go VrrpUpdateGblInfoTimers(config.IfIndex)
+	vrrpGblInfo[key] = gblInfo
+	go VrrpUpdateGblInfoTimers(key)
 	go VrrpInitPacketListener()
 	return true, nil
 }

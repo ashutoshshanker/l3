@@ -38,6 +38,17 @@ func VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
 	logger.Info(fmt.Sprintln("Master Down Interval:", gblInfo.MasterDownInterval))
 }
 
+func VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
+	IpAddr, ok := vrrpIfIndexIpAddr[gblInfo.IntfConfig.IfIndex]
+	if ok == false {
+		logger.Err(fmt.Sprintln("missed ipv4 intf notification for IfIndex:",
+			gblInfo.IntfConfig.IfIndex))
+		return false
+	}
+	gblInfo.IpAddr = IpAddr
+	return true
+}
+
 /*
 	// The initial value is the same as Advertisement_Interval.
 	MasterAdverInterval int32
@@ -49,24 +60,22 @@ func VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
 	IpAddr string
 */
 
-func VrrpInitGblInfo(IfIndex int32, IfName string, IpAddr string) {
-	gblInfo := vrrpGblInfo[IfIndex]
-	gblInfo.MasterAdverInterval = 0
-	gblInfo.SkewTime = 0
-	gblInfo.MasterDownInterval = 0
-	gblInfo.IpAddr = IpAddr
-	gblInfo.IfName = IfName
-	vrrpGblInfo[IfIndex] = gblInfo
-}
-
-func VrrpUpdateGblInfoTimers(IfIndex int32) {
-	gblInfo := vrrpGblInfo[IfIndex]
+func VrrpUpdateGblInfoTimers(key int32) {
+	gblInfo := vrrpGblInfo[key]
 	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
 	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
-		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) * gblInfo.MasterAdverInterval) / 256
+		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
+			gblInfo.MasterAdverInterval) / 256
 	}
 	gblInfo.MasterDownInterval = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
-	vrrpGblInfo[IfIndex] = gblInfo
+
+	if ok := VrrpUpdateIntfIpAddr(&gblInfo); ok == false {
+		// If we miss Asic Notification then do one time get bulk for Ipv4
+		// Interface... Once done then update Ip Addr again
+		VrrpGetIPv4IntfList()
+		VrrpUpdateIntfIpAddr(&gblInfo)
+	}
+	vrrpGblInfo[key] = gblInfo
 	VrrpDumpIntfInfo(gblInfo)
 }
 
@@ -187,6 +196,7 @@ func VrrpConnectAndInitPortVlan() error {
 
 func VrrpAllocateMemoryToGlobalDS() {
 	vrrpGblInfo = make(map[int32]VrrpGlobalInfo, 50)
+	vrrpIfIndexIpAddr = make(map[int32]string, 5)
 	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int]int32, 5)
 	vrrpVlanId2Name = make(map[int]string, 5)
 }

@@ -76,10 +76,11 @@ var (
 	paramsDir                     string
 	asicdClient                   VrrpAsicdClient
 	asicdSubSocket                *nanomsg.SubSocket
-	vrrpGblInfo                   map[int32]VrrpGlobalInfo
+	vrrpGblInfo                   map[int32]VrrpGlobalInfo // IfIndex + VRID
 	vrrpNetPktConn                net.PacketConn
 	vrrpListener                  *ipv4.PacketConn
 	vrrpLinuxIfIndex2AsicdIfIndex map[int]int32
+	vrrpIfIndexIpAddr             map[int32]string
 	vrrpVlanId2Name               map[int]string
 )
 

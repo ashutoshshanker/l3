@@ -8,6 +8,20 @@ import (
 	nanomsg "github.com/op/go-nanomsg"
 )
 
+func VrrpCreateIfIndexEntry(IfIndex int32, IpAddr string) {
+	entry := vrrpIfIndexIpAddr[IfIndex]
+	entry = IpAddr
+	vrrpIfIndexIpAddr[IfIndex] = entry
+	logger.Info(fmt.Sprintln("VRRP: ip address for ifindex ", IfIndex,
+		"is", entry))
+}
+
+func VrrpCreateVlanEntry(vlanId int, vlanName string) {
+	entry := vrrpVlanId2Name[vlanId]
+	entry = vlanName
+	vrrpVlanId2Name[vlanId] = entry
+}
+
 func VrrpGetPortList() {
 	logger.Info("VRRP: Get Port List")
 	currMarker := int64(asicdConstDefs.MIN_SYS_PORTS)
@@ -26,12 +40,14 @@ func VrrpGetPortList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			var ifName string
-			var portNum int32
-			portNum = bulkInfo.PortStateList[i].IfIndex
-			ifName = bulkInfo.PortStateList[i].Name
-			logger.Info("VRRP: interface global init for " + ifName)
-			VrrpInitGblInfo(portNum, ifName, "")
+			/*
+				var ifName string
+				var portNum int32
+				portNum = bulkInfo.PortStateList[i].IfIndex
+				ifName = bulkInfo.PortStateList[i].Name
+				//logger.Info("VRRP: interface global init for " + ifName)
+				//VrrpInitGblInfo(portNum, ifName, "")
+			*/
 		}
 		if more == false {
 			break
@@ -57,19 +73,13 @@ func VrrpGetIPv4IntfList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			VrrpInitGblInfo(bulkInfo.IPv4IntfList[i].IfIndex, "",
+			VrrpCreateIfIndexEntry(bulkInfo.IPv4IntfList[i].IfIndex,
 				bulkInfo.IPv4IntfList[i].IpAddr)
 		}
 		if more == false {
 			break
 		}
 	}
-}
-
-func VrrpCreateVlanEntry(vlanId int, vlanName string) {
-	entry := vrrpVlanId2Name[vlanId]
-	entry = vlanName
-	vrrpVlanId2Name[vlanId] = entry
 }
 
 func VrrpGetVlanList() {
@@ -110,17 +120,13 @@ func VrrpUpdateVlanGblInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType u
 }
 
 func VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
-	gblInfo := vrrpGblInfo[msg.IfIndex]
 	switch msgType {
 	case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
-		gblInfo.IpAddr = msg.IpAddr
+		VrrpCreateIfIndexEntry(msg.IfIndex, msg.IpAddr)
 		go VrrpMapIfIndexToLinuxIfIndex(msg.IfIndex)
 	case asicdConstDefs.NOTIFY_IPV4INTF_DELETE:
-		gblInfo.IpAddr = ""
+		delete(vrrpIfIndexIpAddr, msg.IfIndex)
 	}
-	vrrpGblInfo[msg.IfIndex] = gblInfo
-	logger.Info(fmt.Sprintln("VRRP: ip address for ifindex ", msg.IfIndex,
-		"is", gblInfo.IpAddr))
 }
 
 func VrrpUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
@@ -221,8 +227,9 @@ func VrrpGetInfoFromAsicd() error {
 		// Asicd subscriber thread
 		go VrrpAsicdSubscriber()
 	}
-	// Get Port List
-	VrrpGetPortList()
+	// Get Port List Most Likely Not needed...as we are only interested
+	// in Ipv4Intf...
+	//VrrpGetPortList()
 	// Get Vlan List
 	VrrpGetVlanList()
 	// Get IPv4 Interface List
