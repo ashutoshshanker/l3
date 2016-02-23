@@ -49,6 +49,24 @@ func VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
 	return true
 }
 
+func VrrpPopulateIntfState(key int32, entry *vrrpd.VrrpIntfState) {
+	gblInfo, ok := vrrpGblInfo[key]
+	if ok == false {
+		logger.Err(fmt.Sprintln("Entry not found for", key))
+		return
+	}
+	entry.IfIndex = gblInfo.IntfConfig.IfIndex
+	entry.VRID = gblInfo.IntfConfig.VRID
+	entry.IntfIpAddr = gblInfo.IpAddr
+	entry.Priority = gblInfo.IntfConfig.Priority
+	entry.VirtualIPv4Addr = gblInfo.IntfConfig.VirtualIPv4Addr
+	entry.AdvertisementInterval = gblInfo.IntfConfig.AdvertisementInterval
+	entry.PreemptMode = gblInfo.IntfConfig.PreemptMode
+	entry.VirtualRouterMACAddress = gblInfo.IntfConfig.VirtualRouterMACAddress
+	entry.SkewTime = gblInfo.SkewTime
+	entry.MasterDownInterval = gblInfo.MasterDownInterval
+}
+
 /*
 	// The initial value is the same as Advertisement_Interval.
 	MasterAdverInterval int32
@@ -76,6 +94,7 @@ func VrrpUpdateGblInfoTimers(key int32) {
 		VrrpUpdateIntfIpAddr(&gblInfo)
 	}
 	vrrpGblInfo[key] = gblInfo
+	vrrpIntfStateSlice = append(vrrpIntfStateSlice, key)
 	VrrpDumpIntfInfo(gblInfo)
 }
 

@@ -91,3 +91,45 @@ func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConf
 func (h *VrrpServiceHandler) DeleteVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
 	return true, nil
 }
+
+func (h *VrrpServiceHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
+	count vrrpd.Int) (intfEntry *vrrpd.VrrpIntfStateGetInfo, err error) {
+	var nextEntry *vrrpd.VrrpIntfState
+	var finalList []*vrrpd.VrrpIntfState
+	var returnIntfStatebulk vrrpd.VrrpIntfStateGetInfo
+	var endIdx int
+	var more bool
+	intfEntry = &returnIntfStatebulk
+	if vrrpIntfStateSlice == nil {
+		logger.Info("DRA: Interface Slice is not initialized")
+		return intfEntry, err
+	}
+	currIdx := int(fromIndex)
+	cnt := int(count)
+	length := len(vrrpIntfStateSlice)
+
+	if currIdx+cnt >= length {
+		cnt = length - currIdx
+		endIdx = 0
+		more = false
+	} else {
+		endIdx = currIdx + cnt
+		more = true
+	}
+
+	for i := 0; i < cnt; i++ {
+		if len(finalList) == 0 {
+			finalList = make([]*vrrpd.VrrpIntfState, 0)
+		}
+		key := vrrpIntfStateSlice[i]
+		VrrpPopulateIntfState(key, nextEntry)
+		finalList = append(finalList, nextEntry)
+	}
+	intfEntry.VrrpIntfStateList = finalList
+	intfEntry.StartIdx = fromIndex
+	intfEntry.EndIdx = vrrpd.Int(endIdx)
+	intfEntry.More = more
+	intfEntry.Count = vrrpd.Int(cnt)
+
+	return intfEntry, err
+}
