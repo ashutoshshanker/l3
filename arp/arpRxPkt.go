@@ -113,8 +113,12 @@ func processArpRequest(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_
                         // vlan_id = 1
                         return
                 }
+                local_ip_addr, _ := getIPv4ForInterface(arpd.Int(commonDefs.L2RefTypeVlan), arpd.Int(vlan_id))
+                if local_ip_addr == "" {
+                        logWriter.Info(fmt.Sprintln("Unable to get IPv4 configured on ", if_Name))
+                        return
+                }
                 if src_ip_addr == "0.0.0.0" { // ARP Probe Request
-                        local_ip_addr, _ := getIPv4ForInterface(arpd.Int(commonDefs.L2RefTypeVlan), arpd.Int(vlan_id))
                         if local_ip_addr == dest_ip_addr {
                                 // Send Arp Reply for ARP Probe
                                 logger.Println("Linux will Send Arp Reply for recevied ARP Probe because of conflicting address")
@@ -125,7 +129,6 @@ func processArpRequest(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_
                 if src_ip_addr == dest_ip_addr { // Gratuitous ARP Request
                         //logger.Println("Received a Gratuitous ARP from ", src_ip_addr)
                         logWriter.Info(fmt.Sprintln("Received a Gratuitous ARP from ", src_ip_addr))
-                        local_ip_addr, _ := getIPv4ForInterface(arpd.Int(commonDefs.L2RefTypeVlan), arpd.Int(vlan_id))
                         dest_ip_addr = local_ip_addr
                 } else { // Any other ARP request which are not locally originated
                         route, err := netlink.RouteGet(dstip)
