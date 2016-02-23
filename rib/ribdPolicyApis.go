@@ -125,7 +125,7 @@ func updatePolicyRouteMap(route ribd.Routes, policy Policy, op int) {
 }
 func validMatchConditions(matchConditionStr string) (valid bool) {
     logger.Println("validMatchConditions for string ", matchConditionStr)
-	if matchConditionStr == "any" || matchConditionStr == "all "{
+	if matchConditionStr == "any" || matchConditionStr == "all"{
 		logger.Println("valid")
 		valid = true
 	}

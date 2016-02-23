@@ -427,6 +427,7 @@ func initPortParams() {
 func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pcap.Handle, mac_addr string, localIp string) {
 	//logger.Println("processPacket() : Arp request for ", targetIp, "from", localIp)
 	logWriter.Info(fmt.Sprintln("processPacket() : Arp request for ", targetIp, "from", localIp))
+        logWriter.Info(fmt.Sprintln("5 targetIp:", targetIp, "mac_addr:", mac_addr, "localIp:", localIp))
 	sendArpReq(targetIp, handle, mac_addr, localIp)
 	arp_cache_update_chl <- arpUpdateMsg{
 		ip: targetIp,
@@ -477,7 +478,7 @@ func processResponse() {
 func sendArpReq(targetIp string, handle *pcap.Handle, myMac string, localIp string) int {
 	//logger.Println("sendArpReq(): sending arp requeust for targetIp ", targetIp,
 	logWriter.Info(fmt.Sprintln("sendArpReq(): sending arp requeust for targetIp ", targetIp,
-		"local IP ", localIp))
+		"local IP ", localIp, "myMac:", myMac))
 
 	source_ip, err := getIP(localIp)
 	if err != ARP_REQ_SUCCESS {
@@ -810,6 +811,7 @@ func createAndSendArpReuqest(targetIP string, outgoingIfName string, vlan_id arp
 	}
 	//logger.Println("MAC addr of ", outgoingIfName, ": ", mac_addr)
 	logWriter.Info(fmt.Sprintln("MAC addr of ", outgoingIfName, ": ", mac_addr))
+        logWriter.Info(fmt.Sprintln("1 targetIP:", targetIP, "mac_addr:", mac_addr, "localIp:", localIp))
 	sendArpReq(targetIP, handle, mac_addr, localIp)
 	arp_cache_update_chl <- arpUpdateMsg{
 		ip: targetIP,
@@ -1246,6 +1248,7 @@ func processAsicdNotification(rxBuf []byte) {
 	if msg.MsgType == asicdConstDefs.NOTIFY_VLAN_CREATE ||
 		msg.MsgType == asicdConstDefs.NOTIFY_VLAN_DELETE {
 		//Vlan Create Msg
+                logWriter.Info("Recvd VLAN notification")
 		var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
 		err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
 		if err != nil {
@@ -1258,6 +1261,7 @@ func processAsicdNotification(rxBuf []byte) {
 		//IPV4INTF_CREATE and IPV4INTF_DELETE
 		// if create send ARPProbe
 		// else delete
+                logWriter.Info("Recvd IPV4INTF notification")
 		var ipv4IntfNotifyMsg asicdConstDefs.IPv4IntfNotifyMsg
 		err = json.Unmarshal(msg.Msg, &ipv4IntfNotifyMsg)
 		if err != nil {
@@ -1267,6 +1271,7 @@ func processAsicdNotification(rxBuf []byte) {
 		updateIpv4IntfPropertyMap(ipv4IntfNotifyMsg, msg.MsgType)
 	} else if msg.MsgType == asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE {
 		//INTF_STATE_CHANGE
+                logWriter.Info("Recvd INTF_STATE_CHANGE notification")
 		var l3IntfStateNotifyMsg asicdConstDefs.L3IntfStateNotifyMsg
 		err = json.Unmarshal(msg.Msg, &l3IntfStateNotifyMsg)
 		if err != nil {
@@ -1276,6 +1281,7 @@ func processAsicdNotification(rxBuf []byte) {
 		processL3StateChange(l3IntfStateNotifyMsg)
 	} else if msg.MsgType == asicdConstDefs.NOTIFY_LAG_CREATE ||
 		msg.MsgType == asicdConstDefs.NOTIFY_LAG_DELETE {
+                logWriter.Info("Recvd NOTIFY_LAG notification")
 		var lagNotifyMsg asicdConstDefs.LagNotifyMsg
 		err = json.Unmarshal(msg.Msg, &lagNotifyMsg)
 		if err != nil {
@@ -1430,7 +1436,7 @@ func arpProbe(ipAddr string, ifType int, ifIdx int) {
 }
 
 func refresh_arp_entry(ip string, ifName string, localIP string) {
-	logWriter.Err(fmt.Sprintln("Refresh ARP entry ", ifName))
+	logWriter.Err(fmt.Sprintln("Refresh ARP entry ", ifName, "ip:", ip, "localIP:", localIP))
 	handle, err = pcap.OpenLive(ifName, snapshot_len, promiscuous, timeout_pcap)
 	if handle == nil {
 		logWriter.Err(fmt.Sprintln("Server: No device found.:device , err ", ifName, err))
@@ -1443,6 +1449,7 @@ func refresh_arp_entry(ip string, ifName string, localIP string) {
 	}
 	//logger.Println("MAC addr of ", ifName, ": ", mac_addr)
 	logWriter.Info(fmt.Sprintln("MAC addr of ", ifName, ": ", mac_addr))
+        logWriter.Info(fmt.Sprintln("2 ip:", ip, "mac_addr:", mac_addr, "localIp:", localIP))
 	sendArpReq(ip, handle, mac_addr, localIP)
 	return
 }
@@ -1457,6 +1464,7 @@ func getLinuxIfc(ifType int, idx int) (ifName string, err error) {
 		ifName = ""
 		err = errors.New("Invalid Interface Type")
 	}
+        logWriter.Info(fmt.Sprintln("ifType:", ifType, "idx:", idx, "ifName:", ifName))
 	return ifName, err
 }
 
@@ -1481,6 +1489,7 @@ func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int, localIP string) 
 	//logger.Println("MAC addr of ", linux_device, ": ", mac_addr)
 	logWriter.Info(fmt.Sprintln("MAC addr of ", linux_device, ": ", mac_addr))
 
+        logWriter.Info(fmt.Sprintln("3 ip:", ip, "mac_addr:", mac_addr, "localIp:", localIP))
 	sendArpReq(ip, handle, mac_addr, localIP)
 }
 
@@ -1549,6 +1558,7 @@ func sendArpProbe(ipAddr string, handle *pcap.Handle, mac_addr string) int {
 	wait := r1.Intn(probe_wait)
 	time.Sleep(time.Duration(wait) * time.Second)
 	for i := 0; i < probe_num; i++ {
+                logWriter.Info(fmt.Sprintln("4 ipAddr:", ipAddr, "mac_addr:", mac_addr, "localIp:0.0.0.0"))
 		sendArpReq(ipAddr, handle, mac_addr, "0.0.0.0")
 		diff := r2.Intn(probe_max - probe_min)
 		diff = diff + probe_min
