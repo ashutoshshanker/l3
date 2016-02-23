@@ -125,7 +125,8 @@ func processArpRequest(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_
                 if src_ip_addr == dest_ip_addr { // Gratuitous ARP Request
                         //logger.Println("Received a Gratuitous ARP from ", src_ip_addr)
                         logWriter.Info(fmt.Sprintln("Received a Gratuitous ARP from ", src_ip_addr))
-                        return
+                        local_ip_addr, _ := getIPv4ForInterface(arpd.Int(commonDefs.L2RefTypeVlan), arpd.Int(vlan_id))
+                        dest_ip_addr = local_ip_addr
                 } else { // Any other ARP request which are not locally originated
                         route, err := netlink.RouteGet(dstip)
                         var ifName string
