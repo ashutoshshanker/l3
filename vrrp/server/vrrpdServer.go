@@ -154,8 +154,12 @@ func VrrpSignalHandler(sigChannel <-chan os.Signal) {
 	switch signal {
 	case syscall.SIGHUP:
 		logger.Alert("Received SIGHUP Signal")
-		vrrpListener.Close()
-		vrrpNetPktConn.Close()
+		if vrrpListener != nil {
+			vrrpListener.Close()
+		}
+		if vrrpNetPktConn != nil {
+			vrrpNetPktConn.Close()
+		}
 		logger.Info("Closed vrrp pkt handlers")
 	default:
 		logger.Info(fmt.Sprintln("Unhandled Signal:", signal))
