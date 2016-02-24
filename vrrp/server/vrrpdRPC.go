@@ -21,7 +21,9 @@ import (
 func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
 	logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
 		config.IfIndex))
-	gblInfo := vrrpGblInfo[config.IfIndex]
+	key := config.IfIndex + config.VRID
+	logger.Info(fmt.Sprintln("Key is ", key))
+	gblInfo := vrrpGblInfo[key]
 
 	gblInfo.IntfConfig.IfIndex = config.IfIndex
 	if config.VRID == 0 {
@@ -66,12 +68,19 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 	if config.VirtualRouterMACAddress != "" {
 		gblInfo.IntfConfig.VirtualRouterMACAddress = config.VirtualRouterMACAddress
 	} else {
-		gblInfo.IntfConfig.VirtualRouterMACAddress = "00-00-5E-00-01-" +
-			strconv.Itoa(int(gblInfo.IntfConfig.VRID))
+		if gblInfo.IntfConfig.VRID < 10 {
+			gblInfo.IntfConfig.VirtualRouterMACAddress = "00-00-5E-00-01-0" +
+				strconv.Itoa(int(gblInfo.IntfConfig.VRID))
+
+		} else {
+			gblInfo.IntfConfig.VirtualRouterMACAddress = "00-00-5E-00-01-" +
+				strconv.Itoa(int(gblInfo.IntfConfig.VRID))
+		}
 	}
 
-	vrrpGblInfo[config.IfIndex] = gblInfo
-	go VrrpUpdateGblInfoTimers(config.IfIndex)
+	vrrpGblInfo[key] = gblInfo
+	go VrrpUpdateGblInfoTimers(key)
+	go VrrpInitPacketListener()
 	return true, nil
 }
 func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,
@@ -81,4 +90,46 @@ func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConf
 
 func (h *VrrpServiceHandler) DeleteVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
 	return true, nil
+}
+
+func (h *VrrpServiceHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
+	count vrrpd.Int) (intfEntry *vrrpd.VrrpIntfStateGetInfo, err error) {
+	var nextEntry vrrpd.VrrpIntfState
+	var finalList []*vrrpd.VrrpIntfState
+	var returnIntfStatebulk vrrpd.VrrpIntfStateGetInfo
+	var endIdx int
+	var more bool
+	intfEntry = &returnIntfStatebulk
+	if vrrpIntfStateSlice == nil {
+		logger.Info("DRA: Interface Slice is not initialized")
+		return intfEntry, err
+	}
+	currIdx := int(fromIndex)
+	cnt := int(count)
+	length := len(vrrpIntfStateSlice)
+
+	if currIdx+cnt >= length {
+		cnt = length - currIdx
+		endIdx = 0
+		more = false
+	} else {
+		endIdx = currIdx + cnt
+		more = true
+	}
+
+	for i := 0; i < cnt; i++ {
+		if len(finalList) == 0 {
+			finalList = make([]*vrrpd.VrrpIntfState, 0)
+		}
+		key := vrrpIntfStateSlice[i]
+		VrrpPopulateIntfState(key, &nextEntry)
+		finalList = append(finalList, &nextEntry)
+	}
+	intfEntry.VrrpIntfStateList = finalList
+	intfEntry.StartIdx = fromIndex
+	intfEntry.EndIdx = vrrpd.Int(endIdx)
+	intfEntry.More = more
+	intfEntry.Count = vrrpd.Int(cnt)
+
+	return intfEntry, err
 }

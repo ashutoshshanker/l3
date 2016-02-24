@@ -1,7 +1,7 @@
 package vrrpServer
 
 import (
-	_ "asicd/asicdConstDefs"
+	"asicd/asicdConstDefs"
 	"asicdServices"
 	"encoding/json"
 	"errors"
@@ -10,7 +10,11 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
 	"log/syslog"
+	"net"
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 	"utils/ipcutils"
 	"vrrpd"
@@ -34,6 +38,35 @@ func VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
 	logger.Info(fmt.Sprintln("Master Down Interval:", gblInfo.MasterDownInterval))
 }
 
+func VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
+	IpAddr, ok := vrrpIfIndexIpAddr[gblInfo.IntfConfig.IfIndex]
+	if ok == false {
+		logger.Err(fmt.Sprintln("missed ipv4 intf notification for IfIndex:",
+			gblInfo.IntfConfig.IfIndex))
+		return false
+	}
+	gblInfo.IpAddr = IpAddr
+	return true
+}
+
+func VrrpPopulateIntfState(key int32, entry *vrrpd.VrrpIntfState) {
+	gblInfo, ok := vrrpGblInfo[key]
+	if ok == false {
+		logger.Err(fmt.Sprintln("Entry not found for", key))
+		return
+	}
+	entry.IfIndex = gblInfo.IntfConfig.IfIndex
+	entry.VRID = gblInfo.IntfConfig.VRID
+	entry.IntfIpAddr = gblInfo.IpAddr
+	entry.Priority = gblInfo.IntfConfig.Priority
+	entry.VirtualIPv4Addr = gblInfo.IntfConfig.VirtualIPv4Addr
+	entry.AdvertisementInterval = gblInfo.IntfConfig.AdvertisementInterval
+	entry.PreemptMode = gblInfo.IntfConfig.PreemptMode
+	entry.VirtualRouterMACAddress = gblInfo.IntfConfig.VirtualRouterMACAddress
+	entry.SkewTime = gblInfo.SkewTime
+	entry.MasterDownInterval = gblInfo.MasterDownInterval
+}
+
 /*
 	// The initial value is the same as Advertisement_Interval.
 	MasterAdverInterval int32
@@ -45,25 +78,44 @@ func VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
 	IpAddr string
 */
 
-func VrrpInitGblInfo(IfIndex int32, IfName string, IpAddr string) {
-	gblInfo := vrrpGblInfo[IfIndex]
-	gblInfo.MasterAdverInterval = 0
-	gblInfo.SkewTime = 0
-	gblInfo.MasterDownInterval = 0
-	gblInfo.IpAddr = IpAddr
-	gblInfo.IfName = IfName
-	vrrpGblInfo[IfIndex] = gblInfo
-}
-
-func VrrpUpdateGblInfoTimers(IfIndex int32) {
-	gblInfo := vrrpGblInfo[IfIndex]
+func VrrpUpdateGblInfoTimers(key int32) {
+	gblInfo := vrrpGblInfo[key]
 	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
 	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
-		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) * gblInfo.MasterAdverInterval) / 256
+		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
+			gblInfo.MasterAdverInterval) / 256
 	}
 	gblInfo.MasterDownInterval = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
-	vrrpGblInfo[IfIndex] = gblInfo
+
+	if ok := VrrpUpdateIntfIpAddr(&gblInfo); ok == false {
+		// If we miss Asic Notification then do one time get bulk for Ipv4
+		// Interface... Once done then update Ip Addr again
+		VrrpGetIPv4IntfList()
+		VrrpUpdateIntfIpAddr(&gblInfo)
+	}
+	vrrpGblInfo[key] = gblInfo
+	vrrpIntfStateSlice = append(vrrpIntfStateSlice, key)
 	VrrpDumpIntfInfo(gblInfo)
+}
+
+func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
+	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
+	vlanName, ok := vrrpVlanId2Name[vlanId]
+	if ok == false {
+		logger.Err(fmt.Sprintln("no mapping for vlan", vlanId))
+		return
+	}
+	linuxInterface, err := net.InterfaceByName(vlanName)
+	if err != nil {
+		logger.Err(fmt.Sprintln("Getting linux If index for",
+			"IfIndex:", IfIndex, "failed with ERROR:", err))
+		return
+	}
+	logger.Info(fmt.Sprintln("Linux Id:", linuxInterface.Index,
+		"maps to IfIndex:", IfIndex))
+	entry := vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index]
+	entry = IfIndex
+	vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index] = entry
 }
 
 func VrrpConnectToAsicd(client VrrpClientJson) error {
@@ -95,6 +147,31 @@ func VrrpConnectToUnConnectedClient(client VrrpClientJson) error {
 	default:
 		return errors.New(VRRP_CLIENT_CONNECTION_NOT_REQUIRED)
 	}
+}
+
+func VrrpSignalHandler(sigChannel <-chan os.Signal) {
+	signal := <-sigChannel
+	switch signal {
+	case syscall.SIGHUP:
+		logger.Alert("Received SIGHUP Signal")
+		if vrrpListener != nil {
+			vrrpListener.Close()
+		}
+		if vrrpNetPktConn != nil {
+			vrrpNetPktConn.Close()
+		}
+		VrrpDeAllocateMemoryToGlobalDS()
+		logger.Info("Closed vrrp pkt handlers")
+	default:
+		logger.Info(fmt.Sprintln("Unhandled Signal:", signal))
+	}
+}
+
+func VrrpOSSignalHandle() {
+	sigChannel := make(chan os.Signal, 1)
+	signalList := []os.Signal{syscall.SIGHUP}
+	signal.Notify(sigChannel, signalList...)
+	go VrrpSignalHandler(sigChannel)
 }
 
 func VrrpConnectAndInitPortVlan() error {
@@ -138,11 +215,24 @@ func VrrpConnectAndInitPortVlan() error {
 	}
 
 	VrrpGetInfoFromAsicd()
+
+	// OS Signal channel listener thread
+	VrrpOSSignalHandle()
 	return err
 }
 
 func VrrpAllocateMemoryToGlobalDS() {
 	vrrpGblInfo = make(map[int32]VrrpGlobalInfo, 50)
+	vrrpIfIndexIpAddr = make(map[int32]string, 5)
+	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int]int32, 5)
+	vrrpVlanId2Name = make(map[int]string, 5)
+}
+
+func VrrpDeAllocateMemoryToGlobalDS() {
+	vrrpGblInfo = nil
+	vrrpIfIndexIpAddr = nil
+	vrrpLinuxIfIndex2AsicdIfIndex = nil
+	vrrpVlanId2Name = nil
 }
 
 func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) error {
