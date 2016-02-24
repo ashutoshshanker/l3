@@ -21,28 +21,28 @@ struct BfdGlobalStateGetInfo {
 	5: list<BfdGlobalState> BfdGlobalStateList
 }
 struct BfdIntfConfig{
-	1 : i32 	Interface
+	1 : i32 	IfIndex
 	2 : i32 	LocalMultiplier
 	3 : i32 	DesiredMinTxInterval
 	4 : i32 	RequiredMinRxInterval
 	5 : i32 	RequiredMinEchoRxInterval
 	6 : bool 	DemandEnabled
 	7 : bool 	AuthenticationEnabled
-	8 : i32 	AuthType
+	8 : string 	AuthType
 	9 : i32 	AuthKeyId
 	10 : string 	AuthData
 }
 struct BfdIntfState{
-	1 : i32 	InterfaceId
+	1 : i32 	IfIndex
 	2 : bool 	Enabled
 	3 : i32 	NumSessions
 	4 : i32 	LocalMultiplier
-	5 : i32 	DesiredMinTxInterval
-	6 : i32 	RequiredMinRxInterval
-	7 : i32 	RequiredMinEchoRxInterval
+	5 : string 	DesiredMinTxInterval
+	6 : string 	RequiredMinRxInterval
+	7 : string 	RequiredMinEchoRxInterval
 	8 : bool 	DemandEnabled
 	9 : bool 	AuthenticationEnabled
-	10 : i32 	AuthenticationType
+	10 : string 	AuthenticationType
 	11 : i32 	AuthenticationKeyId
 	12 : string 	AuthenticationData
 }
@@ -55,28 +55,29 @@ struct BfdIntfStateGetInfo {
 }
 struct BfdSessionConfig{
 	1 : string 	IpAddr
-	2 : i32 	Owner
-	3 : i32 	Operation
+	2 : bool 	PerLink
+	3 : string 	Owner
+	4 : string 	Operation
 }
 struct BfdSessionState{
 	1 : i32 	SessionId
 	2 : string 	LocalIpAddr
 	3 : string 	RemoteIpAddr
-	4 : i32 	InterfaceId
+	4 : i32 	IfIndex
 	5 : string 	RegisteredProtocols
-	6 : i32 	SessionState
-	7 : i32 	RemoteSessionState
+	6 : string 	SessionState
+	7 : string 	RemoteSessionState
 	8 : i32 	LocalDiscriminator
 	9 : i32 	RemoteDiscriminator
-	10 : i32 	LocalDiagType
-	11 : i32 	DesiredMinTxInterval
-	12 : i32 	RequiredMinRxInterval
-	13 : i32 	RemoteMinRxInterval
+	10 : string 	LocalDiagType
+	11 : string 	DesiredMinTxInterval
+	12 : string 	RequiredMinRxInterval
+	13 : string 	RemoteMinRxInterval
 	14 : i32 	DetectionMultiplier
 	15 : bool 	DemandMode
 	16 : bool 	RemoteDemandMode
 	17 : bool 	AuthSeqKnown
-	18 : i32 	AuthType
+	18 : string 	AuthType
 	19 : i32 	ReceivedAuthSeq
 	20 : i32 	SentAuthSeq
 	21 : i32 	NumTxPackets

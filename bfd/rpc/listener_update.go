@@ -4,7 +4,6 @@ import (
 	"bfdd"
 	"errors"
 	"fmt"
-	"l3/bfd/server"
 )
 
 func (h *BFDHandler) UpdateBfdGlobalConfig(origConf *bfdd.BfdGlobalConfig, newConf *bfdd.BfdGlobalConfig, attrset []bool) (bool, error) {
@@ -29,11 +28,5 @@ func (h *BFDHandler) UpdateBfdSessionConfig(origConf *bfdd.BfdSessionConfig, new
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Update session config attrs:", newConf))
-	sessionConf := server.SessionConfig{
-		DestIp:    newConf.IpAddr,
-		Protocol:  newConf.Owner,
-		Operation: newConf.Operation,
-	}
-	h.server.SessionConfigCh <- sessionConf
-	return true, nil
+	return h.SendBfdSessionConfig(newConf), nil
 }
