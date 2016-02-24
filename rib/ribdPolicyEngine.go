@@ -537,6 +537,7 @@ func policyEngineImplementActions(route ribd.Routes, policyStmt PolicyStmt, para
 	return actionList
 }
 func findPrefixMatch(ipAddr string, mask string, ipPrefix patriciaDB.Prefix, policyName string)(match bool){
+    logger.Println("Prefix match policy ", policyName)
 	policyListItem := PrefixPolicyListDB.GetLongestPrefixNode(ipPrefix)
 	if policyListItem == nil {
 		logger.Println("intf stored at prefix ", ipPrefix, " is nil")
@@ -549,8 +550,9 @@ func findPrefixMatch(ipAddr string, mask string, ipPrefix patriciaDB.Prefix, pol
 	policyListSlice := reflect.ValueOf(policyListItem)
 	for idx :=0;idx < policyListSlice.Len();idx++ {
 	   prefixPolicyListInfo := policyListSlice.Index(idx).Interface().(PrefixPolicyListInfo)
-	   if prefixPolicyListInfo.policyName == policyName {
-	      logger.Println("Found a potential match for this prefix")
+	   if prefixPolicyListInfo.policyName != policyName {
+	      logger.Println("Found a potential match for this prefix but the policy ", policyName, " is not what we are looking for")
+		  continue
 	   }
 	   if prefixPolicyListInfo.lowRange == -1 && prefixPolicyListInfo.highRange == -1 {
           logger.Println("Looking for exact match condition for prefix ", prefixPolicyListInfo.ipPrefix)
