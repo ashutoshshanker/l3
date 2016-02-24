@@ -6,6 +6,8 @@ import (
 	//	"portdServices"
 	"encoding/json"
 	"l3/rib/ribdCommonDefs"
+	"utils/policy"
+	 "utils/policy/policyCommonDefs"
 	"ribd"
 	"utils/patriciaDB"
 	//		"patricia"
@@ -178,7 +180,7 @@ func processL3IntfUpEvent(ipAddr string) {
 			ConnectedRoutes[i].IsValid = true
 	        policyRoute := ribd.Routes{Ipaddr: ConnectedRoutes[i].Ipaddr, Mask: ConnectedRoutes[i].Mask, NextHopIp: ConnectedRoutes[i].NextHopIp, NextHopIfType: ConnectedRoutes[i].NextHopIfType, IfIndex: ConnectedRoutes[i].IfIndex, Metric: ConnectedRoutes[i].Metric, Prototype: ConnectedRoutes[i].Prototype}
 	        params := RouteParams{destNetIp:ConnectedRoutes[i].Ipaddr, networkMask:ConnectedRoutes[i].Mask, nextHopIp:ConnectedRoutes[i].NextHopIp, nextHopIfType:ConnectedRoutes[i].NextHopIfType, nextHopIfIndex:ConnectedRoutes[i].IfIndex, metric:ConnectedRoutes[i].Metric, routeType:ConnectedRoutes[i].Prototype,sliceIdx: ConnectedRoutes[i].SliceIdx, createType:FIBOnly, deleteType:Invalid}
-	        PolicyEngineFilter(policyRoute, ribdCommonDefs.PolicyPath_Import, params)
+	        PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Import, params)
 /*
 			//Send a event
 			msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: *ConnectedRoutes[i]}

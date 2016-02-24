@@ -4,7 +4,8 @@ package main
 import (
 	"ribd"
 	"errors"
-	"l3/rib/ribdCommonDefs"
+	"utils/policy"
+	  "utils/policy/policyCommonDefs"
 	"utils/patriciaDB"
 	"strconv"
 	"strings"
@@ -248,7 +249,7 @@ func updatePrefixPolicyTableWithPrefixSet(prefixSet string, name string, op int)
 	logger.Println("updatePrefixPolicyTableWithPrefixSet")
 }
 func updatePrefixPolicyTable(conditionInfo interface{}, name string, op int) {
-    condition := conditionInfo.(MatchPrefixConditionInfo)
+    condition := conditionInfo.(policy.MatchPrefixConditionInfo)
 	logger.Printf("updatePrefixPolicyTable for prefixSet %s prefix %s policy name %s op %d\n", condition.prefixSet, condition.prefix, name, op)
     if condition.usePrefixSet {
 		logger.Println("Need to look up Prefix set to get the prefixes")
@@ -310,11 +311,11 @@ func updateConditions(policyStmt PolicyStmt, conditionName string, op int) (err 
 	if(conditionItem != nil) {
 		condition := conditionItem.(PolicyCondition)
 		switch condition.conditionType {
-			case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
+			case policyCommonDefs.PolicyConditionTypeProtocolMatch:
 			   logger.Println("PolicyConditionTypeProtocolMatch")
 			   updateProtocolPolicyTable(condition.conditionInfo.(string), policyStmt.name, op)
 			   break
-			case ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
+			case policyCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
 			   logger.Println("PolicyConditionTypeDstIpPrefixMatch")
 			   updatePrefixPolicyTable(condition.conditionInfo, policyStmt.name, op)
 			   break
