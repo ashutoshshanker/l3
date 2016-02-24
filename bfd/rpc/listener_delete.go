@@ -12,7 +12,7 @@ func (h *BFDHandler) DeleteBfdGlobalConfig(bfdGlobalConf *bfdd.BfdGlobalConfig) 
 
 func (h *BFDHandler) DeleteBfdIntfConfig(bfdIfConf *bfdd.BfdIntfConfig) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Delete interface config attrs:", bfdIfConf))
-	ifIndex := bfdIfConf.Interface
+	ifIndex := bfdIfConf.IfIndex
 	h.server.IntfConfigDeleteCh <- ifIndex
 	return true, nil
 }

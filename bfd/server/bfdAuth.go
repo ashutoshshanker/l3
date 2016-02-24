@@ -24,6 +24,40 @@ const (
 	BFD_AUTH_TYPE_METICULOUS_SHA1 AuthenticationType = 5 // Meticulous Keyed SHA1
 )
 
+func (server *BFDServer) ConvertBfdAuthTypeStrToVal(authType string) AuthenticationType {
+	var authVal AuthenticationType
+	switch authType {
+	case "simple":
+		authVal = BFD_AUTH_TYPE_SIMPLE
+	case "keyedmd5":
+		authVal = BFD_AUTH_TYPE_KEYED_MD5
+	case "metmd5":
+		authVal = BFD_AUTH_TYPE_METICULOUS_MD5
+	case "keyedsha1":
+		authVal = BFD_AUTH_TYPE_KEYED_SHA1
+	case "metsha1":
+		authVal = BFD_AUTH_TYPE_METICULOUS_SHA1
+	}
+	return authVal
+}
+
+func (server *BFDServer) ConvertBfdAuthTypeValToStr(authType AuthenticationType) string {
+	var authStr string
+	switch authType {
+	case BFD_AUTH_TYPE_SIMPLE:
+		authStr = "simple"
+	case BFD_AUTH_TYPE_KEYED_MD5:
+		authStr = "keyedmd5"
+	case BFD_AUTH_TYPE_METICULOUS_MD5:
+		authStr = "metmd5"
+	case BFD_AUTH_TYPE_KEYED_SHA1:
+		authStr = "keyedsha1"
+	case BFD_AUTH_TYPE_METICULOUS_SHA1:
+		authStr = "metsha1"
+	}
+	return authStr
+}
+
 /*
  * Create the Auth header section
  */

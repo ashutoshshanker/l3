@@ -75,7 +75,7 @@ func (server *BFDServer) GetIfIndexAndLocalIpFromDestIp(DestIp string) (int32, s
 	return int32(reachabilityInfo.NextHopIfIndex), reachabilityInfo.NextHopIp
 }
 
-func (server *BFDServer) NewBfdSession(DestIp string, protocol int32) *BfdSession {
+func (server *BFDServer) NewBfdSession(DestIp string, protocol bfddCommonDefs.BfdSessionOwner) *BfdSession {
 	ifIndex, _ := server.GetIfIndexAndLocalIpFromDestIp(DestIp)
 	if ifIndex == 0 {
 		return nil
@@ -470,7 +470,7 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 }
 
 func (session *BfdSession) CheckIfAnyProtocolRegistered() bool {
-	for i := 0; i < bfddCommonDefs.MAX_NUM_PROTOCOLS; i++ {
+	for i := bfddCommonDefs.BfdSessionOwner(1); i < bfddCommonDefs.MAX_NUM_PROTOCOLS; i++ {
 		if session.state.RegisteredProtocols[i] == true {
 			return true
 		}
