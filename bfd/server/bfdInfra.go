@@ -27,6 +27,9 @@ type IPIntfProperty struct {
 	NetMask []byte
 }
 
+type LagProperty struct {
+}
+
 type IPv4IntfNotifyMsg struct {
 	IpAddr string
 	IfId   int32
