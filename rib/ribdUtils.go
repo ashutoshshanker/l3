@@ -151,6 +151,79 @@ func getNetworkPrefixFromCIDR(ipAddr string) (ipPrefix patriciaDB.Prefix, err er
 	ipPrefix ,err= getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
     return ipPrefix, err
 }
+func addPolicyRouteMap(route ribd.Routes, policy Policy) {
+	logger.Println("addPolicyRouteMap")
+	policy.hitCounter++
+	ipPrefix,err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
+	if err != nil {
+		logger.Println("Invalid ip prefix")
+		return
+	}
+	maskIp, err := getIP(route.Mask)
+	if err != nil {
+		return
+	}
+	prefixLen,err := getPrefixLen(maskIp)
+	if err != nil {
+		return
+	}
+	logger.Println("prefixLen= ", prefixLen)
+	var newRoute string
+	found := false
+	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
+//	newRoute := string(ipPrefix[:])
+	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
+	policyInfo:=policy.PolicyDB.Get(patriciaDB.Prefix(policy.name))
+	if policyInfo == nil {
+		logger.Println("Unexpected:policyInfo nil for policy ", policy.name)
+		return
+	}
+	tempPolicy:=policyInfo.(Policy)
+	if tempPolicy.routeList == nil {
+		logger.Println("routeList nil")
+		tempPolicy.routeList = make([]string, 0)
+	}
+	logger.Println("routelist len= ", len(tempPolicy.routeList)," prefix list so far")
+	for i:=0;i<len(tempPolicy.routeList);i++ {
+		logger.Println(tempPolicy.routeList[i])
+		if tempPolicy.routeList[i] == newRoute {
+			logger.Println(newRoute, " already is a part of ", policy.name, "'s routelist")
+			found = true
+		}
+	}
+	if !found {
+       tempPolicy.routeList = append(tempPolicy.routeList, newRoute)
+	}
+	found=false
+	logger.Println("routeInfoList details")
+	for i:=0;i<len(tempPolicy.routeInfoList);i++ {
+		logger.Println("IP: ",tempPolicy.routeInfoList[i].Ipaddr, ":", tempPolicy.routeInfoList[i].Mask, " routeType: ", tempPolicy.routeInfoList[i].Prototype)
+		if tempPolicy.routeInfoList[i].Ipaddr==route.Ipaddr && tempPolicy.routeInfoList[i].Mask == route.Mask && tempPolicy.routeInfoList[i].Prototype == route.Prototype {
+			logger.Println("route already is a part of ", policy.name, "'s routeInfolist")
+			found = true
+		}
+	}
+	if tempPolicy.routeInfoList == nil {
+		tempPolicy.routeInfoList = make([]ribd.Routes, 0)
+	}
+	if found == false {
+       tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
+	}
+	policy.PolicyDB.Set(patriciaDB.Prefix(policy.name), tempPolicy)
+}
+func deletePolicyRouteMap(route ribd.Routes, policy Policy) {
+	logger.Println("deletePolicyRouteMap")
+}
+func updatePolicyRouteMap(route ribd.Routes, policy Policy, op int) {
+	logger.Println("updatePolicyRouteMap")
+	if op == add {
+		addPolicyRouteMap(route, policy)
+	} else if op == del {
+		deletePolicyRouteMap(route, policy)
+	}
+	
+}
+
 func deleteRoutePolicyStateAll(route ribd.Routes) {
 	logger.Println("deleteRoutePolicyStateAll")
 	destNet, err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)

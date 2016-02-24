@@ -76,11 +76,6 @@ struct PolicyMatchTagSetCondition{
 	2 : i32 	MatchSetOptions
 }
 
-struct PolicyRedistributionAction{
-	1 : string    Redistribute
-	2 : string 	RedistributeTargetProtocol
-}
-
 struct PolicyStmtConfig{
 	1:  string  Name
 	2 : string 	AdminState
@@ -131,7 +126,8 @@ struct PolicyActionConfig {
 	3: int SetAdminDistanceValue
 	4: bool Accept 
 	5: bool Reject 
-	6: optional PolicyRedistributionAction RedistributeActionInfo      
+	6: string RedistributeAction
+	7: string RedistributeTargetProtocol    
 }
 
 struct PolicyActionState{

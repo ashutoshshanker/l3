@@ -3,24 +3,32 @@ package main
 
 import (
 	"ribd"
-	"errors"
 	"utils/policy"
 	"utils/patriciaDB"
-	"strconv"
 )
-
-var PolicyActionsDB = patriciaDB.NewTrie()
+var PolicyActionsDB *patriciaDB.Trie
 var localPolicyActionsDB []policy.LocalDB
+
 func (m RouteServiceHandler) CreatePolicyAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {
 	logger.Println("CreatePolicyAction")
-	newAction:=Policy.PolicyActionConfig{}
-	err = policy.CreatePolicyAction(PolicyActionsDB, localPolicyActionsDB, newAction)
+	newAction:=policy.PolicyActionConfig{Name:cfg.Name, ActionType:cfg.ActionType,SetAdminDistanceValue:cfg.SetAdminDistanceValue,Accept:cfg.Accept, Reject:Reject, RedistributeAction:cfg.RedistributeAction, RedistributeTargetProtocol:cfg.RedistributeTargetProtocol }
+	err = policy.CreatePolicyAction(newAction)
 	return val,err
 }
 
 
 func (m RouteServiceHandler) GetBulkPolicyActionState( fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyActionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkPolicyActionState")
+	PolicyActionsDB,err = policy.GetPolicyActionsDB()
+	if err != nil {
+		logger.Println("Failed to get policyActionsDB")
+		return val,err
+	}
+	localPolicyActionsB,err = policy.GetLocalPolicyActionsDB()
+	if err != nil {
+		logger.Println("Failed to get localpolicyActionsDB")
+		return val,err
+	}
     var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.PolicyActionState = make ([]ribd.PolicyActionState, rcount)
 	var nextNode *ribd.PolicyActionState
@@ -49,9 +57,9 @@ func (m RouteServiceHandler) GetBulkPolicyActionState( fromIndex ribd.Int, rcoun
 			break
 		}
 		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyActionsDB[i+fromIndex].prefix))
-		prefixNodeGet := PolicyActionsDB.Get(localPolicyActionsDB[i+fromIndex].prefix)
+		prefixNodeGet := policy.PolicyActionsDB.Get(localPolicyActionsDB[i+fromIndex].prefix)
 		if(prefixNodeGet != nil) {
-			prefixNode := prefixNodeGet.(PolicyAction)
+			prefixNode := prefixNodeGet.(policy.PolicyAction)
 			nextNode = &tempNode[validCount]
 		    nextNode.Name = prefixNode.Name
 			nextNode.ActionInfo = prefixNode.ActionGetBulkInfo

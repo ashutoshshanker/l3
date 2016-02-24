@@ -3,22 +3,32 @@ package main
 
 import (
 	"ribd"
-	"utils/patriciaDB"
 	"utils/policy"
+	"utils/patriciaDB"
 )
-
-var PolicyConditionsDB = patriciaDB.NewTrie()
+var PolicyConditionsDB  *patriciaDB.Trie
 var localPolicyConditionsDB []policy.LocalDB
+
 func (m RouteServiceHandler) CreatePolicyCondition(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
 	logger.Println("CreatePolicyConditioncfg")
 	newPolicy := policy.PolicyConditionConfig { Name:cfg.Name, ConditionType:cfg.ConditionType, MatchProtocolConditionInfo:*cfg.MatchProtocolConditionInfo}
 	matchPrefix := policy.PolicyPrefix{IpPrefix:cfg.MatchDstIpPrefixConditionInfo.Prefix.IpPrefix,MasklengthRange:cfg.MatchDstIpPrefixConditionInfo.Prefix.MasklengthRange}
 	newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{PrefixSet:cfg.MatchDstIpPrefixConditionInfo.PrefixSet, Prefix:matchPrefix}
-	err = policy.CreatePolicyCondition(PolicyConditionsDB, localPolicyConditionsDB,newPolicy)
+	err = policy.CreatePolicyCondition(newPolicy)
 	return val,err
 }
 func (m RouteServiceHandler) GetBulkPolicyConditionState( fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyConditionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkPolicyConditionState")
+	PolicyConditionsDB,err = policy.GetPolicyConditionsDB()
+	if err != nil {
+		logger.Println("Failed to get policyConditionsDB")
+		return val,err
+	}
+	localPolicyConditionsDB,err = policy.GetLocalPolicyConditionsDB()
+	if err != nil {
+		logger.Println("Failed to get localpolicyConditionsDB")
+		return val,err
+	}
     var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.PolicyConditionState = make ([]ribd.PolicyConditionState, rcount)
 	var nextNode *ribd.PolicyConditionState
