@@ -117,3 +117,27 @@ func (server *BFDServer) BuildPortPropertyMap() {
 		}
 	}
 }
+
+/*
+func (server *BFDServer) getLinuxIntfName(ifId uint16, ifType uint8) (ifName string, err error) {
+	if ifType == commonDefs.L2RefTypeVlan { // Vlan
+		ifName = server.vlanPropertyMap[ifId].Name
+	} else if ifType == commonDefs.L2RefTypePort { // PHY
+		ifName = server.portPropertyMap[int32(ifId)].Name
+	} else {
+		ifName = ""
+		err = errors.New("Invalid Interface Type")
+	}
+	return ifName, err
+}
+
+func getMacAddrIntfName(ifName string) (macAddr net.HardwareAddr, err error) {
+
+	ifi, err := net.InterfaceByName(ifName)
+	if err != nil {
+		return macAddr, err
+	}
+	macAddr = ifi.HardwareAddr
+	return macAddr, nil
+}
+*/

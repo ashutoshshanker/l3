@@ -49,7 +49,7 @@ type BfdInterface struct {
 
 type BfdSessionMgmt struct {
 	DestIp   string
-	Protocol int32
+	Protocol bfddCommonDefs.BfdSessionOwner
 }
 
 type BfdSession struct {
@@ -128,7 +128,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	return bfdServer
 }
 
-func (server *BFDServer) ConnectToClients(paramsFile string) {
+func (server *BFDServer) ConnectToServers(paramsFile string) {
 	var clientsList []ClientJson
 
 	bytes, err := ioutil.ReadFile(paramsFile)
@@ -147,20 +147,52 @@ func (server *BFDServer) ConnectToClients(paramsFile string) {
 		if client.Name == "asicd" {
 			server.logger.Info(fmt.Sprintln("found asicd at port", client.Port))
 			server.asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(server.asicdClient.Address)
+			server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
+			if err != nil {
+				server.logger.Info(fmt.Sprintf("Failed to connect to Asicd, retrying until connection is successful"))
+				count := 0
+				ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
+				for _ = range ticker.C {
+					server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
+					if err == nil {
+						ticker.Stop()
+						break
+					}
+					count++
+					if (count % 10) == 0 {
+						server.logger.Info("Still can't connect to Asicd, retrying...")
+					}
+				}
+			}
 			if server.asicdClient.Transport != nil && server.asicdClient.PtrProtocolFactory != nil {
-				server.logger.Info("connecting to asicd")
 				server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
 				server.asicdClient.IsConnected = true
+				server.logger.Info("Bfdd is connected to Asicd")
 			}
 		} else if client.Name == "ribd" {
 			server.logger.Info(fmt.Sprintln("found ribd at port", client.Port))
 			server.ribdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(server.ribdClient.Address)
+			server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
+			if err != nil {
+				server.logger.Info(fmt.Sprintf("Failed to connect to Ribd, retrying until connection is successful"))
+				count := 0
+				ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
+				for _ = range ticker.C {
+					server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
+					if err == nil {
+						ticker.Stop()
+						break
+					}
+					count++
+					if (count % 10) == 0 {
+						server.logger.Info("Still can't connect to Ribd, retrying...")
+					}
+				}
+			}
 			if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {
-				server.logger.Info("connecting to ribd")
 				server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
 				server.ribdClient.IsConnected = true
+				server.logger.Info("Bfdd is connected to Ribd")
 			}
 		}
 	}
@@ -242,7 +274,7 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 		var demandEnabledBool bool
 		var authenticationEnabled int
 		var authenticationEnabledBool bool
-		var authenticationType int32
+		var authenticationType string
 		var authenticationKeyId int32
 		var authenticationData string
 		err = rows.Scan(&interfaceId, &localMultiplier, &desiredMinTxInterval, &requiredMinRxInterval, &requiredMinEchoRxInterval, &demandEnabled, &authenticationEnabled, &authenticationType, &authenticationKeyId, &authenticationData)
@@ -269,7 +301,7 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 			RequiredMinEchoRxInterval: requiredMinEchoRxInterval,
 			DemandEnabled:             demandEnabledBool,
 			AuthenticationEnabled:     authenticationEnabledBool,
-			AuthenticationType:        authenticationType,
+			AuthenticationType:        server.ConvertBfdAuthTypeStrToVal(authenticationType),
 			AuthenticationKeyId:       authenticationKeyId,
 			AuthenticationData:        authenticationData,
 		}
@@ -291,16 +323,24 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 
 	for rows.Next() {
 		var dstIp string
-		var owner int32
-		var operation int32
+		var perLink int
+		var perLinkBool bool
+		var owner string
+		var operation string
 		err = rows.Scan(&dstIp, &owner, &operation)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSessionConfig: ", err))
 			dbHdl.Close()
 			return err
 		}
+		if perLink == 1 {
+			perLinkBool = true
+		} else {
+			perLinkBool = false
+		}
 		sessionConf := SessionConfig{
 			DestIp:    dstIp,
+			PerLink:   perLinkBool,
 			Protocol:  bfddCommonDefs.USER,
 			Operation: bfddCommonDefs.CREATE,
 		}
@@ -327,12 +367,13 @@ func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	dbHdl.Close()
 	return nil
 }
 
 func (server *BFDServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Bfd Server"))
-	server.ConnectToClients(paramFile)
+	server.ConnectToServers(paramFile)
 	server.initBfdGlobalConfDefault()
 	server.BuildPortPropertyMap()
 	server.GetIPv4Interfaces()
