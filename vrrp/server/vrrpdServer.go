@@ -160,6 +160,7 @@ func VrrpSignalHandler(sigChannel <-chan os.Signal) {
 		if vrrpNetPktConn != nil {
 			vrrpNetPktConn.Close()
 		}
+		VrrpDeAllocateMemoryToGlobalDS()
 		logger.Info("Closed vrrp pkt handlers")
 	default:
 		logger.Info(fmt.Sprintln("Unhandled Signal:", signal))

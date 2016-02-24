@@ -26,6 +26,10 @@ func VrrpDecodeReceivedPkt(InData []byte, bytesRead int) {
 func VrrpReceivePackets() {
 	var buf []byte = make([]byte, 1500)
 	for {
+		if vrrpListener == nil || vrrpNetPktConn == nil {
+			logger.Info("Listerner is not set...")
+			return
+		}
 		bytesRead, ctrlMsg, srcAddr, err := vrrpListener.ReadFrom(buf)
 		if err != nil {
 			logger.Err(fmt.Sprintln("Reading buffer failed",

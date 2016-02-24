@@ -94,7 +94,7 @@ func (h *VrrpServiceHandler) DeleteVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 
 func (h *VrrpServiceHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
 	count vrrpd.Int) (intfEntry *vrrpd.VrrpIntfStateGetInfo, err error) {
-	var nextEntry *vrrpd.VrrpIntfState
+	var nextEntry vrrpd.VrrpIntfState
 	var finalList []*vrrpd.VrrpIntfState
 	var returnIntfStatebulk vrrpd.VrrpIntfStateGetInfo
 	var endIdx int
@@ -122,8 +122,8 @@ func (h *VrrpServiceHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
 			finalList = make([]*vrrpd.VrrpIntfState, 0)
 		}
 		key := vrrpIntfStateSlice[i]
-		VrrpPopulateIntfState(key, nextEntry)
-		finalList = append(finalList, nextEntry)
+		VrrpPopulateIntfState(key, &nextEntry)
+		finalList = append(finalList, &nextEntry)
 	}
 	intfEntry.VrrpIntfStateList = finalList
 	intfEntry.StartIdx = fromIndex
