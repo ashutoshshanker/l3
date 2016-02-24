@@ -427,6 +427,7 @@ func initPortParams() {
 func processPacket(targetIp string, iftype arpd.Int, vlanid arpd.Int, handle *pcap.Handle, mac_addr string, localIp string) {
 	//logger.Println("processPacket() : Arp request for ", targetIp, "from", localIp)
 	logWriter.Info(fmt.Sprintln("processPacket() : Arp request for ", targetIp, "from", localIp))
+        logWriter.Info(fmt.Sprintln("5 targetIp:", targetIp, "mac_addr:", mac_addr, "localIp:", localIp))
 	sendArpReq(targetIp, handle, mac_addr, localIp)
 	arp_cache_update_chl <- arpUpdateMsg{
 		ip: targetIp,
@@ -810,6 +811,7 @@ func createAndSendArpReuqest(targetIP string, outgoingIfName string, vlan_id arp
 	}
 	//logger.Println("MAC addr of ", outgoingIfName, ": ", mac_addr)
 	logWriter.Info(fmt.Sprintln("MAC addr of ", outgoingIfName, ": ", mac_addr))
+        logWriter.Info(fmt.Sprintln("1 targetIP:", targetIP, "mac_addr:", mac_addr, "localIp:", localIp))
 	sendArpReq(targetIP, handle, mac_addr, localIp)
 	arp_cache_update_chl <- arpUpdateMsg{
 		ip: targetIP,
@@ -1447,6 +1449,7 @@ func refresh_arp_entry(ip string, ifName string, localIP string) {
 	}
 	//logger.Println("MAC addr of ", ifName, ": ", mac_addr)
 	logWriter.Info(fmt.Sprintln("MAC addr of ", ifName, ": ", mac_addr))
+        logWriter.Info(fmt.Sprintln("2 ip:", ip, "mac_addr:", mac_addr, "localIp:", localIP))
 	sendArpReq(ip, handle, mac_addr, localIP)
 	return
 }
@@ -1486,6 +1489,7 @@ func retry_arp_req(ip string, vlanid arpd.Int, ifType arpd.Int, localIP string) 
 	//logger.Println("MAC addr of ", linux_device, ": ", mac_addr)
 	logWriter.Info(fmt.Sprintln("MAC addr of ", linux_device, ": ", mac_addr))
 
+        logWriter.Info(fmt.Sprintln("3 ip:", ip, "mac_addr:", mac_addr, "localIp:", localIP))
 	sendArpReq(ip, handle, mac_addr, localIP)
 }
 
@@ -1554,6 +1558,7 @@ func sendArpProbe(ipAddr string, handle *pcap.Handle, mac_addr string) int {
 	wait := r1.Intn(probe_wait)
 	time.Sleep(time.Duration(wait) * time.Second)
 	for i := 0; i < probe_num; i++ {
+                logWriter.Info(fmt.Sprintln("4 ipAddr:", ipAddr, "mac_addr:", mac_addr, "localIp:0.0.0.0"))
 		sendArpReq(ipAddr, handle, mac_addr, "0.0.0.0")
 		diff := r2.Intn(probe_max - probe_min)
 		diff = diff + probe_min
