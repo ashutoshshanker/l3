@@ -12,7 +12,7 @@ import (
 
 func (h *OSPFHandler) convertAreaEntryStateToThrift(ent config.AreaState) *ospfd.OspfAreaEntryState {
 	areaEntry := ospfd.NewOspfAreaEntryState()
-	areaEntry.AreaIdKey = string(ent.AreaId)
+	areaEntry.AreaId = string(ent.AreaId)
 	areaEntry.SpfRuns = ent.SpfRuns
 	areaEntry.AreaBdrRtrCount = ent.AreaBdrRtrCount
 	areaEntry.AsBdrRtrCount = ent.AsBdrRtrCount
@@ -26,8 +26,8 @@ func (h *OSPFHandler) convertAreaEntryStateToThrift(ent config.AreaState) *ospfd
 
 func (h *OSPFHandler) convertIfEntryStateToThrift(ent config.InterfaceState) *ospfd.OspfIfEntryState {
 	ifEntry := ospfd.NewOspfIfEntryState()
-	ifEntry.IfIpAddressKey = string(ent.IfIpAddress)
-	ifEntry.AddressLessIfKey = int32(ent.AddressLessIf)
+	ifEntry.IfIpAddress = string(ent.IfIpAddress)
+	ifEntry.AddressLessIf = int32(ent.AddressLessIf)
 	ifEntry.IfState = int32(ent.IfState)
 	ifEntry.IfDesignatedRouter = string(ent.IfDesignatedRouter)
 	ifEntry.IfBackupDesignatedRouter = string(ent.IfBackupDesignatedRouter)
@@ -42,7 +42,7 @@ func (h *OSPFHandler) convertIfEntryStateToThrift(ent config.InterfaceState) *os
 
 func (h *OSPFHandler) convertGlobalStateToThrift(ent config.GlobalState) *ospfd.OspfGlobalState {
 	gState := ospfd.NewOspfGlobalState()
-	gState.RouterIdKey = string(ent.RouterId)
+	gState.RouterId = string(ent.RouterId)
 	gState.VersionNumber = ent.VersionNumber
 	gState.AreaBdrRtrStatus = ent.AreaBdrRtrStatus
 	gState.ExternLsaCount = ent.ExternLsaCount
@@ -63,8 +63,8 @@ func (h *OSPFHandler) convertGlobalStateToThrift(ent config.GlobalState) *ospfd.
 
 func (h *OSPFHandler) convertNbrEntryStateToThrift(nbr config.NeighborState) *ospfd.OspfNbrEntryState {
 	nbrEntry := ospfd.NewOspfNbrEntryState()
-	nbrEntry.NbrIpAddrKey = string(nbr.NbrIpAddress)
-	nbrEntry.NbrAddressLessIndexKey = int32(nbr.NbrAddressLessIndex)
+	nbrEntry.NbrIpAddr = string(nbr.NbrIpAddress)
+	nbrEntry.NbrAddressLessIndex = int32(nbr.NbrAddressLessIndex)
 	nbrEntry.NbrRtrId = string(nbr.NbrRtrId)
 	nbrEntry.NbrOptions = int32(nbr.NbrOptions)
 	nbrEntry.NbrState = int32(nbr.NbrState)
