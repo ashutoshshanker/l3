@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"l3/ospf/config"
+	"time"
 )
 
 type LsdbUpdateMsg struct {
@@ -57,6 +58,60 @@ func (server *OSPFServer) initLSDatabase(areaId uint32) {
 	}
 }
 
+func (server *OSPFServer) lsdbStateRefresh() {
+	var lsdbStateRefFunc func()
+	lsdbStateRefFunc = func() {
+		server.logger.Info("Inside lsdbStateRefFunc()")
+		server.logger.Info(fmt.Sprintln("The old Lsdb Slice after refresh", server.LsdbSlice))
+		server.LsdbSlice = []LsdbSliceEnt{}
+		for lsdbkey, lsdbEnt := range server.AreaLsdb {
+			for lsakey, _ := range lsdbEnt.RouterLsaMap {
+				var val LsdbSliceEnt
+				val.AreaId = lsdbkey.AreaId
+				val.LSType = lsakey.LSType
+				val.LSId = lsakey.LSId
+				val.AdvRtr = lsakey.AdvRouter
+				server.LsdbSlice = append(server.LsdbSlice, val)
+			}
+			for lsakey, _ := range lsdbEnt.NetworkLsaMap {
+				var val LsdbSliceEnt
+				val.AreaId = lsdbkey.AreaId
+				val.LSType = lsakey.LSType
+				val.LSId = lsakey.LSId
+				val.AdvRtr = lsakey.AdvRouter
+				server.LsdbSlice = append(server.LsdbSlice, val)
+			}
+			for lsakey, _ := range lsdbEnt.Summary3LsaMap {
+				var val LsdbSliceEnt
+				val.AreaId = lsdbkey.AreaId
+				val.LSType = lsakey.LSType
+				val.LSId = lsakey.LSId
+				val.AdvRtr = lsakey.AdvRouter
+				server.LsdbSlice = append(server.LsdbSlice, val)
+			}
+			for lsakey, _ := range lsdbEnt.Summary4LsaMap {
+				var val LsdbSliceEnt
+				val.AreaId = lsdbkey.AreaId
+				val.LSType = lsakey.LSType
+				val.LSId = lsakey.LSId
+				val.AdvRtr = lsakey.AdvRouter
+				server.LsdbSlice = append(server.LsdbSlice, val)
+			}
+			for lsakey, _ := range lsdbEnt.ASExternalLsaMap {
+				var val LsdbSliceEnt
+				val.AreaId = lsdbkey.AreaId
+				val.LSType = lsakey.LSType
+				val.LSId = lsakey.LSId
+				val.AdvRtr = lsakey.AdvRouter
+				server.LsdbSlice = append(server.LsdbSlice, val)
+			}
+		}
+		server.logger.Info(fmt.Sprintln("The new Lsdb Slice after refresh", server.LsdbSlice))
+		server.LsdbStateTimer.Reset(server.RefreshDuration)
+	}
+	server.LsdbStateTimer = time.AfterFunc(server.RefreshDuration, lsdbStateRefFunc)
+}
+
 func (server *OSPFServer) StartLSDatabase() {
 	server.logger.Info("Initializing LSA Database")
 	for key, _ := range server.AreaConfMap {
@@ -64,6 +119,7 @@ func (server *OSPFServer) StartLSDatabase() {
 		server.initLSDatabase(areaId)
 	}
 
+	server.lsdbStateRefresh()
 	go server.processLSDatabaseUpdates()
 	return
 }
@@ -172,6 +228,16 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey) {
 	entry.LsaMd.LSAge = uint16(LSAge)
 	lsDbEnt.NetworkLsaMap[lsaKey] = entry
 	server.AreaLsdb[lsdbKey] = lsDbEnt
+
+	if !exist {
+		var val LsdbSliceEnt
+		val.AreaId = lsdbKey.AreaId
+		val.LSType = lsaKey.LSType
+		val.LSId = lsaKey.LSId
+		val.AdvRtr = lsaKey.AdvRouter
+		server.LsdbSlice = append(server.LsdbSlice, val)
+	}
+
 	return
 }
 
@@ -272,6 +338,14 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 	ent.LsaMd.LSAge = uint16(LSAge)
 	lsDbEnt.RouterLsaMap[lsaKey] = ent
 	server.AreaLsdb[lsdbKey] = lsDbEnt
+	if !exist {
+		var val LsdbSliceEnt
+		val.AreaId = lsdbKey.AreaId
+		val.LSType = lsaKey.LSType
+		val.LSId = lsaKey.LSId
+		val.AdvRtr = lsaKey.AdvRouter
+		server.LsdbSlice = append(server.LsdbSlice, val)
+	}
 	return
 }
 
@@ -321,6 +395,15 @@ func (server *OSPFServer) processRecvdRouterLsa(data []byte, areaId uint32) bool
 	lsDbEnt.RouterLsaMap[*lsakey] = *routerLsa
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 	server.printRouterLsa()
+	if !exist {
+		var val LsdbSliceEnt
+		val.AreaId = lsdbKey.AreaId
+		val.LSType = lsakey.LSType
+		val.LSId = lsakey.LSId
+		val.AdvRtr = lsakey.AdvRouter
+		server.LsdbSlice = append(server.LsdbSlice, val)
+	}
+
 	return true
 }
 
@@ -379,6 +462,14 @@ func (server *OSPFServer) processRecvdNetworkLsa(data []byte, areaId uint32) boo
 	lsDbEnt.NetworkLsaMap[*lsakey] = *networkLsa
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 	server.printRouterLsa()
+	if !exist {
+		var val LsdbSliceEnt
+		val.AreaId = lsdbKey.AreaId
+		val.LSType = lsakey.LSType
+		val.LSId = lsakey.LSId
+		val.AdvRtr = lsakey.AdvRouter
+		server.LsdbSlice = append(server.LsdbSlice, val)
+	}
 	return true
 }
 
@@ -449,6 +540,14 @@ func (server *OSPFServer) processRecvdSummaryLsa(data []byte, areaId uint32, lsa
 		return false
 	}
 	server.AreaLsdb[lsdbKey] = lsDbEnt
+	if !exist {
+		var val LsdbSliceEnt
+		val.AreaId = lsdbKey.AreaId
+		val.LSType = lsakey.LSType
+		val.LSId = lsakey.LSId
+		val.AdvRtr = lsakey.AdvRouter
+		server.LsdbSlice = append(server.LsdbSlice, val)
+	}
 	return true
 }
 
@@ -499,6 +598,15 @@ func (server *OSPFServer) processRecvdASExternalLsa(data []byte, areaId uint32) 
 	//Add entry in LSADatabase
 	lsDbEnt.ASExternalLsaMap[*lsakey] = *asExtLsa
 	server.AreaLsdb[lsdbKey] = lsDbEnt
+	if !exist {
+		var val LsdbSliceEnt
+		val.AreaId = lsdbKey.AreaId
+		val.LSType = lsakey.LSType
+		val.LSId = lsakey.LSId
+		val.AdvRtr = lsakey.AdvRouter
+		server.LsdbSlice = append(server.LsdbSlice, val)
+	}
+
 	return true
 }
 
