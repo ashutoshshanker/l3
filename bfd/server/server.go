@@ -101,6 +101,7 @@ type BFDServer struct {
 	AdminDownSessionCh  chan BfdSessionMgmt
 	SessionConfigCh     chan SessionConfig
 	bfddPubSocket       *nanomsg.PubSocket
+	lagPropertyMap      map[int32]LagProperty
 	bfdGlobal           BfdGlobal
 }
 
@@ -114,6 +115,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)
 	bfdServer.vlanPropertyMap = make(map[int32]VlanProperty)
+	bfdServer.lagPropertyMap = make(map[int32]LagProperty)
 	bfdServer.SessionConfigCh = make(chan SessionConfig)
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
