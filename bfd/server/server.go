@@ -12,8 +12,11 @@ import (
 	"l3/bfd/bfddCommonDefs"
 	"log/syslog"
 	"net"
+	"os"
+	"os/signal"
 	"ribd"
 	"strconv"
+	"syscall"
 	"time"
 	"utils/ipcutils"
 )
@@ -387,7 +390,28 @@ func (server *BFDServer) InitServer(paramFile string) {
 	*/
 }
 
+func (server *BFDServer) SigHandler() {
+	server.logger.Info(fmt.Sprintln("Starting SigHandler"))
+	sigChan := make(chan os.Signal, 1)
+	signalList := []os.Signal{syscall.SIGHUP}
+	signal.Notify(sigChan, signalList...)
+
+	for {
+		select {
+		case signal := <-sigChan:
+			switch signal {
+			case syscall.SIGHUP:
+				server.logger.Info("Received SIGHUP signal. Exiting")
+				os.Exit(0)
+			default:
+				server.logger.Info(fmt.Sprintln("Unhandled signal : ", signal))
+			}
+		}
+	}
+}
+
 func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
+	go server.SigHandler()
 	server.InitServer(paramFile)
 	server.logger.Info("Listen for ASICd updates")
 	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)

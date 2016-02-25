@@ -62,6 +62,7 @@ func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
 	}
 	if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE ||
 		msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_DELETE {
+		// IPV4INTF Create, Delete
 		var NewIpv4IntfMsg asicdConstDefs.IPv4IntfNotifyMsg
 		var ipv4IntfMsg IPv4IntfNotifyMsg
 		err = json.Unmarshal(msg.Msg, &NewIpv4IntfMsg)
@@ -88,9 +89,11 @@ func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
 				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
 			}
 		}
+	} else if msg.MsgType == asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE {
+		// L3INTF state change
 	} else if msg.MsgType == asicdConstDefs.NOTIFY_VLAN_CREATE ||
 		msg.MsgType == asicdConstDefs.NOTIFY_VLAN_DELETE {
-		//Vlan Create Msg
+		// VLAN Create, Delete
 		var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
 		err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
 		if err != nil {
@@ -99,6 +102,9 @@ func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
 		}
 		server.updatePortPropertyMap(vlanNotifyMsg, msg.MsgType)
 		server.updateVlanPropertyMap(vlanNotifyMsg, msg.MsgType)
+	} else if msg.MsgType == asicdConstDefs.NOTIFY_LAG_CREATE ||
+		msg.MsgType == asicdConstDefs.NOTIFY_LAG_DELETE {
+		// LAG Create, Delete
 	}
 }
 

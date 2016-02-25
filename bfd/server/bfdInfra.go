@@ -28,6 +28,7 @@ type IPIntfProperty struct {
 }
 
 type LagProperty struct {
+	Links []int32
 }
 
 type IPv4IntfNotifyMsg struct {
