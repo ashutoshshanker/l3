@@ -21,7 +21,7 @@ import (
 func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
 	logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
 		config.IfIndex))
-	key := config.IfIndex + config.VRID
+	key := strconv.Itoa(int(config.IfIndex)) + strconv.Itoa(int(config.VRID))
 	logger.Info(fmt.Sprintln("Key is ", key))
 	gblInfo := vrrpGblInfo[key]
 

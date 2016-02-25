@@ -49,7 +49,7 @@ func VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
 	return true
 }
 
-func VrrpPopulateIntfState(key int32, entry *vrrpd.VrrpIntfState) {
+func VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfState) {
 	gblInfo, ok := vrrpGblInfo[key]
 	if ok == false {
 		logger.Err(fmt.Sprintln("Entry not found for", key))
@@ -78,7 +78,7 @@ func VrrpPopulateIntfState(key int32, entry *vrrpd.VrrpIntfState) {
 	IpAddr string
 */
 
-func VrrpUpdateGblInfoTimers(key int32) {
+func VrrpUpdateGblInfoTimers(key string) {
 	gblInfo := vrrpGblInfo[key]
 	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
 	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
@@ -223,7 +223,7 @@ func VrrpConnectAndInitPortVlan() error {
 }
 
 func VrrpAllocateMemoryToGlobalDS() {
-	vrrpGblInfo = make(map[int32]VrrpGlobalInfo, 50)
+	vrrpGblInfo = make(map[string]VrrpGlobalInfo, 50)
 	vrrpIfIndexIpAddr = make(map[int32]string, 5)
 	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int]int32, 5)
 	vrrpVlanId2Name = make(map[int]string, 5)

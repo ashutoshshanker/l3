@@ -76,8 +76,8 @@ var (
 	paramsDir                     string
 	asicdClient                   VrrpAsicdClient
 	asicdSubSocket                *nanomsg.SubSocket
-	vrrpGblInfo                   map[int32]VrrpGlobalInfo // IfIndex + VRID
-	vrrpIntfStateSlice            []int32
+	vrrpGblInfo                   map[string]VrrpGlobalInfo // IfIndex + VRID
+	vrrpIntfStateSlice            []string
 	vrrpNetPktConn                net.PacketConn
 	vrrpListener                  *ipv4.PacketConn
 	vrrpLinuxIfIndex2AsicdIfIndex map[int]int32
