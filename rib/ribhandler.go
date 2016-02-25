@@ -555,8 +555,7 @@ func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 	}
 	return pub
 }
-func InitializePolicyDB()
-{
+func InitializePolicyDB() {
 	PolicyEngineDB = policy.NewPolicyEngineDB()
 }
 func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {

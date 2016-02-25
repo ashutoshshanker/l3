@@ -7,6 +7,7 @@ import (
 	"github.com/op/go-nanomsg"
 	"net"
 	"errors"
+	"strconv"
 	"utils/patriciaDB"
 	"github.com/vishvananda/netlink"
 	"asicd/asicdConstDefs"
@@ -173,7 +174,7 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
 //	newRoute := string(ipPrefix[:])
 	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
-	policyInfo:=policy.PolicyDB.Get(patriciaDB.Prefix(policy.name))
+	policyInfo:=policyEngineDB.PolicyDB.Get(patriciaDB.Prefix(policy.name))
 	if policyInfo == nil {
 		logger.Println("Unexpected:policyInfo nil for policy ", policy.name)
 		return
@@ -209,7 +210,7 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	if found == false {
        tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
 	}
-	policy.PolicyDB.Set(patriciaDB.Prefix(policy.name), tempPolicy)
+	policyEngineDB.PolicyDB.Set(patriciaDB.Prefix(policy.name), tempPolicy)
 }
 func deletePolicyRouteMap(route ribd.Routes, policy Policy) {
 	logger.Println("deletePolicyRouteMap")

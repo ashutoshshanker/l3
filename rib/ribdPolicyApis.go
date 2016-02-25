@@ -3,14 +3,7 @@ package main
 
 import (
 	"ribd"
-	"errors"
 	"utils/policy"
-	  "utils/policy/policyCommonDefs"
-	"utils/patriciaDB"
-	"strconv"
-	"strings"
-	//"net"
-	"reflect"
 )
 
 type Policy struct {
@@ -18,17 +11,6 @@ type Policy struct {
 	hitCounter         int   
 	routeList         []string
 	routeInfoList     []ribd.Routes
-}
-
-var PolicyDB *patriciaDB.Trie
-var PolicyStmtDB *patriciaDB.Trie
-
-var localPolicyStmtDB []policy.LocalDB
-var localPolicyDB []policy.LocalDB
-
-func (m RouteServiceHandler) CreatePolicyPrefixSet(cfg *ribd.PolicyPrefixSet ) (val bool, err error) {
-	logger.Println("CreatePolicyPrefixSet")
-	return val, err
 }
 
 func (m RouteServiceHandler) CreatePolicyStatement(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
@@ -41,29 +23,21 @@ func (m RouteServiceHandler) CreatePolicyStatement(cfg *ribd.PolicyStmtConfig) (
 	for i:=0;i<len(cfg.Actions);i++ {
 		newPolicyStmt.Actions = append(newPolicyStmt.Actions,cfg.Actions[i])
 	}
-	err = policy.CreatePolicyStatement(newPolicyStmt)
+	err = PolicyEngineDB.CreatePolicyStatement(newPolicyStmt)
 	return val,err
 }
 
 func (m RouteServiceHandler) 	DeletePolicyStatement(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
 	logger.Println("DeletePolicyStatement for name ", cfg.Name)
 	stmt:=policy.PolicyStmtConfig{Name:cfg.Name}
-	err = policy.DeletePolicyStatement(stmt)
+	err = PolicyEngineDB.DeletePolicyStatement(stmt)
 	return val, err
 }
 
 func (m RouteServiceHandler) GetBulkPolicyStmtState( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyStmtStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkPolicyStmtState")
-	PolicyStmtDB,err = policy.GetPolicyStmtDB()
-	if err != nil {
-		logger.Println("Failed to get policyStmtDB")
-		return val,err
-	}
-	localPolicyStmtDB,err = policy.GetLocalPolicyStmtDB()
-	if err != nil {
-		logger.Println("Failed to get localpolicyStmtDB")
-		return val,err
-	}
+	PolicyStmtDB := PolicyEngineDB.PolicyStmtDB
+	localPolicyStmtDB := PolicyEngineDB.localPolicyStmtDB
     var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.PolicyStmtState = make ([]ribd.PolicyStmtState, rcount)
 	var nextNode *ribd.PolicyStmtState
@@ -92,7 +66,7 @@ func (m RouteServiceHandler) GetBulkPolicyStmtState( fromIndex ribd.Int, rcount 
 			break
 		}
 		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyStmtDB[i+fromIndex].prefix))
-		prefixNodeGet := policy.PolicyStmtDB.Get(localPolicyStmtDB[i+fromIndex].prefix)
+		prefixNodeGet := PolicyStmtDB.Get(localPolicyStmtDB[i+fromIndex].prefix)
 		if(prefixNodeGet != nil) {
 			prefixNode := prefixNodeGet.(policy.PolicyStmt)
 			nextNode = &tempNode[validCount]
@@ -126,29 +100,21 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
 		policyDefinitionStatement.Statement = cfg.PolicyDefinitionStatements[i].Statement
 		newPolicy.PolicyDefinitionStatements = append(newPolicy.PolicyDefinitionStatements,policyDefinitionStatement)
 	}
-	err = policy.CreatePolicyDefinition(cfg)
+	err = PolicyEngineDB.CreatePolicyDefinition(cfg)
 	return val, err
 }
 
 func (m RouteServiceHandler) 	DeletePolicyDefinition(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Println("DeletePolicyDefinition for name ", cfg.Name)
 	policy:=policy.PolicyDefinitionConfig{Name:cfg.Name}
-	err = policy.DeletePolicyDefinition(policy)
+	err = PolicyEngineDB.DeletePolicyDefinition(policy)
 	return val, err
 }
 
 func (m RouteServiceHandler) GetBulkPolicyDefinitionState( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkPolicyDefinitionState")
-	PolicyDB,err = policy.GetPolicyDB()
-	if err != nil {
-		logger.Println("Failed to get policyDB")
-		return val,err
-	}
-	localPolicyDB,err = policy.GetLocalPolicyDB()
-	if err != nil {
-		logger.Println("Failed to get localpolicyDB")
-		return val,err
-	}
+	PolicyDB,err := PolicyEngineDB.PolicyDB
+	localPolicyDB := PolicyEngineDB.localPolicyDB
     var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.PolicyDefinitionState = make ([]ribd.PolicyDefinitionState, rcount)
 	var nextNode *ribd.PolicyDefinitionState
@@ -157,7 +123,7 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionState( fromIndex ribd.Int, r
 	i = 0
 	policyStmts = &returnGetInfo
 	more := true
-    if(LocalPolicyDB == nil) {
+    if(localPolicyDB == nil) {
 		logger.Println("LocalPolicyDB not initialized")
 		return policyStmts, err
 	}

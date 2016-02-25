@@ -4,7 +4,6 @@ package main
 import (
 	"ribd"
 	"utils/policy"
-	"utils/patriciaDB"
 )
 
 func (m RouteServiceHandler) CreatePolicyAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {

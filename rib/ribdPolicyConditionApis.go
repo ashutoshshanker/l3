@@ -5,6 +5,10 @@ import (
 	"ribd"
 	"utils/policy"
 )
+func (m RouteServiceHandler) CreatePolicyPrefixSet(cfg *ribd.PolicyPrefixSet ) (val bool, err error) {
+	logger.Println("CreatePolicyPrefixSet")
+	return val, err
+}
 
 func (m RouteServiceHandler) CreatePolicyCondition(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
 	logger.Println("CreatePolicyConditioncfg")
@@ -18,16 +22,6 @@ func (m RouteServiceHandler) GetBulkPolicyConditionState( fromIndex ribd.Int, rc
 	logger.Println("GetBulkPolicyConditionState")
 	PolicyConditionsDB := PolicyEngineDB.PolicyConditionsDB
 	localPolicyConditionsDB := PolicyEngineDB.localPolicyConditionsDB
-/*	PolicyConditionsDB,err = policy.GetPolicyConditionsDB()
-	if err != nil {
-		logger.Println("Failed to get policyConditionsDB")
-		return val,err
-	}
-	localPolicyConditionsDB,err = policy.GetLocalPolicyConditionsDB()
-	if err != nil {
-		logger.Println("Failed to get localpolicyConditionsDB")
-		return val,err
-	}*/
     var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.PolicyConditionState = make ([]ribd.PolicyConditionState, rcount)
 	var nextNode *ribd.PolicyConditionState
