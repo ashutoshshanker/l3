@@ -45,13 +45,18 @@ func VrrpReceivePackets() {
 
 func VrrpInitPacketListener() {
 	var err error
-	vrrpNetPktConn, err = net.ListenPacket("ip4:112", "224.0.0.18")
+	vrrpNetPktConn, err = net.ListenPacket("ip4:112", "0.0.0.0")
 	if err != nil {
 		logger.Err(fmt.Sprintln("Creating VRRP listerner failed",
 			err))
 		return
 	}
 	vrrpListener = ipv4.NewPacketConn(vrrpNetPktConn)
+	allVRRPRouters := net.IPAddr{IP: net.ParseIP(VRRP_GROUP_IP)}
+	if err = vrrpListener.JoinGroup(nil, &allVRRPRouters); err != nil {
+		logger.Err(fmt.Sprintln("Joinging Group failed", err))
+		return
+	}
 	err = vrrpListener.SetControlMessage(vrrpCtrlFlag, true)
 	if err != nil {
 		logger.Err(fmt.Sprintln("Setting control flag failed",

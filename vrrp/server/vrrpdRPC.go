@@ -48,16 +48,7 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 		gblInfo.IntfConfig.AdvertisementInterval = config.AdvertisementInterval
 	}
 
-	/* @TODO: hack for setting it to TRUE right until default is taken care
-	* off
-		* if config.PreemptMode == false {
-			gblInfo.IntfConfig.PreemptMode = false
-		} else {
-
-			gblInfo.IntfConfig.PreemptMode = true
-		}
-	*/
-	gblInfo.IntfConfig.PreemptMode = true
+	gblInfo.IntfConfig.PreemptMode = config.PreemptMode
 
 	if config.AcceptMode == true {
 		gblInfo.IntfConfig.AcceptMode = true
@@ -66,7 +57,8 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 	}
 
 	if config.VirtualRouterMACAddress != "" {
-		gblInfo.IntfConfig.VirtualRouterMACAddress = config.VirtualRouterMACAddress
+		gblInfo.IntfConfig.VirtualRouterMACAddress =
+			config.VirtualRouterMACAddress
 	} else {
 		if gblInfo.IntfConfig.VRID < 10 {
 			gblInfo.IntfConfig.VirtualRouterMACAddress = "00-00-5E-00-01-0" +

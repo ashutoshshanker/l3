@@ -93,4 +93,5 @@ const (
 	// Control Message
 	vrrpCtrlFlag = ipv4.FlagTTL | ipv4.FlagSrc |
 		ipv4.FlagDst | ipv4.FlagInterface
+	VRRP_GROUP_IP = "224.0.0.18"
 )

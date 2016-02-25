@@ -95,7 +95,7 @@ func VrrpUpdateGblInfoTimers(key int32) {
 	}
 	vrrpGblInfo[key] = gblInfo
 	vrrpIntfStateSlice = append(vrrpIntfStateSlice, key)
-	VrrpDumpIntfInfo(gblInfo)
+	//VrrpDumpIntfInfo(gblInfo)
 }
 
 func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
