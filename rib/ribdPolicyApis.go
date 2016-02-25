@@ -5,7 +5,11 @@ import (
 	"ribd"
 	"utils/policy"
 )
-
+type PolicyExtensions struct {
+	hitCounter         int   
+	routeList         []string
+	routeInfoList     []ribd.Routes
+}
 type Policy struct {
     *policy.Policy 
 	hitCounter         int   
@@ -15,7 +19,7 @@ type Policy struct {
 
 func (m RouteServiceHandler) CreatePolicyStatement(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
 	logger.Println("CreatePolicyStatement")
-	newPolicyStmt:=policy.PolicyStmtConfig{Name:cfg.Name, Precedence:cfg.Precedence,MatchConditions:cfg.MatchConditions}
+	newPolicyStmt:=policy.PolicyStmtConfig{Name:cfg.Name,MatchConditions:cfg.MatchConditions}
 	newPolicyStmt.Conditions = make([]string, 0)
 	for i:=0;i<len(cfg.Conditions);i++ {
 		newPolicyStmt.Conditions = append(newPolicyStmt.Conditions,cfg.Conditions[i])
@@ -37,7 +41,7 @@ func (m RouteServiceHandler) 	DeletePolicyStatement(cfg *ribd.PolicyStmtConfig) 
 func (m RouteServiceHandler) GetBulkPolicyStmtState( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyStmtStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkPolicyStmtState")
 	PolicyStmtDB := PolicyEngineDB.PolicyStmtDB
-	localPolicyStmtDB := PolicyEngineDB.localPolicyStmtDB
+	localPolicyStmtDB := *PolicyEngineDB.LocalPolicyStmtDB
     var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.PolicyStmtState = make ([]ribd.PolicyStmtState, rcount)
 	var nextNode *ribd.PolicyStmtState
@@ -65,14 +69,20 @@ func (m RouteServiceHandler) GetBulkPolicyStmtState( fromIndex ribd.Int, rcount 
 			logger.Println("Enough policy statements fetched")
 			break
 		}
-		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyStmtDB[i+fromIndex].prefix))
-		prefixNodeGet := PolicyStmtDB.Get(localPolicyStmtDB[i+fromIndex].prefix)
+		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyStmtDB[i+fromIndex].Prefix))
+		prefixNodeGet := PolicyStmtDB.Get(localPolicyStmtDB[i+fromIndex].Prefix)
 		if(prefixNodeGet != nil) {
 			prefixNode := prefixNodeGet.(policy.PolicyStmt)
 			nextNode = &tempNode[validCount]
 		    nextNode.Name = prefixNode.Name
 			nextNode.Conditions = prefixNode.Conditions
 			nextNode.Actions = prefixNode.Actions
+            if prefixNode.PolicyList != nil {
+				nextNode.PolicyList = make([]string,0)
+			}
+			for idx := 0;idx < len(prefixNode.PolicyList);idx++ {
+				nextNode.PolicyList = append(nextNode.PolicyList, prefixNode.PolicyList[idx])
+			}
 			toIndex = ribd.Int(prefixNode.LocalDBSliceIdx)
 			if(len(returnNodes) == 0){
 				returnNodes = make([]*ribd.PolicyStmtState, 0)
@@ -92,15 +102,16 @@ func (m RouteServiceHandler) GetBulkPolicyStmtState( fromIndex ribd.Int, rcount 
 
 func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Println("CreatePolicyDefinition")
-	newPolicy:=policy.PolicyDefinitionConfig{Name:cfg.Name, Precedence:cfg.Precedence,MatchType:cfg.MatchType,Export:cfg.Export,Import:cfg.Import,Global:cfg.Global}
-	newPolicy.PolicyDefinitionStatements = make([]PolicyDefinitionStmtPrecedence,0)
+	newPolicy:=policy.PolicyDefinitionConfig{Name:cfg.Name, Precedence:int(cfg.Precedence),MatchType:cfg.MatchType,Export:cfg.Export,Import:cfg.Import,Global:cfg.Global}
+	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence,0)
 	var policyDefinitionStatement policy.PolicyDefinitionStmtPrecedence
-	for i:=0;i<len(newPolicy.PolicyDefinitionStatements);i++ {
-		policyDefinitionStatement.Precedence = cfg.PolicyDefinitionStatements[i].Precedence
+	for i:=0;i<len(cfg.PolicyDefinitionStatements);i++ {
+		policyDefinitionStatement.Precedence = int(cfg.PolicyDefinitionStatements[i].Precedence)
 		policyDefinitionStatement.Statement = cfg.PolicyDefinitionStatements[i].Statement
 		newPolicy.PolicyDefinitionStatements = append(newPolicy.PolicyDefinitionStatements,policyDefinitionStatement)
 	}
-	err = PolicyEngineDB.CreatePolicyDefinition(cfg)
+	newPolicy.Extensions = PolicyExtensions{}
+	err = PolicyEngineDB.CreatePolicyDefinition(newPolicy)
 	return val, err
 }
 
@@ -113,8 +124,8 @@ func (m RouteServiceHandler) 	DeletePolicyDefinition(cfg *ribd.PolicyDefinitionC
 
 func (m RouteServiceHandler) GetBulkPolicyDefinitionState( fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkPolicyDefinitionState")
-	PolicyDB,err := PolicyEngineDB.PolicyDB
-	localPolicyDB := PolicyEngineDB.localPolicyDB
+	PolicyDB := PolicyEngineDB.PolicyDB
+	localPolicyDB := *PolicyEngineDB.LocalPolicyDB
     var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.PolicyDefinitionState = make ([]ribd.PolicyDefinitionState, rcount)
 	var nextNode *ribd.PolicyDefinitionState
@@ -142,16 +153,17 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionState( fromIndex ribd.Int, r
 			logger.Println("Enough policies fetched")
 			break
 		}
-		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyDB[i+fromIndex].prefix))
+		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyDB[i+fromIndex].Prefix))
 		prefixNodeGet := PolicyDB.Get(localPolicyDB[i+fromIndex].Prefix)
 		if(prefixNodeGet != nil) {
 			prefixNode := prefixNodeGet.(policy.Policy)
 			nextNode = &tempNode[validCount]
 		    nextNode.Name = prefixNode.Name
-			nextNode.HitCounter = ribd.Int(prefixNode.hitCounter)
+			extensions:=prefixNode.Extensions.(PolicyExtensions)
+			nextNode.HitCounter = ribd.Int(extensions.hitCounter)
 			nextNode.IpPrefixList = make([]string,0)
-			for k:=0;k<len(prefixNode.routeList);k++ {
-			   nextNode.IpPrefixList = append(nextNode.IpPrefixList,prefixNode.routeList[k])
+			for k:=0;k<len(extensions.routeList);k++ {
+			   nextNode.IpPrefixList = append(nextNode.IpPrefixList,extensions.routeList[k])
 			}
 			toIndex = ribd.Int(prefixNode.LocalDBSliceIdx)
 			if(len(returnNodes) == 0){

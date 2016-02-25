@@ -12,16 +12,18 @@ func (m RouteServiceHandler) CreatePolicyPrefixSet(cfg *ribd.PolicyPrefixSet ) (
 
 func (m RouteServiceHandler) CreatePolicyCondition(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
 	logger.Println("CreatePolicyConditioncfg")
-	newPolicy := policy.PolicyConditionConfig { Name:cfg.Name, ConditionType:cfg.ConditionType, MatchProtocolConditionInfo:*cfg.MatchProtocolConditionInfo}
-	matchPrefix := policy.PolicyPrefix{IpPrefix:cfg.MatchDstIpPrefixConditionInfo.Prefix.IpPrefix,MasklengthRange:cfg.MatchDstIpPrefixConditionInfo.Prefix.MasklengthRange}
-	newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{PrefixSet:cfg.MatchDstIpPrefixConditionInfo.PrefixSet, Prefix:matchPrefix}
+	newPolicy := policy.PolicyConditionConfig { Name:cfg.Name, ConditionType:cfg.ConditionType, MatchProtocolConditionInfo:cfg.MatchProtocolConditionInfo}
+	if cfg.MatchDstIpPrefixConditionInfo != nil {
+	   matchPrefix := policy.PolicyPrefix{IpPrefix:cfg.MatchDstIpPrefixConditionInfo.Prefix.IpPrefix,MasklengthRange:cfg.MatchDstIpPrefixConditionInfo.Prefix.MasklengthRange}
+	   newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{PrefixSet:cfg.MatchDstIpPrefixConditionInfo.PrefixSet, Prefix:matchPrefix}
+	}
 	err = PolicyEngineDB.CreatePolicyCondition(newPolicy)
 	return val,err
 }
 func (m RouteServiceHandler) GetBulkPolicyConditionState( fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyConditionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkPolicyConditionState")
 	PolicyConditionsDB := PolicyEngineDB.PolicyConditionsDB
-	localPolicyConditionsDB := PolicyEngineDB.localPolicyConditionsDB
+	localPolicyConditionsDB := *PolicyEngineDB.LocalPolicyConditionsDB
     var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.PolicyConditionState = make ([]ribd.PolicyConditionState, rcount)
 	var nextNode *ribd.PolicyConditionState

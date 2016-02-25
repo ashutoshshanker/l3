@@ -174,9 +174,9 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
 //	newRoute := string(ipPrefix[:])
 	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
-	policyInfo:=policyEngineDB.PolicyDB.Get(patriciaDB.Prefix(policy.name))
+	policyInfo:=PolicyEngineDB.PolicyDB.Get(patriciaDB.Prefix(policy.Name))
 	if policyInfo == nil {
-		logger.Println("Unexpected:policyInfo nil for policy ", policy.name)
+		logger.Println("Unexpected:policyInfo nil for policy ", policy.Name)
 		return
 	}
 	tempPolicy:=policyInfo.(Policy)
@@ -188,7 +188,7 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	for i:=0;i<len(tempPolicy.routeList);i++ {
 		logger.Println(tempPolicy.routeList[i])
 		if tempPolicy.routeList[i] == newRoute {
-			logger.Println(newRoute, " already is a part of ", policy.name, "'s routelist")
+			logger.Println(newRoute, " already is a part of ", policy.Name, "'s routelist")
 			found = true
 		}
 	}
@@ -200,7 +200,7 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	for i:=0;i<len(tempPolicy.routeInfoList);i++ {
 		logger.Println("IP: ",tempPolicy.routeInfoList[i].Ipaddr, ":", tempPolicy.routeInfoList[i].Mask, " routeType: ", tempPolicy.routeInfoList[i].Prototype)
 		if tempPolicy.routeInfoList[i].Ipaddr==route.Ipaddr && tempPolicy.routeInfoList[i].Mask == route.Mask && tempPolicy.routeInfoList[i].Prototype == route.Prototype {
-			logger.Println("route already is a part of ", policy.name, "'s routeInfolist")
+			logger.Println("route already is a part of ", policy.Name, "'s routeInfolist")
 			found = true
 		}
 	}
@@ -210,7 +210,7 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	if found == false {
        tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
 	}
-	policyEngineDB.PolicyDB.Set(patriciaDB.Prefix(policy.name), tempPolicy)
+	PolicyEngineDB.PolicyDB.Set(patriciaDB.Prefix(policy.Name), tempPolicy)
 }
 func deletePolicyRouteMap(route ribd.Routes, policy Policy) {
 	logger.Println("deletePolicyRouteMap")

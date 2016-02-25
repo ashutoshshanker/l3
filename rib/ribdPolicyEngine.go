@@ -686,7 +686,7 @@ func policyEngineApplyPolicyStmt(route *ribd.Routes, policy Policy, policyStmt P
 	   }
 	}
 	actionList := policyEngineImplementActions(*route, policyStmt, params)
-	if actionListHasAction(actionList, policyCommonDefs.PolicyActionTypeRouteDisposition,"Reject") {
+	if PolicyEngineDB.ActionListHasAction(actionList, policyCommonDefs.PolicyActionTypeRouteDisposition,"Reject") {
 		logger.Println("Reject action was applied for this route")
 		*routeDeleted = true
 	}

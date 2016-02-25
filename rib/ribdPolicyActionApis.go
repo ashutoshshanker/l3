@@ -8,7 +8,7 @@ import (
 
 func (m RouteServiceHandler) CreatePolicyAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {
 	logger.Println("CreatePolicyAction")
-	newAction:=policy.PolicyActionConfig{Name:cfg.Name, ActionType:cfg.ActionType,SetAdminDistanceValue:cfg.SetAdminDistanceValue,Accept:cfg.Accept, Reject:Reject, RedistributeAction:cfg.RedistributeAction, RedistributeTargetProtocol:cfg.RedistributeTargetProtocol }
+	newAction:=policy.PolicyActionConfig{Name:cfg.Name, ActionType:cfg.ActionType,SetAdminDistanceValue:int(cfg.SetAdminDistanceValue),Accept:cfg.Accept, Reject:cfg.Reject, RedistributeAction:cfg.RedistributeAction, RedistributeTargetProtocol:cfg.RedistributeTargetProtocol }
 	err = PolicyEngineDB.CreatePolicyAction(newAction)
 	return val,err
 }
@@ -17,7 +17,7 @@ func (m RouteServiceHandler) CreatePolicyAction(cfg *ribd.PolicyActionConfig) (v
 func (m RouteServiceHandler) GetBulkPolicyActionState( fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyActionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkPolicyActionState")
 	PolicyActionsDB := PolicyEngineDB.PolicyActionsDB
-	localPolicyActionsDB := PolicyEngineDB.localPolicyActionsDB
+	localPolicyActionsDB := *PolicyEngineDB.LocalPolicyActionsDB
 	var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.PolicyActionState = make ([]ribd.PolicyActionState, rcount)
 	var nextNode *ribd.PolicyActionState
@@ -45,8 +45,8 @@ func (m RouteServiceHandler) GetBulkPolicyActionState( fromIndex ribd.Int, rcoun
 			logger.Println("Enough policy Actions fetched")
 			break
 		}
-		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyActionsDB[i+fromIndex].prefix))
-		prefixNodeGet := PolicyActionsDB.Get(localPolicyActionsDB[i+fromIndex].prefix)
+		logger.Printf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyActionsDB[i+fromIndex].Prefix))
+		prefixNodeGet := PolicyActionsDB.Get(localPolicyActionsDB[i+fromIndex].Prefix)
 		if(prefixNodeGet != nil) {
 			prefixNode := prefixNodeGet.(policy.PolicyAction)
 			nextNode = &tempNode[validCount]
