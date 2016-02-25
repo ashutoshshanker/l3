@@ -555,7 +555,10 @@ func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 	}
 	return pub
 }
-
+func InitializePolicyDB()
+{
+	PolicyEngineDB = policy.NewPolicyEngineDB()
+}
 func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
 	PARAMSDIR = paramsDir
@@ -569,6 +572,7 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	//CreateRoutes("RouteSetup.json")
+	InitializePolicyDB()
 	UpdateFromDB()//(paramsDir)
 	return &RouteServiceHandler{}
 }
