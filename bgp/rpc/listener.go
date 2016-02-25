@@ -4,8 +4,10 @@ package rpc
 import (
 	"bgpd"
 	"database/sql"
+	"errors"
 	"fmt"
 	"l3/bgp/config"
+	"l3/bgp/policy"
 	"l3/bgp/server"
 	"log/syslog"
 	"net"
@@ -23,13 +25,15 @@ type PeerConfigCommands struct {
 type BGPHandler struct {
 	PeerCommandCh chan PeerConfigCommands
 	server        *server.BGPServer
+	policy        *policy.BGPPolicyEngine
 	logger        *syslog.Writer
 }
 
-func NewBGPHandler(server *server.BGPServer, logger *syslog.Writer, filePath string) *BGPHandler {
+func NewBGPHandler(server *server.BGPServer, policy *policy.BGPPolicyEngine, logger *syslog.Writer, filePath string) *BGPHandler {
 	h := new(BGPHandler)
 	h.PeerCommandCh = make(chan PeerConfigCommands)
 	h.server = server
+	h.policy = policy
 	h.logger = logger
 	h.readConfigFromDB(filePath)
 	return h
@@ -501,4 +505,62 @@ func (h *BGPHandler) DeleteBGPAggregate(name string) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Delete BGP aggregate:", name))
 	h.server.RemAggCh <- name
 	return true, nil
+}
+
+func (h *BGPHandler) CreateBGPPolicyConditionConfig(cfg *bgpd.BGPPolicyConditionConfig) (val bool, err error) {
+	h.logger.Info(fmt.Sprintln("CreatePolicyConditioncfg"))
+	switch cfg.ConditionType {
+	case "MatchDstIpPrefix":
+		h.policy.ConditionCfgCh <- cfg
+		break
+	default:
+		h.logger.Info(fmt.Sprintln("Unknown condition type ", cfg.ConditionType))
+		err = errors.New("Unknown condition type")
+	}
+	return val, err
+}
+
+func (h *BGPHandler) GetBulkBGPPolicyConditionState(fromIndex bgpd.Int, rcount bgpd.Int) (policyConditions *bgpd.BGPPolicyConditionStateGetInfo, err error) {
+	return policy.GetBulkBGPPolicyConditionState(fromIndex, rcount)
+}
+
+func (h *BGPHandler) CreateBGPPolicyActionConfig(cfg *bgpd.BGPPolicyActionConfig) (val bool, err error) {
+	h.logger.Info(fmt.Sprintln("CreatePolicyAction"))
+	switch cfg.ActionType {
+	case "Aggregate":
+		h.policy.ActionCfgCh <- cfg
+		break
+	default:
+		h.logger.Info(fmt.Sprintln("Unknown action type ", cfg.ActionType))
+		err = errors.New("Unknown action type")
+	}
+	return val, err
+}
+
+func (h *BGPHandler) GetBulkBGPPolicyActionState(fromIndex bgpd.Int, rcount bgpd.Int) (policyActions *bgpd.BGPPolicyActionStateGetInfo, err error) { //(routes []*bgpd.Routes, err error) {
+	return policy.GetBulkBGPPolicyActionState(fromIndex, rcount)
+}
+
+func (h *BGPHandler) CreateBGPPolicyStmtConfig(cfg *bgpd.BGPPolicyStmtConfig) (val bool, err error) {
+	h.logger.Info(fmt.Sprintln("CreatePolicyStmt"))
+	h.policy.StmtCfgCh <- cfg
+	return val, err
+}
+
+func (h *BGPHandler) GetBulkBGPPolicyStmtState(fromIndex bgpd.Int, rcount bgpd.Int) (policyStmts *bgpd.BGPPolicyStmtStateGetInfo, err error) {
+	return policy.GetBulkBGPPolicyStmtState(fromIndex, rcount)
+}
+
+func (h *BGPHandler) CreateBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val bool, err error) {
+	h.logger.Info(fmt.Sprintln("CreatePolicyDefinition"))
+	h.policy.DefinitionCfgCh <- cfg
+	return val, err
+}
+
+func (h *BGPHandler) GetBulkBGPPolicyDefinitionState(fromIndex bgpd.Int, rcount bgpd.Int) (policyStmts *bgpd.BGPPolicyDefinitionStateGetInfo, err error) { //(routes []*bgpd.BGPRoute, err error) {
+	return policy.GetBulkBGPPolicyDefinitionState(fromIndex, rcount)
+}
+
+func (h *BGPHandler) DeleteBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val bool, err error) {
+	return policy.DeleteBGPPolicyDefinitionConfig(cfg)
 }

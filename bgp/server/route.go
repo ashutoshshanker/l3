@@ -3,7 +3,6 @@ package server
 
 import (
 	"bgpd"
-	"net"
 	"time"
 )
 
@@ -38,7 +37,7 @@ func (r *Route) GetBGPRoute() *bgpd.BGPRoute {
 	if r.dest != nil {
 		return &bgpd.BGPRoute{
 			Network:   r.dest.nlri.Prefix.String(),
-			Mask:      net.CIDRMask(int(r.dest.nlri.Length), 32).String(),
+			CIDRLen:   int16(r.dest.nlri.Length),
 			NextHop:   r.path.NextHop,
 			Metric:    int32(r.path.MED),
 			LocalPref: int32(r.path.LocalPref),

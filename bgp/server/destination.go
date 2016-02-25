@@ -15,22 +15,25 @@ const BGP_INTERNAL_PREF = 100
 const BGP_EXTERNAL_PREF = 50
 
 type Destination struct {
-	server      *BGPServer
-	logger      *syslog.Writer
-	nlri        packet.IPPrefix
-	peerPathMap map[string]*Path
-	locRibPath  *Path
-	ecmpPaths   map[*Path]*Route
-	recalculate bool
+	server            *BGPServer
+	logger            *syslog.Writer
+	nlri              packet.IPPrefix
+	peerPathMap       map[string]*Path
+	locRibPath        *Path
+	aggPath           *Path
+	aggregatedDestMap map[string]*Destination
+	ecmpPaths         map[*Path]*Route
+	recalculate       bool
 }
 
 func NewDestination(server *BGPServer, nlri packet.IPPrefix) *Destination {
 	dest := &Destination{
-		server:      server,
-		logger:      server.logger,
-		nlri:        nlri,
-		peerPathMap: make(map[string]*Path),
-		ecmpPaths:   make(map[*Path]*Route),
+		server:            server,
+		logger:            server.logger,
+		nlri:              nlri,
+		peerPathMap:       make(map[string]*Path),
+		ecmpPaths:         make(map[*Path]*Route),
+		aggregatedDestMap: make(map[string]*Destination),
 	}
 
 	return dest
@@ -49,6 +52,35 @@ func (d *Destination) IsEmpty() bool {
 	return len(d.peerPathMap) == 0
 }
 
+func (d *Destination) getPathForIP(peerIP string) *Path {
+	return d.peerPathMap[peerIP]
+}
+
+func (d *Destination) setUpdateAggPath(peerIP string) {
+	path, ok := d.peerPathMap[peerIP]
+	if ok {
+		if d.locRibPath == nil || path == d.locRibPath || getRouteSource(d.locRibPath.routeType) >= getRouteSource(path.routeType) {
+			d.recalculate = true
+		}
+	}
+
+	if d.locRibPath == nil {
+		d.recalculate = true
+	}
+}
+
+func (d *Destination) setAggPath(path *Path) {
+	d.aggPath = path
+}
+
+func (d *Destination) addAggregatedDests(peerIP string, dest *Destination) {
+	d.aggregatedDestMap[peerIP] = dest
+}
+
+func (d *Destination) removeAggregatedDests(peerIP string) {
+	delete(d.aggregatedDestMap, peerIP)
+}
+
 func (d *Destination) AddOrUpdatePath(peerIp string, path *Path) bool {
 	added := false
 	oldPath, ok := d.peerPathMap[peerIp]
@@ -63,7 +95,7 @@ func (d *Destination) AddOrUpdatePath(peerIp string, path *Path) bool {
 		added = true
 	}
 
-	if d.locRibPath == nil || d.locRibPath.routeType >= path.routeType {
+	if d.locRibPath == nil || getRouteSource(d.locRibPath.routeType) >= getRouteSource(path.routeType) {
 		d.recalculate = true
 	}
 
@@ -155,7 +187,7 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 	updatedRoutes := make([]*Route, 0)
 	deletedRoutes := make([]*Route, 0)
 	maxPref := uint32(0)
-	routeType := RouteTypeMax
+	routeSrc := RouteSrcUnknown
 	locRibAction := RouteActionNone
 
 	d.logger.Info(fmt.Sprintf("Destination:SelectRouteForLocalRib - peer path map = %v", d.peerPathMap))
@@ -169,7 +201,7 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 		if d.locRibPath.peer != nil {
 			peerIP = d.locRibPath.peer.Neighbor.NeighborAddress.String()
 		}
-		routeType = d.locRibPath.routeType
+		routeSrc = getRouteSource(d.locRibPath.routeType)
 		maxPref = d.locRibPath.GetPreference()
 		updatedPaths = append(updatedPaths, d.locRibPath)
 		d.logger.Info(fmt.Sprintf("Add loc rib path from %s to the list of selected paths, pref=%d", peerIP, maxPref))
@@ -187,9 +219,10 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 				continue
 			}
 
-			if path.routeType > routeType {
+			currPathSource := getRouteSource(path.routeType)
+			if currPathSource > routeSrc {
 				continue
-			} else if path.routeType < routeType {
+			} else if currPathSource < routeSrc {
 				if len(updatedPaths) > 0 {
 					updatedPaths[0] = path
 					// For garbage collection
@@ -201,8 +234,8 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 					updatedPaths = append(updatedPaths, path)
 				}
 				d.logger.Info(fmt.Sprintf("route from %s is from a better source type, old type=%d, new type=%d, pref=%d",
-					peerIP, routeType, path.routeType, path.GetPreference()))
-				routeType = path.routeType
+					peerIP, routeSrc, currPathSource, path.GetPreference()))
+				routeSrc = currPathSource
 				maxPref = path.GetPreference()
 				continue
 			}
@@ -256,7 +289,7 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 				if route, ok := d.ecmpPaths[path]; ok {
 					// Update path
 					found = true
-					if !path.IsLocal() && path.IsUpdated() {
+					if (path.IsAggregate() || !path.IsLocal()) && path.IsUpdated() {
 						d.logger.Info(fmt.Sprintf("Update route for ip=%s", d.nlri.Prefix.String()))
 						d.updateRoute(path)
 						route.update()
@@ -276,10 +309,10 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 				if !paths[0].IsLocal() {
 					d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.nlri.Prefix.String(),
 						constructNetmaskFromLen(int(d.nlri.Length), 32).String(), paths[0].NextHop))
-						protocol := "IBGP"
-		                 if paths[0].IsExternal() {
-			                protocol = "EBGP"
-		                }
+					protocol := "IBGP"
+					if paths[0].IsExternal() {
+						protocol = "EBGP"
+					}
 					ret, err := d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(),
 						constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
 						paths[0].Metric, paths[0].NextHop, paths[0].NextHopIfType,
@@ -305,12 +338,12 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 				route.setAction(RouteActionDelete)
 				if !path.IsLocal() {
 					d.logger.Info(fmt.Sprintf("Remove route for ip=%s", d.nlri.Prefix.String()))
-					    protocol := "IBGP"
-		                if path.IsExternal() {
-			               protocol = "EBGP"
-		                }
+					protocol := "IBGP"
+					if path.IsExternal() {
+						protocol = "EBGP"
+					}
 					ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
-						constructNetmaskFromLen(int(d.nlri.Length), 32).String(), protocol,path.NextHop)
+						constructNetmaskFromLen(int(d.nlri.Length), 32).String(), protocol, path.NextHop)
 					if err != nil {
 						d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 					}
@@ -336,22 +369,28 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 func (d *Destination) updateRoute(path *Path) {
 	d.logger.Info(fmt.Sprintf("Remove route for ip=%s, mask=%s", d.nlri.Prefix.String(),
 		constructNetmaskFromLen(int(d.nlri.Length), 32).String()))
-		protocol := "IBGP"
-		if path.IsExternal() {
-			protocol = "EBGP"
-		}
+	protocol := "IBGP"
+	if path.IsExternal() {
+		protocol = "EBGP"
+	}
 	ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
-		constructNetmaskFromLen(int(d.nlri.Length), 32).String(), protocol,path.NextHop)
+		constructNetmaskFromLen(int(d.nlri.Length), 32).String(), protocol, path.NextHop)
 	if err != nil {
 		d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 	}
 
-	if !path.IsLocal() {
+	if path.IsAggregate() || !path.IsLocal() {
+		var nextHop string
+		if path.IsAggregate() {
+			nextHop = "255.255.255.255"
+		} else {
+			nextHop = path.NextHop
+		}
 		d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.nlri.Prefix.String(),
-			constructNetmaskFromLen(int(d.nlri.Length), 32).String(), path.NextHop))
+			constructNetmaskFromLen(int(d.nlri.Length), 32).String(), nextHop))
 		ret, err = d.server.ribdClient.CreateV4Route(d.nlri.Prefix.String(),
 			constructNetmaskFromLen(int(d.nlri.Length), 32).String(),
-			path.Metric, path.NextHop, path.NextHopIfType,
+			path.Metric, nextHop, path.NextHopIfType,
 			path.NextHopIfIdx, protocol)
 		if err != nil {
 			d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))

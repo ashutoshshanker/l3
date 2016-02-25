@@ -11,41 +11,64 @@ import (
 )
 
 const (
-	RouteTypeConnected uint8 = 1 << iota
+	RouteTypeAgg uint8 = 1 << iota
+	RouteTypeConnected
 	RouteTypeStatic
 	RouteTypeIGP
 	RouteTypeEGP
 	RouteTypeMax
 )
 
-const RouteLocal = (RouteTypeConnected | RouteTypeStatic | RouteTypeIGP)
+const (
+	RouteSrcLocal uint8 = 1 << iota
+	RouteSrcExternal
+	RouteSrcUnknown
+)
+
+var RouteTypeToSource = map[uint8]uint8{
+	RouteTypeAgg:       RouteSrcLocal,
+	RouteTypeConnected: RouteSrcLocal,
+	RouteTypeStatic:    RouteSrcLocal,
+	RouteTypeIGP:       RouteSrcLocal,
+	RouteTypeEGP:       RouteSrcExternal,
+}
+
+func getRouteSource(routeType uint8) uint8 {
+	if routeSource, ok := RouteTypeToSource[routeType]; ok {
+		return routeSource
+	}
+
+	return RouteSrcUnknown
+}
 
 type Path struct {
-	server        *BGPServer
-	logger        *syslog.Writer
-	peer          *Peer
-	pathAttrs     []packet.BGPPathAttr
-	withdrawn     bool
-	updated       bool
-	Pref          uint32
-	NextHop       string
-	NextHopIfType ribd.Int
-	NextHopIfIdx  ribd.Int
-	Metric        ribd.Int
-	routeType     uint8
-	MED           uint32
-	LocalPref     uint32
+	server          *BGPServer
+	logger          *syslog.Writer
+	peer            *Peer
+	pathAttrs       []packet.BGPPathAttr
+	withdrawn       bool
+	updated         bool
+	Pref            uint32
+	NextHop         string
+	NextHopIfType   ribd.Int
+	NextHopIfIdx    ribd.Int
+	Metric          ribd.Int
+	routeType       uint8
+	MED             uint32
+	LocalPref       uint32
+	AggregatedPaths map[string]*Path
 }
 
 func NewPath(server *BGPServer, peer *Peer, pa []packet.BGPPathAttr, withdrawn bool, updated bool, routeType uint8) *Path {
 	path := &Path{
-		server:    server,
-		logger:    server.logger,
-		peer:      peer,
-		pathAttrs: pa,
-		withdrawn: withdrawn,
-		updated:   updated,
-		routeType: routeType,
+		server:          server,
+		logger:          server.logger,
+		peer:            peer,
+		pathAttrs:       pa,
+		withdrawn:       withdrawn,
+		updated:         updated,
+		routeType:       routeType,
+		AggregatedPaths: make(map[string]*Path),
 	}
 
 	path.Pref = path.calculatePref()
@@ -167,36 +190,18 @@ func (p *Path) GetAS4ByteList() []int32 {
 }
 
 func (p *Path) HasASLoop() bool {
-	for _, attr := range p.pathAttrs {
-		if attr.GetCode() == packet.BGPPathAttrTypeASPath {
-			asPaths := attr.(*packet.BGPPathAttrASPath).Value
-			asSize := attr.(*packet.BGPPathAttrASPath).ASSize
-			for _, asSegment := range asPaths {
-				if asSize == 4 {
-					seg := asSegment.(*packet.BGPAS4PathSegment)
-					for _, as := range seg.AS {
-						if as == p.peer.PeerConf.LocalAS {
-							return true
-						}
-					}
-				} else {
-					seg := asSegment.(*packet.BGPAS2PathSegment)
-					for _, as := range seg.AS {
-						if as == uint16(p.peer.PeerConf.LocalAS) {
-							return true
-						}
-					}
-				}
-			}
-			break
-		}
+	if p.peer == nil {
+		return false
 	}
-
-	return false
+	return packet.HasASLoop(p.pathAttrs, p.peer.PeerConf.LocalAS)
 }
 
 func (p *Path) IsLocal() bool {
-	return (p.routeType & RouteLocal) != 0
+	return getRouteSource(p.routeType) == RouteSrcLocal
+}
+
+func (p *Path) IsAggregate() bool {
+	return p.routeType == RouteTypeAgg
 }
 
 func (p *Path) IsExternal() bool {
@@ -208,42 +213,15 @@ func (p *Path) IsInternal() bool {
 }
 
 func (p *Path) GetNumASes() uint32 {
-	var total uint32 = 0
-	for _, attr := range p.pathAttrs {
-		if attr.GetCode() == packet.BGPPathAttrTypeASPath {
-			asPaths := attr.(*packet.BGPPathAttrASPath).Value
-			for _, asPath := range asPaths {
-				if asPath.GetType() == packet.BGPASPathSet {
-					total += 1
-				} else if asPath.GetType() == packet.BGPASPathSequence {
-					total += uint32(asPath.GetLen())
-				}
-			}
-			break
-		}
-	}
-
-	return total
+	return packet.GetNumASes(p.pathAttrs)
 }
 
 func (p *Path) GetOrigin() uint8 {
-	for _, attr := range p.pathAttrs {
-		if attr.GetCode() == packet.BGPPathAttrTypeOrigin {
-			return uint8(attr.(*packet.BGPPathAttrOrigin).Value)
-		}
-	}
-
-	return uint8(packet.BGPPathAttrOriginMax)
+	return packet.GetOrigin(p.pathAttrs)
 }
 
 func (p *Path) GetNextHop() net.IP {
-	for _, attr := range p.pathAttrs {
-		if attr.GetCode() == packet.BGPPathAttrTypeNextHop {
-			return attr.(*packet.BGPPathAttrNextHop).Value
-		}
-	}
-
-	return net.IPv4zero
+	return packet.GetNextHop(p.pathAttrs)
 }
 
 func (p *Path) GetBGPId() uint32 {
@@ -257,16 +235,7 @@ func (p *Path) GetBGPId() uint32 {
 }
 
 func (p *Path) GetNumClusters() uint16 {
-	var total uint16 = 0
-	for _, attr := range p.pathAttrs {
-		if attr.GetCode() == packet.BGPPathAttrTypeClusterList {
-			length := attr.(*packet.BGPPathAttrClusterList).Length
-			total = length / 4
-			break
-		}
-	}
-
-	return total
+	return packet.GetNumClusters(p.pathAttrs)
 }
 
 func (p *Path) GetReachabilityInfo() {
@@ -292,5 +261,111 @@ func (p *Path) IsReachable() bool {
 		return true
 	}
 
+	p.GetReachabilityInfo()
+	if p.NextHop != "" {
+		return true
+	}
 	return false
+}
+
+func (p *Path) setAggregatedPath(destIP string, path *Path) {
+	if _, ok := p.AggregatedPaths[destIP]; ok {
+		p.logger.Err(fmt.Sprintf("Path from %s is already added to the aggregated paths %v", destIP, p.AggregatedPaths))
+	}
+	p.AggregatedPaths[destIP] = path
+}
+
+func (p *Path) checkMEDForAggregation(path *Path) (uint32, uint32, bool) {
+	aggMED, aggOK := packet.GetMED(p.pathAttrs)
+	med, ok := packet.GetMED(path.pathAttrs)
+	if aggOK == ok && aggMED == med {
+		return aggMED, med, true
+	}
+
+	return aggMED, med, false
+}
+
+func (p *Path) addPathToAggregate(destIP string, path *Path, generateASSet bool) bool {
+	aggMED, med, isMEDEqual := p.checkMEDForAggregation(path)
+
+	if _, ok := p.AggregatedPaths[destIP]; ok {
+		if !isMEDEqual {
+			p.logger.Info(fmt.Sprintln("addPathToAggregate: MED", med, "in the new path", path, "is not the same as the MED",
+				aggMED, "in the agg path, remove the old path..."))
+			delete(p.AggregatedPaths, destIP)
+			p.removePathFromAggregate(destIP, generateASSet)
+		} else {
+			p.logger.Info(fmt.Sprintf("addPathToAggregatePath from %s is already aggregated, replace it...", destIP))
+			p.AggregatedPaths[destIP] = path
+			p.aggregateAllPaths(generateASSet)
+		}
+		p.updated = true
+
+		return true
+	}
+
+	if !isMEDEqual {
+		p.logger.Info(fmt.Sprintln("addPathToAggregate: Can't aggregate new path MEDs not equal, new path MED =", med,
+			"Agg path MED =", aggMED))
+		return false
+	}
+
+	p.updated = true
+	idx, i := 0, 0
+	pathIdx := 0
+	for idx = 0; idx < len(p.pathAttrs); idx++ {
+		for i = pathIdx; i < len(path.pathAttrs) && path.pathAttrs[i].GetCode() < p.pathAttrs[idx].GetCode(); i++ {
+			if path.pathAttrs[i].GetCode() == packet.BGPPathAttrTypeAtomicAggregate {
+				atomicAggregate := packet.NewBGPPathAttrAtomicAggregate()
+				packet.AddPathAttrToPathAttrs(p.pathAttrs, packet.BGPPathAttrTypeAtomicAggregate, atomicAggregate)
+			}
+		}
+
+		if path.pathAttrs[i].GetCode() == p.pathAttrs[idx].GetCode() {
+			if p.pathAttrs[idx].GetCode() == packet.BGPPathAttrTypeOrigin {
+				if path.pathAttrs[i].(*packet.BGPPathAttrOrigin).Value > p.pathAttrs[idx].(*packet.BGPPathAttrOrigin).Value {
+					p.pathAttrs[idx].(*packet.BGPPathAttrOrigin).Value = path.pathAttrs[i].(*packet.BGPPathAttrOrigin).Value
+				}
+			}
+		}
+	}
+	p.AggregatedPaths[destIP] = path
+	return true
+}
+
+func (p *Path) removePathFromAggregate(destIP string, generateASSet bool) {
+	p.updated = true
+	delete(p.AggregatedPaths, destIP)
+	p.aggregateAllPaths(generateASSet)
+}
+
+func (p *Path) aggregateAllPaths(generateASSet bool) {
+	var origin, atomicAggregate packet.BGPPathAttr
+
+	for _, individualPath := range p.AggregatedPaths {
+		for _, pathAttr := range individualPath.pathAttrs {
+			if pathAttr.GetCode() == packet.BGPPathAttrTypeOrigin {
+				if origin == nil || pathAttr.(*packet.BGPPathAttrOrigin).Value > origin.(*packet.BGPPathAttrOrigin).Value {
+					origin = pathAttr
+				}
+			}
+
+			if pathAttr.GetCode() == packet.BGPPathAttrTypeAtomicAggregate {
+				if atomicAggregate == nil {
+					atomicAggregate = pathAttr
+				}
+			}
+		}
+	}
+
+	for idx, pathAttr := range p.pathAttrs {
+		if pathAttr.GetCode() == packet.BGPPathAttrTypeOrigin && origin != nil {
+			p.pathAttrs[idx] = origin
+		}
+
+		if pathAttr.GetCode() == packet.BGPPathAttrTypeAtomicAggregate && atomicAggregate != nil {
+			p.pathAttrs[idx] = atomicAggregate
+		}
+	}
+	return
 }
