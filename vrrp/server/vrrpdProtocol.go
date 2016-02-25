@@ -11,9 +11,10 @@ import (
 func VrrpDecodeReceivedPkt(InData []byte, bytesRead int) {
 	var eth layers.Ethernet
 	var ip4 layers.IPv4
+	var ip6 layers.IPv6
 	var payload gopacket.Payload
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
-		&eth, &ip4, &payload)
+		&eth, &ip4, &ip6, &payload)
 	decodedLayers := make([]gopacket.LayerType, 0, 10)
 	err := parser.DecodeLayers(InData, &decodedLayers)
 	if err != nil {
@@ -21,6 +22,17 @@ func VrrpDecodeReceivedPkt(InData []byte, bytesRead int) {
 			err))
 		return
 	}
+	for _, layerType := range decodedLayers {
+		switch layerType {
+		case layers.LayerTypeEthernet:
+			logger.Info(fmt.Sprintln("    Eth ", eth.SrcMAC, eth.DstMAC))
+		case layers.LayerTypeIPv6:
+			logger.Info(fmt.Sprintln("    IP6 ", ip6.SrcIP, ip6.DstIP))
+		case layers.LayerTypeIPv4:
+			logger.Info(fmt.Sprintln("    IP4 ", ip4.SrcIP, ip4.DstIP))
+		}
+	}
+	logger.Info(fmt.Sprintln("Payload is", payload))
 }
 
 func VrrpReceivePackets() {
