@@ -345,6 +345,7 @@ func (st *ActiveState) processEvent(event BGPFSMEvent, data interface{}) {
 
 	case BGPEventTcpConnFails:
 		st.fsm.StartConnectRetryTimer()
+		st.fsm.StopConnToPeer()
 		st.fsm.ClearPeerConn()
 		st.fsm.IncrConnectRetryCounter()
 		st.fsm.ChangeState(NewIdleState(st.fsm))
@@ -843,32 +844,37 @@ func NewFSM(fsmManager *FSMManager, id uint8, peer *Peer) *FSM {
 }
 
 func (fsm *FSM) StartFSM(state BaseStateIface) {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM: Starting the stach machine in", state.state(), "state"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id,
+		"Starting the stach machine in", state.state(), "state"))
 	fsm.State = state
 	fsm.State.enter()
 
 	for {
 		select {
 		case outConnCh := <-fsm.outConnCh:
-			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "OUT connection SUCCESS"))
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+				"OUT connection SUCCESS"))
 			fsm.connInProgress = false
 			out := PeerConnDir{config.ConnDirOut, &outConnCh}
 			fsm.ProcessEvent(BGPEventTcpCrAcked, out)
 
 		case outConnErrCh := <-fsm.outConnErrCh:
-			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "OUT connection FAIL"))
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+				"OUT connection FAIL"))
 			fsm.connInProgress = false
 			fsm.ProcessEvent(BGPEventTcpConnFails, outConnErrCh)
 
 		case inConnCh := <-fsm.inConnCh:
-			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "IN connection SUCCESS"))
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+				"IN connection SUCCESS"))
 			in := PeerConnDir{config.ConnDirIn, &inConnCh}
 			fsm.ProcessEvent(BGPEventTcpConnConfirmed, in)
 
 		case <-fsm.closeCh:
 			fsm.cleanup = true
 			fsm.ProcessEvent(BGPEventManualStop, nil)
-			fsm.logger.Info(fmt.Sprintf("FSM: calling Done() for FSM %s dir %s", fsm.pConf.NeighborAddress.String(), fsm.id))
+			fsm.logger.Info(fmt.Sprintf("Neighbor: %s FSM %s closing the FSM", fsm.pConf.NeighborAddress.String(),
+				fsm.id))
 			return
 
 		case val := <-fsm.passiveTcpEstCh:
@@ -876,7 +882,8 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 
 		case bgpMsg := <-fsm.pktTxCh:
 			if fsm.State.state() != BGPFSMEstablished {
-				fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM is not in Established state, can't send the UPDATE message"))
+				fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+					"is not in Established state, can't send the UPDATE message"))
 				continue
 			}
 			fsm.sendUpdateMessage(bgpMsg)
@@ -936,28 +943,30 @@ func (fsm *FSM) ProcessPacket(msg *packet.BGPMessage, msgErr *packet.BGPMessageE
 			fsm.peer.Neighbor.State.Messages.Received.Notification++
 			event = BGPEventNotifMsg
 			notifyMsg := msg.Body.(*packet.BGPNotification)
-			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "Received notification message:",
-				notifyMsg.ErrorCode, notifyMsg.ErrorSubcode, notifyMsg.Data))
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+				"Received notification message:", notifyMsg.ErrorCode, notifyMsg.ErrorSubcode, notifyMsg.Data))
 
 		case packet.BGPMsgTypeKeepAlive:
 			event = BGPEventKeepAliveMsg
 		}
 	}
 	if event != BGPEventKeepAliveMsg {
-		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "ProcessPacket - event:", BGPEventTypeToStr[event]))
+		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "ProcessPacket - event:",
+			BGPEventTypeToStr[event]))
 	}
 	fsm.ProcessEvent(event, data)
 }
 
 func (fsm *FSM) ChangeState(newState BaseStateIface) {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM: ChangeState: Leaving", fsm.State, "state Entering", newState, "state"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "ChangeState: Leaving",
+		fsm.State, "state Entering", newState, "state"))
 	if fsm.cleanup {
 		return
 	}
 	fsm.State.leave()
 	fsm.State = newState
 	fsm.State.enter()
-	fsm.peer.FSMStateChange(fsm.State.state())
+	fsm.Manager.fsmStateChange(fsm.id, fsm.State.state())
 }
 
 func (fsm *FSM) ApplyAutomaticStart() {
@@ -992,11 +1001,13 @@ func (fsm *FSM) StopConnectRetryTimer() {
 
 func (fsm *FSM) SetHoldTime(holdTime uint32, keepaliveTime uint32) {
 	if holdTime < 0 || (holdTime > 0 && holdTime < 3) {
-		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Cannot set hold time. Invalid value", holdTime))
+		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+			"Cannot set hold time. Invalid value", holdTime))
 		return
 	}
 
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Set hold time to", holdTime, "and keepalive time to", keepaliveTime))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "Set hold time to", holdTime,
+		"and keepalive time to", keepaliveTime))
 	fsm.holdTime = holdTime
 	fsm.keepAliveTime = keepaliveTime
 }
@@ -1048,7 +1059,7 @@ func (fsm *FSM) StopIdleHoldTimer() {
 }
 
 func (fsm *FSM) HandleAnotherConnection(data interface{}) {
-	fsm.logger.Info(fmt.Sprintf("**** COLLISION DETECTED ****"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "*** COLLISION DETECTED ***"))
 	pConnDir := data.(PeerConnDir)
 	fsm.Manager.newConnCh <- PeerFSMConnState{false, fsm.id, pConnDir.connDir, pConnDir.conn}
 }
@@ -1075,13 +1086,14 @@ func (fsm *FSM) ProcessOpenMessage(pkt *packet.BGPMessage) {
 }
 
 func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "ProcessUpdateMessage: send message to server"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+		"ProcessUpdateMessage: send message to server"))
 	updateMsg := pkt.Body.(*packet.BGPUpdate)
 	for _, pa := range updateMsg.PathAttributes {
 		if mpReachNLRI, ok := pa.(*packet.BGPPathAttrMPReachNLRI); ok {
 			protoFamily := packet.GetProtocolFamily(mpReachNLRI.AFI, mpReachNLRI.SAFI)
 			if !fsm.afiSafiMap[protoFamily] {
-				fsm.logger.Warning(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress,
+				fsm.logger.Warning(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
 					"Received MP_REACH_NLRI path attr for AFI", mpReachNLRI.AFI, "SAFI", mpReachNLRI.SAFI))
 			}
 		}
@@ -1097,24 +1109,30 @@ func (fsm *FSM) sendUpdateMessage(bgpMsg *packet.BGPMessage) {
 	packet, _ := bgpMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
-		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write failed to send Update message with error:", err))
+		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+			"Conn.Write failed to send Update message with error:", err))
 		return
 	}
 	fsm.peer.Neighbor.State.Messages.Sent.Update++
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write succeeded. sent Update message of", num, "bytes"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+		"Conn.Write succeeded. sent Update message of", num, "bytes"))
 	fsm.StartKeepAliveTimer()
 }
 
 func (fsm *FSM) sendOpenMessage() {
-	fsm.logger.Info(fmt.Sprintln("sendOpenMessage: send address family", fsm.peer.afiSafiMap))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+		"sendOpenMessage: send address family", fsm.peer.afiSafiMap))
 	optParams := packet.ConstructOptParams(uint32(fsm.pConf.LocalAS), fsm.peer.afiSafiMap)
 	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.LocalAS, uint16(fsm.holdTime), fsm.gConf.RouterId.To4().String(), optParams)
 	packet, _ := bgpOpenMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
-		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write failed to send Open message with error:", err))
+		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+			"Conn.Write failed to send Open message with error:", err))
+		return
 	}
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write succeeded. sent Open message of", num, "bytes"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+		"Conn.Write succeeded. sent Open message of", num, "bytes"))
 }
 
 func (fsm *FSM) sendKeepAliveMessage() {
@@ -1122,7 +1140,8 @@ func (fsm *FSM) sendKeepAliveMessage() {
 	packet, _ := bgpKeepAliveMsg.Encode()
 	_, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
-		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write failed to send KeepAlive message with error:", err))
+		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+			"Conn.Write failed to send KeepAlive message with error:", err))
 	}
 	fsm.StartKeepAliveTimer()
 }
@@ -1132,17 +1151,20 @@ func (fsm *FSM) SendNotificationMessage(code uint8, subCode uint8, data []byte) 
 	packet, _ := bgpNotifMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
 	if err != nil {
-		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write failed to send Notification message with error:", err))
+		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+			"Conn.Write failed to send Notification message with error:", err))
 		return
 	}
 	fsm.peer.Neighbor.State.Messages.Sent.Notification++
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Conn.Write succeeded. sent Notification message with", num, "bytes"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+		"Conn.Write succeeded. sent Notification message with", num, "bytes"))
 }
 
 func (fsm *FSM) SetPeerConn(data interface{}) {
-	fsm.logger.Info(fmt.Sprintln("SetPeerConn called"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "SetPeerConn called"))
 	if fsm.peerConn != nil {
-		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:SetupPeerConn - Peer conn is already set up"))
+		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+			"SetupPeerConn - Peer conn is already set up"))
 		return
 	}
 	pConnDir := data.(PeerConnDir)
@@ -1151,9 +1173,10 @@ func (fsm *FSM) SetPeerConn(data interface{}) {
 }
 
 func (fsm *FSM) ClearPeerConn() {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "ClearPeerConn called"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "ClearPeerConn called"))
 	if fsm.peerConn == nil {
-		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:ClearPeerConn - Peer conn is not set up yet"))
+		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+			"ClearPeerConn - Peer conn is not set up yet"))
 		return
 	}
 	fsm.StopKeepAliveTimer()
@@ -1163,7 +1186,7 @@ func (fsm *FSM) ClearPeerConn() {
 }
 
 func (fsm *FSM) startRxPkts() {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "fsm:startRxPkts called"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "startRxPkts called"))
 	if fsm.peerConn != nil && !fsm.rxPktsFlag {
 		fsm.rxPktsFlag = true
 		fsm.peerConn.StartReading()
@@ -1171,7 +1194,7 @@ func (fsm *FSM) startRxPkts() {
 }
 
 func (fsm *FSM) stopRxPkts() {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "fsm:stopRxPkts called"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "stopRxPkts called"))
 	if fsm.peerConn != nil && fsm.rxPktsFlag {
 		fsm.rxPktsFlag = false
 		fsm.peerConn.StopReading()
@@ -1179,29 +1202,29 @@ func (fsm *FSM) stopRxPkts() {
 }
 
 func (fsm *FSM) ConnEstablished() {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "fsm: ConnEstablished - start"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "ConnEstablished - start"))
 	fsm.Manager.fsmEstablished(fsm.id, fsm.peerConn.conn)
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "fsm: ConnEstablished - end"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "ConnEstablished - end"))
 }
 
 func (fsm *FSM) ConnBroken() {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "fsm: ConnBroken - start"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "ConnBroken - start"))
 	fsm.Manager.fsmBroken(fsm.id, false)
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "fsm: ConnBroken - end"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "ConnBroken - end"))
 }
 
 func (fsm *FSM) AcceptPeerConn() {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "AcceptPeerConn called"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "AcceptPeerConn called"))
 	fsm.Manager.AcceptPeerConn()
 }
 
 func (fsm *FSM) RejectPeerConn() {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "RejectPeerConn called"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "RejectPeerConn called"))
 	fsm.Manager.RejectPeerConn()
 }
 
 func (fsm *FSM) InitiateConnToPeer() {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "InitiateConnToPeer called"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "InitiateConnToPeer called"))
 	addr := net.JoinHostPort(fsm.pConf.NeighborAddress.String(), BGPPort)
 	if !fsm.connInProgress {
 		fsm.connInProgress = true
@@ -1210,14 +1233,16 @@ func (fsm *FSM) InitiateConnToPeer() {
 }
 
 func (fsm *FSM) StopConnToPeer() {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "StopConnToPeer called"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "StopConnToPeer called"))
 	if fsm.connInProgress {
 		fsm.stopConnCh <- true
+		fsm.connInProgress = false
 	}
 }
 
 func Connect(fsm *FSM, seconds uint32, addr string, connCh chan net.Conn, errCh chan error) {
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Connect called... calling DialTimeout with", seconds, "second timeout"))
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress,
+		"Connect called... calling DialTimeout with", seconds, "second timeout"))
 	conn, err := net.DialTimeout("tcp", addr, time.Duration(seconds)*time.Second)
 	if err != nil {
 		errCh <- err
@@ -1228,6 +1253,7 @@ func Connect(fsm *FSM, seconds uint32, addr string, connCh chan net.Conn, errCh 
 			ttl = int(fsm.pConf.MultiHopTTL)
 		}
 		if err = packetConn.SetTTL(ttl); err != nil {
+			conn.Close()
 			errCh <- err
 			return
 		}
@@ -1252,7 +1278,8 @@ func ConnectToPeer(fsm *FSM, seconds uint32, addr string, fsmConnCh chan net.Con
 	for {
 		select {
 		case conn := <-connCh:
-			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "ConnectToPeer: Connected to peer", addr))
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "ConnectToPeer: Connected to peer",
+				addr))
 			if stopConn {
 				conn.Close()
 				return
@@ -1262,20 +1289,23 @@ func ConnectToPeer(fsm *FSM, seconds uint32, addr string, fsmConnCh chan net.Con
 			return
 
 		case err := <-errCh:
-			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "ConnectToPeer: Failed to connect to peer with error:", addr, err))
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress,
+				"ConnectToPeer: Failed to connect to peer with error:", addr, err))
 			if stopConn {
 				return
 			}
 
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-				fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "Connect to peer timed out, retrying..."))
+				fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress,
+					"Connect to peer timed out, retrying..."))
 				go Connect(fsm, 3, addr, connCh, errCh)
 			} else {
 				fsmConnErrCh <- err
 			}
 
 		case <-fsmStopConnCh:
-			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "ConnectToPeer: Recieved stop connecting to peer", addr))
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress,
+				"ConnectToPeer: Recieved stop connecting to peer", addr))
 			stopConn = true
 		}
 	}

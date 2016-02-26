@@ -152,6 +152,12 @@ func (mgr *FSMManager) fsmBroken(id uint8, fsmDelete bool) {
 	mgr.Peer.PeerConnBroken(fsmDelete)
 }
 
+func (mgr *FSMManager) fsmStateChange(id uint8, state BGPFSMState) {
+	if mgr.activeFSM == id || mgr.activeFSM == uint8(config.ConnDirInvalid) {
+		mgr.Peer.FSMStateChange(state)
+	}
+}
+
 func (mgr *FSMManager) SendUpdateMsg(bgpMsg *packet.BGPMessage) {
 	defer mgr.fsmMutex.Unlock()
 	mgr.fsmMutex.Lock()
