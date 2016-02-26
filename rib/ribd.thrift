@@ -25,6 +25,7 @@ struct Routes {
 	13: string RouteCreated,
 	14: string RouteUpdated,
 	15: string RoutePrototypeString
+	16: string DestNetIp
 }
 struct RoutesGetInfo {
 	1: int StartIdx,

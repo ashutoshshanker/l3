@@ -720,7 +720,7 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 	      localRouteEventsDB = append(localRouteEventsDB,routeEventInfo)
 		}
 		params.deleteType = Invalid
-	    PolicyEngineDB.PolicyEngineFilter(policyRoute, policyPath,params )
+	    PolicyEngineFilter(policyRoute, policyPath,params )
 }
 func addNewRouteList(destNetPrefix patriciaDB.Prefix, 
                   addRouteList []RouteOpInfoRecord, 
@@ -800,7 +800,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 		params.networkMask = routeInfoRecord.networkMask.String()
 		params.sliceIdx = ribd.Int(routeInfoRecord.sliceIdx)
 		policyRoute.PolicyList = routeInfoRecordList.policyList
-		PolicyEngineDB.PolicyEngineFilter(policyRoute, policyPath, params)
+		PolicyEngineFilter(policyRoute, policyPath, params)
 }
 func deleteRoutes (destNetPrefix patriciaDB.Prefix, 
                      deleteRouteList []RouteOpInfoRecord, 
@@ -1260,7 +1260,7 @@ func createV4Route(destNetIp string,
 		params.deleteType = Invalid
 		params.sliceIdx = sliceIdx
 		policyRoute.IsPolicyBasedStateValid = newRouteInfoRecordList.isPolicyBasedStateValid
-		PolicyEngineDB.PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Export, params)
+		PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Export, params)
 	} else {
 		logger.Println("routeInfoRecordListItem not nil")
 		routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList) //RouteInfoMap.Get(destNet).(RouteInfoRecordList)
@@ -1338,7 +1338,7 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	policyRoute := ribd.Routes{Ipaddr: destNetIp, Mask: networkMask, NextHopIp: nextHopIp, NextHopIfType: nextHopIfType, IfIndex: nextHopIfIndex, Metric: metric, Prototype: ribd.Int(routeType)}
 	params := RouteParams{destNetIp: destNetIp, networkMask: networkMask, nextHopIp: nextHopIp, nextHopIfType: nextHopIfType, nextHopIfIndex: nextHopIfIndex, metric: metric, routeType: ribd.Int(routeType), sliceIdx: ribd.Int(len(destNetSlice)), createType: FIBAndRIB, deleteType: Invalid}
 	logger.Println("createType = ", params.createType, "deleteType = ", params.deleteType)
-	PolicyEngineDB.PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Import, params)
+	PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Import, params)
 
 	/*	_, err = createV4Route(destNetIp, networkMask, metric, nextHopIp, nextHopIfType, nextHopIfIndex, routeType, FIBAndRIB, ribd.Int(len(destNetSlice)))
 

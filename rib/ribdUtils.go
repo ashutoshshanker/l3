@@ -152,9 +152,8 @@ func getNetworkPrefixFromCIDR(ipAddr string) (ipPrefix patriciaDB.Prefix, err er
 	ipPrefix ,err= getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
     return ipPrefix, err
 }
-func addPolicyRouteMap(route ribd.Routes, policy Policy) {
+func addPolicyRouteMap(route ribd.Routes, policyName string) {
 	logger.Println("addPolicyRouteMap")
-	policy.hitCounter++
 	ipPrefix,err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
 	if err != nil {
 		logger.Println("Invalid ip prefix")
@@ -174,12 +173,13 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
 //	newRoute := string(ipPrefix[:])
 	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
-	policyInfo:=PolicyEngineDB.PolicyDB.Get(patriciaDB.Prefix(policy.Name))
+	policyInfo:=PolicyEngineDB.PolicyDB.Get(patriciaDB.Prefix(policyName))
 	if policyInfo == nil {
-		logger.Println("Unexpected:policyInfo nil for policy ", policy.Name)
+		logger.Println("Unexpected:policyInfo nil for policy ", policyName)
 		return
 	}
 	tempPolicy:=policyInfo.(Policy)
+	tempPolicy.hitCounter++
 	if tempPolicy.routeList == nil {
 		logger.Println("routeList nil")
 		tempPolicy.routeList = make([]string, 0)
@@ -188,7 +188,7 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	for i:=0;i<len(tempPolicy.routeList);i++ {
 		logger.Println(tempPolicy.routeList[i])
 		if tempPolicy.routeList[i] == newRoute {
-			logger.Println(newRoute, " already is a part of ", policy.Name, "'s routelist")
+			logger.Println(newRoute, " already is a part of ", policyName, "'s routelist")
 			found = true
 		}
 	}
@@ -200,7 +200,7 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	for i:=0;i<len(tempPolicy.routeInfoList);i++ {
 		logger.Println("IP: ",tempPolicy.routeInfoList[i].Ipaddr, ":", tempPolicy.routeInfoList[i].Mask, " routeType: ", tempPolicy.routeInfoList[i].Prototype)
 		if tempPolicy.routeInfoList[i].Ipaddr==route.Ipaddr && tempPolicy.routeInfoList[i].Mask == route.Mask && tempPolicy.routeInfoList[i].Prototype == route.Prototype {
-			logger.Println("route already is a part of ", policy.Name, "'s routeInfolist")
+			logger.Println("route already is a part of ", policyName, "'s routeInfolist")
 			found = true
 		}
 	}
@@ -210,12 +210,12 @@ func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	if found == false {
        tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
 	}
-	PolicyEngineDB.PolicyDB.Set(patriciaDB.Prefix(policy.Name), tempPolicy)
+	PolicyEngineDB.PolicyDB.Set(patriciaDB.Prefix(policyName), tempPolicy)
 }
-func deletePolicyRouteMap(route ribd.Routes, policy Policy) {
+func deletePolicyRouteMap(route ribd.Routes, policyName string) {
 	logger.Println("deletePolicyRouteMap")
 }
-func updatePolicyRouteMap(route ribd.Routes, policy Policy, op int) {
+func updatePolicyRouteMap(route ribd.Routes, policy string, op int) {
 	logger.Println("updatePolicyRouteMap")
 	if op == add {
 		addPolicyRouteMap(route, policy)
