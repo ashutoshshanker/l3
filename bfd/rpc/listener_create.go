@@ -20,18 +20,29 @@ func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobalConfig) 
 
 func (h *BFDHandler) SendBfdIntfConfig(bfdIntfConfig *bfdd.BfdIntfConfig) bool {
 	ifConf := server.IntfConfig{
-		InterfaceId:               bfdIntfConfig.Interface,
+		InterfaceId:               bfdIntfConfig.IfIndex,
 		LocalMultiplier:           bfdIntfConfig.LocalMultiplier,
 		DesiredMinTxInterval:      bfdIntfConfig.DesiredMinTxInterval,
 		RequiredMinRxInterval:     bfdIntfConfig.RequiredMinRxInterval,
 		RequiredMinEchoRxInterval: bfdIntfConfig.RequiredMinEchoRxInterval,
 		DemandEnabled:             bfdIntfConfig.DemandEnabled,
 		AuthenticationEnabled:     bfdIntfConfig.AuthenticationEnabled,
-		AuthenticationType:        bfdIntfConfig.AuthType,
+		AuthenticationType:        h.server.ConvertBfdAuthTypeStrToVal(bfdIntfConfig.AuthType),
 		AuthenticationKeyId:       bfdIntfConfig.AuthKeyId,
 		AuthenticationData:        bfdIntfConfig.AuthData,
 	}
 	h.server.IntfConfigCh <- ifConf
+	return true
+}
+
+func (h *BFDHandler) SendBfdSessionConfig(bfdSessionConfig *bfdd.BfdSessionConfig) bool {
+	sessionConf := server.SessionConfig{
+		DestIp:    bfdSessionConfig.IpAddr,
+		PerLink:   bfdSessionConfig.PerLink,
+		Protocol:  bfddCommonDefs.ConvertBfdSessionOwnerStrToVal(bfdSessionConfig.Owner),
+		Operation: bfddCommonDefs.ConvertBfdSessionOperationStrToVal(bfdSessionConfig.Operation),
+	}
+	h.server.SessionConfigCh <- sessionConf
 	return true
 }
 
@@ -59,11 +70,5 @@ func (h *BFDHandler) CreateBfdSessionConfig(bfdSessionConf *bfdd.BfdSessionConfi
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Create session config attrs:", bfdSessionConf))
-	sessionConf := server.SessionConfig{
-		DestIp:    bfdSessionConf.IpAddr,
-		Protocol:  bfdSessionConf.Owner,
-		Operation: bfddCommonDefs.CREATE,
-	}
-	h.server.SessionConfigCh <- sessionConf
-	return true, nil
+	return h.SendBfdSessionConfig(bfdSessionConf), nil
 }

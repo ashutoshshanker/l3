@@ -54,6 +54,102 @@ func (server *OSPFServer) GetBulkOspfAreaEntryState(idx int, cnt int) (int, int,
 	return nextIdx, count, result
 }
 
+func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int, []config.LsdbState) {
+	var nextIdx int
+	var count int
+
+	ret := server.LsdbStateTimer.Stop()
+	if ret == false {
+		server.logger.Err("Ospf is busy refreshing the Lsdb cache")
+		return nextIdx, count, nil
+	}
+	length := len(server.LsdbSlice)
+
+	result := make([]config.LsdbState, cnt)
+	var i int
+	var j int
+	server.logger.Info(fmt.Sprintln("idx:", idx, "cnt:", cnt, "length of Ls DB Slice:", length))
+	for i, j = 0, idx; i < cnt && j < length; j++ {
+		var lsaEnc []byte
+		var lsaMd LsaMetadata
+		lsdbSliceEnt := server.LsdbSlice[j]
+		lsdbKey := LsdbKey{
+			AreaId: lsdbSliceEnt.AreaId,
+		}
+		lsDbEnt, exist := server.AreaLsdb[lsdbKey]
+		if !exist {
+			continue
+		}
+
+		lsaKey := LsaKey{
+			LSType:    lsdbSliceEnt.LSType,
+			LSId:      lsdbSliceEnt.LSId,
+			AdvRouter: lsdbSliceEnt.AdvRtr,
+		}
+
+		if lsdbSliceEnt.LSType == RouterLSA {
+			lsa, exist := lsDbEnt.RouterLsaMap[lsaKey]
+			if !exist {
+				continue
+			}
+			lsaEnc = encodeRouterLsa(lsa, lsaKey)
+			lsaMd = lsa.LsaMd
+		} else if lsdbSliceEnt.LSType == NetworkLSA {
+			lsa, exist := lsDbEnt.NetworkLsaMap[lsaKey]
+			if !exist {
+				continue
+			}
+			lsaEnc = encodeNetworkLsa(lsa, lsaKey)
+			lsaMd = lsa.LsaMd
+		} else if lsdbSliceEnt.LSType == Summary3LSA {
+			lsa, exist := lsDbEnt.Summary3LsaMap[lsaKey]
+			if !exist {
+				continue
+			}
+			lsaEnc = encodeSummaryLsa(lsa, lsaKey)
+			lsaMd = lsa.LsaMd
+		} else if lsdbSliceEnt.LSType == Summary4LSA {
+			lsa, exist := lsDbEnt.Summary4LsaMap[lsaKey]
+			if !exist {
+				continue
+			}
+			lsaEnc = encodeSummaryLsa(lsa, lsaKey)
+			lsaMd = lsa.LsaMd
+		} else if lsdbSliceEnt.LSType == ASExternalLSA {
+			lsa, exist := lsDbEnt.ASExternalLsaMap[lsaKey]
+			if !exist {
+				continue
+			}
+			lsaEnc = encodeASExternalLsa(lsa, lsaKey)
+			lsaMd = lsa.LsaMd
+		}
+
+		server.logger.Info(fmt.Sprintln(lsaEnc))
+		server.logger.Info(fmt.Sprintln("lsaEnc:", lsaEnc))
+		adv := convertByteToOctetString(lsaEnc[OSPF_LSA_HEADER_SIZE:])
+		server.logger.Info(fmt.Sprintln("adv:", adv))
+		result[i].LsdbAreaId = config.AreaId(convertUint32ToIPv4(lsdbKey.AreaId))
+		result[i].LsdbType = config.LsaType(lsaKey.LSType)
+		result[i].LsdbLsid = config.IpAddress(convertUint32ToIPv4(lsaKey.LSId))
+		result[i].LsdbRouterId = config.RouterId(convertUint32ToIPv4(lsaKey.AdvRouter))
+		result[i].LsdbSequence = lsaMd.LSSequenceNum
+		result[i].LsdbAge = int(lsaMd.LSAge)
+		result[i].LsdbCheckSum = int(lsaMd.LSChecksum)
+		result[i].LsdbAdvertisement = adv
+		server.logger.Info(fmt.Sprintln("Result of GetBulk:", result))
+		i++
+	}
+
+	if j == length {
+		nextIdx = 0
+	}
+	count = i
+
+	server.LsdbStateTimer.Reset(server.RefreshDuration)
+	server.logger.Info(fmt.Sprintln("length:", length, "count:", count, "nextIdx:", nextIdx, "result:", result))
+	return nextIdx, count, result
+}
+
 func (server *OSPFServer) GetBulkOspfIfEntryState(idx int, cnt int) (int, int, []config.InterfaceState) {
 	var nextIdx int
 	var count int

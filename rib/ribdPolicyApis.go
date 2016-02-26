@@ -8,7 +8,7 @@ import (
 	"utils/patriciaDB"
 	"strconv"
 	"strings"
-	"net"
+	//"net"
 	"reflect"
 )
 
@@ -44,6 +44,12 @@ var ImportPolicyPrecedenceMap = make(map[int] string)
 var ExportPolicyPrecedenceMap = make(map[int] string)
 var localPolicyStmtDB []localDB
 var localPolicyDB []localDB
+type PrefixPolicyListInfo struct {
+	ipPrefix  patriciaDB.Prefix
+	policyName string
+	lowRange   int
+	highRange  int
+}
 
 func addPolicyRouteMap(route ribd.Routes, policy Policy) {
 	logger.Println("addPolicyRouteMap")
@@ -119,7 +125,7 @@ func updatePolicyRouteMap(route ribd.Routes, policy Policy, op int) {
 }
 func validMatchConditions(matchConditionStr string) (valid bool) {
     logger.Println("validMatchConditions for string ", matchConditionStr)
-	if matchConditionStr == "any" || matchConditionStr == "all "{
+	if matchConditionStr == "any" || matchConditionStr == "all"{
 		logger.Println("valid")
 		valid = true
 	}
@@ -154,10 +160,20 @@ func updateProtocolPolicyTable(protoType string, name string, op int) {
 	}
 	ProtocolPolicyListDB[protoType] = policyList
 }
-func updatePrefixPolicyTableWithPrefix(ipPrefix patriciaDB.Prefix, name string, op int){
-	logger.Println("updatePrefixPolicyTableWithPrefix %v", ipPrefix)
+func updatePrefixPolicyTableWithPrefix(ipAddr string, name string, op int, lowRange int, highRange int){
+	logger.Println("updatePrefixPolicyTableWithPrefix ", ipAddr)
 	var i int
-	var policyList []string
+/*		ip, _, err := net.ParseCIDR(ipAddr)
+	    if err != nil {
+		   return 
+	    }*/
+       ipPrefix, err := getNetworkPrefixFromCIDR(ipAddr)
+	   if err != nil {
+		logger.Println("ipPrefix invalid ")
+		return 
+	   }
+	var policyList []PrefixPolicyListInfo
+	var prefixPolicyListInfo PrefixPolicyListInfo
 	policyListItem:= PrefixPolicyListDB.Get(ipPrefix)
 	if policyListItem != nil && reflect.TypeOf(policyListItem).Kind() != reflect.Slice {
 		logger.Println("Incorrect data type for this prefix ")
@@ -168,21 +184,25 @@ func updatePrefixPolicyTableWithPrefix(ipPrefix patriciaDB.Prefix, name string, 
 			logger.Println("Cannot find the policy map for this prefix, so cannot delete")
 			return
 		}
-		policyList = make([]string, 0)
+		policyList = make([]PrefixPolicyListInfo, 0)
 	} else {
 	   policyListSlice := reflect.ValueOf(policyListItem)
-	   policyList = make([]string,0)
+	   policyList = make([]PrefixPolicyListInfo,0)
 	   for i = 0;i<policyListSlice.Len();i++ {
-	      policyList = append(policyList, policyListSlice.Index(i).Interface().(string))	
+	      policyList = append(policyList, policyListSlice.Index(i).Interface().(PrefixPolicyListInfo))	
 	   }
 	}
     if op == add {
-	   policyList = append(policyList, name)
+	   prefixPolicyListInfo.ipPrefix = ipPrefix
+	   prefixPolicyListInfo.policyName = name
+	   prefixPolicyListInfo.lowRange = lowRange
+	   prefixPolicyListInfo.highRange = highRange
+	   policyList = append(policyList, prefixPolicyListInfo)
 	}
 	found :=false
 	if op == del {
 		for i =0; i< len(policyList);i++ {
-			if policyList[i] == name {
+			if policyList[i].policyName == name {
 				logger.Println("Found the policy in the prefix policy table, deleting it")
 				break
 			}
@@ -193,7 +213,7 @@ func updatePrefixPolicyTableWithPrefix(ipPrefix patriciaDB.Prefix, name string, 
 	}
 	PrefixPolicyListDB.Set(ipPrefix, policyList)
 }
-func updatePrefixPolicyTableWithMaskRange(ipAddrStr string, masklength string, name string, op int){
+func updatePrefixPolicyTableWithMaskRange(ipAddr string, masklength string, name string, op int){
 	logger.Println("updatePrefixPolicyTableWithMaskRange")
 	    maskList := strings.Split(masklength,"..")
 		if len(maskList) !=2 {
@@ -211,7 +231,8 @@ func updatePrefixPolicyTableWithMaskRange(ipAddrStr string, masklength string, n
 			return
 		}
 		logger.Println("lowRange = ", lowRange, " highrange = ", highRange)
-		for idx := lowRange;idx<highRange;idx ++ {
+		updatePrefixPolicyTableWithPrefix(ipAddr, name, op,lowRange,highRange)
+/*		for idx := lowRange;idx<highRange;idx ++ {
 			ipMask:= net.CIDRMask(idx, 32)
 			ipMaskStr := net.IP(ipMask).String()
 			logger.Println("idx ", idx, "ipMaskStr = ", ipMaskStr)
@@ -220,8 +241,8 @@ func updatePrefixPolicyTableWithMaskRange(ipAddrStr string, masklength string, n
 				logger.Println("Invalid prefix")
 				return 
 			}
-			updatePrefixPolicyTableWithPrefix(ipPrefix, name, op)
-		}
+			updatePrefixPolicyTableWithPrefix(ipPrefix, name, op,lowRange,highRange)
+		}*/
 }
 func updatePrefixPolicyTableWithPrefixSet(prefixSet string, name string, op int) {
 	logger.Println("updatePrefixPolicyTableWithPrefixSet")
@@ -234,20 +255,15 @@ func updatePrefixPolicyTable(conditionInfo interface{}, name string, op int) {
 		updatePrefixPolicyTableWithPrefixSet(condition.prefixSet, name, op)
 	} else {
 	   if condition.prefix.MasklengthRange == "exact" {
-       ipPrefix, err := getNetworkPrefixFromCIDR(condition.prefix.IpPrefix)
+       /*ipPrefix, err := getNetworkPrefixFromCIDR(condition.prefix.IpPrefix)
 	   if err != nil {
 		logger.Println("ipPrefix invalid ")
 		return 
-	   }
-	   updatePrefixPolicyTableWithPrefix(ipPrefix, name, op)
+	   }*/
+	   updatePrefixPolicyTableWithPrefix(condition.prefix.IpPrefix, name, op,-1,-1)
 	 } else {
 		logger.Println("Masklength= ", condition.prefix.MasklengthRange)
-		ip, _, err := net.ParseCIDR(condition.prefix.IpPrefix)
-	    if err != nil {
-		   return 
-	    }
-	    ipAddrStr := ip.String()
-		updatePrefixPolicyTableWithMaskRange(ipAddrStr, condition.prefix.MasklengthRange, name, op)
+		updatePrefixPolicyTableWithMaskRange(condition.prefix.IpPrefix, condition.prefix.MasklengthRange, name, op)
 	 }
    }
 }

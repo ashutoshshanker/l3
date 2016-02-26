@@ -45,7 +45,7 @@ This file decodes database description packets.as per below format
 remote hardcoding and get it while config.
 */
 const INTF_MTU_MIN = 1500
-const INTF_OPTIONS = 0x2
+const INTF_OPTIONS = 66
 
 type ospfDatabaseDescriptionData struct {
 	options            uint8
@@ -94,11 +94,11 @@ func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptio
 		// negotiation is done. Check if we have LSA headers
 
 		headers_len := pktlen - (OSPF_DBD_MIN_SIZE + OSPF_HEADER_SIZE)
-		fmt.Println("DBD: Received headers_len ", headers_len, " pktLen", pktlen)
+		//fmt.Println("DBD: Received headers_len ", headers_len, " pktLen", pktlen)
 		if headers_len >= 20 && headers_len < pktlen {
-			fmt.Println("DBD: LSA headers length ", headers_len)
+			//	fmt.Println("DBD: LSA headers length ", headers_len)
 			num_headers := int(headers_len / 20)
-			fmt.Sprintln("DBD: Received ", num_headers, " LSA headers.")
+			//	fmt.Sprintln("DBD: Received ", num_headers, " LSA headers.")
 			header_byte := make([]byte, num_headers*OSPF_LSA_HEADER_SIZE)
 			var start_index uint8
 			var lsa_header ospfLSAHeader
@@ -106,11 +106,11 @@ func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptio
 				start_index = uint8(OSPF_DBD_MIN_SIZE + (i * OSPF_LSA_HEADER_SIZE))
 				copy(header_byte, data[start_index:start_index+20])
 				lsa_header = decodeLSAHeader(header_byte)
-				fmt.Println("DBD: Header decoded ",
-					"ls_age:options:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
-					lsa_header.ls_age, lsa_header.ls_type, lsa_header.link_state_id,
-					lsa_header.adv_router_id, lsa_header.ls_sequence_num,
-					lsa_header.ls_checksum)
+				/*				fmt.Println("DBD: Header decoded ",
+								"ls_age:options:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
+								lsa_header.ls_age, lsa_header.ls_type, lsa_header.link_state_id,
+								lsa_header.adv_router_id, lsa_header.ls_sequence_num,
+								lsa_header.ls_checksum) */
 				dbd_data.lsa_headers = append(dbd_data.lsa_headers, lsa_header)
 			}
 		}
@@ -174,7 +174,6 @@ func encodeLSAHeader(dd_data ospfDatabaseDescriptionData) []byte {
 func encodeDatabaseDescriptionData(dd_data ospfDatabaseDescriptionData) []byte {
 	pkt := make([]byte, OSPF_DBD_MIN_SIZE)
 	binary.BigEndian.PutUint16(pkt[0:2], dd_data.interface_mtu)
-	//pkt[3] = dd_data.options
 	pkt[2] = 0x2
 	imms := 0
 	if dd_data.ibit {
@@ -188,22 +187,15 @@ func encodeDatabaseDescriptionData(dd_data ospfDatabaseDescriptionData) []byte {
 	}
 	pkt[3] = byte(imms)
 	fmt.Println("data imms  ", pkt[3])
-	//	pkt[3] = dd_data.ibit | dd_data.mbit | dd_data.msbit
 	binary.BigEndian.PutUint32(pkt[4:8], dd_data.dd_sequence_number)
 	lsa_pkt := encodeLSAHeader(dd_data)
 	if lsa_pkt != nil {
 		pkt = append(pkt, lsa_pkt...)
 	}
 
-	fmt.Println("data consrtructed  ", pkt)
 	return pkt
 }
 
-/*
-func constructDatabaseDescriptionPaket(intf IntfConf, nbr OspfNeighborEntry) {
-
-}
-*/
 func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 	nbrConf OspfNeighborEntry, dbdData ospfDatabaseDescriptionData, dstMAC net.HardwareAddr) (data []byte) {
 	ospfHdr := OSPFHeader{
@@ -214,7 +206,6 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 		areaId:   ent.IfAreaId,
 		chksum:   0,
 		authType: ent.IfAuthType,
-		//authKey:        ent.IfAuthKey,
 	}
 
 	ospfPktlen := OSPF_HEADER_SIZE
@@ -224,12 +215,12 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 	ospfHdr.pktlen = uint16(ospfPktlen)
 
 	ospfEncHdr := encodeOspfHdr(ospfHdr)
-	server.logger.Info(fmt.Sprintln("ospfEncHdr:", ospfEncHdr))
+	//server.logger.Info(fmt.Sprintln("ospfEncHdr:", ospfEncHdr))
 	dbdDataEnc := encodeDatabaseDescriptionData(dbdData)
-	server.logger.Info(fmt.Sprintln("DBD Pkt:", dbdDataEnc))
+	//server.logger.Info(fmt.Sprintln("DBD Pkt:", dbdDataEnc))
 
 	ospf := append(ospfEncHdr, dbdDataEnc...)
-	server.logger.Info(fmt.Sprintln("OSPF DBD:", ospf))
+	//server.logger.Info(fmt.Sprintln("OSPF DBD:", ospf))
 	csum := computeCheckSum(ospf)
 	binary.BigEndian.PutUint16(ospf[12:14], csum)
 	copy(ospf[16:24], ent.IfAuthKey)
@@ -258,44 +249,16 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 		ComputeChecksums: true,
 	}
 	gopacket.SerializeLayers(buffer, options, &ethLayer, &ipLayer, gopacket.Payload(ospf))
-	server.logger.Info(fmt.Sprintln("buffer: ", buffer))
+	//	server.logger.Info(fmt.Sprintln("buffer: ", buffer))
 	dbdPkt := buffer.Bytes()
-	server.logger.Info(fmt.Sprintln("dbdPkt: ", dbdPkt))
+	//	server.logger.Info(fmt.Sprintln("dbdPkt: ", dbdPkt))
 
 	return dbdPkt
 
 }
 
-func (server *OSPFServer) SendDBDPkt(nbrKey uint32) {
-	for {
-		nbrConf, _ := server.NeighborConfigMap[nbrKey]
-		intConf, _ := server.IntfConfMap[nbrConf.intfConfKey]
-		dstMac, _ := ospfNeighborIPToMAC[nbrKey]
-		select {
-		case dbd_mdata := <-nbrConf.ospfNbrDBDSendCh:
-			data := server.BuildDBDPkt(nbrConf.intfConfKey, intConf, nbrConf, dbd_mdata, dstMac)
-			//case <-nbrConf.ospfNbrDBDTickerCh.C: // retransmit interval over
-			server.SendOspfPkt(nbrConf.intfConfKey, data)
-		case lsa_data := <-nbrConf.ospfNbrLsaSendCh:
-			server.logger.Info(fmt.Sprintln("Send LSA: nbrconf ,  lsa_data", nbrConf, lsa_data))
-			data := server.BuildLSAReqPkt(nbrConf.intfConfKey, intConf, nbrConf, lsa_data, dstMac)
-			server.SendOspfPkt(nbrConf.intfConfKey, data)
-
-		case lsa_upd_pkt := <-nbrConf.ospfNbrLsaUpdSendCh:
-			server.SendOspfPkt(nbrConf.intfConfKey, lsa_upd_pkt)
-
-		case stop := <-nbrConf.ospfNbrDBDStopCh:
-			if stop == true {
-				return
-			}
-		}
-	}
-
-}
-
 func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadata,
 	ipHdrMd *IpHdrMetadata, key IntfConfKey, srcMAC net.HardwareAddr) error {
-	//ent, _ := server.IntfConfMap[key]
 	ospfdbd_data := newOspfDatabaseDescriptionData()
 	ospfdbd_data.lsa_headers = []ospfLSAHeader{}
 	routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
@@ -312,7 +275,7 @@ func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadat
 		ospfNbrDBDData: *ospfdbd_data,
 	}
 	ospfNeighborIPToMAC[dbdNbrMsg.ospfNbrConfKey.OspfNbrRtrId] = srcMAC
-	fmt.Println(" lsa_header length = ", len(ospfdbd_data.lsa_headers))
+	//fmt.Println(" lsa_header length = ", len(ospfdbd_data.lsa_headers))
 	dbdNbrMsg.ospfNbrDBDData.lsa_headers = []ospfLSAHeader{}
 
 	copy(dbdNbrMsg.ospfNbrDBDData.lsa_headers, ospfdbd_data.lsa_headers)
@@ -322,7 +285,7 @@ func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadat
 	}
 
 	server.neighborDBDEventCh <- dbdNbrMsg
-	fmt.Println("msg lsa_header length = ", len(dbdNbrMsg.ospfNbrDBDData.lsa_headers))
+	//fmt.Println("msg lsa_header length = ", len(dbdNbrMsg.ospfNbrDBDData.lsa_headers))
 	return nil
 }
 
@@ -344,7 +307,7 @@ func (server *OSPFServer) ConstructAndSendDbdPacket(nbrKey NeighborConfKey, lsa_
 
 	if append_lsa && exists {
 		dbd_mdata.lsa_headers = []ospfLSAHeader{}
-		fmt.Sprintln("DBD: add lsa to the packet..")
+		//	fmt.Sprintln("DBD: add lsa to the packet..")
 		var index uint8
 		nbrCon.db_summary_list_mutex.Lock()
 		db_list := ospfNeighborDBSummary_list[nbrKey.OspfNbrRtrId]
@@ -361,8 +324,3 @@ func (server *OSPFServer) ConstructAndSendDbdPacket(nbrKey NeighborConfKey, lsa_
 	nbrCon.ospfNbrDBDSendCh <- dbd_mdata
 	return dbd_mdata
 }
-
-/*
-func (server *OSPFServer) sendDBDPkt(dbd_pkt ospfDatabaseDescriptionData, nbrKey NeighborConfKey, intfKey IntfConfKey) {
-
-}*/

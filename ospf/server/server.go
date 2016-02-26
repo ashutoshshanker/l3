@@ -34,6 +34,13 @@ type LsdbKey struct {
 	AreaId uint32
 }
 
+type LsdbSliceEnt struct {
+	AreaId uint32
+	LSType uint8
+	LSId   uint32
+	AdvRtr uint32
+}
+
 type OSPFServer struct {
 	logger             *syslog.Writer
 	ribdClient         RibdClient
@@ -46,6 +53,8 @@ type OSPFServer struct {
 	AreaConfigCh       chan config.AreaConf
 	IntfConfigCh       chan config.InterfaceConf
 	AreaLsdb           map[LsdbKey]LSDatabase
+	LsdbSlice          []LsdbSliceEnt
+	LsdbStateTimer     *time.Timer
 	AreaSelfOrigLsa    map[LsdbKey]SelfOrigLsa
 	LsdbUpdateCh       chan LsdbUpdateMsg
 	LsaUpdateRetCodeCh chan bool
@@ -116,6 +125,7 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.NetworkDRChangeCh = make(chan LSAChangeMsg)
 	ospfServer.CreateNetworkLSACh = make(chan NetworkLSAChangeMsg)
 	ospfServer.FlushNetworkLSACh = make(chan NetworkLSAChangeMsg)
+	ospfServer.LsdbSlice = []LsdbSliceEnt{}
 	ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
 	ospfServer.LsaUpdateRetCodeCh = make(chan bool)
 	ospfServer.AdjOKEvtCh = make(chan AdjOKEvtMsg)

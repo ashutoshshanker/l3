@@ -28,7 +28,6 @@ var INVALID_NEIGHBOR_CONF_KEY uint32
 var neighborBulkSlice []NeighborConfKey
 
 type OspfNeighborEntry struct {
-	//	OspfNbrRtrId           uint32
 	OspfNbrIPAddr          net.IP
 	OspfRtrPrio            uint8
 	intfConfKey            IntfConfKey
@@ -44,7 +43,7 @@ type OspfNeighborEntry struct {
 	ospfNbrDBDSendCh       chan ospfDatabaseDescriptionData
 	ospfNbrLsaSendCh       chan []ospfLSAReq
 	ospfNbrLsaUpdSendCh    chan []byte
-	ospfNbrDBDStopCh       chan bool
+	ospfRxTxNbrPktStopCh   chan bool
 	ospfNbrLsaIndex        uint8       // db_summary list index
 	ospfNbrLsaReqIndex     uint8       //req_list index
 	ospfNeighborLsaRxTimer *time.Timer // retx interval timer
@@ -131,7 +130,7 @@ func (server *OSPFServer) UpdateNeighborConf() {
 		select {
 		case nbrMsg := <-(server.neighborConfCh):
 			var nbrConf OspfNeighborEntry
-			server.logger.Info(fmt.Sprintln("Update neighbor conf.  received"))
+			//server.logger.Info(fmt.Sprintln("Update neighbor conf.  received"))
 			if nbrMsg.nbrMsgType == NBRUPD {
 				nbrConf = server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId]
 			}
@@ -151,7 +150,7 @@ func (server *OSPFServer) UpdateNeighborConf() {
 
 				nbrConf.ospfNbrDBDSendCh = nbrMsg.ospfNbrEntry.ospfNbrDBDSendCh
 				server.neighborBulkSlice = append(server.neighborBulkSlice, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
-				nbrConf.ospfNbrDBDStopCh = make(chan bool)
+				nbrConf.ospfRxTxNbrPktStopCh = make(chan bool)
 				nbrConf.ospfNbrLsaSendCh = make(chan []ospfLSAReq)
 				nbrConf.ospfNbrLsaUpdSendCh = make(chan []byte)
 				nbrConf.req_list_mutex = &sync.Mutex{}
@@ -165,8 +164,6 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				}
 			}
 
-			server.logger.Info(fmt.Sprintln("Updated neighbor with nbr id - ",
-				nbrMsg.ospfNbrConfKey.OspfNbrRtrId))
 			if nbrMsg.nbrMsgType == NBRUPD {
 				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				nbrConf.NbrDeadTimer.Stop()
@@ -176,7 +173,7 @@ func (server *OSPFServer) UpdateNeighborConf() {
 			}
 			if nbrMsg.nbrMsgType == NBRDEL {
 				server.neighborBulkSlice = append(server.neighborBulkSlice, INVALID_NEIGHBOR_CONF_KEY)
-				nbrConf.ospfNbrDBDStopCh <- true
+				nbrConf.ospfRxTxNbrPktStopCh <- true
 				delete(server.NeighborConfigMap, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
 				server.logger.Info(fmt.Sprintln("DELETE neighbor with nbr id - ",
 					nbrMsg.ospfNbrConfKey.OspfNbrRtrId))

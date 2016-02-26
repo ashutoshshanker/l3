@@ -536,6 +536,56 @@ func policyEngineImplementActions(route ribd.Routes, policyStmt PolicyStmt, para
 	}
 	return actionList
 }
+func findPrefixMatch(ipAddr string, mask string, ipPrefix patriciaDB.Prefix, policyName string)(match bool){
+    logger.Println("Prefix match policy ", policyName)
+	policyListItem := PrefixPolicyListDB.GetLongestPrefixNode(ipPrefix)
+	if policyListItem == nil {
+		logger.Println("intf stored at prefix ", ipPrefix, " is nil")
+		return false
+	}
+    if policyListItem != nil && reflect.TypeOf(policyListItem).Kind() != reflect.Slice {
+		logger.Println("Incorrect data type for this prefix ")
+		 return false
+	}
+	policyListSlice := reflect.ValueOf(policyListItem)
+	for idx :=0;idx < policyListSlice.Len();idx++ {
+	   prefixPolicyListInfo := policyListSlice.Index(idx).Interface().(PrefixPolicyListInfo)
+	   if prefixPolicyListInfo.policyName != policyName {
+	      logger.Println("Found a potential match for this prefix but the policy ", policyName, " is not what we are looking for")
+		  continue
+	   }
+	   if prefixPolicyListInfo.lowRange == -1 && prefixPolicyListInfo.highRange == -1 {
+          logger.Println("Looking for exact match condition for prefix ", prefixPolicyListInfo.ipPrefix)
+		  if bytes.Equal(ipPrefix, prefixPolicyListInfo.ipPrefix) {
+			 logger.Println(" Matched the prefix")
+	         return true
+		  }	else {
+			 logger.Println(" Did not match the exact prefix")
+		     return false	
+		  }
+	   }
+	   maskIP,err := getIP(mask)
+	   if err != nil {
+		 logger.Println("Error getting maskIP")
+		 return false
+	   }
+	   logger.Println("maskIP = ", maskIP)
+	   maskLen,err := getPrefixLen(maskIP)
+	   if err != nil {
+		  logger.Println("Error getting maskLen")
+		  return false
+	   }
+	   logger.Println("Mask len = ", maskLen)
+	   if maskLen < prefixPolicyListInfo.lowRange || maskLen > prefixPolicyListInfo.highRange {
+	      logger.Println("Mask range of the route ", maskLen , " not within the required mask range:", prefixPolicyListInfo.lowRange,"..", prefixPolicyListInfo.highRange)	
+		  return false
+	   } else {
+	      logger.Println("Mask range of the route ", maskLen , " within the required mask range:", prefixPolicyListInfo.lowRange,"..", prefixPolicyListInfo.highRange)	
+		  return true
+	   }
+	} 
+	return match
+}
 func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (match bool, conditionsList []string){
     logger.Println("policyEngineMatchConditions")
 	var i int
@@ -559,7 +609,13 @@ func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (matc
 		  if err != nil {
 			logger.Println("Invalid ipPrefix for the route ", route.Ipaddr," ", route.Mask)
 		  }
-	      policyListItem:= PrefixPolicyListDB.Get(ipPrefix)
+		  match := findPrefixMatch(route.Ipaddr, route.Mask, ipPrefix,policyStmt.name)
+		  if match {
+		    logger.Println("Found a match for this prefix")
+			anyConditionsMatch = true
+			addConditiontoList = true
+		  }
+	      /*policyListItem:= PrefixPolicyListDB.Get(ipPrefix)
 		  if policyListItem == nil {
 			logger.Println("no policies configured for the prefix ", ipPrefix)
 			break
@@ -570,12 +626,12 @@ func PolicyEngineMatchConditions(route ribd.Routes, policyStmt PolicyStmt) (matc
 	      }
 		  policyListSlice := reflect.ValueOf(policyListItem)
 		  for idx :=0;idx < policyListSlice.Len();idx++ {
-			if policyListSlice.Index(idx).Interface().(string) == policyStmt.name {
+			if policyListSlice.Index(idx).Interface().(PrefixPolicyListInfo).policyName == policyStmt.name {
 				logger.Println("Found a match for this prefix")
 				anyConditionsMatch = true
 				addConditiontoList = true
 			}
-		} 
+		} */
 		break
 		case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
 		  logger.Println("PolicyConditionTypeProtocolMatch case")
@@ -930,7 +986,7 @@ func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, h
   for i:=0;i<len(selectedRouteList);i++ {
      selectedRouteInfoRecord := selectedRouteList[i]	
      policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid:rmapInfoRecordList.isPolicyBasedStateValid}
-     params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
+     params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, nextHopIp: selectedRouteInfoRecord.nextHopIp.String(),sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
      if len(rmapInfoRecordList.policyList) == 0 {
 	  logger.Println("This route has no policy applied to it so far, just apply the new policy")
       policyEngineApplyPolicy(&policyRoute, policy, ribdCommonDefs.PolicyPath_All,params, &policyHit)

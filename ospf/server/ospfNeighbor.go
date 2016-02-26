@@ -169,7 +169,6 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 			OspfNeighborLastDbd[nbrKey] = dbd_mdata
 
 		case config.NbrExchange:
-			//TODO - Fix THIS
 			isDiscard := server.exchangePacketDiscardCheck(nbrConf, nbrDbPkt)
 			last_exchange := false
 			if isDiscard {
@@ -276,6 +275,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 			server.neighborConfCh <- nbrConfMsg
 
 		case config.NbrLoading:
+			var seq_num uint32
 			server.logger.Info(fmt.Sprintln("DBD: Loading . Nbr ", nbrKey.OspfNbrRtrId))
 			isDiscard := server.exchangePacketDiscardCheck(nbrConf, nbrDbPkt)
 			if isDiscard {
@@ -284,10 +284,9 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				//update neighbor to exchange start state and send dbd
 
 				nbrConf.OspfNbrState = config.NbrExchangeStart
-				//nbrConf.ospf_db_req_list = []ospfLSAHeader{}
-				//nbrConf.ospf_db_summary_list = []ospfLSAHeader{}
 				nbrConf.isMaster = false
 				dbd_mdata = server.ConstructAndSendDbdPacket(nbrKey, 0, true, true, true, nbrConf.ospfNbrSeqNum+1, false, false)
+				seq_num = dbd_mdata.dd_sequence_number
 			} else {
 				/* dbd received in this stage is duplicate.
 				    slave - Send the old dbd packet.
@@ -297,6 +296,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					nbrConf.ospfNbrDBDSendCh <- OspfNeighborLastDbd[nbrKey]
 				}
 				nbrConf.ospfNbrLsaReqIndex = server.BuildAndSendLSAReq(nbrKey.OspfNbrRtrId, nbrConf)
+				seq_num = OspfNeighborLastDbd[nbrKey].dd_sequence_number
 			}
 			nbrConfMsg := ospfNeighborConfMsg{
 				ospfNbrConfKey: NeighborConfKey{
@@ -310,7 +310,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					OspfNbrState:           nbrConf.OspfNbrState,
 					OspfNbrInactivityTimer: time.Now(),
 					OspfNbrDeadTimer:       nbrConf.OspfNbrDeadTimer,
-					ospfNbrSeqNum:          dbd_mdata.dd_sequence_number,
+					ospfNbrSeqNum:          seq_num,
 					isMaster:               nbrConf.isMaster,
 					ospfNbrLsaReqIndex:     nbrConf.ospfNbrLsaReqIndex,
 				},
@@ -334,8 +334,9 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 	}
 }
 
-func (server *OSPFServer) ProcessHelloPktEvent() {
+func (server *OSPFServer) ProcessNbrPktEvent() {
 	for {
+
 		select {
 		case nbrData := <-(server.neighborHelloEventCh):
 			server.logger.Info(fmt.Sprintln("NBREVENT: Received hellopkt event for nbrId ", nbrData.RouterId, " two_way", nbrData.TwoWayStatus))
@@ -347,7 +348,7 @@ func (server *OSPFServer) ProcessHelloPktEvent() {
 			_, exists := server.NeighborConfigMap[nbrData.RouterId]
 			send_dbd = false
 			if exists {
-				fmt.Println("NBREVENT:Nbr ", nbrData.RouterId, "exists in the global list.")
+				//fmt.Println("NBREVENT:Nbr ", nbrData.RouterId, "exists in the global list.")
 
 				nbrConf = server.NeighborConfigMap[nbrData.RouterId]
 				if nbrData.TwoWayStatus { // update the state
@@ -412,7 +413,7 @@ func (server *OSPFServer) ProcessHelloPktEvent() {
 				var send_dbd bool
 				server.logger.Info(fmt.Sprintln("NBREVENT: Create new neighbor with id ", nbrData.RouterId))
 
-				go server.SendDBDPkt(nbrData.RouterId)
+				go server.ProcessRxTxNbrPkt(nbrData.RouterId)
 				if nbrData.TwoWayStatus { // update the state
 					startAdjacency := server.adjacancyEstablishementCheck(false, true)
 					if startAdjacency {
@@ -469,23 +470,70 @@ func (server *OSPFServer) ProcessHelloPktEvent() {
 			server.logger.Info(fmt.Sprintln("NBREVENT: DBD received  ", nbrDbPkt))
 			server.processDBDEvent(nbrDbPkt.ospfNbrConfKey, nbrDbPkt.ospfNbrDBDData)
 
-		case nbrLSAReqPkt := <-(server.neighborLSAReqEventCh):
-			server.logger.Info(fmt.Sprintln("NBREVENT: LSA req received.", nbrLSAReqPkt))
-			server.processLSAReqEvent(nbrLSAReqPkt)
-
-		case nbrLSAUpdPkt := <-(server.neighborLSAUpdEventCh):
-			server.logger.Info(fmt.Sprintln("NBREVENT: LSA update received.", nbrLSAUpdPkt))
-			server.processLSAUpdEvent(nbrLSAUpdPkt)
-
-		case nbrLSAAckPkt := <-(server.neighborLSAACKEventCh):
-			server.logger.Info(fmt.Sprintln("NBREVENT: LSA ACK received.", nbrLSAAckPkt))
-			server.ProcessLSAAckEvent(nbrLSAAckPkt)
 		case state := <-server.neighborFSMCtrlCh:
 			if state == false {
 				return
 			}
 		}
 	} // end of for
+}
+
+func (server *OSPFServer) ProcessNbrPkt() {
+	for {
+		select {
+		case nbrLSAReqPkt := <-(server.neighborLSAReqEventCh):
+			nbr, exists := server.NeighborConfigMap[nbrLSAReqPkt.nbrKey]
+			if exists && nbr.OspfNbrState >= config.NbrExchange {
+
+				server.processLSAReqEvent(nbrLSAReqPkt)
+			}
+
+		case nbrLSAUpdPkt := <-(server.neighborLSAUpdEventCh):
+			nbr, exists := server.NeighborConfigMap[nbrLSAUpdPkt.nbrKey]
+
+			if exists && nbr.OspfNbrState >= config.NbrExchange {
+
+				server.processLSAUpdEvent(nbrLSAUpdPkt)
+			}
+
+		case nbrLSAAckPkt := <-(server.neighborLSAACKEventCh):
+			nbr, exists := server.NeighborConfigMap[nbrLSAAckPkt.nbrId]
+
+			if exists && nbr.OspfNbrState >= config.NbrExchange {
+
+				server.ProcessLSAAckEvent(nbrLSAAckPkt)
+			}
+			/* TODO add stop channel */
+		}
+
+	}
+}
+
+func (server *OSPFServer) ProcessRxTxNbrPkt(nbrKey uint32) {
+	for {
+		nbrConf, _ := server.NeighborConfigMap[nbrKey]
+		intConf, _ := server.IntfConfMap[nbrConf.intfConfKey]
+		dstMac, _ := ospfNeighborIPToMAC[nbrKey]
+		select {
+		case dbd_mdata := <-nbrConf.ospfNbrDBDSendCh:
+			data := server.BuildDBDPkt(nbrConf.intfConfKey, intConf, nbrConf, dbd_mdata, dstMac)
+			//case <-nbrConf.ospfNbrDBDTickerCh.C: // retransmit interval over
+			server.SendOspfPkt(nbrConf.intfConfKey, data)
+		case lsa_data := <-nbrConf.ospfNbrLsaSendCh:
+			server.logger.Info(fmt.Sprintln("Send LSA: nbrconf ,  lsa_data", nbrConf, lsa_data))
+			data := server.BuildLSAReqPkt(nbrConf.intfConfKey, intConf, nbrConf, lsa_data, dstMac)
+			server.SendOspfPkt(nbrConf.intfConfKey, data)
+
+		case lsa_upd_pkt := <-nbrConf.ospfNbrLsaUpdSendCh:
+			server.SendOspfPkt(nbrConf.intfConfKey, lsa_upd_pkt)
+
+		case stop := <-nbrConf.ospfRxTxNbrPktStopCh:
+			if stop == true {
+				return
+			}
+		}
+	}
+
 }
 
 func (server *OSPFServer) neighborDeadTimerEvent(nbrConfKey NeighborConfKey) {

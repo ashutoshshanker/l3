@@ -1,6 +1,8 @@
 package server
 
-import ()
+import (
+	"l3/bfd/bfddCommonDefs"
+)
 
 type GlobalConfig struct {
 	Enable bool
@@ -23,7 +25,7 @@ type IntfConfig struct {
 	RequiredMinEchoRxInterval int32
 	DemandEnabled             bool
 	AuthenticationEnabled     bool
-	AuthenticationType        int32
+	AuthenticationType        AuthenticationType
 	AuthenticationKeyId       int32
 	AuthenticationData        string
 }
@@ -38,15 +40,16 @@ type IntfState struct {
 	RequiredMinEchoRxInterval int32
 	DemandEnabled             bool
 	AuthenticationEnabled     bool
-	AuthenticationType        int32
+	AuthenticationType        AuthenticationType
 	AuthenticationKeyId       int32
 	AuthenticationData        string
 }
 
 type SessionConfig struct {
 	DestIp    string
-	Protocol  int32
-	Operation int32
+	PerLink   bool
+	Protocol  bfddCommonDefs.BfdSessionOwner
+	Operation bfddCommonDefs.BfdSessionOperation
 }
 
 type SessionState struct {
@@ -54,6 +57,9 @@ type SessionState struct {
 	LocalIpAddr           string
 	RemoteIpAddr          string
 	InterfaceId           int32
+	PerLinkSession        bool
+	LocalMacAddr          string
+	RemoteMacAddr         string
 	RegisteredProtocols   []bool
 	SessionState          BfdSessionState
 	RemoteSessionState    BfdSessionState
