@@ -145,6 +145,8 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 
 		case <-stopCh:
 			if p.conn != nil {
+				p.logger.Info(fmt.Sprintf("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+					"Closing the connection"))
 				(*p.conn).Close()
 			}
 			return

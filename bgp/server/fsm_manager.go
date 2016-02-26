@@ -81,6 +81,7 @@ func (mgr *FSMManager) Init() {
 					if fsm != nil && fsm.peerConn != nil && fsm.peerConn.dir == config.ConnDirIn {
 						mgr.logger.Info(fmt.Sprintln("A FSM is already created for a incoming connection"))
 						foundInConn = true
+						inConn.Close()
 						break
 					}
 				}
