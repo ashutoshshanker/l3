@@ -72,7 +72,9 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 
 	vrrpGblInfo[key] = gblInfo
 	go VrrpUpdateGblInfoTimers(key)
-	go VrrpInitPacketListener()
+	if vrrpListener == nil || vrrpNetPktConn == nil {
+		go VrrpInitPacketListener()
+	}
 	return true, nil
 }
 func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,

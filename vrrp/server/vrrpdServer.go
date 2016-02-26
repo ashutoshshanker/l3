@@ -90,6 +90,7 @@ func VrrpUpdateGblInfoTimers(key string) {
 	if ok := VrrpUpdateIntfIpAddr(&gblInfo); ok == false {
 		// If we miss Asic Notification then do one time get bulk for Ipv4
 		// Interface... Once done then update Ip Addr again
+		logger.Err("recalling get ipv4interface list")
 		VrrpGetIPv4IntfList()
 		VrrpUpdateIntfIpAddr(&gblInfo)
 	}
@@ -223,10 +224,11 @@ func VrrpConnectAndInitPortVlan() error {
 }
 
 func VrrpAllocateMemoryToGlobalDS() {
-	vrrpGblInfo = make(map[string]VrrpGlobalInfo, 50)
-	vrrpIfIndexIpAddr = make(map[int32]string, 5)
-	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int]int32, 5)
-	vrrpVlanId2Name = make(map[int]string, 5)
+	vrrpGblInfo = make(map[string]VrrpGlobalInfo, VRRP_GLOBAL_INFO_DEFAULT_SIZE)
+	vrrpIfIndexIpAddr = make(map[int32]string, VRRP_INTF_IPADDR_MAPPING_DEFAULT_SIZE)
+	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int]int32, VRRP_LINUX_INTF_MAPPING_DEFAULT_SIZE)
+	vrrpVlanId2Name = make(map[int]string, VRRP_VLAN_MAPPING_DEFAULT_SIZE)
+	//vrrpIntfStateSlice = make([]string, VRRP_INTF_STATE_SLICE_DEFAULT_SIZE)
 }
 
 func VrrpDeAllocateMemoryToGlobalDS() {

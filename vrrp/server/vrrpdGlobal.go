@@ -90,8 +90,18 @@ const (
 	VRRP_USR_CONF_DB                    = "/UsrConfDb.db"
 	VRRP_INVALID_VRID                   = "VRID is invalid"
 	VRRP_CLIENT_CONNECTION_NOT_REQUIRED = "Connection to Client is not required"
+
 	// Control Message
 	vrrpCtrlFlag = ipv4.FlagTTL | ipv4.FlagSrc |
 		ipv4.FlagDst | ipv4.FlagInterface
+
+	// VRRP multicast ip address for join
 	VRRP_GROUP_IP = "224.0.0.18"
+
+	// Default Map Size
+	VRRP_GLOBAL_INFO_DEFAULT_SIZE         = 50
+	VRRP_VLAN_MAPPING_DEFAULT_SIZE        = 5
+	VRRP_INTF_STATE_SLICE_DEFAULT_SIZE    = 5
+	VRRP_LINUX_INTF_MAPPING_DEFAULT_SIZE  = 5
+	VRRP_INTF_IPADDR_MAPPING_DEFAULT_SIZE = 5
 )

@@ -2,8 +2,8 @@ package vrrpServer
 
 import (
 	"fmt"
-	_ "github.com/google/gopacket"
-	_ "github.com/google/gopacket/layers"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"golang.org/x/net/ipv4"
 	"net"
 )
@@ -15,33 +15,30 @@ func VrrpDecodeReceivedPkt(InData []byte, bytesRead int) {
 		return
 	}
 	logger.Info("Header: " + ipv4Header.String())
+	var eth layers.Ethernet
+	var ip4 layers.IPv4
+	var payload gopacket.Payload
+	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
+		&eth, &ip4, &payload)
+	decodedLayers := []gopacket.LayerType{} //make([]gopacket.LayerType, 0, 10)
+	err = parser.DecodeLayers(InData, &decodedLayers)
+	if err != nil {
+		logger.Err(fmt.Sprintln("Decoding of Packet failed",
+			err))
+		return
+	}
+	logger.Info(fmt.Sprintln("DecodeLayers: ", decodedLayers))
 	/*
-		var eth layers.Ethernet
-		var ip4 layers.IPv4
-		var ip6 layers.IPv6
-		var payload gopacket.Payload
-		parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
-			&eth, &ip4, &ip6, &payload)
-		decodedLayers := make([]gopacket.LayerType, 0, 10)
-		err := parser.DecodeLayers(InData, &decodedLayers)
-		if err != nil {
-			logger.Err(fmt.Sprintln("Decoding of Packet failed",
-				err))
-			return
-		}
-		logger.Info(fmt.Sprintln("DecodeLayers: ", decodedLayers))
 		for _, layerType := range decodedLayers {
 			switch layerType {
 			case layers.LayerTypeEthernet:
 				logger.Info(fmt.Sprintln("    Eth ", eth.SrcMAC, eth.DstMAC))
-			case layers.LayerTypeIPv6:
-				logger.Info(fmt.Sprintln("    IP6 ", ip6.SrcIP, ip6.DstIP))
 			case layers.LayerTypeIPv4:
 				logger.Info(fmt.Sprintln("    IP4 ", ip4.SrcIP, ip4.DstIP))
 			}
 		}
-		logger.Info(fmt.Sprintln("Payload is", payload))
 	*/
+	logger.Info(fmt.Sprintln("Payload is", payload))
 }
 
 func VrrpReceivePackets() {
