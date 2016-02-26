@@ -105,37 +105,13 @@ func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
 	} else if msg.MsgType == asicdConstDefs.NOTIFY_LAG_CREATE ||
 		msg.MsgType == asicdConstDefs.NOTIFY_LAG_DELETE {
 		// LAG Create, Delete
-	}
-}
-
-func (server *BFDServer) GetIPv4Interfaces() error {
-	server.logger.Info("Getting IPv4 interfaces from asicd")
-	var currMarker asicdServices.Int
-	var count asicdServices.Int
-	count = 100
-	for {
-		var ipv4IntfMsg IPv4IntfNotifyMsg
-		server.logger.Info(fmt.Sprintf("Getting %d objects from currMarker %d\n", count, currMarker))
-		IPIntfBulk, err := server.asicdClient.ClientHdl.GetBulkIPv4Intf(currMarker, count)
+		server.logger.Info("Recvd NOTIFY_LAG notification")
+		var lagNotifyMsg asicdConstDefs.LagNotifyMsg
+		err = json.Unmarshal(msg.Msg, &lagNotifyMsg)
 		if err != nil {
-			server.logger.Info(fmt.Sprintln("GetBulkIPv4Intf with err ", err))
-			return err
+			server.logger.Err(fmt.Sprintln("Unable to unmashal lagNotifyMsg:", msg.Msg))
+			return
 		}
-		if IPIntfBulk.Count == 0 {
-			server.logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4Intf"))
-			return nil
-		}
-		server.logger.Info(fmt.Sprintln("Got IPv4 interfaces - len  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfList), IPIntfBulk.Count))
-		for i := 0; i < int(IPIntfBulk.Count); i++ {
-			ipv4IntfMsg.IpAddr = IPIntfBulk.IPv4IntfList[i].IpAddr
-			ipv4IntfMsg.IfId = IPIntfBulk.IPv4IntfList[i].IfIndex
-			server.createIPIntfConfMap(ipv4IntfMsg)
-			server.logger.Info(fmt.Sprintln("Created IPv4 interface (%d : %s)\n", ipv4IntfMsg.IfId, ipv4IntfMsg.IpAddr))
-		}
-		if IPIntfBulk.More == false {
-			server.logger.Info(fmt.Sprintln("Get IPv4 interfaces - more returned as false, so no more get bulks"))
-			return nil
-		}
-		currMarker = asicdServices.Int(IPIntfBulk.EndIdx)
+		server.updateLagPropertyMap(lagNotifyMsg, msg.MsgType)
 	}
 }

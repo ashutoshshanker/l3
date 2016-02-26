@@ -53,6 +53,7 @@ type BfdInterface struct {
 type BfdSessionMgmt struct {
 	DestIp   string
 	Protocol bfddCommonDefs.BfdSessionOwner
+	PerLink  bool
 }
 
 type BfdSession struct {
@@ -103,6 +104,7 @@ type BFDServer struct {
 	AdminUpSessionCh    chan BfdSessionMgmt
 	AdminDownSessionCh  chan BfdSessionMgmt
 	SessionConfigCh     chan SessionConfig
+	CreatedSessionCh    chan int32
 	bfddPubSocket       *nanomsg.PubSocket
 	lagPropertyMap      map[int32]LagProperty
 	bfdGlobal           BfdGlobal
@@ -381,7 +383,8 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.ConnectToServers(paramFile)
 	server.initBfdGlobalConfDefault()
 	server.BuildPortPropertyMap()
-	server.GetIPv4Interfaces()
+	server.BuildLagPropertyMap()
+	server.BuildIPv4InterfacesMap()
 	/*
 		server.logger.Info("Listen for RIBd updates")
 		server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
