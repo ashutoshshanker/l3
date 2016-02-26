@@ -4,83 +4,61 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"golang.org/x/net/ipv4"
-	"net"
+	"github.com/google/gopacket/pcap"
 )
 
-func VrrpDecodeReceivedPkt(InData []byte, bytesRead int) {
-	ipv4Header, err := ipv4.ParseHeader(InData)
-	if err != nil {
-		logger.Info(fmt.Sprintln("Reading header failed", err))
-		return
-	}
-	logger.Info("Header: " + ipv4Header.String())
+func VrrpDecodeReceivedPkt(packet gopacket.Packet) {
+	var err error
 	var eth layers.Ethernet
 	var ip4 layers.IPv4
 	var payload gopacket.Payload
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
 		&eth, &ip4, &payload)
-	decodedLayers := []gopacket.LayerType{} //make([]gopacket.LayerType, 0, 10)
-	err = parser.DecodeLayers(InData, &decodedLayers)
+	decodedLayers := []gopacket.LayerType{}
+	err = parser.DecodeLayers(packet.Data(), &decodedLayers)
 	if err != nil {
 		logger.Err(fmt.Sprintln("Decoding of Packet failed",
 			err))
 		return
 	}
 	logger.Info(fmt.Sprintln("DecodeLayers: ", decodedLayers))
-	/*
-		for _, layerType := range decodedLayers {
-			switch layerType {
-			case layers.LayerTypeEthernet:
-				logger.Info(fmt.Sprintln("    Eth ", eth.SrcMAC, eth.DstMAC))
-			case layers.LayerTypeIPv4:
-				logger.Info(fmt.Sprintln("    IP4 ", ip4.SrcIP, ip4.DstIP))
-			}
-		}
-	*/
 	logger.Info(fmt.Sprintln("Payload is", payload))
 }
 
-func VrrpReceivePackets() {
-	var buf []byte = make([]byte, 1500)
+func VrrpReceivePackets(pHandle *pcap.Handle, IfIndex int32) {
+	packetSource := gopacket.NewPacketSource(pHandle, pHandle.LinkType())
+	inCh := packetSource.Packets()
 	for {
-		if vrrpListener == nil || vrrpNetPktConn == nil {
-			logger.Info("Listerner is not set...")
-			return
+		packet, ok := <-inCh
+		if ok {
+			VrrpDecodeReceivedPkt(packet)
 		}
-		bytesRead, ctrlMsg, srcAddr, err := vrrpListener.ReadFrom(buf)
-		if err != nil {
-			logger.Err(fmt.Sprintln("Reading buffer failed",
-				err))
-			continue
-		}
-		logger.Info(fmt.Sprintln("bytesRead:", bytesRead,
-			"ctrlMsg:", ctrlMsg,
-			"srcAddr:", srcAddr))
-		VrrpDecodeReceivedPkt(buf, bytesRead)
 	}
 }
 
-func VrrpInitPacketListener() {
-	var err error
-	vrrpNetPktConn, err = net.ListenPacket("ip4:112", "0.0.0.0")
+func VrrpInitPacketListener(key string, IfIndex int32) {
+	linuxInterface, ok := vrrpLinuxIfIndex2AsicdIfIndex[IfIndex]
+	if ok == false {
+		logger.Err(fmt.Sprintln("no linux interface for ifindex",
+			IfIndex))
+		return
+	}
+	handle, err := pcap.OpenLive(linuxInterface.Name, vrrpSnapshotLen,
+		vrrpPromiscuous, vrrpTimeout)
 	if err != nil {
 		logger.Err(fmt.Sprintln("Creating VRRP listerner failed",
 			err))
 		return
 	}
-	vrrpListener = ipv4.NewPacketConn(vrrpNetPktConn)
-	allVRRPRouters := net.IPAddr{IP: net.ParseIP(VRRP_GROUP_IP)}
-	if err = vrrpListener.JoinGroup(nil, &allVRRPRouters); err != nil {
-		logger.Err(fmt.Sprintln("Joinging Group failed", err))
-		return
-	}
-	err = vrrpListener.SetControlMessage(vrrpCtrlFlag, true)
+	//filter := "ip host " + VRRP_GROUP_IP
+	err = handle.SetBPFFilter(VRRP_BPF_FILTER)
 	if err != nil {
-		logger.Err(fmt.Sprintln("Setting control flag failed",
-			err))
-		return
+		logger.Err(fmt.Sprintln("Setting filter", VRRP_BPF_FILTER,
+			"failed with", "err:", err))
 	}
-	logger.Info("VRRP listener UP and running")
-	go VrrpReceivePackets()
+	gblInfo := vrrpGblInfo[key]
+	gblInfo.pHandle = handle
+	vrrpGblInfo[key] = gblInfo
+	logger.Info(fmt.Sprintln("VRRP listener running for", IfIndex))
+	go VrrpReceivePackets(handle, IfIndex)
 }

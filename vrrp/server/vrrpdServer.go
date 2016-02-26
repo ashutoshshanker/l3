@@ -114,9 +114,10 @@ func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
 	}
 	logger.Info(fmt.Sprintln("Linux Id:", linuxInterface.Index,
 		"maps to IfIndex:", IfIndex))
-	entry := vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index]
-	entry = IfIndex
-	vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index] = entry
+	//entry := vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index]
+	//entry = IfIndex
+	vrrpLinuxIfIndex2AsicdIfIndex[IfIndex] = linuxInterface
+	//tempGblLinux = linuxInterface
 }
 
 func VrrpConnectToAsicd(client VrrpClientJson) error {
@@ -150,17 +151,20 @@ func VrrpConnectToUnConnectedClient(client VrrpClientJson) error {
 	}
 }
 
+func VrrpCloseAllPcapHandlers() {
+	for i := 0; i < len(vrrpIntfStateSlice); i++ {
+		key := vrrpIntfStateSlice[i]
+		gblInfo := vrrpGblInfo[key]
+		gblInfo.pHandle.Close()
+	}
+}
+
 func VrrpSignalHandler(sigChannel <-chan os.Signal) {
 	signal := <-sigChannel
 	switch signal {
 	case syscall.SIGHUP:
 		logger.Alert("Received SIGHUP Signal")
-		if vrrpListener != nil {
-			vrrpListener.Close()
-		}
-		if vrrpNetPktConn != nil {
-			vrrpNetPktConn.Close()
-		}
+		VrrpCloseAllPcapHandlers()
 		VrrpDeAllocateMemoryToGlobalDS()
 		logger.Info("Closed vrrp pkt handlers")
 		os.Exit(0)
@@ -224,11 +228,14 @@ func VrrpConnectAndInitPortVlan() error {
 }
 
 func VrrpAllocateMemoryToGlobalDS() {
-	vrrpGblInfo = make(map[string]VrrpGlobalInfo, VRRP_GLOBAL_INFO_DEFAULT_SIZE)
-	vrrpIfIndexIpAddr = make(map[int32]string, VRRP_INTF_IPADDR_MAPPING_DEFAULT_SIZE)
-	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int]int32, VRRP_LINUX_INTF_MAPPING_DEFAULT_SIZE)
-	vrrpVlanId2Name = make(map[int]string, VRRP_VLAN_MAPPING_DEFAULT_SIZE)
-	//vrrpIntfStateSlice = make([]string, VRRP_INTF_STATE_SLICE_DEFAULT_SIZE)
+	vrrpGblInfo = make(map[string]VrrpGlobalInfo,
+		VRRP_GLOBAL_INFO_DEFAULT_SIZE)
+	vrrpIfIndexIpAddr = make(map[int32]string,
+		VRRP_INTF_IPADDR_MAPPING_DEFAULT_SIZE)
+	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int32]*net.Interface,
+		VRRP_LINUX_INTF_MAPPING_DEFAULT_SIZE)
+	vrrpVlanId2Name = make(map[int]string,
+		VRRP_VLAN_MAPPING_DEFAULT_SIZE)
 }
 
 func VrrpDeAllocateMemoryToGlobalDS() {

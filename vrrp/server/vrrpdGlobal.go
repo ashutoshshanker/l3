@@ -4,10 +4,11 @@ import (
 	"asicdServices"
 	"database/sql"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
-	"golang.org/x/net/ipv4"
 	"log/syslog"
 	"net"
+	"time"
 	"vrrpd"
 )
 
@@ -68,6 +69,8 @@ type VrrpGlobalInfo struct {
 	IpAddr string
 	// cached info for IfName is required in future
 	IfName string
+	// Pcap Handler for receiving packets
+	pHandle *pcap.Handle
 }
 
 var (
@@ -78,11 +81,12 @@ var (
 	asicdSubSocket                *nanomsg.SubSocket
 	vrrpGblInfo                   map[string]VrrpGlobalInfo // IfIndex + VRID
 	vrrpIntfStateSlice            []string
-	vrrpNetPktConn                net.PacketConn
-	vrrpListener                  *ipv4.PacketConn
-	vrrpLinuxIfIndex2AsicdIfIndex map[int]int32
+	vrrpLinuxIfIndex2AsicdIfIndex map[int32]*net.Interface
 	vrrpIfIndexIpAddr             map[int32]string
 	vrrpVlanId2Name               map[int]string
+	vrrpSnapshotLen               int32         = 1024
+	vrrpPromiscuous               bool          = false
+	vrrpTimeout                   time.Duration = 30 * time.Second
 )
 
 const (
@@ -91,12 +95,9 @@ const (
 	VRRP_INVALID_VRID                   = "VRID is invalid"
 	VRRP_CLIENT_CONNECTION_NOT_REQUIRED = "Connection to Client is not required"
 
-	// Control Message
-	vrrpCtrlFlag = ipv4.FlagTTL | ipv4.FlagSrc |
-		ipv4.FlagDst | ipv4.FlagInterface
-
 	// VRRP multicast ip address for join
-	VRRP_GROUP_IP = "224.0.0.18"
+	VRRP_GROUP_IP   = "224.0.0.18"
+	VRRP_BPF_FILTER = "ip host " + VRRP_GROUP_IP
 
 	// Default Map Size
 	VRRP_GLOBAL_INFO_DEFAULT_SIZE         = 50
