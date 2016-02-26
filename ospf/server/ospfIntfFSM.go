@@ -201,7 +201,7 @@ func (server *OSPFServer) processNbrDownEvent(msg NbrStateChangeMsg,
 func (server *OSPFServer) processNbrFullStateMsg(msg NbrFullStateMsg,
 	key IntfConfKey) {
 	ent, _ := server.IntfConfMap[key]
-	areaId := convertIPv4ToUint32(ent.IfAreaId)
+	//areaId := convertIPv4ToUint32(ent.IfAreaId)
 	if msg.FullState == true {
 		server.logger.Info("Neighbor State changed to full state")
 	} else {
@@ -217,11 +217,19 @@ func (server *OSPFServer) processNbrFullStateMsg(msg NbrFullStateMsg,
 			nbrEntry.FullState = msg.FullState
 			ent.NeighborMap[nbrKey] = nbrEntry
 			server.IntfConfMap[key] = ent
-			lsaMsg := NetworkLSAChangeMsg{
+			/*lsaMsg := NetworkLSAChangeMsg{
 				areaId:  areaId,
 				intfKey: key,
-			}
-			server.CreateNetworkLSACh <- lsaMsg
+			}*/
+		//	server.CreateNetworkLSACh <- lsaMsg
+		}
+  		if msg.FullState {
+		/*
+		msg := nbrStateChangeMsg{
+			key: nbrKey.RouterId,
+			areaId: areaId,
+		} */
+  	//	server.neighborStateChangeCh <- msg
 		}
 	}
 }
@@ -443,7 +451,7 @@ func (server *OSPFServer) createAndSendEventsIntfFSM(key IntfConfKey,
 		if newState == config.DesignatedRouter {
 			// Construct Network LSA
 			server.logger.Info("1. Sending msg for Network LSA generation")
-			server.CreateNetworkLSACh <- msg1
+			//server.CreateNetworkLSACh <- msg1
 		} else if oldState == config.DesignatedRouter {
 			// Flush Network LSA
 			server.logger.Info("2. Sending msg for Network LSA generation")

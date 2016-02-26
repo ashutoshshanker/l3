@@ -61,7 +61,7 @@ type OSPFServer struct {
 	IntfStateChangeCh  chan LSAChangeMsg
 	NetworkDRChangeCh  chan LSAChangeMsg
 	FlushNetworkLSACh  chan NetworkLSAChangeMsg
-	CreateNetworkLSACh chan NetworkLSAChangeMsg
+	CreateNetworkLSACh chan ospfNbrMdata
 	AdjOKEvtCh         chan AdjOKEvtMsg
 
 	/*
@@ -91,6 +91,7 @@ type OSPFServer struct {
 	neighborLSAReqEventCh chan ospfNeighborLSAreqMsg
 	neighborLSAUpdEventCh chan ospfNeighborLSAUpdMsg
 	neighborLSAACKEventCh chan ospfNeighborLSAACKMsg
+	neighborStateChangeCh chan nbrStateChangeMsg
 	//neighborDBDEventCh   chan IntfToNeighDbdMsg
 
 	AreaStateTimer           *time.Timer
@@ -123,7 +124,7 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.AreaSelfOrigLsa = make(map[LsdbKey]SelfOrigLsa)
 	ospfServer.IntfStateChangeCh = make(chan LSAChangeMsg)
 	ospfServer.NetworkDRChangeCh = make(chan LSAChangeMsg)
-	ospfServer.CreateNetworkLSACh = make(chan NetworkLSAChangeMsg)
+	ospfServer.CreateNetworkLSACh = make(chan ospfNbrMdata)
 	ospfServer.FlushNetworkLSACh = make(chan NetworkLSAChangeMsg)
 	ospfServer.LsdbSlice = []LsdbSliceEnt{}
 	ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)

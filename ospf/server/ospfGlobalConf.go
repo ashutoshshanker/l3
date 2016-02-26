@@ -21,20 +21,20 @@ type GlobalConf struct {
 	RestartStrictLsaChecking bool
 	StubRouterAdvertisement  config.AdvertiseAction
 	Version                  uint8
-        AreaBdrRtrStatus         bool
-        ExternLsaCount           int32
-        ExternLsaChecksum        int32
-        OriginateNewLsas         int32
-        RxNewLsas                int32
-        OpaqueLsaSupport         bool
-        RestartStatus            config.RestartStatus
-        RestartAge               int32
-        RestartExitReason        config.RestartExitReason
-        AsLsaCount               int32
-        AsLsaCksumSum            int32
-        StubRouterSupport        bool
-        //DiscontinuityTime        string
-        DiscontinuityTime        int32 // This should be string
+	AreaBdrRtrStatus         bool
+	ExternLsaCount           int32
+	ExternLsaChecksum        int32
+	OriginateNewLsas         int32
+	RxNewLsas                int32
+	OpaqueLsaSupport         bool
+	RestartStatus            config.RestartStatus
+	RestartAge               int32
+	RestartExitReason        config.RestartExitReason
+	AsLsaCount               int32
+	AsLsaCksumSum            int32
+	StubRouterSupport        bool
+	//DiscontinuityTime        string
+	DiscontinuityTime int32 // This should be string
 }
 
 func (server *OSPFServer) updateGlobalConf(gConf config.GlobalConf) {
@@ -79,20 +79,20 @@ func (server *OSPFServer) initOspfGlobalConfDefault() {
 	server.ospfGlobalConf.RestartStrictLsaChecking = false
 	server.ospfGlobalConf.StubRouterAdvertisement = config.DoNotAdvertise
 	server.ospfGlobalConf.Version = uint8(OSPF_VERSION_2)
-        server.ospfGlobalConf.AreaBdrRtrStatus = false
-        server.ospfGlobalConf.ExternLsaCount = 0
-        server.ospfGlobalConf.ExternLsaChecksum = 0
-        server.ospfGlobalConf.OriginateNewLsas = 0
-        server.ospfGlobalConf.RxNewLsas = 0
-        server.ospfGlobalConf.OpaqueLsaSupport = false
-        server.ospfGlobalConf.RestartStatus = config.NotRestarting
-        server.ospfGlobalConf.RestartAge = 0
-        server.ospfGlobalConf.RestartExitReason = config.NoAttempt
-        server.ospfGlobalConf.AsLsaCount = 0
-        server.ospfGlobalConf.AsLsaCksumSum = 0
-        server.ospfGlobalConf.StubRouterSupport = false
-        //server.ospfGlobalConf.DiscontinuityTime = "0"
-        server.ospfGlobalConf.DiscontinuityTime = 0 //This should be string
+	server.ospfGlobalConf.AreaBdrRtrStatus = false
+	server.ospfGlobalConf.ExternLsaCount = 0
+	server.ospfGlobalConf.ExternLsaChecksum = 0
+	server.ospfGlobalConf.OriginateNewLsas = 0
+	server.ospfGlobalConf.RxNewLsas = 0
+	server.ospfGlobalConf.OpaqueLsaSupport = false
+	server.ospfGlobalConf.RestartStatus = config.NotRestarting
+	server.ospfGlobalConf.RestartAge = 0
+	server.ospfGlobalConf.RestartExitReason = config.NoAttempt
+	server.ospfGlobalConf.AsLsaCount = 0
+	server.ospfGlobalConf.AsLsaCksumSum = 0
+	server.ospfGlobalConf.StubRouterSupport = false
+	//server.ospfGlobalConf.DiscontinuityTime = "0"
+	server.ospfGlobalConf.DiscontinuityTime = 0 //This should be string
 	server.logger.Err("Global configuration initialized")
 }
 
@@ -110,7 +110,7 @@ func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {
 		server.nbrFSMCtrlCh <- false
 		server.neighborConfStopCh <- true
 		//server.NeighborListMap = nil
-                server.StopLSDatabase()
+		server.StopLSDatabase()
 	}
 	server.logger.Info(fmt.Sprintln("Received call for performing Global Configuration", gConf))
 	server.updateGlobalConf(gConf)
@@ -118,10 +118,10 @@ func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {
 	if server.ospfGlobalConf.AdminStat == config.Enabled {
 		//server.NeighborListMap = make(map[IntfConfKey]list.List)
 		server.InitNeighborStateMachine()
-		go server.ProcessNbrPktEvent()
+		go server.ProcessNbrStateMachine()
 		go server.UpdateNeighborConf()
-                go server.ProcessNbrPkt()
-                server.StartLSDatabase()
+		go server.ProcessRxNbrPkt()
+		server.StartLSDatabase()
 	}
 
 	for key, ent := range localIntfStateMap {
