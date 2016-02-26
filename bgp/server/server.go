@@ -441,19 +441,20 @@ func (server *BGPServer) checkForAggregation(updated map[*Path][]*Destination, w
 	server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - start, updated %v withdrawn %v", updated, withdrawn))
 
 	for _, dest := range withdrawn {
-		routes := server.AdjRib.GetBGPRoutes(dest.nlri.Prefix.String())
-		if len(routes) > 0 {
-			routeParams := policy.RouteParams{
-				CreateType:    policy.Invalid,
-				DeleteType:    policy.Valid,
-				ActionFuncMap: server.actionFuncMap,
-			}
-			callbackInfo := ActionCbInfo{
-				updated:   &updated,
-				withdrawn: &withdrawn,
-			}
-			policy.PolicyEngineFilter(*routes[0], ribdCommonDefs.PolicyPath_Export, routeParams, callbackInfo)
+		route := bgpd.BGPRoute{
+			Network: dest.nlri.Prefix.String(),
+			CIDRLen: int16(dest.nlri.Length),
 		}
+		routeParams := policy.RouteParams{
+			CreateType:    policy.Invalid,
+			DeleteType:    policy.Valid,
+			ActionFuncMap: server.actionFuncMap,
+		}
+		callbackInfo := ActionCbInfo{
+			updated:   &updated,
+			withdrawn: &withdrawn,
+		}
+		policy.PolicyEngineFilter(route, ribdCommonDefs.PolicyPath_Export, routeParams, callbackInfo)
 	}
 
 	for _, destinations := range updated {
