@@ -6,6 +6,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"encoding/binary" 
 )
 
 type NbrMsgType uint32
@@ -91,11 +92,28 @@ type ospfNeighborDBDMsg struct {
 	ospfNbrDBDData ospfDatabaseDescriptionData
 }
 
+type nbrStateChangeMsg struct {
+	key    uint32
+	areaId uint32
+}
+
+type ospfNbrMdata struct {
+	isDR    bool
+	areaId  uint32
+	intf    IntfConfKey
+	nbrList []uint32
+}
+
+func newospfNbrMdata() *ospfNbrMdata {
+	return &ospfNbrMdata{}
+}
+
 var OspfNeighborLastDbd map[NeighborConfKey]ospfDatabaseDescriptionData
 var ospfNeighborIPToMAC map[uint32]net.HardwareAddr
 var ospfNeighborRequest_list map[uint32][]*ospfNeighborReq
 var ospfNeighborDBSummary_list map[uint32][]*ospfNeighborDBSummary
 var ospfNeighborRetx_list map[uint32][]*ospfNeighborRetx
+var ospfIntfToNbrMap map[IntfConfKey]ospfNbrMdata
 
 func (server *OSPFServer) InitNeighborStateMachine() {
 
@@ -106,6 +124,8 @@ func (server *OSPFServer) InitNeighborStateMachine() {
 	ospfNeighborRequest_list = make(map[uint32][]*ospfNeighborReq)
 	ospfNeighborDBSummary_list = make(map[uint32][]*ospfNeighborDBSummary)
 	ospfNeighborRetx_list = make(map[uint32][]*ospfNeighborRetx)
+	server.neighborStateChangeCh = make(chan nbrStateChangeMsg)
+	ospfIntfToNbrMap = make(map[IntfConfKey]ospfNbrMdata)
 	go server.refreshNeighborSlice()
 	server.logger.Info("NBRINIT: Neighbor FSM init done..")
 }
@@ -160,7 +180,8 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				server.neighborDeadTimerEvent(nbrMsg.ospfNbrConfKey)
 				if nbrMsg.ospfNbrEntry.OspfNbrState >= config.NbrTwoWay {
-					server.ConstructAndSendDbdPacket(nbrMsg.ospfNbrConfKey, 0, true, true, true, uint32(time.Now().Nanosecond()), false, false)
+					server.ConstructAndSendDbdPacket(nbrMsg.ospfNbrConfKey, 0, true, true, true,
+						INTF_OPTIONS, uint32(time.Now().Nanosecond()), false, false)
 				}
 			}
 
@@ -222,4 +243,24 @@ func (server *OSPFServer) neighborExist(nbrKey uint32) bool {
 		return true
 	}
 	return false
+}
+
+func (server *OSPFServer) initNeighborMdata(intf IntfConfKey) {
+	nbrMdata := newospfNbrMdata()
+	nbrMdata.nbrList = []uint32{}
+	nbrMdata.intf = intf
+	ospfIntfToNbrMap[intf] = *nbrMdata
+}
+
+func (server *OSPFServer) updateNeighborMdata(intf IntfConfKey, nbr uint32) {
+	nbrMdata, exists := ospfIntfToNbrMap[intf]
+	intfData := server.IntfConfMap[intf]
+	if !exists {
+		server.initNeighborMdata(intf)
+		nbrMdata = ospfIntfToNbrMap[intf]
+	}
+	nbrMdata.areaId = binary.BigEndian.Uint32(intfData.IfAreaId)
+	nbrMdata.isDR = bytesEqual(intfData.IfDRIp, intfData.IfIpAddr.To4())
+	nbrMdata.nbrList = append(nbrMdata.nbrList, nbr)
+	ospfIntfToNbrMap[intf] = nbrMdata
 }
