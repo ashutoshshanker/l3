@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	//"net"
 	"time"
 )
 
@@ -113,7 +114,9 @@ const (
 	DEFAULT_CONTROL_PACKET_LEN            = 24
 	MAX_NUM_SESSIONS                      = 1024
 	DEST_PORT                             = 3784
+	DEST_PORT_LAG                         = 6784
 	SRC_PORT                              = 49152
+	//DEDICATED_MAC                         = net.HardwareAddr{0x01, 0x00, 0x5E, 0x90, 0x00, 0x01}
 )
 
 // Flags in BFD Control packet

@@ -28,6 +28,7 @@ type IPIntfProperty struct {
 }
 
 type LagProperty struct {
+	Links []int32
 }
 
 type IPv4IntfNotifyMsg struct {
@@ -90,7 +91,7 @@ func (server *BFDServer) updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.Vlan
 	}
 }
 
-func (server *BFDServer) BuildPortPropertyMap() {
+func (server *BFDServer) BuildPortPropertyMap() error {
 	currMarker := asicdServices.Int(asicdConstDefs.MIN_SYS_PORTS)
 	if server.asicdClient.IsConnected {
 		server.logger.Info("Calling asicd for port property")
@@ -100,7 +101,7 @@ func (server *BFDServer) BuildPortPropertyMap() {
 			bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPortState(asicdServices.Int(currMarker), asicdServices.Int(count))
 			if bulkInfo == nil {
 				server.logger.Info("Bulkget port got nothing")
-				return
+				return nil
 			}
 			objCount := int(bulkInfo.Count)
 			more := bool(bulkInfo.More)
@@ -115,8 +116,71 @@ func (server *BFDServer) BuildPortPropertyMap() {
 				server.portPropertyMap[portNum] = ent
 			}
 			if more == false {
-				return
+				return nil
 			}
+		}
+	}
+	return nil
+}
+
+func (server *BFDServer) BuildLagPropertyMap() error {
+	server.logger.Info("Get configured lags ... TBD")
+	return nil
+}
+
+func (server *BFDServer) BuildIPv4InterfacesMap() error {
+	server.logger.Info("Getting IPv4 interfaces from asicd")
+	var currMarker asicdServices.Int
+	var count asicdServices.Int
+	count = 100
+	for {
+		var ipv4IntfMsg IPv4IntfNotifyMsg
+		server.logger.Info(fmt.Sprintf("Getting %d objects from currMarker %d\n", count, currMarker))
+		IPIntfBulk, err := server.asicdClient.ClientHdl.GetBulkIPv4Intf(currMarker, count)
+		if err != nil {
+			server.logger.Info(fmt.Sprintln("GetBulkIPv4Intf with err ", err))
+			return err
+		}
+		if IPIntfBulk.Count == 0 {
+			server.logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4Intf"))
+			return nil
+		}
+		server.logger.Info(fmt.Sprintln("Got IPv4 interfaces - len  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfList), IPIntfBulk.Count))
+		for i := 0; i < int(IPIntfBulk.Count); i++ {
+			ipv4IntfMsg.IpAddr = IPIntfBulk.IPv4IntfList[i].IpAddr
+			ipv4IntfMsg.IfId = IPIntfBulk.IPv4IntfList[i].IfIndex
+			server.createIPIntfConfMap(ipv4IntfMsg)
+			server.logger.Info(fmt.Sprintln("Created IPv4 interface (%d : %s)\n", ipv4IntfMsg.IfId, ipv4IntfMsg.IpAddr))
+		}
+		if IPIntfBulk.More == false {
+			server.logger.Info(fmt.Sprintln("Get IPv4 interfaces - more returned as false, so no more get bulks"))
+			return nil
+		}
+		currMarker = asicdServices.Int(IPIntfBulk.EndIdx)
+	}
+	return nil
+}
+
+func (server *BFDServer) updateLagPropertyMap(msg asicdConstDefs.LagNotifyMsg, msgType uint8) {
+	_, exists := server.lagPropertyMap[msg.IfIndex]
+	if msgType == asicdConstDefs.NOTIFY_LAG_CREATE { // Create LAG
+		if exists {
+			server.logger.Info(fmt.Sprintln("CreateLag: already exists", msg.IfIndex))
+		} else {
+			server.logger.Info(fmt.Sprintln("Creating lag ", msg.IfIndex))
+			lagEntry := LagProperty{}
+			lagEntry.Links = make([]int32, 0)
+			for _, linkNum := range msg.IfIndexList {
+				lagEntry.Links = append(lagEntry.Links, linkNum)
+			}
+			server.lagPropertyMap[msg.IfIndex] = lagEntry
+		}
+	} else if msgType == asicdConstDefs.NOTIFY_LAG_DELETE { // Delete Lag
+		if exists {
+			server.logger.Info(fmt.Sprintln("Deleting lag ", msg.IfIndex))
+			delete(server.lagPropertyMap, msg.IfIndex)
+		} else {
+			server.logger.Info(fmt.Sprintln("DeleteLag: Does not exist ", msg.IfIndex))
 		}
 	}
 }
