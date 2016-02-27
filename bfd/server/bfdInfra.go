@@ -3,8 +3,10 @@ package server
 import (
 	"asicd/asicdConstDefs"
 	"asicdServices"
+	"errors"
 	"fmt"
 	"net"
+	"utils/commonDefs"
 )
 
 type PortProperty struct {
@@ -185,12 +187,12 @@ func (server *BFDServer) updateLagPropertyMap(msg asicdConstDefs.LagNotifyMsg, m
 	}
 }
 
-/*
-func (server *BFDServer) getLinuxIntfName(ifId uint16, ifType uint8) (ifName string, err error) {
+func (server *BFDServer) getLinuxIntfName(ifIndex int32) (ifName string, err error) {
+	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(ifIndex)
 	if ifType == commonDefs.L2RefTypeVlan { // Vlan
-		ifName = server.vlanPropertyMap[ifId].Name
+		ifName = server.vlanPropertyMap[ifIndex].Name
 	} else if ifType == commonDefs.L2RefTypePort { // PHY
-		ifName = server.portPropertyMap[int32(ifId)].Name
+		ifName = server.portPropertyMap[int32(ifIndex)].Name
 	} else {
 		ifName = ""
 		err = errors.New("Invalid Interface Type")
@@ -198,8 +200,7 @@ func (server *BFDServer) getLinuxIntfName(ifId uint16, ifType uint8) (ifName str
 	return ifName, err
 }
 
-func getMacAddrIntfName(ifName string) (macAddr net.HardwareAddr, err error) {
-
+func (server *BFDServer) getMacAddrFromIntfName(ifName string) (macAddr net.HardwareAddr, err error) {
 	ifi, err := net.InterfaceByName(ifName)
 	if err != nil {
 		return macAddr, err
@@ -207,4 +208,3 @@ func getMacAddrIntfName(ifName string) (macAddr net.HardwareAddr, err error) {
 	macAddr = ifi.HardwareAddr
 	return macAddr, nil
 }
-*/
