@@ -55,8 +55,13 @@ func (server *BFDServer) StartSessionHandler() error {
 				session.TxTimeoutCh = make(chan int32)
 				session.SessionTimeoutCh = make(chan int32)
 				session.SessionDeleteCh = make(chan bool)
-				go session.StartSessionServer(server)
-				go session.StartSessionClient(server)
+				if session.state.PerLinkSession {
+					go session.StartPerLinkSessionServer(server)
+					go session.StartPerLinkSessionClient(server)
+				} else {
+					go session.StartSessionServer(server)
+					go session.StartSessionClient(server)
+				}
 			} else {
 				server.logger.Info(fmt.Sprintf("Bfd session could not be initiated for ", createdSessionId))
 			}
@@ -89,6 +94,11 @@ func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLi
 	bfdSession.state.RemoteIpAddr = DestIp
 	bfdSession.state.InterfaceId = IfIndex
 	bfdSession.state.PerLinkSession = PerLink
+	if PerLink {
+		IfName, _ := server.getLinuxIntfName(IfIndex)
+		bfdSession.state.LocalMacAddr, _ = server.getMacAddrFromIntfName(IfName)
+		bfdSession.state.RemoteMacAddr, _ = net.ParseMAC(bfdDedicatedMac)
+	}
 	bfdSession.state.RegisteredProtocols = make([]bool, bfddCommonDefs.MAX_NUM_PROTOCOLS)
 	bfdSession.state.RegisteredProtocols[Protocol] = true
 	bfdSession.state.SessionState = STATE_DOWN
@@ -310,13 +320,7 @@ func (server *BFDServer) HandleNextHopChange(DestIp string) error {
 }
 
 func (session *BfdSession) StartSessionServer(bfdServer *BFDServer) error {
-	var destPortStr string
-	if session.state.PerLinkSession {
-		destPortStr = strconv.Itoa(DEST_PORT_LAG)
-	} else {
-		destPortStr = strconv.Itoa(DEST_PORT)
-	}
-	destAddr := session.state.RemoteIpAddr + ":" + destPortStr
+	destAddr := session.state.RemoteIpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
 		fmt.Println("Failed ResolveUDPAddr ", destAddr, err)
@@ -620,13 +624,7 @@ func (session *BfdSession) MoveToUpState() error {
 }
 
 func (session *BfdSession) StartSessionClient(server *BFDServer) error {
-	var destPortStr string
-	if session.state.PerLinkSession {
-		destPortStr = strconv.Itoa(DEST_PORT_LAG)
-	} else {
-		destPortStr = strconv.Itoa(DEST_PORT)
-	}
-	destAddr := session.state.RemoteIpAddr + ":" + destPortStr
+	destAddr := session.state.RemoteIpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
 		fmt.Println("Failed ResolveUDPAddr ", destAddr, err)

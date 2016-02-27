@@ -2,6 +2,7 @@ package server
 
 import (
 	"l3/bfd/bfddCommonDefs"
+	"net"
 )
 
 type GlobalConfig struct {
@@ -58,8 +59,8 @@ type SessionState struct {
 	RemoteIpAddr          string
 	InterfaceId           int32
 	PerLinkSession        bool
-	LocalMacAddr          string
-	RemoteMacAddr         string
+	LocalMacAddr          net.HardwareAddr
+	RemoteMacAddr         net.HardwareAddr
 	RegisteredProtocols   []bool
 	SessionState          BfdSessionState
 	RemoteSessionState    BfdSessionState
