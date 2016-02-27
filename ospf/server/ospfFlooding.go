@@ -6,12 +6,17 @@ import (
 	"net"
 )
 
+const (
+	FloodLsa uint8 = LsdbNoAction + 1
+)
+
 func (server *OSPFServer) SendRouterLsa(areaId uint32, nbrConf OspfNeighborEntry) {
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
 	ospfLsaPkt := newospfNeighborLSAUpdPkt()
 	var lsaEncPkt []byte
+	LsaEnc := []byte{}
 
 	intConf := server.IntfConfMap[nbrConf.intfConfKey]
 
@@ -24,7 +29,7 @@ func (server *OSPFServer) SendRouterLsa(areaId uint32, nbrConf OspfNeighborEntry
 	pktLen := 0
 	total_len := 0
 	ospfLsaPkt.no_lsas = 0
-	LsaEnc := []byte{}
+
 	for key, entry := range lsDbEnt.RouterLsaMap {
 		server.logger.Info(fmt.Sprintln("Flood: Add lsa for key", key, " lsa ", entry))
 		LsaEnc = encodeRouterLsa(entry, key)
@@ -37,6 +42,27 @@ func (server *OSPFServer) SendRouterLsa(areaId uint32, nbrConf OspfNeighborEntry
 		ospfLsaPkt.lsa = append(ospfLsaPkt.lsa, LsaEnc...)
 		ospfLsaPkt.no_lsas++
 		total_len += pktLen
+	}
+
+	/* attach network LSA if I am DR. */
+
+	rtr_id := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
+	server.logger.Info(fmt.Sprintln("Flood: rtr_id ", rtr_id, " intConf.IfDRtrId ", intConf.IfDRtrId))
+	if intConf.IfDRtrId == rtr_id {
+		server.logger.Info(fmt.Sprintln("Flood: I am DR. Send Nw LSA."))
+		for key, entry := range lsDbEnt.NetworkLsaMap {
+			server.logger.Info(fmt.Sprintln("Flood: Network lsa for key ", key, " lsa ", entry))
+			LsaEnc = encodeNetworkLsa(entry, key)
+			checksumOffset := uint16(14)
+			checkSum := computeFletcherChecksum(LsaEnc[2:], checksumOffset)
+			binary.BigEndian.PutUint16(LsaEnc[16:18], checkSum)
+			pktLen = len(LsaEnc)
+			binary.BigEndian.PutUint16(LsaEnc[18:20], uint16(pktLen))
+			//server.logger.Info(fmt.Sprintln("Flood: Encoded LSA = ", LsaEnc))
+			ospfLsaPkt.lsa = append(ospfLsaPkt.lsa, LsaEnc...)
+			ospfLsaPkt.no_lsas++
+			total_len += pktLen
+		}
 	}
 
 	lsa_pkt_len := total_len + OSPA_NO_OF_LSA_FIELD
@@ -62,3 +88,8 @@ func (server *OSPFServer) SendRouterLsa(areaId uint32, nbrConf OspfNeighborEntry
 	/* send the lsa update packet */
 	nbrConf.ospfNbrLsaUpdSendCh <- pkt
 }
+
+/*
+func (server *OSPFServer) ProcessOspfFlood(nbrKey uint32) {
+
+}*/

@@ -21,7 +21,7 @@ import (
 func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
 	logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
 		config.IfIndex))
-	key := config.IfIndex + config.VRID
+	key := strconv.Itoa(int(config.IfIndex)) + strconv.Itoa(int(config.VRID))
 	logger.Info(fmt.Sprintln("Key is ", key))
 	gblInfo := vrrpGblInfo[key]
 
@@ -48,16 +48,7 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 		gblInfo.IntfConfig.AdvertisementInterval = config.AdvertisementInterval
 	}
 
-	/* @TODO: hack for setting it to TRUE right until default is taken care
-	* off
-		* if config.PreemptMode == false {
-			gblInfo.IntfConfig.PreemptMode = false
-		} else {
-
-			gblInfo.IntfConfig.PreemptMode = true
-		}
-	*/
-	gblInfo.IntfConfig.PreemptMode = true
+	gblInfo.IntfConfig.PreemptMode = config.PreemptMode
 
 	if config.AcceptMode == true {
 		gblInfo.IntfConfig.AcceptMode = true
@@ -66,7 +57,8 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 	}
 
 	if config.VirtualRouterMACAddress != "" {
-		gblInfo.IntfConfig.VirtualRouterMACAddress = config.VirtualRouterMACAddress
+		gblInfo.IntfConfig.VirtualRouterMACAddress =
+			config.VirtualRouterMACAddress
 	} else {
 		if gblInfo.IntfConfig.VRID < 10 {
 			gblInfo.IntfConfig.VirtualRouterMACAddress = "00-00-5E-00-01-0" +
@@ -79,8 +71,8 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 	}
 
 	vrrpGblInfo[key] = gblInfo
-	go VrrpUpdateGblInfoTimers(key)
-	go VrrpInitPacketListener()
+	VrrpUpdateGblInfoTimers(key)
+	go VrrpInitPacketListener(key, config.IfIndex)
 	return true, nil
 }
 func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,

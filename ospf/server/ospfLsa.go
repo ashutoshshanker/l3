@@ -138,6 +138,9 @@ var InitialSequenceNumber int = 0x80000001
 var MaxSequenceNumber int = 0x7fffffff
 var LSSequenceNumber int = InitialSequenceNumber
 
+const LSA_MAX_AGE uint16 = 0x7fff
+const LSA_MAX_AGE_DIFF uint16 = 0x7fff
+
 /*
 
     0                   1                   2                   3
