@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
 	"l3/bfd/bfddCommonDefs"
@@ -19,6 +20,13 @@ import (
 	"syscall"
 	"time"
 	"utils/ipcutils"
+)
+
+var (
+	bfdSnapshotLen  int32  = 65549                   // packet capture length
+	bfdPromiscuous  bool   = false                   // mode
+	bfdDedicatedMac string = "01:00:5E:90:00:01"     // Dest MAC perlink packets till neighbor's MAC is learned
+	bfdPcapFilter   string = "udp and dst port 6784" // packet capture filter
 )
 
 type ClientJson struct {
@@ -71,6 +79,8 @@ type BfdSession struct {
 	authSeqNum        uint32
 	authKeyId         uint32
 	authData          string
+	sendPcapHandle    *pcap.Handle
+	recvPcapHandle    *pcap.Handle
 }
 
 type BfdGlobal struct {
