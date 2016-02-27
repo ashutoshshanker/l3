@@ -26,9 +26,10 @@ type NetworkLSAChangeMsg struct {
 }
 
 const (
-	LsdbAdd    uint8 = 0
-	LsdbDel    uint8 = 1
-	LsdbUpdate uint8 = 2
+	LsdbAdd      uint8 = 0
+	LsdbDel      uint8 = 1
+	LsdbUpdate   uint8 = 2
+	LsdbNoAction uint8 = 3
 )
 
 const (
@@ -159,28 +160,43 @@ func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 }
 
-func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey) {
-	routerId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
+func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isDR bool, nbr_list []uint32) {
+	//routerId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
 	ent := server.IntfConfMap[key]
 	AreaId := convertIPv4ToUint32(ent.IfAreaId)
+	nbrListLen := len(nbr_list)
+
+	nbrMsg := nbrStateChangeMsg{
+		key:    nbr_list[nbrListLen-1],
+		areaId: areaId,
+	}
 	if areaId != AreaId {
 		return
 	}
 	if ent.IfFSMState <= config.Waiting {
 		return
 	}
-	if routerId != ent.IfDRtrId {
+	/*
+		if routerId != ent.IfDRtrId {
+			return
+		}*/
+	if !isDR {
+		server.neighborStateChangeCh <- nbrMsg
 		return
 	}
 
 	netmask := convertIPv4ToUint32(ent.IfNetmask)
 	var attachedRtr []uint32
-	for key, nbrEnt := range ent.NeighborMap {
+	/*for key, nbrEnt := range ent.NeighborMap {
 		if nbrEnt.FullState == false {
 			continue
 		}
 		attachedRtr = append(attachedRtr, key.RouterId)
+	}*/
+	for index := range nbr_list {
+		attachedRtr = append(attachedRtr, nbr_list[index])
 	}
+
 	numOfAttachedRtr := len(attachedRtr)
 	if numOfAttachedRtr == 0 {
 		return
@@ -237,7 +253,7 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey) {
 		val.AdvRtr = lsaKey.AdvRouter
 		server.LsdbSlice = append(server.LsdbSlice, val)
 	}
-
+	server.neighborStateChangeCh <- nbrMsg
 	return
 }
 
@@ -679,7 +695,7 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 			server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
 		case msg := <-server.CreateNetworkLSACh:
 			server.logger.Info(fmt.Sprintf("Create Network LSA msg", msg))
-			server.generateNetworkLSA(msg.areaId, msg.intfKey)
+			server.generateNetworkLSA(msg.areaId, msg.intf, msg.isDR, msg.nbrList)
 			// Flush the old Network LSA
 			// Check if link is broadcast or not
 			// If link is broadcast

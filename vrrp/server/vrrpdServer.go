@@ -49,7 +49,7 @@ func VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
 	return true
 }
 
-func VrrpPopulateIntfState(key int32, entry *vrrpd.VrrpIntfState) {
+func VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfState) {
 	gblInfo, ok := vrrpGblInfo[key]
 	if ok == false {
 		logger.Err(fmt.Sprintln("Entry not found for", key))
@@ -78,7 +78,7 @@ func VrrpPopulateIntfState(key int32, entry *vrrpd.VrrpIntfState) {
 	IpAddr string
 */
 
-func VrrpUpdateGblInfoTimers(key int32) {
+func VrrpUpdateGblInfoTimers(key string) {
 	gblInfo := vrrpGblInfo[key]
 	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
 	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
@@ -90,12 +90,13 @@ func VrrpUpdateGblInfoTimers(key int32) {
 	if ok := VrrpUpdateIntfIpAddr(&gblInfo); ok == false {
 		// If we miss Asic Notification then do one time get bulk for Ipv4
 		// Interface... Once done then update Ip Addr again
+		logger.Err("recalling get ipv4interface list")
 		VrrpGetIPv4IntfList()
 		VrrpUpdateIntfIpAddr(&gblInfo)
 	}
 	vrrpGblInfo[key] = gblInfo
 	vrrpIntfStateSlice = append(vrrpIntfStateSlice, key)
-	VrrpDumpIntfInfo(gblInfo)
+	//VrrpDumpIntfInfo(gblInfo)
 }
 
 func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
@@ -113,9 +114,7 @@ func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
 	}
 	logger.Info(fmt.Sprintln("Linux Id:", linuxInterface.Index,
 		"maps to IfIndex:", IfIndex))
-	entry := vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index]
-	entry = IfIndex
-	vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index] = entry
+	vrrpLinuxIfIndex2AsicdIfIndex[IfIndex] = linuxInterface
 }
 
 func VrrpConnectToAsicd(client VrrpClientJson) error {
@@ -149,17 +148,20 @@ func VrrpConnectToUnConnectedClient(client VrrpClientJson) error {
 	}
 }
 
+func VrrpCloseAllPcapHandlers() {
+	for i := 0; i < len(vrrpIntfStateSlice); i++ {
+		key := vrrpIntfStateSlice[i]
+		gblInfo := vrrpGblInfo[key]
+		gblInfo.pHandle.Close()
+	}
+}
+
 func VrrpSignalHandler(sigChannel <-chan os.Signal) {
 	signal := <-sigChannel
 	switch signal {
 	case syscall.SIGHUP:
 		logger.Alert("Received SIGHUP Signal")
-		if vrrpListener != nil {
-			vrrpListener.Close()
-		}
-		if vrrpNetPktConn != nil {
-			vrrpNetPktConn.Close()
-		}
+		VrrpCloseAllPcapHandlers()
 		VrrpDeAllocateMemoryToGlobalDS()
 		logger.Info("Closed vrrp pkt handlers")
 		os.Exit(0)
@@ -223,10 +225,14 @@ func VrrpConnectAndInitPortVlan() error {
 }
 
 func VrrpAllocateMemoryToGlobalDS() {
-	vrrpGblInfo = make(map[int32]VrrpGlobalInfo, 50)
-	vrrpIfIndexIpAddr = make(map[int32]string, 5)
-	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int]int32, 5)
-	vrrpVlanId2Name = make(map[int]string, 5)
+	vrrpGblInfo = make(map[string]VrrpGlobalInfo,
+		VRRP_GLOBAL_INFO_DEFAULT_SIZE)
+	vrrpIfIndexIpAddr = make(map[int32]string,
+		VRRP_INTF_IPADDR_MAPPING_DEFAULT_SIZE)
+	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int32]*net.Interface,
+		VRRP_LINUX_INTF_MAPPING_DEFAULT_SIZE)
+	vrrpVlanId2Name = make(map[int]string,
+		VRRP_VLAN_MAPPING_DEFAULT_SIZE)
 }
 
 func VrrpDeAllocateMemoryToGlobalDS() {

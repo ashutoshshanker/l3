@@ -3,61 +3,53 @@ package vrrpServer
 import (
 	"fmt"
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"golang.org/x/net/ipv4"
-	"net"
+	_ "github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 )
 
-func VrrpDecodeReceivedPkt(InData []byte, bytesRead int) {
-	var eth layers.Ethernet
-	var ip4 layers.IPv4
-	var payload gopacket.Payload
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
-		&eth, &ip4, &payload)
-	decodedLayers := make([]gopacket.LayerType, 0, 10)
-	err := parser.DecodeLayers(InData, &decodedLayers)
-	if err != nil {
-		logger.Err(fmt.Sprintln("Decoding of Packet failed",
-			err))
+func VrrpDecodeReceivedPkt(packet gopacket.Packet) {
+	//var err error
+	eth := packet.LinkLayer()
+	net := packet.NetworkLayer()
+	srcIp, dstIp := net.NetworkFlow().Endpoints()
+	srcMac, dstMac := eth.LinkFlow().Endpoints()
+	logger.Info(fmt.Sprintln("src", srcIp, "dst", dstIp))
+	logger.Info(fmt.Sprintln("src", srcMac, "dst", dstMac))
+}
+
+func VrrpReceivePackets(pHandle *pcap.Handle, IfIndex int32) {
+	packetSource := gopacket.NewPacketSource(pHandle, pHandle.LinkType())
+	inCh := packetSource.Packets()
+	for {
+		packet, ok := <-inCh
+		if ok {
+			VrrpDecodeReceivedPkt(packet)
+		}
+	}
+}
+
+func VrrpInitPacketListener(key string, IfIndex int32) {
+	linuxInterface, ok := vrrpLinuxIfIndex2AsicdIfIndex[IfIndex]
+	if ok == false {
+		logger.Err(fmt.Sprintln("no linux interface for ifindex",
+			IfIndex))
 		return
 	}
-}
-
-func VrrpReceivePackets() {
-	var buf []byte = make([]byte, 1500)
-	for {
-		if vrrpListener == nil || vrrpNetPktConn == nil {
-			logger.Info("Listerner is not set...")
-			return
-		}
-		bytesRead, ctrlMsg, srcAddr, err := vrrpListener.ReadFrom(buf)
-		if err != nil {
-			logger.Err(fmt.Sprintln("Reading buffer failed",
-				err))
-			continue
-		}
-		logger.Info(fmt.Sprintln("bytesRead:", bytesRead,
-			"ctrlMsg:", ctrlMsg,
-			"srcAddr:", srcAddr))
-		VrrpDecodeReceivedPkt(buf, bytesRead)
-	}
-}
-
-func VrrpInitPacketListener() {
-	var err error
-	vrrpNetPktConn, err = net.ListenPacket("ip4:112", "224.0.0.18")
+	handle, err := pcap.OpenLive(linuxInterface.Name, vrrpSnapshotLen,
+		vrrpPromiscuous, vrrpTimeout)
 	if err != nil {
 		logger.Err(fmt.Sprintln("Creating VRRP listerner failed",
 			err))
 		return
 	}
-	vrrpListener = ipv4.NewPacketConn(vrrpNetPktConn)
-	err = vrrpListener.SetControlMessage(vrrpCtrlFlag, true)
+	err = handle.SetBPFFilter(VRRP_BPF_FILTER)
 	if err != nil {
-		logger.Err(fmt.Sprintln("Setting control flag failed",
-			err))
-		return
+		logger.Err(fmt.Sprintln("Setting filter", VRRP_BPF_FILTER,
+			"failed with", "err:", err))
 	}
-	logger.Info("VRRP listener UP and running")
-	go VrrpReceivePackets()
+	gblInfo := vrrpGblInfo[key]
+	gblInfo.pHandle = handle
+	vrrpGblInfo[key] = gblInfo
+	logger.Info(fmt.Sprintln("VRRP listener running for", IfIndex))
+	go VrrpReceivePackets(handle, IfIndex)
 }
