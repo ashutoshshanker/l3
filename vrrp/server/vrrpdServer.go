@@ -114,10 +114,7 @@ func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
 	}
 	logger.Info(fmt.Sprintln("Linux Id:", linuxInterface.Index,
 		"maps to IfIndex:", IfIndex))
-	//entry := vrrpLinuxIfIndex2AsicdIfIndex[linuxInterface.Index]
-	//entry = IfIndex
 	vrrpLinuxIfIndex2AsicdIfIndex[IfIndex] = linuxInterface
-	//tempGblLinux = linuxInterface
 }
 
 func VrrpConnectToAsicd(client VrrpClientJson) error {

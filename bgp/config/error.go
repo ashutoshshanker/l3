@@ -20,3 +20,11 @@ type AddressError struct {
 func (a AddressError) Error() string {
 	return fmt.Sprintf("%s", a.Message)
 }
+
+type AddressNotResolvedError struct {
+	Message string
+}
+
+func (a AddressNotResolvedError) Error() string {
+	return fmt.Sprintf("%s", a.Message)
+}

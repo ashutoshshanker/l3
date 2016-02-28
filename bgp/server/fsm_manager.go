@@ -81,6 +81,7 @@ func (mgr *FSMManager) Init() {
 					if fsm != nil && fsm.peerConn != nil && fsm.peerConn.dir == config.ConnDirIn {
 						mgr.logger.Info(fmt.Sprintln("A FSM is already created for a incoming connection"))
 						foundInConn = true
+						inConn.Close()
 						break
 					}
 				}
@@ -137,6 +138,17 @@ func (mgr *FSMManager) RejectPeerConn() {
 	mgr.acceptConn = false
 }
 
+func (mgr *FSMManager) fsmTcpConnFailed(id uint8) {
+	mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d TCP conn failed", mgr.pConf.NeighborAddress.String(), id))
+	if mgr.activeFSM != uint8(config.ConnDirInvalid) && mgr.activeFSM != id {
+		if closeFSM, ok := mgr.fsms[id]; ok {
+			mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s, close FSM %d", mgr.pConf.NeighborAddress.String(), id))
+			closeFSM.closeCh <- true
+			mgr.fsms[id] = nil
+			delete(mgr.fsms, id)
+		}
+	}
+}
 func (mgr *FSMManager) fsmEstablished(id uint8, conn *net.Conn) {
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d connection established", mgr.pConf.NeighborAddress.String(), id))
 	mgr.activeFSM = id
@@ -147,9 +159,14 @@ func (mgr *FSMManager) fsmBroken(id uint8, fsmDelete bool) {
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d connection broken", mgr.pConf.NeighborAddress.String(), id))
 	if mgr.activeFSM == id {
 		mgr.activeFSM = uint8(config.ConnDirInvalid)
+		mgr.Peer.PeerConnBroken(fsmDelete)
 	}
+}
 
-	mgr.Peer.PeerConnBroken(fsmDelete)
+func (mgr *FSMManager) fsmStateChange(id uint8, state BGPFSMState) {
+	if mgr.activeFSM == id || mgr.activeFSM == uint8(config.ConnDirInvalid) {
+		mgr.Peer.FSMStateChange(state)
+	}
 }
 
 func (mgr *FSMManager) SendUpdateMsg(bgpMsg *packet.BGPMessage) {
@@ -231,7 +248,7 @@ func (mgr *FSMManager) getFSMIdByDir(connDir config.ConnDir) uint8 {
 	return uint8(config.ConnDirInvalid)
 }
 
-func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, openMsg *packet.BGPOpen) {
+func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, openMsg *packet.BGPOpen) bool {
 	var closeConnDir config.ConnDir = config.ConnDirInvalid
 
 	defer mgr.fsmMutex.Unlock()
@@ -255,11 +272,23 @@ func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, 
 				mgr.fsmBroken(closeFSMId, false)
 				mgr.fsms[closeFSMId] = nil
 				delete(mgr.fsms, closeFSMId)
+				mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s, closed FSM %d", mgr.pConf.NeighborAddress.String(), closeFSMId))
+			} else {
+				mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s, FSM %d to close is not found in map %v",
+					mgr.pConf.NeighborAddress.String(), closeFSMId, mgr.fsms))
 			}
 		}
 	}
 	if closeConnDir == config.ConnDirInvalid || closeConnDir != connDir {
 		asSize := packet.GetASSize(openMsg)
 		mgr.Peer.SetPeerAttrs(openMsg.BGPId, asSize, mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime)
+	}
+
+	if closeConnDir == connDir {
+		mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s, FSM %d Closing FSM... return false",
+			mgr.pConf.NeighborAddress.String(), id))
+		return false
+	} else {
+		return true
 	}
 }

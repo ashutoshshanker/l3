@@ -3,26 +3,18 @@ package vrrpServer
 import (
 	"fmt"
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
+	_ "github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
 func VrrpDecodeReceivedPkt(packet gopacket.Packet) {
-	var err error
-	var eth layers.Ethernet
-	var ip4 layers.IPv4
-	var payload gopacket.Payload
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
-		&eth, &ip4, &payload)
-	decodedLayers := []gopacket.LayerType{}
-	err = parser.DecodeLayers(packet.Data(), &decodedLayers)
-	if err != nil {
-		logger.Err(fmt.Sprintln("Decoding of Packet failed",
-			err))
-		return
-	}
-	logger.Info(fmt.Sprintln("DecodeLayers: ", decodedLayers))
-	logger.Info(fmt.Sprintln("Payload is", payload))
+	//var err error
+	eth := packet.LinkLayer()
+	net := packet.NetworkLayer()
+	srcIp, dstIp := net.NetworkFlow().Endpoints()
+	srcMac, dstMac := eth.LinkFlow().Endpoints()
+	logger.Info(fmt.Sprintln("src", srcIp, "dst", dstIp))
+	logger.Info(fmt.Sprintln("src", srcMac, "dst", dstMac))
 }
 
 func VrrpReceivePackets(pHandle *pcap.Handle, IfIndex int32) {
@@ -50,7 +42,6 @@ func VrrpInitPacketListener(key string, IfIndex int32) {
 			err))
 		return
 	}
-	//filter := "ip host " + VRRP_GROUP_IP
 	err = handle.SetBPFFilter(VRRP_BPF_FILTER)
 	if err != nil {
 		logger.Err(fmt.Sprintln("Setting filter", VRRP_BPF_FILTER,
