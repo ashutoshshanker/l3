@@ -81,6 +81,7 @@ type BfdSession struct {
 	authData          string
 	sendPcapHandle    *pcap.Handle
 	recvPcapHandle    *pcap.Handle
+	useDedicatedMac   bool
 }
 
 type BfdGlobal struct {

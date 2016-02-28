@@ -98,6 +98,7 @@ func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLi
 		IfName, _ := server.getLinuxIntfName(IfIndex)
 		bfdSession.state.LocalMacAddr, _ = server.getMacAddrFromIntfName(IfName)
 		bfdSession.state.RemoteMacAddr, _ = net.ParseMAC(bfdDedicatedMac)
+		bfdSession.useDedicatedMac = true
 	}
 	bfdSession.state.RegisteredProtocols = make([]bool, bfddCommonDefs.MAX_NUM_PROTOCOLS)
 	bfdSession.state.RegisteredProtocols[Protocol] = true
@@ -653,12 +654,14 @@ func (session *BfdSession) MoveToDownState() error {
 	if session.authType == BFD_AUTH_TYPE_KEYED_MD5 || session.authType == BFD_AUTH_TYPE_KEYED_SHA1 {
 		session.authSeqNum++
 	}
+	session.useDedicatedMac = true
 	session.txTimer.Reset(0)
 	return nil
 }
 
 func (session *BfdSession) MoveToInitState() error {
 	session.state.SessionState = STATE_INIT
+	session.useDedicatedMac = true
 	session.txTimer.Reset(0)
 	return nil
 }
