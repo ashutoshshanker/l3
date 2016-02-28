@@ -63,9 +63,8 @@ func (session *BfdSession) StartPerLinkSessionServer(bfdServer *BFDServer) error
 					bfdServer.logger.Info(fmt.Sprintln("Ignore bfd packet for session ", sessionId))
 				} else {
 					bfdSession := bfdServer.bfdGlobal.Sessions[sessionId]
-					remoteMac, _ := net.ParseMAC(bfdDedicatedMac)
-					match := bytes.Equal(remoteMac, ethPacket.DstMAC)
-					if !match && bfdSession.state.SessionState == STATE_UP {
+					match := bytes.Equal(bfdSession.state.RemoteMacAddr, ethPacket.SrcMAC)
+					if !match {
 						bfdSession.state.RemoteMacAddr = ethPacket.DstMAC
 					}
 					bfdSession.state.NumRxPackets++
@@ -108,10 +107,16 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 	for {
 		select {
 		case sessionId := <-session.TxTimeoutCh:
+			var destMac net.HardwareAddr
 			bfdSession := bfdServer.bfdGlobal.Sessions[sessionId]
+			if bfdSession.useDedicatedMac {
+				destMac, _ = net.ParseMAC(bfdDedicatedMac)
+			} else {
+				destMac = bfdSession.state.RemoteMacAddr
+			}
 			ethLayer := &layers.Ethernet{
 				SrcMAC:       bfdSession.state.LocalMacAddr,
-				DstMAC:       bfdSession.state.RemoteMacAddr,
+				DstMAC:       destMac,
 				EthernetType: layers.EthernetTypeIPv4,
 			}
 			ipLayer := &layers.IPv4{
@@ -139,6 +144,9 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 			if err != nil {
 				bfdServer.logger.Info(fmt.Sprintln("Failed to create complete packet for session ", bfdSession.state.SessionId))
 			} else {
+				if bfdSession.state.SessionState == STATE_UP {
+					bfdSession.useDedicatedMac = false
+				}
 				bfdSession.state.NumTxPackets++
 				bfdSession.txTimer.Stop()
 				txTimerMS = time.Duration(bfdSession.state.DesiredMinTxInterval / 1000)

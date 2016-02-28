@@ -98,6 +98,7 @@ func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLi
 		IfName, _ := server.getLinuxIntfName(IfIndex)
 		bfdSession.state.LocalMacAddr, _ = server.getMacAddrFromIntfName(IfName)
 		bfdSession.state.RemoteMacAddr, _ = net.ParseMAC(bfdDedicatedMac)
+		bfdSession.useDedicatedMac = true
 	}
 	bfdSession.state.RegisteredProtocols = make([]bool, bfddCommonDefs.MAX_NUM_PROTOCOLS)
 	bfdSession.state.RegisteredProtocols[Protocol] = true
@@ -252,34 +253,62 @@ func (server *BFDServer) CreateBfdSession(sessionMgmt BfdSessionMgmt) (*BfdSessi
 	return bfdSession, nil
 }
 
+func (server *BFDServer) SessionDeleteHandler(session *BfdSession, Protocol bfddCommonDefs.BfdSessionOwner) error {
+	var i int
+	sessionId := session.state.SessionId
+	session.state.RegisteredProtocols[Protocol] = false
+	if session.CheckIfAnyProtocolRegistered() == false {
+		session.txTimer.Stop()
+		session.sessionTimer.Stop()
+		session.SessionDeleteCh <- true
+		server.bfdGlobal.Interfaces[session.state.InterfaceId].NumSessions--
+		server.bfdGlobal.NumSessions--
+		delete(server.bfdGlobal.Sessions, sessionId)
+		for i = 0; i < len(server.bfdGlobal.SessionsIdSlice); i++ {
+			if server.bfdGlobal.SessionsIdSlice[i] == sessionId {
+				break
+			}
+		}
+		server.bfdGlobal.SessionsIdSlice = append(server.bfdGlobal.SessionsIdSlice[:i], server.bfdGlobal.SessionsIdSlice[i+1:]...)
+	}
+	return nil
+}
+
+func (server *BFDServer) DeletePerLinkSessions(DestIp string, Protocol bfddCommonDefs.BfdSessionOwner) error {
+	for _, session := range server.bfdGlobal.Sessions {
+		if session.state.RemoteIpAddr == DestIp {
+			server.SessionDeleteHandler(session, Protocol)
+		}
+	}
+	return nil
+}
+
 // DeleteBfdSession ceases the session.
 // A session down control packet is sent to BFD neighbor before deleting the session.
 // This function is called when a protocol decides to stop monitoring the destination IP.
 func (server *BFDServer) DeleteBfdSession(sessionMgmt BfdSessionMgmt) error {
-	var i int
 	DestIp := sessionMgmt.DestIp
 	Protocol := sessionMgmt.Protocol
 	server.logger.Info(fmt.Sprintln("DeleteSession ", DestIp, Protocol))
 	sessionId, found := server.FindBfdSession(DestIp)
 	if found {
 		session := server.bfdGlobal.Sessions[sessionId]
-		session.state.RegisteredProtocols[Protocol] = false
-		if session.CheckIfAnyProtocolRegistered() == false {
-			session.txTimer.Stop()
-			session.sessionTimer.Stop()
-			session.SessionDeleteCh <- true
-			server.bfdGlobal.Interfaces[session.state.InterfaceId].NumSessions--
-			server.bfdGlobal.NumSessions--
-			delete(server.bfdGlobal.Sessions, sessionId)
-			for i = 0; i < len(server.bfdGlobal.SessionsIdSlice); i++ {
-				if server.bfdGlobal.SessionsIdSlice[i] == sessionId {
-					break
-				}
-			}
-			server.bfdGlobal.SessionsIdSlice = append(server.bfdGlobal.SessionsIdSlice[:i], server.bfdGlobal.SessionsIdSlice[i+1:]...)
+		if session.state.PerLinkSession {
+			server.DeletePerLinkSessions(DestIp, Protocol)
+		} else {
+			server.SessionDeleteHandler(session, Protocol)
 		}
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
+	}
+	return nil
+}
+
+func (server *BFDServer) AdminUpPerLinkBfdSessions(DestIp string) error {
+	for _, session := range server.bfdGlobal.Sessions {
+		if session.state.RemoteIpAddr == DestIp {
+			session.StartBfdSession()
+		}
 	}
 	return nil
 }
@@ -291,9 +320,23 @@ func (server *BFDServer) AdminUpBfdSession(sessionMgmt BfdSessionMgmt) error {
 	server.logger.Info(fmt.Sprintln("AdminDownSession ", DestIp, Protocol))
 	sessionId, found := server.FindBfdSession(DestIp)
 	if found {
-		server.bfdGlobal.Sessions[sessionId].StartBfdSession()
+		session := server.bfdGlobal.Sessions[sessionId]
+		if session.state.PerLinkSession {
+			server.AdminUpPerLinkBfdSessions(DestIp)
+		} else {
+			server.bfdGlobal.Sessions[sessionId].StartBfdSession()
+		}
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
+	}
+	return nil
+}
+
+func (server *BFDServer) AdminDownPerLinkBfdSessions(DestIp string) error {
+	for _, session := range server.bfdGlobal.Sessions {
+		if session.state.RemoteIpAddr == DestIp {
+			session.StopBfdSession()
+		}
 	}
 	return nil
 }
@@ -305,7 +348,12 @@ func (server *BFDServer) AdminDownBfdSession(sessionMgmt BfdSessionMgmt) error {
 	server.logger.Info(fmt.Sprintln("AdminDownSession ", DestIp, Protocol))
 	sessionId, found := server.FindBfdSession(DestIp)
 	if found {
-		server.bfdGlobal.Sessions[sessionId].StopBfdSession()
+		session := server.bfdGlobal.Sessions[sessionId]
+		if session.state.PerLinkSession {
+			server.AdminDownPerLinkBfdSessions(DestIp)
+		} else {
+			server.bfdGlobal.Sessions[sessionId].StopBfdSession()
+		}
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
 	}
@@ -606,12 +654,14 @@ func (session *BfdSession) MoveToDownState() error {
 	if session.authType == BFD_AUTH_TYPE_KEYED_MD5 || session.authType == BFD_AUTH_TYPE_KEYED_SHA1 {
 		session.authSeqNum++
 	}
+	session.useDedicatedMac = true
 	session.txTimer.Reset(0)
 	return nil
 }
 
 func (session *BfdSession) MoveToInitState() error {
 	session.state.SessionState = STATE_INIT
+	session.useDedicatedMac = true
 	session.txTimer.Reset(0)
 	return nil
 }
