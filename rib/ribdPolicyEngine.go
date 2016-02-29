@@ -3,11 +3,16 @@ package main
 
 import (
      "ribd"
+	"utils/patriciaDB"
 	 "utils/policy"
-	 "utils/netUtils"
 	 "utils/policy/policyCommonDefs"
 	 "l3/rib/ribdCommonDefs"
 )
+
+type TraverseAndApplyPolicyData struct {
+	data interface{}
+	updatefunc policy.PolicyApplyfunc
+}
 
 func policyEngineActionRejectRoute(params interface{}) {
 	routeInfo := params.(RouteParams)
@@ -158,26 +163,44 @@ func PolicyEngineFilter(route ribd.Routes, policyPath int, params interface{}) {
 	}
     routeInfo := params.(RouteParams)
 	logger.Println("PolicyEngineFilter for policypath ", policyPath_Str, "createType = ", routeInfo.createType, " deleteType = ", routeInfo.deleteType, " route: ", route.Ipaddr,":",route.Mask, " protocol type: ", route.Prototype)
-    var entity policy.PolicyEngineFilterEntityParams
-	destNetIp, err := netUtils.GetCIDR(route.Ipaddr, route.Mask)
-	if err != nil {
-		logger.Println("error getting CIDR address for ", route.Ipaddr,":", route.Mask)
-		return
-	}
-	entity.DestNetIp = destNetIp
-	route.DestNetIp = destNetIp
-	entity.NextHopIp = route.NextHopIp
-	entity.RouteProtocol = ReverseRouteProtoTypeMapDB[int(route.Prototype)]
-	if routeInfo.createType != Invalid {
-		entity.CreatePath = true
-	}
-	if routeInfo.deleteType != Invalid {
-		entity.DeletePath = true
-	}
+    entity := buildPolicyEntityFromRoute(route, params)
 	PolicyEngineDB.PolicyEngineFilter(entity,policyPath,params)
 	var op int
 	if routeInfo.deleteType != Invalid {
 		op = delAll		//wipe out the policyList
 	    updateRoutePolicyState(route, op, "", "")
 	} 
+}
+
+func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, traverseAndApplyPolicyDataInfo interface{}) (err error) {
+   logger.Println("policyEngineApplyForRoute")	
+   traverseAndApplyPolicyData := traverseAndApplyPolicyDataInfo.(TraverseAndApplyPolicyData)
+   rmapInfoRecordList := item.(RouteInfoRecordList)
+   if rmapInfoRecordList.routeInfoProtocolMap == nil {
+      logger.Println("rmapInfoRecordList.routeInfoProtocolMap) = nil")
+	  return err	
+   }
+   logger.Println("Selected route protocol = ", rmapInfoRecordList.selectedRouteProtocol)
+   selectedRouteList := rmapInfoRecordList.routeInfoProtocolMap[rmapInfoRecordList.selectedRouteProtocol]
+   if len(selectedRouteList) == 0 {
+      logger.Println("len(selectedRouteList) == 0")
+	  return err	
+  }
+  for i:=0;i<len(selectedRouteList);i++ {
+     selectedRouteInfoRecord := selectedRouteList[i]	
+     policyRoute := ribd.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid:rmapInfoRecordList.isPolicyBasedStateValid}
+     params := RouteParams{destNetIp:policyRoute.Ipaddr, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, nextHopIp: selectedRouteInfoRecord.nextHopIp.String(),sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
+     entity := buildPolicyEntityFromRoute(policyRoute,params)
+	 entity.PolicyList = make([]string,0)
+	 for j:=0; j<len(rmapInfoRecordList.policyList) ;j++ {
+		entity.PolicyList = append(entity.PolicyList,rmapInfoRecordList.policyList[j])
+	 }
+	 traverseAndApplyPolicyData.updatefunc(entity, traverseAndApplyPolicyData.data, params)
+  }
+ return err
+}
+func policyEngineTraverseAndApply(data interface{}, updatefunc policy.PolicyApplyfunc) {
+	logger.Println("PolicyEngineTraverseAndApply - traverse routing table and apply policy ")
+	traverseAndApplyPolicyData := TraverseAndApplyPolicyData{data:data, updatefunc:updatefunc}
+    RouteInfoMap.VisitAndUpdate(policyEngineApplyForRoute, traverseAndApplyPolicyData)
 }

@@ -563,6 +563,7 @@ func InitializePolicyDB() {
 	PolicyEngineDB.SetEntityUpdateFunc(UpdateRouteAndPolicyDB)
 	PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineRouteDispositionAction)
 	PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionRedistribute)
+	PolicyEngineDB.SetTraverseAndApplyPolicyFunc(policyEngineTraverseAndApply)
 }
 func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE

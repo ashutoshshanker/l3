@@ -13,6 +13,7 @@ import (
 	"asicd/asicdConstDefs"
 	"l3/rib/ribdCommonDefs"
 	"utils/policy"
+	"utils/netUtils"
 	"time"
 	"sort"
 )
@@ -31,6 +32,7 @@ func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["EBGP"]       = ribdCommonDefs.EBGP
 	RouteProtocolTypeMapDB["IBGP"]       = ribdCommonDefs.IBGP
 	RouteProtocolTypeMapDB["BGP"]       = ribdCommonDefs.BGP
+	RouteProtocolTypeMapDB["OSPF"]      = ribdCommonDefs.OSPF
 	RouteProtocolTypeMapDB["STATIC"]       = ribdCommonDefs.STATIC
 	
 	//reverse
@@ -90,6 +92,24 @@ func BuildProtocolAdminDistanceSlice() {
    }
    return isBetter
 }*/
+func buildPolicyEntityFromRoute(route ribd.Routes, params interface {}) (entity policy.PolicyEngineFilterEntityParams) {
+	routeInfo := params.(RouteParams)
+	destNetIp, err := netUtils.GetCIDR(route.Ipaddr, route.Mask)
+	if err != nil {
+		logger.Println("error getting CIDR address for ", route.Ipaddr,":", route.Mask)
+		return
+	}
+	entity.DestNetIp = destNetIp
+	entity.NextHopIp = route.NextHopIp
+	entity.RouteProtocol = ReverseRouteProtoTypeMapDB[int(route.Prototype)]
+	if routeInfo.createType != Invalid {
+		entity.CreatePath = true
+	}
+	if routeInfo.deleteType != Invalid {
+		entity.DeletePath = true
+	}
+	return entity
+}
 func findRouteWithNextHop(routeInfoList []RouteInfoRecord, nextHopIP string) (found bool, routeInfoRecord RouteInfoRecord, index int) {
 	logger.Println("findRouteWithNextHop")
 	index = -1
