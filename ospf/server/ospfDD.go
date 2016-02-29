@@ -321,6 +321,17 @@ func (server *OSPFServer) ConstructAndSendDbdPacket(nbrKey NeighborConfKey, lsa_
 	server.logger.Info(fmt.Sprintln("DBDSEND: nbr state ", nbrCon.OspfNbrState,
 		" imms ", dbd_mdata.ibit, dbd_mdata.mbit, dbd_mdata.msbit,
 		" seq num ", seq, "options ", dbd_mdata.options))
-	nbrCon.ospfNbrDBDSendCh <- dbd_mdata
+	data := newDbdMsg(nbrKey.OspfNbrRtrId, dbd_mdata)
+	server.ospfNbrDBDSendCh <- data
 	return dbd_mdata
+}
+
+func newDbdMsg(key uint32, dbd_data ospfDatabaseDescriptionData) ospfNeighborDBDMsg {
+	dbdNbrMsg := ospfNeighborDBDMsg{
+		ospfNbrConfKey: NeighborConfKey{
+			OspfNbrRtrId: key,
+		},
+		ospfNbrDBDData: dbd_data,
+	}
+	return dbdNbrMsg
 }

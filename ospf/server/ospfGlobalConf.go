@@ -120,8 +120,10 @@ func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {
 		server.InitNeighborStateMachine()
 		go server.ProcessNbrStateMachine()
 		go server.UpdateNeighborConf()
+		go server.ProcessTxNbrPkt()
 		go server.ProcessRxNbrPkt()
 		server.StartLSDatabase()
+
 	}
 
 	for key, ent := range localIntfStateMap {
