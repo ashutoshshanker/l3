@@ -166,10 +166,6 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 	AreaId := convertIPv4ToUint32(ent.IfAreaId)
 	nbrListLen := len(nbr_list)
 
-	nbrMsg := nbrStateChangeMsg{
-		key:    nbr_list[nbrListLen-1],
-		areaId: areaId,
-	}
 	if areaId != AreaId {
 		return
 	}
@@ -181,7 +177,8 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 			return
 		}*/
 	if !isDR {
-		server.neighborStateChangeCh <- nbrMsg
+		server.sendLsdbToNeighborEvent(nbr_list[nbrListLen-1], areaId, 0,
+			0, LSAFLOOD)
 		return
 	}
 
@@ -253,7 +250,8 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 		val.AdvRtr = lsaKey.AdvRouter
 		server.LsdbSlice = append(server.LsdbSlice, val)
 	}
-	server.neighborStateChangeCh <- nbrMsg
+	server.sendLsdbToNeighborEvent(nbr_list[nbrListLen-1], areaId, 0,
+		0, LSAFLOOD)
 	return
 }
 
@@ -477,7 +475,6 @@ func (server *OSPFServer) processRecvdNetworkLsa(data []byte, areaId uint32) boo
 	//Add entry in LSADatabase
 	lsDbEnt.NetworkLsaMap[*lsakey] = *networkLsa
 	server.AreaLsdb[lsdbKey] = lsDbEnt
-	server.printRouterLsa()
 	if !exist {
 		var val LsdbSliceEnt
 		val.AreaId = lsdbKey.AreaId

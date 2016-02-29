@@ -10,7 +10,9 @@ const (
 	FloodLsa uint8 = LsdbNoAction + 1
 )
 
-func (server *OSPFServer) SendRouterLsa(areaId uint32, nbrConf OspfNeighborEntry) {
+func (server *OSPFServer) SendRouterLsa(areaId uint32, nbrConf OspfNeighborEntry,
+	dstMAC net.HardwareAddr, dstIp net.IP) []byte{
+	server.logger.Info("Flood: Start flooding as Nbr is in full state")
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
@@ -23,7 +25,7 @@ func (server *OSPFServer) SendRouterLsa(areaId uint32, nbrConf OspfNeighborEntry
 	lsDbEnt, exists := server.AreaLsdb[lsdbKey]
 	if !exists {
 		server.logger.Info(fmt.Sprintln("Flood: Area lsdb doesnt exist for area id ", areaId))
-		return
+		return nil
 	}
 
 	pktLen := 0
@@ -70,7 +72,7 @@ func (server *OSPFServer) SendRouterLsa(areaId uint32, nbrConf OspfNeighborEntry
 	//lsaEncPkt = make([]byte, lsa_pkt_len)
 	if lsa_pkt_len == OSPA_NO_OF_LSA_FIELD {
 		server.logger.Info(fmt.Sprintln("Flood: No LSA to send"))
-		return
+		return nil
 	}
 	lsas_enc := make([]byte, 4)
 
@@ -79,14 +81,14 @@ func (server *OSPFServer) SendRouterLsa(areaId uint32, nbrConf OspfNeighborEntry
 	lsaEncPkt = append(lsaEncPkt, ospfLsaPkt.lsa...)
 
 	server.logger.Info(fmt.Sprintln("Flood: LSA pkt with #lsas = ", lsaEncPkt))
-	dstMAC := net.HardwareAddr{0x01, 0x00, 0x5e, 0x00, 0x00, 0x05}
-	dstIp := net.IP{224, 0, 0, 5}
+	//dstMAC := net.HardwareAddr{0x01, 0x00, 0x5e, 0x00, 0x00, 0x05}
+	//dstIp := net.IP{224, 0, 0, 5}
 
 	pkt := server.BuildLsaUpdPkt(nbrConf.intfConfKey, intConf,
 		nbrConf, dstMAC, dstIp, lsa_pkt_len, lsaEncPkt)
 	server.logger.Info(fmt.Sprintln("Flood : LSA upd packet = ", lsaEncPkt))
 	/* send the lsa update packet */
-	nbrConf.ospfNbrLsaUpdSendCh <- pkt
+	return pkt
 }
 
 /*
