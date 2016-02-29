@@ -20,6 +20,7 @@ type Destination struct {
 	nlri              packet.IPPrefix
 	peerPathMap       map[string]*Path
 	locRibPath        *Path
+	locRibPathRoute   *Route
 	aggPath           *Path
 	aggregatedDestMap map[string]*Destination
 	ecmpPaths         map[*Path]*Route
@@ -37,6 +38,11 @@ func NewDestination(server *BGPServer, nlri packet.IPPrefix) *Destination {
 	}
 
 	return dest
+}
+
+func (d *Destination) GetLocRibPathRoute() *bgpd.BGPRoute {
+	d.logger.Info(fmt.Sprintf("GetLocRibPathRoute for %s", d.nlri.Prefix.String()))
+	return d.locRibPathRoute.GetBGPRoute()
 }
 
 func (d *Destination) GetBGPRoutes() []*bgpd.BGPRoute {
@@ -331,6 +337,7 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 		}
 
 		d.locRibPath = ecmpPaths[0][0]
+		d.locRibPathRoute = d.ecmpPaths[d.locRibPath]
 	} else {
 		if d.locRibPath != nil {
 			// Remove route

@@ -192,7 +192,7 @@ func (adjRib *AdjRib) GetLocRib() map[*Path][]*Destination {
 }
 
 func (adjRib *AdjRib) RemoveRouteFromAggregate(ip packet.IPPrefix, aggIP packet.IPPrefix, srcIP string,
-	bgpAgg *config.BGPAggregate) (map[*Path][]*Destination, []*Destination, *Path) {
+	bgpAgg *config.BGPAggregate, ipDest *Destination) (map[*Path][]*Destination, []*Destination, *Path) {
 	var aggPath, path *Path
 	var dest *Destination
 	var aggDest *Destination
@@ -202,10 +202,14 @@ func (adjRib *AdjRib) RemoveRouteFromAggregate(ip packet.IPPrefix, aggIP packet.
 
 	adjRib.logger.Info(fmt.Sprintf("AdjRib:RemoveRouteFromAggregate - ip %v, aggIP %v", ip, aggIP))
 	if dest, ok = adjRib.getDest(ip, false); !ok {
-		adjRib.logger.Info(fmt.Sprintln("RemoveRouteFromAggregate: routes ip", ip, "not found"))
-		return updated, withdrawn, nil
+		if ipDest == nil {
+			adjRib.logger.Info(fmt.Sprintln("RemoveRouteFromAggregate: routes ip", ip, "not found"))
+			return updated, withdrawn, nil
+		}
+		dest = ipDest
 	}
-	path = dest.locRibPath
+	adjRib.logger.Info(fmt.Sprintln("RemoveRouteFromAggregate: locRibPath", dest.locRibPath, "locRibRoutePath", dest.locRibPathRoute.path))
+	path = dest.locRibPathRoute.path
 	remPath := NewPath(adjRib.server, nil, path.pathAttrs, true, false, path.routeType)
 
 	if aggDest, ok = adjRib.getDest(aggIP, false); !ok {
@@ -219,12 +223,19 @@ func (adjRib *AdjRib) RemoveRouteFromAggregate(ip packet.IPPrefix, aggIP packet.
 	}
 
 	aggPath.removePathFromAggregate(ip.Prefix.String(), bgpAgg.GenerateASSet)
-	aggDest.setUpdateAggPath(srcIP)
+	if aggPath.isAggregatePathEmpty() {
+		aggDest.RemovePath(srcIP, aggPath)
+	} else {
+		aggDest.setUpdateAggPath(srcIP)
+	}
 	aggDest.removeAggregatedDests(ip.Prefix.String())
 	action, addRoutes, updRoutes, delRoutes := aggDest.SelectRouteForLocRib()
 	withdrawn, updated = adjRib.updateRibOutInfo(action, addRoutes, updRoutes, delRoutes, aggDest, withdrawn, updated)
 	if action == RouteActionAdd || action == RouteActionReplace {
 		dest.aggPath = aggPath
+	}
+	if action == RouteActionDelete && aggDest.IsEmpty() {
+		delete(adjRib.destPathMap, aggIP.Prefix.String())
 	}
 
 	return updated, withdrawn, remPath

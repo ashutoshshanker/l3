@@ -52,7 +52,7 @@ type PrefixPolicyListInfo struct {
 	highRange  int
 }
 
-func addPolicyRouteMap(route bgpd.BGPRoute, policy Policy) {
+func addPolicyRouteMap(route *bgpd.BGPRoute, policy Policy) {
 	fmt.Println("addPolicyRouteMap")
 	policy.hitCounter++
 	//ipPrefix, err := getNetowrkPrefixFromStrings(route.Network, route.Mask)
@@ -110,14 +110,14 @@ func addPolicyRouteMap(route bgpd.BGPRoute, policy Policy) {
 		tempPolicy.routeInfoList = make([]bgpd.BGPRoute, 0)
 	}
 	if found == false {
-		tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
+		tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, *route)
 	}
 	PolicyDB.Set(patriciaDB.Prefix(policy.name), tempPolicy)
 }
-func deletePolicyRouteMap(route bgpd.BGPRoute, policy Policy) {
+func deletePolicyRouteMap(route *bgpd.BGPRoute, policy Policy) {
 	fmt.Println("deletePolicyRouteMap")
 }
-func updatePolicyRouteMap(route bgpd.BGPRoute, policy Policy, op int) {
+func updatePolicyRouteMap(route *bgpd.BGPRoute, policy Policy, op int) {
 	fmt.Println("updatePolicyRouteMap")
 	if op == add {
 		addPolicyRouteMap(route, policy)

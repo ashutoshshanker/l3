@@ -22,7 +22,7 @@ const (
 	Valid   = 0
 )
 
-type ApplyActionFunc func(bgpd.BGPRoute, []string, interface{}, interface{}, interface{})
+type ApplyActionFunc func(*bgpd.BGPRoute, []string, interface{}, interface{}, interface{})
 
 type RouteParams struct {
 	DestNetIp     string
@@ -144,12 +144,17 @@ func getNetworkPrefixFromCIDR(ipAddr string) (ipPrefix patriciaDB.Prefix, err er
 
 	return patriciaDB.Prefix(destNet), err
 }
-func deleteRoutePolicyStateAll(route bgpd.BGPRoute) {
+func deleteRoutePolicyStateAll(route *bgpd.BGPRoute) {
 	fmt.Println("deleteRoutePolicyStateAll")
+	route.PolicyList = nil
 	return
 }
-func addRoutePolicyState(route bgpd.BGPRoute, policy string, policyStmt string) {
+func addRoutePolicyState(route *bgpd.BGPRoute, policy string, policyStmt string) {
 	fmt.Println("addRoutePolicyState")
+	if route.PolicyList == nil {
+		route.PolicyList = make([]string, 0)
+	}
+	route.PolicyList = append(route.PolicyList, policy)
 	return
 }
 func addPolicyRouteMapEntry(route *bgpd.BGPRoute, policy string, policyStmt string, conditionList []string, actionList []string) {
@@ -183,7 +188,7 @@ func addPolicyRouteMapEntry(route *bgpd.BGPRoute, policy string, policyStmt stri
 func deleteRoutePolicyState(ipPrefix patriciaDB.Prefix, policyName string) {
 	fmt.Println("deleteRoutePolicyState")
 }
-func deletePolicyRouteMapEntry(route bgpd.BGPRoute, policy string) {
+func deletePolicyRouteMapEntry(route *bgpd.BGPRoute, policy string) {
 	fmt.Println("deletePolicyRouteMapEntry for policy ", policy, "route ", route.Network, "/", route.CIDRLen)
 	if PolicyRouteMap == nil {
 		fmt.Println("PolicyRouteMap empty")
@@ -194,7 +199,7 @@ func deletePolicyRouteMapEntry(route bgpd.BGPRoute, policy string) {
 	delete(PolicyRouteMap, policyRouteIndex)
 }
 
-func updateRoutePolicyState(route bgpd.BGPRoute, op int, policy string, policyStmt string) {
+func updateRoutePolicyState(route *bgpd.BGPRoute, op int, policy string, policyStmt string) {
 	fmt.Println("updateRoutePolicyState")
 	if op == delAll {
 		deleteRoutePolicyStateAll(route)

@@ -273,6 +273,7 @@ func (server *BGPServer) SendUpdate(updated map[*Path][]*Destination, withdrawn 
 }
 
 type ActionCbInfo struct {
+	dest      *Destination
 	updated   *(map[*Path][]*Destination)
 	withdrawn *([]*Destination)
 }
@@ -411,7 +412,7 @@ func (server *BGPServer) setUpdatedWithAggPaths(actionCbInfo ActionCbInfo, updat
 	}
 }
 
-func (server *BGPServer) ApplyAggregateAction(route bgpd.BGPRoute, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
+func (server *BGPServer) ApplyAggregateAction(route *bgpd.BGPRoute, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
 	ipPrefix := packet.NewIPPrefix(net.ParseIP(route.Network), uint8(route.CIDRLen))
 	aggPrefix := server.getAggPrefix(conditionList)
 	routeParams := params.(policy.RouteParams)
@@ -420,6 +421,7 @@ func (server *BGPServer) ApplyAggregateAction(route bgpd.BGPRoute, conditionList
 		GenerateASSet:   aggActions.GenerateASSet,
 		SendSummaryOnly: aggActions.SendSummaryOnly,
 	}
+	actionCbInfo := ctx.(ActionCbInfo)
 
 	var updated map[*Path][]*Destination
 	var withdrawn []*Destination
@@ -427,10 +429,10 @@ func (server *BGPServer) ApplyAggregateAction(route bgpd.BGPRoute, conditionList
 		updated, withdrawn, _ = server.AdjRib.AddRouteToAggregate(*ipPrefix, *aggPrefix,
 			server.BgpConfig.Global.Config.RouterId.String(), server.ifaceIP, &bgpAgg)
 	} else if routeParams.DeleteType == policy.Valid {
+		origDest := actionCbInfo.dest
 		updated, withdrawn, _ = server.AdjRib.RemoveRouteFromAggregate(*ipPrefix, *aggPrefix,
-			server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg)
+			server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest)
 	}
-	actionCbInfo := ctx.(ActionCbInfo)
 	server.setUpdatedWithAggPaths(actionCbInfo, updated, aggActions.SendSummaryOnly, *ipPrefix)
 	server.setWithdrawnWithAggPaths(actionCbInfo, withdrawn)
 	return
@@ -441,16 +443,21 @@ func (server *BGPServer) checkForAggregation(updated map[*Path][]*Destination, w
 	server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - start, updated %v withdrawn %v", updated, withdrawn))
 
 	for _, dest := range withdrawn {
-		route := bgpd.BGPRoute{
-			Network: dest.nlri.Prefix.String(),
-			CIDRLen: int16(dest.nlri.Length),
+		route := dest.GetLocRibPathRoute()
+		if route == nil {
+			server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - route not found withdraw dest %s",
+				dest.nlri.Prefix.String()))
+			continue
 		}
+		server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - dest %s policylist %v hit %v before applying delete policy",
+			dest.nlri.Prefix.String(), route.PolicyList, route.PolicyHitCounter))
 		routeParams := policy.RouteParams{
 			CreateType:    policy.Invalid,
 			DeleteType:    policy.Valid,
 			ActionFuncMap: server.actionFuncMap,
 		}
 		callbackInfo := ActionCbInfo{
+			dest:      dest,
 			updated:   &updated,
 			withdrawn: &withdrawn,
 		}
@@ -459,8 +466,10 @@ func (server *BGPServer) checkForAggregation(updated map[*Path][]*Destination, w
 
 	for _, destinations := range updated {
 		for _, dest := range destinations {
-			routes := server.AdjRib.GetBGPRoutes(dest.nlri.Prefix.String())
-			if len(routes) > 0 {
+			route := dest.GetLocRibPathRoute()
+			server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - dest %s policylist %v hit %v before applying create policy",
+				dest.nlri.Prefix.String(), route.PolicyList, route.PolicyHitCounter))
+			if route != nil {
 				routeParams := policy.RouteParams{
 					CreateType:    policy.Valid,
 					DeleteType:    policy.Invalid,
@@ -470,7 +479,9 @@ func (server *BGPServer) checkForAggregation(updated map[*Path][]*Destination, w
 					updated:   &updated,
 					withdrawn: &withdrawn,
 				}
-				policy.PolicyEngineFilter(*routes[0], ribdCommonDefs.PolicyPath_Export, routeParams, callbackInfo)
+				policy.PolicyEngineFilter(route, ribdCommonDefs.PolicyPath_Export, routeParams, callbackInfo)
+				server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - dest %s policylist %v hit %v after applying create policy",
+					dest.nlri.Prefix.String(), route.PolicyList, route.PolicyHitCounter))
 			}
 		}
 	}

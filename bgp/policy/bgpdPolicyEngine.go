@@ -109,10 +109,10 @@ func conditionCheckValid(route bgpd.BGPRoute, conditionsList []string) (valid bo
 	fmt.Println("returning valid= ", valid)
 	return valid
 }
-func policyEngineActionRejectRoute(route bgpd.BGPRoute, params interface{}) {
+func policyEngineActionRejectRoute(route *bgpd.BGPRoute, params interface{}) {
 	fmt.Println("policyEngineActionRejectRoute for route ", route.Network, "/", route.CIDRLen)
 }
-func policyEngineActionAcceptRoute(route bgpd.BGPRoute, params interface{}) {
+func policyEngineActionAcceptRoute(route *bgpd.BGPRoute, params interface{}) {
 	fmt.Println("policyEngineActionAcceptRoute for ip ", route.Network, "/", route.CIDRLen)
 }
 func policyEngineActionAggregate(route bgpd.BGPRoute, aggregateActionInfo PolicyAggregateActionInfo, params interface{}) {
@@ -124,13 +124,13 @@ func policyEngineActionAggregate(route bgpd.BGPRoute, aggregateActionInfo Policy
 		return
 	}*/
 }
-func policyEngineActionUndoAggregate(route bgpd.BGPRoute, aggregateActionInfo PolicyAggregateActionInfo, params interface{}, conditionsList []string) {
+func policyEngineActionUndoAggregate(route *bgpd.BGPRoute, aggregateActionInfo PolicyAggregateActionInfo, params interface{}, conditionsList []string) {
 	fmt.Println("policyEngineActionUndoAggregate")
 }
 func policyEngineActionUndoRejectRoute(route bgpd.BGPRoute, params interface{}, conditionsList []string) {
 	fmt.Println("policyEngineActionUndoRejectRoute - route: ", route.Network, "/", route.CIDRLen, " type ")
 }
-func policyEngineUndoActionsPolicyStmt(route bgpd.BGPRoute, policy Policy, policyStmt PolicyStmt, params interface{}, conditionsAndActionsList ConditionsAndActionsList) {
+func policyEngineUndoActionsPolicyStmt(route *bgpd.BGPRoute, policy Policy, policyStmt PolicyStmt, params interface{}, conditionsAndActionsList ConditionsAndActionsList) {
 	fmt.Println("policyEngineUndoActionsPolicyStmt")
 	if conditionsAndActionsList.actionList == nil {
 		fmt.Println("No actions")
@@ -157,7 +157,7 @@ func policyEngineUndoActionsPolicyStmt(route bgpd.BGPRoute, policy Policy, polic
 		}
 	}
 }
-func policyEngineUndoPolicyForRoute(route bgpd.BGPRoute, policy Policy, params interface{}) {
+func policyEngineUndoPolicyForRoute(route *bgpd.BGPRoute, policy Policy, params interface{}) {
 	fmt.Println("policyEngineUndoPolicyForRoute - policy name ", policy.name, "  route: ", route.Network, "/", route.CIDRLen)
 	policyRouteIndex := PolicyRouteIndex{routeIP: route.Network, prefixLen: uint16(route.CIDRLen), policy: policy.name}
 	policyStmtMap := PolicyRouteMap[policyRouteIndex]
@@ -176,7 +176,7 @@ func policyEngineUndoPolicyForRoute(route bgpd.BGPRoute, policy Policy, params i
 		//check if the route still exists - it may have been deleted by the previous statement action
 	}
 }
-func policyEngineImplementActions(route bgpd.BGPRoute, policyStmt PolicyStmt, conditionList []string, params interface{}, ctx interface{}) (actionList []string) {
+func policyEngineImplementActions(route *bgpd.BGPRoute, policyStmt PolicyStmt, conditionList []string, params interface{}, ctx interface{}) (actionList []string) {
 	fmt.Println("policyEngineImplementActions")
 	if policyStmt.actions == nil {
 		fmt.Println("No actions")
@@ -336,7 +336,7 @@ func policyEngineApplyPolicyStmt(route *bgpd.BGPRoute, policy Policy, policyStmt
 			}
 		}
 	}
-	actionList := policyEngineImplementActions(*route, policyStmt, conditionList, params, ctx)
+	actionList := policyEngineImplementActions(route, policyStmt, conditionList, params, ctx)
 	if actionListHasAction(actionList, ribdCommonDefs.PolicyActionTypeRouteDisposition, "Reject") {
 		fmt.Println("Reject action was applied for this route")
 		*routeDeleted = true
@@ -351,11 +351,11 @@ func policyEngineApplyPolicyStmt(route *bgpd.BGPRoute, policy Policy, policyStmt
 		if *routeDeleted == false {
 			fmt.Println("Reject action was not applied, so add this policy to the route")
 			op = add
-			updateRoutePolicyState(*route, op, policy.name, policyStmt.name)
+			updateRoutePolicyState(route, op, policy.name, policyStmt.name)
 		}
 		addPolicyRouteMapEntry(route, policy.name, policyStmt.name, conditionList, actionList)
 	}
-	updatePolicyRouteMap(*route, policy, op)
+	updatePolicyRouteMap(route, policy, op)
 }
 func policyEngineApplyPolicy(route *bgpd.BGPRoute, policy Policy, policyPath int, params interface{}, ctx interface{}, hit *bool) {
 	fmt.Println("policyEngineApplyPolicy - ", policy.name)
@@ -388,7 +388,7 @@ func policyEngineApplyPolicy(route *bgpd.BGPRoute, policy Policy, policyPath int
 		}
 	}
 }
-func PolicyEngineFilter(route bgpd.BGPRoute, policyPath int, params interface{}, ctx interface{}) {
+func PolicyEngineFilter(route *bgpd.BGPRoute, policyPath int, params interface{}, ctx interface{}) {
 	fmt.Println("PolicyEngineFilter")
 	var policyPath_Str string
 	if policyPath == ribdCommonDefs.PolicyPath_Import {
@@ -459,7 +459,7 @@ func PolicyEngineFilter(route bgpd.BGPRoute, policyPath int, params interface{},
 			fmt.Println("Invalid policy at localDB slice idx ", policy.localDBSliceIdx)
 			continue
 		}
-		policyEngineApplyPolicy(&route, policy, policyPath, params, ctx, &policyHit)
+		policyEngineApplyPolicy(route, policy, policyPath, params, ctx, &policyHit)
 		if policyHit {
 			fmt.Println("Policy ", policy.name, " applied to the route")
 			break
@@ -657,9 +657,9 @@ func PolicyEngineTraverseAndReverse(policy Policy) {
 			fmt.Println("Invalid route ", policy.routeList[idx])
 			continue
 		}
-		policyEngineUndoPolicyForRoute(policyRoute, policy, params)
+		policyEngineUndoPolicyForRoute(&policyRoute, policy, params)
 		deleteRoutePolicyState(ipPrefix, policy.name)
-		deletePolicyRouteMapEntry(policyRoute, policy.name)
+		deletePolicyRouteMapEntry(&policyRoute, policy.name)
 	}
 }
 func PolicyEngineTraverseAndReversePolicy(policy Policy) {
