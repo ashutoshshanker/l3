@@ -393,7 +393,8 @@ func (server *OSPFServer)InstallRoute(rKey RoutingTblKey) {
         destNetIp := convertUint32ToIPv4(rKey.DestId) //String :1
         networkMask := convertUint32ToIPv4(rKey.AddrMask) //String : 2
         metric := ribd.Int(newEnt.Cost) //int : 3
-        routeType := "OSPF" // 7 : String
+        //routeType := "OSPF" // 7 : String
+        routeType := "IBGP" // 7 : String
         for key, _ := range newEnt.NextHops {
                 nextHopIp := convertUint32ToIPv4(key.NextHopIP) //String : 4
                 ipProp, exist := server.ipPropertyMap[key.IfIPAddr]
