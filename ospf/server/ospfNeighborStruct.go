@@ -1,12 +1,12 @@
 package server
 
 import (
+	"encoding/binary"
 	"fmt"
 	"l3/ospf/config"
 	"net"
 	"sync"
 	"time"
-	"encoding/binary" 
 )
 
 type NbrMsgType uint32
@@ -19,6 +19,13 @@ const (
 
 const (
 	RxDBDInterval = 5
+)
+
+type LsaOp uint8
+
+const (
+	LSAFLOOD   = 0
+	LSAUNICASt = 1
 )
 
 type NeighborConfKey struct {
@@ -39,12 +46,10 @@ type OspfNeighborEntry struct {
 	NbrDeadTimer           *time.Timer
 	isDRBDR                bool
 	ospfNbrSeqNum          uint32
+	isSeqNumUpdate         bool
 	isMaster               bool
 	ospfNbrDBDTickerCh     *time.Ticker
-	ospfNbrDBDSendCh       chan ospfDatabaseDescriptionData
-	ospfNbrLsaSendCh       chan []ospfLSAReq
-	ospfNbrLsaUpdSendCh    chan []byte
-	ospfRxTxNbrPktStopCh   chan bool
+
 	ospfNbrLsaIndex        uint8       // db_summary list index
 	ospfNbrLsaReqIndex     uint8       //req_list index
 	ospfNeighborLsaRxTimer *time.Timer // retx interval timer
@@ -92,9 +97,12 @@ type ospfNeighborDBDMsg struct {
 	ospfNbrDBDData ospfDatabaseDescriptionData
 }
 
-type nbrStateChangeMsg struct {
+type ospfLsdbToNbrMsg struct {
 	key    uint32
 	areaId uint32
+	lsType uint8
+	linkid uint32
+	lsOp   uint8
 }
 
 type ospfNbrMdata struct {
@@ -124,7 +132,6 @@ func (server *OSPFServer) InitNeighborStateMachine() {
 	ospfNeighborRequest_list = make(map[uint32][]*ospfNeighborReq)
 	ospfNeighborDBSummary_list = make(map[uint32][]*ospfNeighborDBSummary)
 	ospfNeighborRetx_list = make(map[uint32][]*ospfNeighborRetx)
-	server.neighborStateChangeCh = make(chan nbrStateChangeMsg)
 	ospfIntfToNbrMap = make(map[IntfConfKey]ospfNbrMdata)
 	go server.refreshNeighborSlice()
 	server.logger.Info("NBRINIT: Neighbor FSM init done..")
@@ -157,7 +164,9 @@ func (server *OSPFServer) UpdateNeighborConf() {
 			nbrConf.OspfNbrState = nbrMsg.ospfNbrEntry.OspfNbrState
 			nbrConf.OspfNbrDeadTimer = nbrMsg.ospfNbrEntry.OspfNbrDeadTimer
 			nbrConf.OspfNbrInactivityTimer = time.Now()
-			nbrConf.ospfNbrSeqNum = nbrMsg.ospfNbrEntry.ospfNbrSeqNum
+			if (nbrMsg.ospfNbrEntry.isSeqNumUpdate) {
+				nbrConf.ospfNbrSeqNum = nbrMsg.ospfNbrEntry.ospfNbrSeqNum
+			}
 			nbrConf.ospfNbrDBDTickerCh = nbrMsg.ospfNbrEntry.ospfNbrDBDTickerCh
 			nbrConf.isMaster = nbrMsg.ospfNbrEntry.isMaster
 			nbrConf.ospfNbrLsaReqIndex = nbrMsg.ospfNbrEntry.ospfNbrLsaReqIndex
@@ -167,12 +176,7 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				nbrConf.OspfRtrPrio = nbrMsg.ospfNbrEntry.OspfRtrPrio
 				nbrConf.intfConfKey = nbrMsg.ospfNbrEntry.intfConfKey
 				nbrConf.OspfNbrOptions = 0
-
-				nbrConf.ospfNbrDBDSendCh = nbrMsg.ospfNbrEntry.ospfNbrDBDSendCh
 				server.neighborBulkSlice = append(server.neighborBulkSlice, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
-				nbrConf.ospfRxTxNbrPktStopCh = make(chan bool)
-				nbrConf.ospfNbrLsaSendCh = make(chan []ospfLSAReq)
-				nbrConf.ospfNbrLsaUpdSendCh = make(chan []byte)
 				nbrConf.req_list_mutex = &sync.Mutex{}
 				nbrConf.db_summary_list_mutex = &sync.Mutex{}
 				nbrConf.retx_list_mutex = &sync.Mutex{}
@@ -194,7 +198,6 @@ func (server *OSPFServer) UpdateNeighborConf() {
 			}
 			if nbrMsg.nbrMsgType == NBRDEL {
 				server.neighborBulkSlice = append(server.neighborBulkSlice, INVALID_NEIGHBOR_CONF_KEY)
-				nbrConf.ospfRxTxNbrPktStopCh <- true
 				delete(server.NeighborConfigMap, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
 				server.logger.Info(fmt.Sprintln("DELETE neighbor with nbr id - ",
 					nbrMsg.ospfNbrConfKey.OspfNbrRtrId))
@@ -263,4 +266,22 @@ func (server *OSPFServer) updateNeighborMdata(intf IntfConfKey, nbr uint32) {
 	nbrMdata.isDR = bytesEqual(intfData.IfDRIp, intfData.IfIpAddr.To4())
 	nbrMdata.nbrList = append(nbrMdata.nbrList, nbr)
 	ospfIntfToNbrMap[intf] = nbrMdata
+}
+
+func (server *OSPFServer) sendLsdbToNeighborEvent(key uint32, areaId uint32, lsType uint8,
+	linkId uint32, op uint8) {
+	_, exists := server.NeighborConfigMap[key]
+	if !exists {
+		server.logger.Info(fmt.Sprintln("Nbr-LSDB: Failed to get nbr instance key ", key))
+		return
+	}
+	msg := ospfLsdbToNbrMsg{
+		key:    key,
+		areaId: areaId,
+		lsType: lsType,
+		linkid: linkId,
+		lsOp:   op,
+	}
+	server.ospfNbrLsaUpdSendCh <- msg
+	server.logger.Info("Send flood data to Tx thread")
 }

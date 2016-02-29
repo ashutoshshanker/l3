@@ -91,7 +91,11 @@ type OSPFServer struct {
 	neighborLSAReqEventCh chan ospfNeighborLSAreqMsg
 	neighborLSAUpdEventCh chan ospfNeighborLSAUpdMsg
 	neighborLSAACKEventCh chan ospfNeighborLSAACKMsg
-	neighborStateChangeCh chan nbrStateChangeMsg
+	ospfNbrDBDSendCh      chan ospfNeighborDBDMsg
+	ospfNbrLsaSendCh      chan ospfNeighborLSAreqMsg
+	ospfNbrLsaUpdSendCh   chan ospfLsdbToNbrMsg
+	ospfRxTxNbrPktStopCh  chan bool
+
 	//neighborDBDEventCh   chan IntfToNeighDbdMsg
 
 	AreaStateTimer           *time.Timer
@@ -151,6 +155,11 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.neighborLSAReqEventCh = make(chan ospfNeighborLSAreqMsg)
 	ospfServer.neighborLSAUpdEventCh = make(chan ospfNeighborLSAUpdMsg)
 	ospfServer.neighborLSAACKEventCh = make(chan ospfNeighborLSAACKMsg)
+	ospfServer.ospfNbrDBDSendCh = make(chan ospfNeighborDBDMsg)
+	ospfServer.ospfNbrLsaSendCh = make(chan ospfNeighborLSAreqMsg)
+	ospfServer.ospfNbrLsaUpdSendCh = make(chan ospfLsdbToNbrMsg)
+	ospfServer.ospfRxTxNbrPktStopCh = make(chan bool)
+
 	/*
 	   ospfServer.ribSubSocketCh = make(chan []byte)
 	   ospfServer.ribSubSocketErrCh = make(chan error)

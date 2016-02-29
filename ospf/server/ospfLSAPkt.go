@@ -172,10 +172,14 @@ func (server *OSPFServer) BuildAndSendLSAReq(nbrId uint32, nbrConf OspfNeighborE
 	for req packet */
 
 	var add_items uint8
-	var lsa_req []ospfLSAReq
-	lsa_req = []ospfLSAReq{}
+
 	var req ospfLSAReq
 	var i uint8
+
+	msg := ospfNeighborLSAreqMsg{}
+	msg.lsa_slice = []ospfLSAReq{}
+	msg.nbrKey = nbrId
+
 	reqlist := ospfNeighborRequest_list[nbrId]
 	req_list_items := uint8(len(reqlist)) - nbrConf.ospfNbrLsaReqIndex
 	max_req := calculateMaxLsaReq()
@@ -193,7 +197,7 @@ func (server *OSPFServer) BuildAndSendLSAReq(nbrId uint32, nbrConf OspfNeighborE
 		req.link_state_id = reqlist[i].lsa_headers.link_state_id
 		req.adv_router_id = reqlist[i].lsa_headers.adv_router_id
 		nbrConf.req_list_mutex.Lock()
-		lsa_req = append(lsa_req, req)
+		msg.lsa_slice = append(msg.lsa_slice, req)
 		nbrConf.req_list_mutex.Unlock()
 		/* update LSA Retx list */
 		reTxNbr := newospfNeighborRetx()
@@ -205,11 +209,13 @@ func (server *OSPFServer) BuildAndSendLSAReq(nbrId uint32, nbrConf OspfNeighborE
 		nbrConf.retx_list_mutex.Unlock()
 
 	}
-	server.logger.Info(fmt.Sprintln("LSA request: total requests out, req_list_len, current req_list_index ", add_items, len(reqlist), nbrConf.ospfNbrLsaReqIndex))
-	server.logger.Info(fmt.Sprintln("LSA request: lsa_req", lsa_req))
+	server.logger.Info(fmt.Sprintln("LSA request: total requests out, req_list_len, current req_list_index ", add_items, len(msg.lsa_slice), nbrConf.ospfNbrLsaReqIndex))
+	server.logger.Info(fmt.Sprintln("LSA request: lsa_req", msg.lsa_slice))
 
-	nbrConf.ospfNbrLsaSendCh <- lsa_req
-	index += add_items
+	if len(msg.lsa_slice) != 0 {
+		server.ospfNbrLsaSendCh <- msg
+		index += add_items
+	}
 	return index
 }
 
@@ -429,13 +435,13 @@ func (server *OSPFServer) lsAgeCheck(intf IntfConf, lsa_max_age bool, exist int)
 	send_ack := true
 	/*
 				if the LSA's LS age is equal to MaxAge, and there is
-			        currently no instance of the LSA in the router's link state
-			        database, and none of router's neighbors are in states Exchange
-			        or Loading, then take the following actions: a) Acknowledge the
-			        receipt of the LSA by sending a Link State Acknowledgment packet
-			        back to the sending neighbor (see Section 13.5), and b) Discard
-			        the LSA and examine the next LSA (if any) listed in the Link
-		                State Update packet.
+			    currently no instance of the LSA in the router's link state
+			    database, and none of router's neighbors are in states Exchange
+			    or Loading, then take the following actions: a) Acknowledge the
+			    receipt of the LSA by sending a Link State Acknowledgment packet
+			    back to the sending neighbor (see Section 13.5), and b) Discard
+			    the LSA and examine the next LSA (if any) listed in the Link
+		        State Update packet.
 	*/
 	for key, _ := range intf.NeighborMap {
 		nbr := server.NeighborConfigMap[key.RouterId]
@@ -599,11 +605,66 @@ func validateLsaIsNew(rlsamd LsaMetadata, dlsamd LsaMetadata) bool {
       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
       |                              ...                              |
 */
-/*
-func (server *OSPFServer) encodeLSAAckPkt() []byte {
 
+//func (server *OSPFServer) encodeLSAAck
+func (server *OSPFServer) BuildLSAAckPkt(intfKey IntfConfKey, ent IntfConf,
+	nbrConf OspfNeighborEntry, dstMAC net.HardwareAddr, dstIp net.IP, lsa_pkt_size int, lsaAckEnc []byte) (data []byte) {
+	ospfHdr := OSPFHeader{
+		ver:      OSPF_VERSION_2,
+		pktType:  uint8(LSAckType),
+		pktlen:   0,
+		routerId: server.ospfGlobalConf.RouterId,
+		areaId:   ent.IfAreaId,
+		chksum:   0,
+		authType: ent.IfAuthType,
+	}
+
+	ospfPktlen := OSPF_HEADER_SIZE
+	ospfPktlen = ospfPktlen + lsa_pkt_size
+	ospfHdr.pktlen = uint16(ospfPktlen)
+
+	ospfEncHdr := encodeOspfHdr(ospfHdr)
+	server.logger.Info(fmt.Sprintln("ospfEncHdr:", ospfEncHdr))
+
+	server.logger.Info(fmt.Sprintln("LSA upd Pkt:", lsaAckEnc))
+
+	ospf := append(ospfEncHdr, lsaAckEnc...)
+	server.logger.Info(fmt.Sprintln("OSPF LSA ACK:", ospf))
+	csum := computeCheckSum(ospf)
+	binary.BigEndian.PutUint16(ospf[12:14], csum)
+	copy(ospf[16:24], ent.IfAuthKey)
+
+	ipPktlen := IP_HEADER_MIN_LEN + ospfHdr.pktlen
+	ipLayer := layers.IPv4{
+		Version:  uint8(4),
+		IHL:      uint8(IP_HEADER_MIN_LEN),
+		TOS:      uint8(0xc0),
+		Length:   uint16(ipPktlen),
+		TTL:      uint8(1),
+		Protocol: layers.IPProtocol(OSPF_PROTO_ID),
+		SrcIP:    ent.IfIpAddr,
+		DstIP:    dstIp,
+	}
+
+	ethLayer := layers.Ethernet{
+		SrcMAC:       ent.IfMacAddr,
+		DstMAC:       dstMAC,
+		EthernetType: layers.EthernetTypeIPv4,
+	}
+
+	buffer := gopacket.NewSerializeBuffer()
+	options := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	gopacket.SerializeLayers(buffer, options, &ethLayer, &ipLayer, gopacket.Payload(ospf))
+	server.logger.Info(fmt.Sprintln("buffer: ", buffer))
+	lsaAck := buffer.Bytes()
+	server.logger.Info(fmt.Sprintln("flood Pkt: ", lsaAck))
+
+	return lsaAck
 }
-*/
+
 func (server *OSPFServer) ProcessLSAAckPkt(data []byte, ospfHdrMd *OspfHdrMetadata,
 	ipHdrMd *IpHdrMetadata, key IntfConfKey) error {
 
@@ -780,4 +841,26 @@ func (server *OSPFServer) lsaReTxTimerCheck(nbrKey uint32) {
 		//op := NBRUPD
 		//server.sendNeighborConf(nbrKey, nbrConf, NbrMsgType(op))
 	}
+}
+
+func (server *OSPFServer) processTxLsaUpdate(lsa_data ospfLsdbToNbrMsg) {
+	server.logger.Info(fmt.Sprintln("Received lsa_upd tx msg - ", lsa_data))
+	nbrConf, exists := server.NeighborConfigMap[lsa_data.key]
+	if !exists {
+		return
+	}
+	if lsa_data.lsOp == LSAFLOOD {
+		dstMac := net.HardwareAddr{0x01, 0x00, 0x5e, 0x00, 0x00, 0x05}
+		dstIp := net.IP{224, 0, 0, 5}
+		lsa_upd_pkt := server.SendRouterLsa(lsa_data.areaId, nbrConf, dstMac,
+			dstIp)
+		if lsa_upd_pkt != nil {
+			server.logger.Info(fmt.Sprintln("Send LSA upd ", lsa_upd_pkt))
+			server.SendOspfPkt(nbrConf.intfConfKey, lsa_upd_pkt)
+		}
+	} else {
+		server.logger.Info("Send unicast LSA upd packet")
+
+	}
+
 }
