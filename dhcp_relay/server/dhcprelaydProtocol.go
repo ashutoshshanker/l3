@@ -714,9 +714,16 @@ func DhcpRelayAgentReceiveDhcpPkt(clientHandler *net.UDPConn) {
 	var intfState dhcprelayd.DhcpRelayIntfState
 	for {
 		if dhcprelayEnable == false {
-			logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
+			logger.Warning("DRA: Enable DHCP RELAY AGENT GLOBALLY")
 			continue
 		}
+		dhcprelayRefCountMutex.Lock()
+		if dhcprelayEnabledIntfRefCount == 0 {
+			logger.Warning("No Relay Agent Enabled")
+			dhcprelayRefCountMutex.Unlock()
+			continue
+		}
+		dhcprelayRefCountMutex.Unlock()
 		bytesRead, cm, srcAddr, err := dhcprelayClientConn.ReadFrom(buf)
 		if err != nil {
 			logger.Err("DRA: reading buffer failed")
@@ -733,7 +740,6 @@ func DhcpRelayAgentReceiveDhcpPkt(clientHandler *net.UDPConn) {
 		}
 
 		logger.Info(fmt.Sprintln("DRA: Received Packet from ", srcAddr))
-		logger.Info(fmt.Sprintln("DRA:", cm))
 		//Decode the packet...
 		inReq, reqOptions, mType := DhcpRelayAgentDecodeInPkt(buf, bytesRead)
 		if inReq == nil || reqOptions == nil {
@@ -751,7 +757,6 @@ func DhcpRelayAgentReceiveDhcpPkt(clientHandler *net.UDPConn) {
 }
 
 func DhcpRelayAgentCreateClientServerConn() {
-
 	// Client send dhcp packet from port 68 to server port 67
 	// So create a filter for udp:67 for messages send out by client to
 	// server
