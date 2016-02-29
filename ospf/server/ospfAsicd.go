@@ -89,6 +89,7 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
                         }
 
                         //End
+                        server.updateIpPropertyMap(ipv4IntfMsg, msg.MsgType)
 			//server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex)
 			if ipv4IntfMsg.IfType == commonDefs.L2RefTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
@@ -98,6 +99,7 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 		} else {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_DELETE", ipv4IntfMsg))
 			server.deleteIPIntfConfMap(ipv4IntfMsg, NewIpv4IntfMsg.IfIndex)
+                        server.updateIpPropertyMap(ipv4IntfMsg, msg.MsgType)
 			if ipv4IntfMsg.IfType == commonDefs.L2RefTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
 			} else if ipv4IntfMsg.IfType == commonDefs.L2RefTypeVlan { // Vlan
