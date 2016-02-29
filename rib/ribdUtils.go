@@ -12,6 +12,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"asicd/asicdConstDefs"
 	"l3/rib/ribdCommonDefs"
+	"utils/policy"
 	"time"
 	"sort"
 )
@@ -178,7 +179,8 @@ func addPolicyRouteMap(route ribd.Routes, policyName string) {
 		logger.Println("Unexpected:policyInfo nil for policy ", policyName)
 		return
 	}
-	tempPolicy:=policyInfo.(Policy)
+	tempPolicyInfo:=policyInfo.(policy.Policy)
+	tempPolicy := tempPolicyInfo.Extensions.(PolicyExtensions)
 	tempPolicy.hitCounter++
 	if tempPolicy.routeList == nil {
 		logger.Println("routeList nil")
@@ -210,7 +212,8 @@ func addPolicyRouteMap(route ribd.Routes, policyName string) {
 	if found == false {
        tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
 	}
-	PolicyEngineDB.PolicyDB.Set(patriciaDB.Prefix(policyName), tempPolicy)
+	tempPolicyInfo.Extensions = tempPolicy
+	PolicyEngineDB.PolicyDB.Set(patriciaDB.Prefix(policyName), tempPolicyInfo)
 }
 func deletePolicyRouteMap(route ribd.Routes, policyName string) {
 	logger.Println("deletePolicyRouteMap")
