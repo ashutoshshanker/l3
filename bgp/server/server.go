@@ -3,11 +3,13 @@ package server
 
 import (
 	"asicd/asicdConstDefs"
+	"bgpd"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
+	"l3/bgp/policy"
 	"l3/rib/ribdCommonDefs"
 	"log/syslog"
 	"net"
@@ -15,6 +17,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"utils/patriciaDB"
 
 	nanomsg "github.com/op/go-nanomsg"
 )
@@ -34,6 +37,12 @@ type PeerGroupUpdate struct {
 	AttrSet  []bool
 }
 
+type AggUpdate struct {
+	OldAgg  config.BGPAggregate
+	NewAgg  config.BGPAggregate
+	AttrSet []bool
+}
+
 type IfState struct {
 	idx   int32
 	state uint8
@@ -48,6 +57,8 @@ type BGPServer struct {
 	RemPeerCh        chan string
 	AddPeerGroupCh   chan PeerGroupUpdate
 	RemPeerGroupCh   chan string
+	AddAggCh         chan AggUpdate
+	RemAggCh         chan string
 	PeerConnEstCh    chan string
 	PeerConnBrokenCh chan string
 	PeerCommandCh    chan config.PeerCommand
@@ -59,6 +70,8 @@ type BGPServer struct {
 	AdjRib         *AdjRib
 	connRoutesPath *Path
 	ifacePeerMap   map[int32][]string
+	ifaceIP        net.IP
+	actionFuncMap  map[int]policy.ApplyActionFunc
 }
 
 func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *BGPServer {
@@ -70,6 +83,8 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.RemPeerCh = make(chan string)
 	bgpServer.AddPeerGroupCh = make(chan PeerGroupUpdate)
 	bgpServer.RemPeerGroupCh = make(chan string)
+	bgpServer.AddAggCh = make(chan AggUpdate)
+	bgpServer.RemAggCh = make(chan string)
 	bgpServer.PeerConnEstCh = make(chan string)
 	bgpServer.PeerConnBrokenCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
@@ -79,6 +94,9 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.Neighbors = make([]*Peer, 0)
 	bgpServer.AdjRib = NewAdjRib(bgpServer)
 	bgpServer.ifacePeerMap = make(map[int32][]string)
+	bgpServer.ifaceIP = nil
+	bgpServer.actionFuncMap = make(map[int]policy.ApplyActionFunc)
+	bgpServer.actionFuncMap[ribdCommonDefs.PolicyActionTypeAggregate] = bgpServer.ApplyAggregateAction
 	return bgpServer
 }
 
@@ -233,16 +251,243 @@ func (server *BGPServer) sendUpdateMsgToAllPeers(msg *packet.BGPMessage, path *P
 	}
 }
 
-func (server *BGPServer) SendUpdate(updated map[*Path][]packet.IPPrefix, withdrawn []packet.IPPrefix, withdrawPath *Path) {
+func (server *BGPServer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destination, withdrawPath *Path) {
+	nlri := make([]packet.IPPrefix, 0)
 	if len(withdrawn) > 0 {
-		updateMsg := packet.NewBGPUpdateMessage(withdrawn, nil, nil)
+		for _, dest := range withdrawn {
+			nlri = append(nlri, dest.nlri)
+		}
+		updateMsg := packet.NewBGPUpdateMessage(nlri, nil, nil)
 		server.sendUpdateMsgToAllPeers(updateMsg, withdrawPath)
+		nlri = nlri[:0]
 	}
 
-	for path, dest := range updated {
-		updateMsg := packet.NewBGPUpdateMessage(make([]packet.IPPrefix, 0), path.pathAttrs, dest)
+	for path, destinations := range updated {
+		for _, dest := range destinations {
+			nlri = append(nlri, dest.nlri)
+		}
+		updateMsg := packet.NewBGPUpdateMessage(make([]packet.IPPrefix, 0), path.pathAttrs, nlri)
 		server.sendUpdateMsgToAllPeers(updateMsg, path)
+		nlri = nlri[:0]
 	}
+}
+
+type ActionCbInfo struct {
+	dest      *Destination
+	updated   *(map[*Path][]*Destination)
+	withdrawn *([]*Destination)
+}
+
+func (server *BGPServer) getAggPrefix(conditionsList []string) *packet.IPPrefix {
+	server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix"))
+	var ipPrefix *packet.IPPrefix
+	var err error
+	for _, condition := range conditionsList {
+		server.logger.Info(fmt.Sprintf("BGPServer:getAggPrefix - Find policy condition name %s in the condition database\n", condition))
+		conditionItem := policy.PolicyConditionsDB.Get(patriciaDB.Prefix(condition))
+		if conditionItem == nil {
+			server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - Did not find condition ", condition, " in the condition database"))
+			continue
+		}
+		conditionInfo := conditionItem.(policy.PolicyCondition)
+		server.logger.Info(fmt.Sprintf("BGPServer:getAggPrefix - policy condition type %d\n", conditionInfo.ConditionType))
+		switch conditionInfo.ConditionType {
+		case ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
+			server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - PolicyConditionTypeDstIpPrefixMatch case"))
+			condition := conditionInfo.ConditionInfo.(policy.MatchPrefixConditionInfo)
+			server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - exact prefix match conditiontype"))
+			ipPrefix, err = packet.ConstructIPPrefixFromCIDR(condition.Prefix.IpPrefix)
+			if err != nil {
+				server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - ipPrefix invalid "))
+				return nil
+			}
+			break
+		default:
+			server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - Not a known condition type"))
+			break
+		}
+	}
+	return ipPrefix
+}
+
+func (server *BGPServer) setWithdrawnWithAggPaths(actionCbInfo ActionCbInfo, withdrawn []*Destination) {
+	aggDestMap := make(map[*Destination]bool)
+	for _, aggDestination := range withdrawn {
+		aggDestMap[aggDestination] = true
+	}
+
+	// There will be only one destination per aggregated path.
+	// So, break out of the loop as soon as we find it.
+	for path, destinations := range *actionCbInfo.updated {
+		dirty := false
+		for idx, dest := range destinations {
+			if aggDestMap[dest] {
+				//(*actionCbInfo.updated)[path][idx] = (*actionCbInfo.updated)[path][len(destinations)-1]
+				//(*actionCbInfo.updated)[path][len(destinations)-1] = nil
+				//(*actionCbInfo.updated)[path] = (*actionCbInfo.updated)[path][:len(destinations)-1]
+				(*actionCbInfo.updated)[path][idx] = nil
+				dirty = true
+			}
+		}
+		if dirty {
+			lastIdx := len(destinations) - 1
+			var movIdx int
+			for idx := 0; idx <= lastIdx; idx++ {
+				if destinations[idx] == nil {
+					for movIdx = lastIdx; movIdx > idx && destinations[movIdx] == nil; movIdx-- {
+					}
+					if movIdx <= idx {
+						lastIdx = movIdx - 1
+						break
+					}
+					(*actionCbInfo.updated)[path][idx] = (*actionCbInfo.updated)[path][movIdx]
+					(*actionCbInfo.updated)[path][movIdx] = nil
+					lastIdx = movIdx - 1
+				}
+			}
+			(*actionCbInfo.updated)[path] = (*actionCbInfo.updated)[path][:lastIdx+1]
+		}
+	}
+
+	(*actionCbInfo.withdrawn) = append((*actionCbInfo.withdrawn), withdrawn...)
+}
+
+func (server *BGPServer) setUpdatedWithAggPaths(actionCbInfo ActionCbInfo, updated map[*Path][]*Destination,
+	sendSummaryOnly bool, ipPrefix packet.IPPrefix) {
+	var routeDest *Destination
+	var ok bool
+	if routeDest, ok = server.AdjRib.getDest(ipPrefix, false); !ok {
+		server.logger.Info(fmt.Sprintln("setUpdatedWithAggPaths: Did not find destination for ip", ipPrefix))
+		sendSummaryOnly = false
+	}
+
+	foundRouteDest := false
+	for aggPath, aggDestinations := range updated {
+		foundAggDest := false
+		aggDestMap := make(map[*Destination]bool)
+		for _, dest := range aggDestinations {
+			aggDestMap[dest] = true
+		}
+		// There will be only one destination per aggregated path.
+		// So, break out of the loop as soon as we find it.
+		for path, destinations := range *actionCbInfo.updated {
+			for idx, dest := range destinations {
+				if sendSummaryOnly && routeDest == dest {
+					(*actionCbInfo.updated)[path][idx] = (*actionCbInfo.updated)[path][len(destinations)-1]
+					(*actionCbInfo.updated)[path][len(destinations)-1] = nil
+					(*actionCbInfo.updated)[path] = (*actionCbInfo.updated)[path][:len(destinations)-1]
+					foundRouteDest = true
+					continue
+				}
+				if _, ok = aggDestMap[dest]; ok {
+					(*actionCbInfo.updated)[path][idx] = (*actionCbInfo.updated)[path][len(destinations)-1]
+					(*actionCbInfo.updated)[path][len(destinations)-1] = nil
+					(*actionCbInfo.updated)[path] = (*actionCbInfo.updated)[path][:len(destinations)-1]
+					foundAggDest = true
+					break
+				}
+			}
+			if foundAggDest && foundRouteDest {
+				break
+			}
+		}
+
+		(*actionCbInfo.updated)[aggPath] = make([]*Destination, 0)
+		(*actionCbInfo.updated)[aggPath] = append((*actionCbInfo.updated)[aggPath], aggDestinations...)
+
+		if sendSummaryOnly {
+			aggDestMap = make(map[*Destination]bool)
+			for _, dest := range *actionCbInfo.withdrawn {
+				aggDestMap[dest] = true
+			}
+
+			for _, dest := range aggDestinations {
+				for _, singleDest := range dest.aggregatedDestMap {
+					if !aggDestMap[singleDest] {
+						(*actionCbInfo.withdrawn) = append((*actionCbInfo.withdrawn), singleDest)
+					}
+				}
+			}
+		}
+	}
+}
+
+func (server *BGPServer) ApplyAggregateAction(route *bgpd.BGPRoute, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
+	ipPrefix := packet.NewIPPrefix(net.ParseIP(route.Network), uint8(route.CIDRLen))
+	aggPrefix := server.getAggPrefix(conditionList)
+	routeParams := params.(policy.RouteParams)
+	aggActions := action.(policy.PolicyAggregateActionInfo)
+	bgpAgg := config.BGPAggregate{
+		GenerateASSet:   aggActions.GenerateASSet,
+		SendSummaryOnly: aggActions.SendSummaryOnly,
+	}
+	actionCbInfo := ctx.(ActionCbInfo)
+
+	var updated map[*Path][]*Destination
+	var withdrawn []*Destination
+	if routeParams.CreateType == policy.Valid {
+		updated, withdrawn, _ = server.AdjRib.AddRouteToAggregate(*ipPrefix, *aggPrefix,
+			server.BgpConfig.Global.Config.RouterId.String(), server.ifaceIP, &bgpAgg)
+	} else if routeParams.DeleteType == policy.Valid {
+		origDest := actionCbInfo.dest
+		updated, withdrawn, _ = server.AdjRib.RemoveRouteFromAggregate(*ipPrefix, *aggPrefix,
+			server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest)
+	}
+	server.setUpdatedWithAggPaths(actionCbInfo, updated, aggActions.SendSummaryOnly, *ipPrefix)
+	server.setWithdrawnWithAggPaths(actionCbInfo, withdrawn)
+	return
+}
+
+func (server *BGPServer) checkForAggregation(updated map[*Path][]*Destination, withdrawn []*Destination,
+	withdrawPath *Path) (map[*Path][]*Destination, []*Destination, *Path) {
+	server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - start, updated %v withdrawn %v", updated, withdrawn))
+
+	for _, dest := range withdrawn {
+		route := dest.GetLocRibPathRoute()
+		if route == nil {
+			server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - route not found withdraw dest %s",
+				dest.nlri.Prefix.String()))
+			continue
+		}
+		server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - dest %s policylist %v hit %v before applying delete policy",
+			dest.nlri.Prefix.String(), route.PolicyList, route.PolicyHitCounter))
+		routeParams := policy.RouteParams{
+			CreateType:    policy.Invalid,
+			DeleteType:    policy.Valid,
+			ActionFuncMap: server.actionFuncMap,
+		}
+		callbackInfo := ActionCbInfo{
+			dest:      dest,
+			updated:   &updated,
+			withdrawn: &withdrawn,
+		}
+		policy.PolicyEngineFilter(route, ribdCommonDefs.PolicyPath_Export, routeParams, callbackInfo)
+	}
+
+	for _, destinations := range updated {
+		for _, dest := range destinations {
+			route := dest.GetLocRibPathRoute()
+			server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - dest %s policylist %v hit %v before applying create policy",
+				dest.nlri.Prefix.String(), route.PolicyList, route.PolicyHitCounter))
+			if route != nil {
+				routeParams := policy.RouteParams{
+					CreateType:    policy.Valid,
+					DeleteType:    policy.Invalid,
+					ActionFuncMap: server.actionFuncMap,
+				}
+				callbackInfo := ActionCbInfo{
+					updated:   &updated,
+					withdrawn: &withdrawn,
+				}
+				policy.PolicyEngineFilter(route, ribdCommonDefs.PolicyPath_Export, routeParams, callbackInfo)
+				server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - dest %s policylist %v hit %v after applying create policy",
+					dest.nlri.Prefix.String(), route.PolicyList, route.PolicyHitCounter))
+			}
+		}
+	}
+
+	server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - complete, updated %v withdrawn %v", updated, withdrawn))
+	return updated, withdrawn, withdrawPath
 }
 
 func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
@@ -255,6 +500,7 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 	atomic.AddUint32(&peer.Neighbor.State.Queues.Input, ^uint32(0))
 	peer.Neighbor.State.Messages.Received.Update++
 	updated, withdrawn, withdrawPath := server.AdjRib.ProcessUpdate(peer, pktInfo)
+	updated, withdrawn, withdrawPath = server.checkForAggregation(updated, withdrawn, withdrawPath)
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
@@ -273,20 +519,28 @@ func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribd.Routes, 
 	invalid := server.convertDestIPToIPPrefix(withdrawnRoutes)
 	updated, withdrawn, withdrawPath := server.AdjRib.ProcessConnectedRoutes(server.BgpConfig.Global.Config.RouterId.String(),
 		server.connRoutesPath, valid, invalid)
+	updated, withdrawn, withdrawPath = server.checkForAggregation(updated, withdrawn, withdrawPath)
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
 func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
 	updated, withdrawn, withdrawPath := server.AdjRib.RemoveUpdatesFromNeighbor(peerIp, peer)
+	updated, withdrawn, withdrawPath = server.checkForAggregation(updated, withdrawn, withdrawPath)
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
 func (server *BGPServer) SendAllRoutesToPeer(peer *Peer) {
 	withdrawn := make([]packet.IPPrefix, 0)
+	nlri := make([]packet.IPPrefix, 0)
 	updated := server.AdjRib.GetLocRib()
-	for path, dest := range updated {
-		updateMsg := packet.NewBGPUpdateMessage(withdrawn, path.pathAttrs, dest)
+	for path, destinations := range updated {
+		for _, dest := range destinations {
+			nlri = append(nlri, dest.nlri)
+		}
+
+		updateMsg := packet.NewBGPUpdateMessage(withdrawn, path.pathAttrs, nlri)
 		peer.SendUpdate(*updateMsg.Clone(), path)
+		nlri = nlri[:0]
 	}
 }
 
@@ -336,6 +590,21 @@ func (server *BGPServer) UpdatePeerGroupInPeers(groupName string, peerGroup *con
 func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.AS = gConf.AS
 	server.BgpConfig.Global.Config.RouterId = gConf.RouterId
+}
+
+func (server *BGPServer) getIfaceIP(ip string) {
+	if server.ifaceIP != nil {
+		return
+	}
+	reachInfo, err := server.ribdClient.GetRouteReachabilityInfo(ip)
+	if err != nil {
+		server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", ip))
+		return
+	}
+	netIP := net.ParseIP(reachInfo.Ipaddr)
+	if netIP != nil {
+		server.ifaceIP = netIP
+	}
 }
 
 func (server *BGPServer) StartServer() {

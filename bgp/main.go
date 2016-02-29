@@ -4,6 +4,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"l3/bgp/policy"
 	"l3/bgp/rpc"
 	"l3/bgp/server"
 	"l3/bgp/utils"
@@ -50,7 +51,11 @@ func main() {
 	bgpServer := server.NewBGPServer(logger, ribdClient)
 	go bgpServer.StartServer()
 
+	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
+	bgpPolicyEng := policy.NewBGPPolicyEngine(logger)
+	go bgpPolicyEng.StartPolicyEngine()
+
 	logger.Info(fmt.Sprintln("Starting config listener..."))
-	confIface := rpc.NewBGPHandler(bgpServer, logger, fileName)
+	confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
 	rpc.StartServer(logger, confIface, fileName)
 }

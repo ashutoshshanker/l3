@@ -31,29 +31,38 @@ type OspfClientBase struct {
 }
 
 type LsdbKey struct {
-        AreaId          uint32
+	AreaId uint32
+}
+
+type LsdbSliceEnt struct {
+	AreaId uint32
+	LSType uint8
+	LSId   uint32
+	AdvRtr uint32
 }
 
 type OSPFServer struct {
-	logger                  *syslog.Writer
-	ribdClient              RibdClient
-	asicdClient             AsicdClient
-	portPropertyMap         map[int32]PortProperty
-	vlanPropertyMap         map[uint16]VlanProperty
-	IPIntfPropertyMap       map[string]IPIntfProperty
-	ospfGlobalConf          GlobalConf
-	GlobalConfigCh          chan config.GlobalConf
-	AreaConfigCh            chan config.AreaConf
-	IntfConfigCh            chan config.InterfaceConf
-        AreaLsdb                map[LsdbKey]LSDatabase
-        AreaSelfOrigLsa         map[LsdbKey]SelfOrigLsa
-        LsdbUpdateCh            chan LsdbUpdateMsg
-        LsaUpdateRetCodeCh      chan bool
-        IntfStateChangeCh       chan LSAChangeMsg
-        NetworkDRChangeCh       chan LSAChangeMsg
-        FlushNetworkLSACh       chan NetworkLSAChangeMsg
-        CreateNetworkLSACh      chan NetworkLSAChangeMsg
-        AdjOKEvtCh              chan AdjOKEvtMsg
+	logger             *syslog.Writer
+	ribdClient         RibdClient
+	asicdClient        AsicdClient
+	portPropertyMap    map[int32]PortProperty
+	vlanPropertyMap    map[uint16]VlanProperty
+	IPIntfPropertyMap  map[string]IPIntfProperty
+	ospfGlobalConf     GlobalConf
+	GlobalConfigCh     chan config.GlobalConf
+	AreaConfigCh       chan config.AreaConf
+	IntfConfigCh       chan config.InterfaceConf
+	AreaLsdb           map[LsdbKey]LSDatabase
+	LsdbSlice          []LsdbSliceEnt
+	LsdbStateTimer     *time.Timer
+	AreaSelfOrigLsa    map[LsdbKey]SelfOrigLsa
+	LsdbUpdateCh       chan LsdbUpdateMsg
+	LsaUpdateRetCodeCh chan bool
+	IntfStateChangeCh  chan LSAChangeMsg
+	NetworkDRChangeCh  chan LSAChangeMsg
+	FlushNetworkLSACh  chan NetworkLSAChangeMsg
+	CreateNetworkLSACh chan ospfNbrMdata
+	AdjOKEvtCh         chan AdjOKEvtMsg
 
 	/*
 	   connRoutesTimer         *time.Timer
@@ -61,24 +70,32 @@ type OSPFServer struct {
 	   ribSubSocketCh      chan []byte
 	   ribSubSocketErrCh   chan error
 	*/
-	asicdSubSocket       *nanomsg.SubSocket
-	asicdSubSocketCh     chan []byte
-	asicdSubSocketErrCh  chan error
-	AreaConfMap          map[AreaConfKey]AreaConf
-	IntfConfMap          map[IntfConfKey]IntfConf
-	IntfTxMap            map[IntfConfKey]IntfTxHandle
-	IntfRxMap            map[IntfConfKey]IntfRxHandle
-	NeighborConfigMap    map[uint32]OspfNeighborEntry
-	NeighborListMap      map[IntfConfKey]list.List
-	neighborConfMutex    sync.Mutex
-	neighborHelloEventCh chan IntfToNeighMsg
-	neighborFSMCtrlCh    chan bool
-	neighborConfCh       chan ospfNeighborConfMsg
-	neighborConfStopCh   chan bool
-	nbrFSMCtrlCh         chan bool
-	neighborSliceRefCh   *time.Ticker
-	neighborBulkSlice    []uint32
-	neighborDBDEventCh   chan ospfNeighborDBDMsg
+	asicdSubSocket        *nanomsg.SubSocket
+	asicdSubSocketCh      chan []byte
+	asicdSubSocketErrCh   chan error
+	AreaConfMap           map[AreaConfKey]AreaConf
+	IntfConfMap           map[IntfConfKey]IntfConf
+	IntfTxMap             map[IntfConfKey]IntfTxHandle
+	IntfRxMap             map[IntfConfKey]IntfRxHandle
+	NeighborConfigMap     map[uint32]OspfNeighborEntry
+	NeighborListMap       map[IntfConfKey]list.List
+	neighborConfMutex     sync.Mutex
+	neighborHelloEventCh  chan IntfToNeighMsg
+	neighborFSMCtrlCh     chan bool
+	neighborConfCh        chan ospfNeighborConfMsg
+	neighborConfStopCh    chan bool
+	nbrFSMCtrlCh          chan bool
+	neighborSliceRefCh    *time.Ticker
+	neighborBulkSlice     []uint32
+	neighborDBDEventCh    chan ospfNeighborDBDMsg
+	neighborLSAReqEventCh chan ospfNeighborLSAreqMsg
+	neighborLSAUpdEventCh chan ospfNeighborLSAUpdMsg
+	neighborLSAACKEventCh chan ospfNeighborLSAACKMsg
+	ospfNbrDBDSendCh      chan ospfNeighborDBDMsg
+	ospfNbrLsaSendCh      chan ospfNeighborLSAreqMsg
+	ospfNbrLsaUpdSendCh   chan ospfLsdbToNbrMsg
+	ospfRxTxNbrPktStopCh  chan bool
+
 	//neighborDBDEventCh   chan IntfToNeighDbdMsg
 
 	AreaStateTimer           *time.Timer
@@ -107,15 +124,16 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.IntfConfMap = make(map[IntfConfKey]IntfConf)
 	ospfServer.IntfTxMap = make(map[IntfConfKey]IntfTxHandle)
 	ospfServer.IntfRxMap = make(map[IntfConfKey]IntfRxHandle)
-        ospfServer.AreaLsdb = make(map[LsdbKey]LSDatabase)
-        ospfServer.AreaSelfOrigLsa = make(map[LsdbKey]SelfOrigLsa)
-        ospfServer.IntfStateChangeCh = make(chan LSAChangeMsg)
-        ospfServer.NetworkDRChangeCh = make(chan LSAChangeMsg)
-        ospfServer.CreateNetworkLSACh = make(chan NetworkLSAChangeMsg)
-        ospfServer.FlushNetworkLSACh = make(chan NetworkLSAChangeMsg)
-        ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
-        ospfServer.LsaUpdateRetCodeCh = make(chan bool)
-        ospfServer.AdjOKEvtCh = make(chan AdjOKEvtMsg)
+	ospfServer.AreaLsdb = make(map[LsdbKey]LSDatabase)
+	ospfServer.AreaSelfOrigLsa = make(map[LsdbKey]SelfOrigLsa)
+	ospfServer.IntfStateChangeCh = make(chan LSAChangeMsg)
+	ospfServer.NetworkDRChangeCh = make(chan LSAChangeMsg)
+	ospfServer.CreateNetworkLSACh = make(chan ospfNbrMdata)
+	ospfServer.FlushNetworkLSACh = make(chan NetworkLSAChangeMsg)
+	ospfServer.LsdbSlice = []LsdbSliceEnt{}
+	ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
+	ospfServer.LsaUpdateRetCodeCh = make(chan bool)
+	ospfServer.AdjOKEvtCh = make(chan AdjOKEvtMsg)
 	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
@@ -134,6 +152,13 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.nbrFSMCtrlCh = make(chan bool)
 	ospfServer.RefreshDuration = time.Duration(10) * time.Minute
 	ospfServer.neighborDBDEventCh = make(chan ospfNeighborDBDMsg)
+	ospfServer.neighborLSAReqEventCh = make(chan ospfNeighborLSAreqMsg)
+	ospfServer.neighborLSAUpdEventCh = make(chan ospfNeighborLSAUpdMsg)
+	ospfServer.neighborLSAACKEventCh = make(chan ospfNeighborLSAACKMsg)
+	ospfServer.ospfNbrDBDSendCh = make(chan ospfNeighborDBDMsg)
+	ospfServer.ospfNbrLsaSendCh = make(chan ospfNeighborLSAreqMsg)
+	ospfServer.ospfNbrLsaUpdSendCh = make(chan ospfLsdbToNbrMsg)
+	ospfServer.ospfRxTxNbrPktStopCh = make(chan bool)
 
 	/*
 	   ospfServer.ribSubSocketCh = make(chan []byte)

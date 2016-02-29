@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	//"net"
 	"time"
 )
 
@@ -18,6 +19,21 @@ const (
 	STATE_INIT       BfdSessionState = 2
 	STATE_UP         BfdSessionState = 3
 )
+
+func (server *BFDServer) ConvertBfdSessionStateValToStr(state BfdSessionState) string {
+	var stateStr string
+	switch state {
+	case STATE_ADMIN_DOWN:
+		stateStr = "admin_down"
+	case STATE_DOWN:
+		stateStr = "down"
+	case STATE_INIT:
+		stateStr = "init"
+	case STATE_UP:
+		stateStr = "up"
+	}
+	return stateStr
+}
 
 type BfdSessionEvent int
 
@@ -43,6 +59,31 @@ const (
 	DIAG_ADMIN_DOWN           BfdDiagnostic = 7 // Administratively Down
 	DIAG_REV_CONCAT_PATH_DOWN BfdDiagnostic = 8 // Reverse Concatenated Path Down
 )
+
+func (server *BFDServer) ConvertBfdSessionDiagValToStr(diag BfdDiagnostic) string {
+	var diagStr string
+	switch diag {
+	case DIAG_NONE:
+		diagStr = "None"
+	case DIAG_TIME_EXPIRED:
+		diagStr = "Control detectection timer expired"
+	case DIAG_ECHO_FAILED:
+		diagStr = "Echo function failed"
+	case DIAG_NEIGHBOR_SIGNAL_DOWN:
+		diagStr = "Neighbor signaled session down"
+	case DIAG_FORWARD_PLANE_RESET:
+		diagStr = "Forwarding plane reset"
+	case DIAG_PATH_DOWN:
+		diagStr = "Path down"
+	case DIAG_CONCAT_PATH_DOWN:
+		diagStr = "Concatanated path down"
+	case DIAG_ADMIN_DOWN:
+		diagStr = "Administratively down"
+	case DIAG_REV_CONCAT_PATH_DOWN:
+		diagStr = "Reverse concatenated path down"
+	}
+	return diagStr
+}
 
 type BfdControlPacket struct {
 	Version                   uint8
@@ -74,6 +115,9 @@ const (
 	MAX_NUM_SESSIONS                      = 1024
 	DEST_PORT                             = 3784
 	SRC_PORT                              = 49152
+	DEST_PORT_LAG                         = 6784
+	SRC_PORT_LAG                          = 49153
+	//DEDICATED_MAC                         = net.HardwareAddr{0x01, 0x00, 0x5E, 0x90, 0x00, 0x01}
 )
 
 // Flags in BFD Control packet

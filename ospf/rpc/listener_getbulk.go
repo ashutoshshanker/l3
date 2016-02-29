@@ -12,7 +12,7 @@ import (
 
 func (h *OSPFHandler) convertAreaEntryStateToThrift(ent config.AreaState) *ospfd.OspfAreaEntryState {
 	areaEntry := ospfd.NewOspfAreaEntryState()
-	areaEntry.AreaIdKey = string(ent.AreaId)
+	areaEntry.AreaId = string(ent.AreaId)
 	areaEntry.SpfRuns = ent.SpfRuns
 	areaEntry.AreaBdrRtrCount = ent.AreaBdrRtrCount
 	areaEntry.AsBdrRtrCount = ent.AsBdrRtrCount
@@ -24,10 +24,25 @@ func (h *OSPFHandler) convertAreaEntryStateToThrift(ent config.AreaState) *ospfd
 	return areaEntry
 }
 
+func (h *OSPFHandler) convertLsdbEntryStateToThrift(ent config.LsdbState) *ospfd.OspfLsdbEntryState {
+	h.logger.Info(fmt.Sprintln("Converting Lsdb entry to Thrift", ent))
+	lsdbEntry := ospfd.NewOspfLsdbEntryState()
+	lsdbEntry.LsdbType = int32(ent.LsdbType)
+	lsdbEntry.LsdbLsid = string(ent.LsdbLsid)
+	lsdbEntry.LsdbAreaId = string(ent.LsdbAreaId)
+	lsdbEntry.LsdbRouterId = string(ent.LsdbRouterId)
+	lsdbEntry.LsdbSequence = int32(ent.LsdbSequence)
+	lsdbEntry.LsdbAge = int32(ent.LsdbAge)
+	lsdbEntry.LsdbChecksum = int32(ent.LsdbCheckSum)
+	lsdbEntry.LsdbAdvertisement = string(ent.LsdbAdvertisement)
+
+	return lsdbEntry
+}
+
 func (h *OSPFHandler) convertIfEntryStateToThrift(ent config.InterfaceState) *ospfd.OspfIfEntryState {
 	ifEntry := ospfd.NewOspfIfEntryState()
-	ifEntry.IfIpAddressKey = string(ent.IfIpAddress)
-	ifEntry.AddressLessIfKey = int32(ent.AddressLessIf)
+	ifEntry.IfIpAddress = string(ent.IfIpAddress)
+	ifEntry.AddressLessIf = int32(ent.AddressLessIf)
 	ifEntry.IfState = int32(ent.IfState)
 	ifEntry.IfDesignatedRouter = string(ent.IfDesignatedRouter)
 	ifEntry.IfBackupDesignatedRouter = string(ent.IfBackupDesignatedRouter)
@@ -42,7 +57,7 @@ func (h *OSPFHandler) convertIfEntryStateToThrift(ent config.InterfaceState) *os
 
 func (h *OSPFHandler) convertGlobalStateToThrift(ent config.GlobalState) *ospfd.OspfGlobalState {
 	gState := ospfd.NewOspfGlobalState()
-	gState.RouterIdKey = string(ent.RouterId)
+	gState.RouterId = string(ent.RouterId)
 	gState.VersionNumber = ent.VersionNumber
 	gState.AreaBdrRtrStatus = ent.AreaBdrRtrStatus
 	gState.ExternLsaCount = ent.ExternLsaCount
@@ -63,8 +78,8 @@ func (h *OSPFHandler) convertGlobalStateToThrift(ent config.GlobalState) *ospfd.
 
 func (h *OSPFHandler) convertNbrEntryStateToThrift(nbr config.NeighborState) *ospfd.OspfNbrEntryState {
 	nbrEntry := ospfd.NewOspfNbrEntryState()
-	nbrEntry.NbrIpAddrKey = string(nbr.NbrIpAddress)
-	nbrEntry.NbrAddressLessIndexKey = int32(nbr.NbrAddressLessIndex)
+	nbrEntry.NbrIpAddr = string(nbr.NbrIpAddress)
+	nbrEntry.NbrAddressLessIndex = int32(nbr.NbrAddressLessIndex)
 	nbrEntry.NbrRtrId = string(nbr.NbrRtrId)
 	nbrEntry.NbrOptions = int32(nbr.NbrOptions)
 	nbrEntry.NbrState = int32(nbr.NbrState)
@@ -103,8 +118,24 @@ func (h *OSPFHandler) GetBulkOspfAreaEntryState(fromIdx ospfd.Int, count ospfd.I
 
 func (h *OSPFHandler) GetBulkOspfLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfLsdbEntryStateGetInfo, error) {
 	h.logger.Info(fmt.Sprintln("Get Link State Database attrs"))
-	ospfLsdbResponse := ospfd.NewOspfLsdbEntryStateGetInfo()
-	return ospfLsdbResponse, nil
+	nextIdx, currCount, ospfLsdbEntryStates := h.server.GetBulkOspfLsdbEntryState(int(fromIdx), int(count))
+	if ospfLsdbEntryStates == nil {
+		err := errors.New("Ospf is busy refreshing the cache")
+		return nil, err
+	}
+	ospfLsdbEntryStateResponse := make([]*ospfd.OspfLsdbEntryState, len(ospfLsdbEntryStates))
+	for idx, item := range ospfLsdbEntryStates {
+		h.logger.Info(fmt.Sprintln("converting Lsdb Entry into thrift format", item))
+		ospfLsdbEntryStateResponse[idx] = h.convertLsdbEntryStateToThrift(item)
+		h.logger.Info(fmt.Sprintln("After converting Lsdb Entry into thrift format", idx))
+	}
+	ospfLsdbEntryStateGetInfo := ospfd.NewOspfLsdbEntryStateGetInfo()
+	ospfLsdbEntryStateGetInfo.Count = ospfd.Int(currCount)
+	ospfLsdbEntryStateGetInfo.StartIdx = ospfd.Int(fromIdx)
+	ospfLsdbEntryStateGetInfo.EndIdx = ospfd.Int(nextIdx)
+	ospfLsdbEntryStateGetInfo.More = (nextIdx != 0)
+	ospfLsdbEntryStateGetInfo.OspfLsdbEntryStateList = ospfLsdbEntryStateResponse
+	return ospfLsdbEntryStateGetInfo, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfIfEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfIfEntryStateGetInfo, error) {
@@ -158,6 +189,12 @@ func (h *OSPFHandler) GetBulkOspfExtLsdbEntryState(fromIdx ospfd.Int, count ospf
 	h.logger.Info(fmt.Sprintln("Get External LSA Link State attrs"))
 	ospfExtLsdbResponse := ospfd.NewOspfExtLsdbEntryStateGetInfo()
 	return ospfExtLsdbResponse, nil
+}
+
+func (h *OSPFHandler) GetBulkOspfHostEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfHostEntryStateGetInfo, error) {
+	h.logger.Info(fmt.Sprintln("Get Host Entry State attrs"))
+	ospfHostEntryResponse := ospfd.NewOspfHostEntryStateGetInfo()
+	return ospfHostEntryResponse, nil
 }
 
 /*

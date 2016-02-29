@@ -261,7 +261,6 @@ func DhcpRelayAgentGetIpv4IntfList() {
 			break
 		}
 	}
-
 }
 
 /*
@@ -280,7 +279,6 @@ func DhcpRelayInitPortParams() error {
 		go DhcpRelayAsicdSubscriber()
 	}
 	logger.Info("DRA calling asicd for port config")
-	//count := 10
 	// Get Port State Information
 	DhcpRelayAgentGetPortList()
 	// Get Vlans Information

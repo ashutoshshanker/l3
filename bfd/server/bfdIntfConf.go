@@ -45,11 +45,6 @@ func (server *BFDServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		server.logger.Err("No such inteface exists")
 		return
 	}
-	/*
-		if server.bfdGlobal.Enabled {
-			server.StartSendRecvPkts(msg.IfId)
-		}
-	*/
 }
 
 func (server *BFDServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
@@ -87,7 +82,6 @@ func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {
 		intf.conf.AuthenticationType = ifConf.AuthenticationType
 		intf.conf.AuthenticationKeyId = ifConf.AuthenticationKeyId
 		intf.conf.AuthenticationData = ifConf.AuthenticationData
-		//server.bfdGlobal.Interfaces[ifConf.InterfaceId] = intf
 		server.UpdateBfdSessionsOnInterface(intf.conf.InterfaceId)
 	}
 }
@@ -95,35 +89,47 @@ func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {
 func (server *BFDServer) processIntfConfig(ifConf IntfConfig) {
 	intf, exist := server.bfdGlobal.Interfaces[ifConf.InterfaceId]
 	if !exist {
-		server.logger.Err("No such L3 interface exists")
+		server.logger.Err("No such BFD interface exists")
 		return
 	}
 	if server.bfdGlobal.Enabled {
-		server.StopSendRecvPkts(ifConf.InterfaceId)
-	}
-
-	server.updateIPIntfConfMap(ifConf)
-
-	intf, _ = server.bfdGlobal.Interfaces[ifConf.InterfaceId]
-	if server.bfdGlobal.Enabled {
 		server.StartSendRecvPkts(intf.conf.InterfaceId)
+	} else {
+		server.StopSendRecvPkts(intf.conf.InterfaceId)
 	}
+	server.updateIPIntfConfMap(ifConf)
+}
+
+func (server *BFDServer) processIntfConfigDelete(ifIndex int32) {
+	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
+	if !exist {
+		server.logger.Err("No such BFD interface exists")
+		return
+	}
+	if server.bfdGlobal.Enabled {
+		server.StopSendRecvPkts(intf.conf.InterfaceId)
+	}
+	server.UpdateBfdSessionsOnInterface(intf.conf.InterfaceId)
 }
 
 func (server *BFDServer) StopSendRecvPkts(ifIndex int32) {
 	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if exist {
+		wasDisabled := (intf.Enabled == false)
 		intf.Enabled = false
-		//server.bfdGlobal.Interfaces[ifIndex] = intf
-		server.bfdGlobal.NumInterfaces--
+		if !wasDisabled {
+			server.bfdGlobal.NumInterfaces--
+		}
 	}
 }
 
 func (server *BFDServer) StartSendRecvPkts(ifIndex int32) {
 	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
 	if exist {
+		wasEnabled := (intf.Enabled == true)
 		intf.Enabled = true
-		//server.bfdGlobal.Interfaces[ifIndex] = intf
-		server.bfdGlobal.NumInterfaces++
+		if !wasEnabled {
+			server.bfdGlobal.NumInterfaces++
+		}
 	}
 }

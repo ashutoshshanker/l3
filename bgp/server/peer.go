@@ -41,17 +41,18 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 		ifIdx:      -1,
 	}
 
+	peer.SetPeerConf(peerGroup, &peer.PeerConf)
 	peer.Neighbor.State = config.NeighborState{
-		PeerAS:           peerConf.PeerAS,
-		LocalAS:          peerConf.LocalAS,
-		AuthPassword:     peerConf.AuthPassword,
-		Description:      peerConf.Description,
-		NeighborAddress:  peerConf.NeighborAddress,
-		MultiHopEnable:   peerConf.MultiHopEnable,
-		MultiHopTTL:      peerConf.MultiHopTTL,
-		ConnectRetryTime: peerConf.ConnectRetryTime,
-		HoldTime:         peerConf.HoldTime,
-		KeepaliveTime:    peerConf.KeepaliveTime,
+		PeerAS:           peer.PeerConf.PeerAS,
+		LocalAS:          peer.PeerConf.LocalAS,
+		AuthPassword:     peer.PeerConf.AuthPassword,
+		Description:      peer.PeerConf.Description,
+		NeighborAddress:  peer.PeerConf.NeighborAddress,
+		MultiHopEnable:   peer.PeerConf.MultiHopEnable,
+		MultiHopTTL:      peer.PeerConf.MultiHopTTL,
+		ConnectRetryTime: peer.PeerConf.ConnectRetryTime,
+		HoldTime:         peer.PeerConf.HoldTime,
+		KeepaliveTime:    peer.PeerConf.KeepaliveTime,
 	}
 
 	if peerConf.LocalAS == peerConf.PeerAS {
@@ -60,7 +61,6 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 		peer.Neighbor.State.PeerType = config.PeerTypeExternal
 	}
 
-	peer.SetPeerConf(peerGroup, &peer.PeerConf)
 	peer.afiSafiMap, _ = packet.GetProtocolFromConfig(&peer.Neighbor.AfiSafis)
 	peer.fsmManager = NewFSMManager(&peer, globalConf, &peerConf)
 	return &peer
@@ -292,6 +292,7 @@ func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 }
 
 func (p *Peer) FSMStateChange(state BGPFSMState) {
+	p.logger.Info(fmt.Sprintf("Neighbor %s: FSMStateChange %d", p.Neighbor.NeighborAddress, state))
 	p.Neighbor.State.SessionState = uint32(state)
 }
 
