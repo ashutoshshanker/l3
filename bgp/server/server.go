@@ -3,10 +3,12 @@ package server
 
 import (
 	"asicd/asicdConstDefs"
+	"bfdd"
 	"bgpd"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"l3/bfd/bfddCommonDefs"
 	"l3/bgp/config"
 	"l3/bgp/packet"
 	"l3/bgp/policy"
@@ -51,6 +53,7 @@ type IfState struct {
 type BGPServer struct {
 	logger           *syslog.Writer
 	ribdClient       *ribd.RouteServiceClient
+	bfddClient       *bfdd.BFDDServicesClient
 	BgpConfig        config.Bgp
 	GlobalConfigCh   chan config.GlobalConfig
 	AddPeerCh        chan PeerUpdate
@@ -74,10 +77,11 @@ type BGPServer struct {
 	actionFuncMap  map[int]policy.ApplyActionFunc
 }
 
-func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *BGPServer {
+func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient, bfddClient *bfdd.BFDDServicesClient) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.ribdClient = ribdClient
+	bgpServer.bfddClient = bfddClient
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
 	bgpServer.AddPeerCh = make(chan PeerUpdate)
 	bgpServer.RemPeerCh = make(chan string)
@@ -165,6 +169,20 @@ func (server *BGPServer) listenForRIBUpdates(socket *nanomsg.SubSocket, socketCh
 	}
 }
 
+func (server *BGPServer) listenForBFDNotifications(socket *nanomsg.SubSocket, socketCh chan []byte, socketErrCh chan error) {
+	for {
+		server.logger.Info("Read on BFD subscriber socket...")
+		rxBuf, err := socket.Recv(0)
+		if err != nil {
+			server.logger.Err(fmt.Sprintln("Recv on BFD subscriber socket failed with error:", err))
+			socketErrCh <- err
+			continue
+		}
+		server.logger.Info(fmt.Sprintln("BFD subscriber recv returned:", rxBuf))
+		socketCh <- rxBuf
+	}
+}
+
 func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 	var route ribdCommonDefs.RoutelistInfo
 	routes := make([]*ribd.Routes, 0)
@@ -190,6 +208,19 @@ func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 		}
 	} else {
 		server.logger.Err(fmt.Sprintf("**** Received RIB update type %d with no routes ****", msg.MsgType))
+	}
+}
+
+func (server *BGPServer) handleBfdNotifications(rxBuf []byte) {
+	bfd := bfddCommonDefs.BfddNotifyMsg{}
+	err := json.Unmarshal(rxBuf, &bfd)
+	if err != nil {
+		server.logger.Err(fmt.Sprintf("Unmarshal BFD notification failed with err %s", err))
+	}
+
+	if peer, ok := server.PeerMap[bfd.DestIp]; ok && !bfd.State {
+		peer.StopFSM("Peer BFD Down")
+		peer.Neighbor.State.BfdNeighborState = "Down"
 	}
 }
 
@@ -592,6 +623,23 @@ func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.RouterId = gConf.RouterId
 }
 
+func (server *BGPServer) ProcessBfd(peer *Peer) {
+	if peer.PeerConf.BfdEnable {
+		server.logger.Info(fmt.Sprintln("Bfd enabled on :", peer.Neighbor.NeighborAddress))
+		bfdSession := bfdd.NewBfdSessionConfig()
+		bfdSession.IpAddr = peer.Neighbor.NeighborAddress.String()
+		bfdSession.Owner = "bgp"
+		bfdSession.Operation = "create"
+		server.logger.Info(fmt.Sprintln("Creating BFD Session: ", bfdSession))
+		ret, err := server.bfddClient.CreateBfdSessionConfig(bfdSession)
+		if !ret {
+			server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:", ret, "err:", err))
+		} else {
+			server.logger.Info("Bfd session configured")
+		}
+	}
+}
+
 func (server *BGPServer) getIfaceIP(ip string) {
 	if server.ifaceIP != nil {
 		return
@@ -620,12 +668,15 @@ func (server *BGPServer) StartServer() {
 	ribSubSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_ADDR)
 	ribSubBGPSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	asicdL3IntfSubSocket, _ := server.setupSubSocket(asicdConstDefs.PUB_SOCKET_ADDR)
+	bfdSubSocket, _ := server.setupSubSocket(bfddCommonDefs.PUB_SOCKET_ADDR)
 
 	ribSubSocketCh := make(chan []byte)
 	ribSubSocketErrCh := make(chan error)
 	ribSubBGPSocketCh := make(chan []byte)
 	ribSubBGPSocketErrCh := make(chan error)
 	asicdL3IntfStateCh := make(chan IfState)
+	bfdSubSocketCh := make(chan []byte)
+	bfdSubSocketErrCh := make(chan error)
 
 	server.logger.Info("Setting up Peer connections")
 	acceptCh := make(chan *net.TCPConn)
@@ -637,6 +688,7 @@ func (server *BGPServer) StartServer() {
 	go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
 	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
 	go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
+	go server.listenForBFDNotifications(bfdSubSocket, bfdSubSocketCh, bfdSubSocketErrCh)
 
 	for {
 		select {
@@ -694,6 +746,7 @@ func (server *BGPServer) StartServer() {
 				server.logger.Info(fmt.Sprintln("Add neighbor, ip:", newPeer.NeighborAddress.String()))
 				peer = NewPeer(server, &server.BgpConfig.Global.Config, groupConfig, newPeer)
 				server.PeerMap[newPeer.NeighborAddress.String()] = peer
+				server.ProcessBfd(peer)
 				server.NeighborMutex.Lock()
 				server.addPeerToList(peer)
 				server.NeighborMutex.Unlock()
@@ -840,6 +893,13 @@ func (server *BGPServer) StartServer() {
 					}
 				}
 			}
+
+		case rxBuf := <-bfdSubSocketCh:
+			server.logger.Info(fmt.Sprintf("Server: Received notification on BFD sub socket"))
+			server.handleBfdNotifications(rxBuf)
+
+		case err := <-bfdSubSocketErrCh:
+			server.logger.Info(fmt.Sprintf("Server: BFD subscriber socket returned err:%s", err))
 		}
 	}
 }

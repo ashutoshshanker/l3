@@ -271,6 +271,7 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 			ConnectRetryTime:        uint32(bgpNeighbor.ConnectRetryTime),
 			HoldTime:                uint32(bgpNeighbor.HoldTime),
 			KeepaliveTime:           uint32(bgpNeighbor.KeepaliveTime),
+			BfdEnable:               bgpNeighbor.BfdEnable,
 		},
 		NeighborAddress: ip,
 		PeerGroup:       bgpNeighbor.PeerGroup,
@@ -314,6 +315,7 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.ConnectRetryTime = int32(neighborState.ConnectRetryTime)
 	bgpNeighborResponse.HoldTime = int32(neighborState.HoldTime)
 	bgpNeighborResponse.KeepaliveTime = int32(neighborState.KeepaliveTime)
+	bgpNeighborResponse.BfdNeighborState = neighborState.BfdNeighborState
 
 	received := bgpd.NewBgpCounters()
 	received.Notification = int64(neighborState.Messages.Received.Notification)
