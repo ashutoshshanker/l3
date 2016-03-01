@@ -52,6 +52,12 @@ type DhcpRelayAgentIntfInfo struct {
 type DhcpRelayServiceHandler struct {
 }
 
+type DhcpRelayPktChannel struct {
+	cm        *ipv4.ControlMessage
+	buf       []byte
+	bytesRead int
+}
+
 /*
  * Global Variable
  */
@@ -72,6 +78,8 @@ var (
 	paramsDir                         string
 	dhcprelayEnabledIntfRefCount      int
 	dhcprelayRefCountMutex            *sync.RWMutex
+	dhcprelayClientHandler            *net.UDPConn
+	pktChannel                        chan DhcpRelayPktChannel
 	// map key would be if_name
 	// When we receive a udp packet... we will get interface id and that can
 	// be used to collect the global info...This is unique interface id

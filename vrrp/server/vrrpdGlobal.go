@@ -73,6 +73,18 @@ type VrrpGlobalInfo struct {
 	pHandle *pcap.Handle
 }
 
+type VrrpPktFormat struct {
+	Version       uint8
+	Type          uint8
+	VirtualRtrId  uint8
+	Priority      uint8
+	CountIPv4Addr uint8
+	Rsvd          uint8
+	MaxAdverInt   uint16
+	CheckSum      uint16
+	IPv4Addr      []string
+}
+
 var (
 	logger                        *syslog.Writer
 	vrrpDbHdl                     *sql.DB
