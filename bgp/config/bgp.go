@@ -181,8 +181,15 @@ type PeerGroup struct {
 	AfiSafis []AfiSafiConfig
 }
 
+type BGPAggregate struct {
+	IPPrefix
+	GenerateASSet   bool
+	SendSummaryOnly bool
+}
+
 type Bgp struct {
 	Global     Global
 	PeerGroups map[string]*PeerGroup
 	Neighbors  []Neighbor
+	BgpAggs    map[string]*BGPAggregate
 }
