@@ -173,6 +173,11 @@ func getNetworkPrefixFromCIDR(ipAddr string) (ipPrefix patriciaDB.Prefix, err er
 	ipPrefix ,err= getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
     return ipPrefix, err
 }
+func getPolicyRouteMapIndex(entity policy.PolicyEngineFilterEntityParams, policy string) (policyRouteIndex policy.PolicyEntityMapIndex) {
+	logger.Println("getPolicyRouteMapIndex")
+	policyRouteIndex = PolicyRouteIndex{destNetIP:entity.DestNetIp,policy:policy}
+	return policyRouteIndex
+}
 func addPolicyRouteMap(route ribd.Routes, policyName string) {
 	logger.Println("addPolicyRouteMap")
 	ipPrefix,err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
@@ -294,34 +299,6 @@ func addRoutePolicyState(route ribd.Routes, policy string, policyStmt string) {
 	RouteInfoMap.Set(destNet,routeInfoRecordList)
 	return
 }
-func	 addPolicyRouteMapEntry(route *ribd.Routes, policy string, policyStmt string, conditionList []string, actionList []string) {
-	logger.Println("addPolicyRouteMapEntry")
-	var policyStmtMap PolicyStmtMap
-	var conditionsAndActionsList ConditionsAndActionsList
-	if PolicyRouteMap == nil {
-		PolicyRouteMap = make(map[PolicyRouteIndex]PolicyStmtMap)
-	}
-	policyRouteIndex := PolicyRouteIndex{routeIP:route.Ipaddr, routeMask:route.Mask,policy:policy}
-	policyStmtMap, ok:= PolicyRouteMap[policyRouteIndex]
-	if !ok {
-		policyStmtMap.policyStmtMap = make(map[string]ConditionsAndActionsList)
-	}
-	_, ok = policyStmtMap.policyStmtMap[policyStmt]
-	if ok {
-		logger.Println("policy statement map for statement ", policyStmt, " already in place for policy ", policy)
-		return
-	} 
-	conditionsAndActionsList.conditionList = make([]string,0)
-	conditionsAndActionsList.actionList = make([]string,0)
-	for i:=0;conditionList != nil && i<len(conditionList);i++ {
-		conditionsAndActionsList.conditionList = append(conditionsAndActionsList.conditionList,conditionList[i])
-	}
-	for i:=0;actionList != nil && i<len(actionList);i++ {
-		conditionsAndActionsList.actionList = append(conditionsAndActionsList.actionList,actionList[i])
-	}
-	policyStmtMap.policyStmtMap[policyStmt]=conditionsAndActionsList
-	PolicyRouteMap[policyRouteIndex]=policyStmtMap
-}
 func deleteRoutePolicyState( ipPrefix patriciaDB.Prefix, policyName string) {
 	logger.Println("deleteRoutePolicyState")
 	found := false
@@ -348,22 +325,11 @@ func deleteRoutePolicyState( ipPrefix patriciaDB.Prefix, policyName string) {
 	routeInfoRecordList.policyList = append(routeInfoRecordList.policyList[:idx], routeInfoRecordList.policyList[idx+1:]...)
 	RouteInfoMap.Set(ipPrefix, routeInfoRecordList)
 }
-func	 deletePolicyRouteMapEntry(route ribd.Routes, policy string) {
-	logger.Println("deletePolicyRouteMapEntry for policy ", policy, "route ", route.Ipaddr, ":", route.Mask)
-	if PolicyRouteMap == nil {
-		logger.Println("PolicyRouteMap empty")
-		return
-	}
-	policyRouteIndex := PolicyRouteIndex{routeIP:route.Ipaddr,routeMask:route.Mask, policy:policy}
-	//PolicyRouteMap[policyRouteIndex].policyStmtMap=nil
-	delete(PolicyRouteMap,policyRouteIndex)
-}
 
 func updateRoutePolicyState(route ribd.Routes, op int, policy string, policyStmt string) {
 	logger.Println("updateRoutePolicyState")
 	if op == delAll {
 		deleteRoutePolicyStateAll(route)
-		deletePolicyRouteMapEntry(route, policy)
 	} else if op == add {
 		addRoutePolicyState(route, policy, policyStmt)
     }

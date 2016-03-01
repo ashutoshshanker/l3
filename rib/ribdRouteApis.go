@@ -14,12 +14,14 @@ import (
 	"errors"
 	//	"github.com/op/go-nanomsg"
 	"net"
+	"strconv"
 	"time"
 )
 type RouteInfoRecord struct {
 	destNetIp      net.IP //string
 	networkMask    net.IP //string
 	nextHopIp      net.IP
+	networkAddr    string //cidr 
 	nextHopIfType  int8
 	nextHopIfIndex ribd.Int
 	metric         ribd.Int
@@ -31,13 +33,7 @@ type RouteOpInfoRecord struct {
 	routeInfoRecord RouteInfoRecord
 	opType          int
 }
-type ConditionsAndActionsList struct {
-	conditionList []string
-	actionList    []string
-}
-type PolicyStmtMap struct {
-	policyStmtMap map[string]ConditionsAndActionsList
-}
+
 //implement priority queue of the routes
 type RouteInfoRecordList struct {
 	selectedRouteProtocol   string
@@ -67,15 +63,13 @@ type RouteEventInfo struct {
 	eventInfo     string
 }
 type PolicyRouteIndex struct {
-	routeIP string// patriciaDB.Prefix
-	routeMask string
+	destNetIP string //CIDR format
 	policy string
 }
 var RouteInfoMap = patriciaDB.NewTrie()
 var DummyRouteInfoRecord RouteInfoRecord //{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
 var destNetSlice []localDB
 var localRouteEventsDB []RouteEventInfo
-var PolicyRouteMap map[PolicyRouteIndex]PolicyStmtMap
 
 /*func getSelectedRoute(routeInfoRecordList RouteInfoRecordList) (routeInfoRecord RouteInfoRecord, err error) {
 	logger.Println("getSelectedRoute routeInfoRecordList.selectedRouteProtocol = ", routeInfoRecordList.selectedRouteProtocol)
@@ -350,6 +344,7 @@ func (m RouteServiceHandler) GetBulkRoutes(fromIndex ribd.Int, rcount ribd.Int) 
 			nextRoute = &temproute[validCount]
 			nextRoute.Ipaddr = prefixNodeRoute.destNetIp.String()
 			nextRoute.Mask = prefixNodeRoute.networkMask.String()
+			nextRoute.DestNetIp = prefixNodeRoute.networkAddr
 			nextRoute.NextHopIp = prefixNodeRoute.nextHopIp.String()
 			nextRoute.NextHopIfType = ribd.Int(prefixNodeRoute.nextHopIfType)
 			nextRoute.IfIndex = prefixNodeRoute.nextHopIfIndex
@@ -363,20 +358,20 @@ func (m RouteServiceHandler) GetBulkRoutes(fromIndex ribd.Int, rcount ribd.Int) 
 			if prefixNodeRouteList.policyList != nil {
 				for k:=0;k<len(prefixNodeRouteList.policyList);k++ {
 					routePolicyListInfo = "policy "+prefixNodeRouteList.policyList[k]+"["
-	                 policyRouteIndex := PolicyRouteIndex{routeIP:prefixNodeRoute.destNetIp.String(),routeMask:prefixNodeRoute.networkMask.String(), policy:prefixNodeRouteList.policyList[k]}
-					policyStmtMap, ok := PolicyRouteMap[policyRouteIndex]
-					if !ok || policyStmtMap.policyStmtMap == nil{
+	                 policyRouteIndex := PolicyRouteIndex{destNetIP:prefixNodeRoute.networkAddr, policy:prefixNodeRouteList.policyList[k]}
+					policyStmtMap, ok := PolicyEngineDB.PolicyEntityMap[policyRouteIndex]
+					if !ok || policyStmtMap.PolicyStmtMap == nil{
 						continue
 					}
 					routePolicyListInfo = routePolicyListInfo + " stmtlist[["
-					for stmt,conditionsAndActionsList := range policyStmtMap.policyStmtMap {
+					for stmt,conditionsAndActionsList := range policyStmtMap.PolicyStmtMap {
 						routePolicyListInfo = routePolicyListInfo + stmt+":[conditions:"
-						for c:=0;c<len(conditionsAndActionsList.conditionList);c++ {
-							routePolicyListInfo = routePolicyListInfo + conditionsAndActionsList.conditionList[c]+","
+						for c:=0;c<len(conditionsAndActionsList.ConditionList);c++ {
+							routePolicyListInfo = routePolicyListInfo + conditionsAndActionsList.ConditionList[c]+","
 						}  
 						routePolicyListInfo = routePolicyListInfo+"],[actions:"
-						for a:=0;a<len(conditionsAndActionsList.actionList);a++ {
-							routePolicyListInfo = routePolicyListInfo + conditionsAndActionsList.actionList[a]+","
+						for a:=0;a<len(conditionsAndActionsList.ActionList);a++ {
+							routePolicyListInfo = routePolicyListInfo + conditionsAndActionsList.ActionList[a]+","
 						}  
 						routePolicyListInfo = routePolicyListInfo+"]]"
 					}
@@ -1192,10 +1187,10 @@ func createV4Route(destNetIp string,
 		logger.Println("nextHopIpAddr invalid")
 		return 0, err
 	}
-	/*	prefixLen, err := getPrefixLen(networkMaskAddr)
+		prefixLen, err := getPrefixLen(networkMaskAddr)
 		if(err != nil) {
 			return -1, err
-		}*/
+		}
 	destNet, err := getNetworkPrefix(destNetIpAddr, networkMaskAddr)
 	if err != nil {
 		return -1, err
@@ -1207,7 +1202,9 @@ func createV4Route(destNetIp string,
 		}*/
 	logger.Printf("routePrototype %d for routeType %d prefix %v", routePrototype, routeType, destNet)
 	policyRoute := ribd.Routes{Ipaddr: destNetIp, Mask: networkMask, NextHopIp: nextHopIp, NextHopIfType: nextHopIfType, IfIndex: nextHopIfIndex, Metric: metric, Prototype: routeType}
-	routeInfoRecord := RouteInfoRecord{destNetIp: destNetIpAddr, networkMask: networkMaskAddr, protocol: routePrototype, nextHopIp: nextHopIpAddr, nextHopIfType: int8(nextHopIfType), nextHopIfIndex: nextHopIfIndex, metric: metric, sliceIdx: int(sliceIdx)}
+	logger.Println("prefixLen= ", prefixLen)
+	nwAddr := destNetIp + "/"+strconv.Itoa(prefixLen)
+	routeInfoRecord := RouteInfoRecord{destNetIp: destNetIpAddr, networkMask: networkMaskAddr, protocol: routePrototype, nextHopIp: nextHopIpAddr, networkAddr:nwAddr,nextHopIfType: int8(nextHopIfType), nextHopIfIndex: nextHopIfIndex, metric: metric, sliceIdx: int(sliceIdx)}
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
 	if routeInfoRecordListItem == nil {
 		if addType == FIBOnly {
