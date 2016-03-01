@@ -151,7 +151,7 @@ func processArpRequest(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_
                                         }
                                 }
                         }
-                        logger.Println("Outgoing interface:", ifName)
+                        //logger.Println("Outgoing interface:", ifName)
                         if ifName != "lo" {
                                 return
                         }

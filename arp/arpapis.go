@@ -1464,7 +1464,7 @@ func getLinuxIfc(ifType int, idx int) (ifName string, err error) {
 		ifName = ""
 		err = errors.New("Invalid Interface Type")
 	}
-        logWriter.Info(fmt.Sprintln("ifType:", ifType, "idx:", idx, "ifName:", ifName))
+        //logWriter.Info(fmt.Sprintln("ifType:", ifType, "idx:", idx, "ifName:", ifName))
 	return ifName, err
 }
 

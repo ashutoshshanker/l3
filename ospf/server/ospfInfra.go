@@ -37,6 +37,11 @@ type IPv4IntfNotifyMsg struct {
 	IfType uint8
 }
 
+type IpProperty struct {
+        IfId    uint16
+        IfType  uint8
+}
+
 func (server *OSPFServer)computeMinMTU(msg IPv4IntfNotifyMsg) (int32) {
         var minMtu int32 = 10000 //in bytes
         if msg.IfType == commonDefs.L2RefTypePort { // PHY
@@ -52,6 +57,19 @@ func (server *OSPFServer)computeMinMTU(msg IPv4IntfNotifyMsg) (int32) {
                 }
         }
         return minMtu
+}
+
+func (server *OSPFServer) updateIpPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
+        ipAddr, _, _ := net.ParseCIDR(msg.IpAddr)
+        ip := convertAreaOrRouterIdUint32(ipAddr.String())
+        if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
+                ent := server.ipPropertyMap[ip]
+                ent.IfId = msg.IfId
+                ent.IfType = msg.IfType
+                server.ipPropertyMap[ip] = ent
+        } else { // Delete IP
+                delete(server.ipPropertyMap, ip)
+        }
 }
 
 func (server *OSPFServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {

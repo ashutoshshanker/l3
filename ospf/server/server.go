@@ -47,7 +47,8 @@ type OSPFServer struct {
 	asicdClient        AsicdClient
 	portPropertyMap    map[int32]PortProperty
 	vlanPropertyMap    map[uint16]VlanProperty
-	IPIntfPropertyMap  map[string]IPIntfProperty
+	//IPIntfPropertyMap  map[string]IPIntfProperty
+        ipPropertyMap      map[uint32]IpProperty
 	ospfGlobalConf     GlobalConf
 	GlobalConfigCh     chan config.GlobalConf
 	AreaConfigCh       chan config.AreaConf
@@ -110,6 +111,16 @@ type OSPFServer struct {
 	IntfSliceRefreshDoneCh   chan bool
 
 	RefreshDuration time.Duration
+
+        RoutingTbl              map[RoutingTblKey]RoutingTblEntry
+        OldRoutingTbl           map[RoutingTblKey]RoutingTblEntry
+        TempRoutingTbl          map[RoutingTblKey]RoutingTblEntry
+        StartCalcSPFCh          chan bool
+        DoneCalcSPFCh           chan bool
+        AreaGraph                map[VertexKey]Vertex
+        SPFTree                 map[VertexKey]TreeVertex
+        AreaStubs               map[VertexKey]StubVertex
+
 }
 
 func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
@@ -120,6 +131,7 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.IntfConfigCh = make(chan config.InterfaceConf)
 	ospfServer.portPropertyMap = make(map[int32]PortProperty)
 	ospfServer.vlanPropertyMap = make(map[uint16]VlanProperty)
+	ospfServer.ipPropertyMap = make(map[uint32]IpProperty)
 	ospfServer.AreaConfMap = make(map[AreaConfKey]AreaConf)
 	ospfServer.IntfConfMap = make(map[IntfConfKey]IntfConf)
 	ospfServer.IntfTxMap = make(map[IntfConfKey]IntfTxHandle)
@@ -169,6 +181,12 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.asicdSubSocketCh = make(chan []byte)
 	ospfServer.asicdSubSocketErrCh = make(chan error)
 
+        ospfServer.RoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
+        ospfServer.OldRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
+        ospfServer.TempRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
+        ospfServer.StartCalcSPFCh = make(chan bool)
+        ospfServer.DoneCalcSPFCh = make(chan bool)
+
 	return ospfServer
 }
 
@@ -188,26 +206,69 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 	}
 
 	for _, client := range clientsList {
-		server.logger.Info("#### Client name is ")
-		server.logger.Info(client.Name)
+		//server.logger.Info("#### Client name is ")
+		//server.logger.Info(client.Name)
 		if client.Name == "asicd" {
 			server.logger.Info(fmt.Sprintln("found asicd at port", client.Port))
 			server.asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(server.asicdClient.Address)
+			server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
+                        if err != nil {
+                                server.logger.Info(fmt.Sprintln("Failed to connect to Asicd, retrying until connection is successful"))
+                                count := 0
+                                ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
+                                for _ = range ticker.C {
+                                        server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
+                                        if err == nil {
+                                                ticker.Stop()
+                                                break
+                                        }
+                                        count++
+                                        if (count % 10) == 0 {
+                                                server.logger.Info("Still can't connect to Asicd, retrying..")
+                                        }
+                                }
+
+                        }
+                        server.logger.Info("Ospfd is connected to Asicd")
+                        server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
+                        server.asicdClient.IsConnected = true
+/*
 			if server.asicdClient.Transport != nil && server.asicdClient.PtrProtocolFactory != nil {
 				server.logger.Info("connecting to asicd")
 				server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
 				server.asicdClient.IsConnected = true
 			}
+*/
 		} else if client.Name == "ribd" {
 			server.logger.Info(fmt.Sprintln("found ribd at port", client.Port))
 			server.ribdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(server.ribdClient.Address)
+			server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
+                        if err != nil {
+                                server.logger.Info(fmt.Sprintln("Failed to connect to Ribd, retrying until connection is successful"))
+                                count := 0
+                                ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
+                                for _ = range ticker.C {
+                                        server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
+                                        if err == nil {
+                                                ticker.Stop()
+                                                break
+                                        }
+                                        count++
+                                        if (count % 10) == 0 {
+                                                server.logger.Info("Still can't connect to Ribd, retrying..")
+                                        }
+                                }
+                        }
+                        server.logger.Info("Ospfd is connected to Ribd")
+                        server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
+                        server.ribdClient.IsConnected = true
+/*
 			if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {
 				server.logger.Info("connecting to ribd")
 				server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
 				server.ribdClient.IsConnected = true
 			}
+*/
 		}
 	}
 }
@@ -230,6 +291,7 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	server.logger.Info("Listen for ASICd updates")
 	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
+        go server.spfCalculation()
 
 }
 
