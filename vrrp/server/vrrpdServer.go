@@ -152,7 +152,9 @@ func VrrpCloseAllPcapHandlers() {
 	for i := 0; i < len(vrrpIntfStateSlice); i++ {
 		key := vrrpIntfStateSlice[i]
 		gblInfo := vrrpGblInfo[key]
-		gblInfo.pHandle.Close()
+		if gblInfo.pHandle != nil {
+			gblInfo.pHandle.Close()
+		}
 	}
 }
 

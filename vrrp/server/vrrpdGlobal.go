@@ -37,6 +37,23 @@ import (
 	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 
+type VrrpPktFormat struct {
+	Version       uint8
+	Type          uint8
+	VirtualRtrId  uint8
+	Priority      uint8
+	CountIPv4Addr uint8
+	Rsvd          uint8
+	MaxAdverInt   uint16
+	CheckSum      uint16
+	IPv4Addr      []string
+}
+
+type VrrpFsm struct {
+	vrrpPkt  *VrrpPktFormat
+	vrrpInFo *VrrpGlobalInfo
+}
+
 type VrrpServiceHandler struct {
 }
 
@@ -71,18 +88,6 @@ type VrrpGlobalInfo struct {
 	IfName string
 	// Pcap Handler for receiving packets
 	pHandle *pcap.Handle
-}
-
-type VrrpPktFormat struct {
-	Version       uint8
-	Type          uint8
-	VirtualRtrId  uint8
-	Priority      uint8
-	CountIPv4Addr uint8
-	Rsvd          uint8
-	MaxAdverInt   uint16
-	CheckSum      uint16
-	IPv4Addr      []string
 }
 
 var (

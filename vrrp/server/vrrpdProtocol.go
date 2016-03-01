@@ -3,23 +3,47 @@ package vrrpServer
 import (
 	"fmt"
 	"github.com/google/gopacket"
-	_ "github.com/google/gopacket/layers"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
-func VrrpDecodeVrrpInfo(payload []byte) {
-
+func VrrpDecodeVrrpInfo(data []byte) {
+	var vrrpPkt VrrpPktFormat
+	vrrpPkt.Version = uint8(data[0]) >> 4
+	vrrpPkt.Type = uint8(data[0]) & 0x0F
+	vrrpPkt.VirtualRtrId = data[1]
+	vrrpPkt.Priority = data[2]
+	vrrpPkt.CountIPv4Addr = data[3]
+	logger.Info(fmt.Sprintln("vrrp payload:", vrrpPkt))
 }
 
 func VrrpDecodeReceivedPkt(packet gopacket.Packet) {
 	//var err error
-	eth := packet.LinkLayer()
-	net := packet.NetworkLayer()
-	srcIp, dstIp := net.NetworkFlow().Endpoints()
-	srcMac, dstMac := eth.LinkFlow().Endpoints()
-	logger.Info(fmt.Sprintln("src", srcIp, "dst", dstIp))
-	logger.Info(fmt.Sprintln("src", srcMac, "dst", dstMac))
-	//VrrpDecodeVrrpInfo(net.Layer.LayerPayload())
+	/*
+			eth := packet.LinkLayer()
+			net := packet.NetworkLayer()
+			srcIp, dstIp := net.NetworkFlow().Endpoints()
+			srcMac, dstMac := eth.LinkFlow().Endpoints()
+			logger.Info(fmt.Sprintln("src", srcIp, "dst", dstIp))
+			logger.Info(fmt.Sprintln("src", srcMac, "dst", dstMac))
+			VrrpDecodeVrrpInfo(net.Layer().LayerPayload())
+		ethLayer := packet.Layer(layers.LayerTypeEthernet)
+		if ethLayer == nil {
+			logger.Err("No ethernet frame")
+			return
+		}
+	*/
+	ipLayer := packet.Layer(layers.LayerTypeIPv4)
+	if ipLayer == nil {
+		logger.Err("Not an ip packet?")
+		return
+	}
+	ipPayload := ipLayer.LayerPayload()
+	if ipPayload == nil {
+		logger.Err("No payload for ip packet")
+		return
+	}
+	VrrpDecodeVrrpInfo(ipPayload)
 }
 
 func VrrpReceivePackets(pHandle *pcap.Handle, IfIndex int32) {
