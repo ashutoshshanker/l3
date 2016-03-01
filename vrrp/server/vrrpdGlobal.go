@@ -37,7 +37,7 @@ import (
 	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 
-type VrrpPktFormat struct {
+type VrrpPktHeader struct {
 	Version       uint8
 	Type          uint8
 	VirtualRtrId  uint8
@@ -50,7 +50,7 @@ type VrrpPktFormat struct {
 }
 
 type VrrpFsm struct {
-	vrrpPkt  *VrrpPktFormat
+	vrrpPkt  *VrrpPktHeader
 	vrrpInFo *VrrpGlobalInfo
 }
 
