@@ -1,25 +1,63 @@
 package vrrpServer
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/google/gopacket"
-	_ "github.com/google/gopacket/layers"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
-func VrrpDecodeVrrpInfo(payload []byte) {
-
+/*
+	0                   1                   2                   3
+	0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	|                    IPv4 Fields or IPv6 Fields                 |
+	...                                                             ...
+	|                                                               |
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	|Version| Type  | Virtual Rtr ID|   Priority    |Count IPvX Addr|
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	|(rsvd) |     Max Adver Int     |          Checksum             |
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	|                                                               |
+	+                                                               +
+	|                       IPvX Address(es)                        |
+	+                                                               +
+	+                                                               +
+	+                                                               +
+	+                                                               +
+	|                                                               |
+	+                                                               +
+	|                                                               |
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+func VrrpDecodeVrrpHeader(data []byte) {
+	var vrrpPkt VrrpPktHeader
+	vrrpPkt.Version = uint8(data[0]) >> 4
+	vrrpPkt.Type = uint8(data[0]) & 0x0F
+	vrrpPkt.VirtualRtrId = data[1]
+	vrrpPkt.Priority = data[2]
+	vrrpPkt.CountIPv4Addr = data[3]
+	rsvdAdver := binary.BigEndian.Uint16(data[4:6])
+	vrrpPkt.Rsvd = uint8(rsvdAdver >> 13)
+	vrrpPkt.MaxAdverInt = rsvdAdver & 0x1FFF
+	vrrpPkt.CheckSum = binary.BigEndian.Uint16(data[6:8])
+	//logger.Info(fmt.Sprintln("vrrp payload:", vrrpPkt))
 }
 
 func VrrpDecodeReceivedPkt(packet gopacket.Packet) {
-	//var err error
-	eth := packet.LinkLayer()
-	net := packet.NetworkLayer()
-	srcIp, dstIp := net.NetworkFlow().Endpoints()
-	srcMac, dstMac := eth.LinkFlow().Endpoints()
-	logger.Info(fmt.Sprintln("src", srcIp, "dst", dstIp))
-	logger.Info(fmt.Sprintln("src", srcMac, "dst", dstMac))
-	//VrrpDecodeVrrpInfo(net.Layer.LayerPayload())
+	ipLayer := packet.Layer(layers.LayerTypeIPv4)
+	if ipLayer == nil {
+		logger.Err("Not an ip packet?")
+		return
+	}
+	ipPayload := ipLayer.LayerPayload()
+	if ipPayload == nil {
+		logger.Err("No payload for ip packet")
+		return
+	}
+	VrrpDecodeVrrpHeader(ipPayload)
 }
 
 func VrrpReceivePackets(pHandle *pcap.Handle, IfIndex int32) {
