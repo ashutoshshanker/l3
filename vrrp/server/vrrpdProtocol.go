@@ -7,6 +7,10 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
+func VrrpDecodeVrrpInfo(payload []byte) {
+
+}
+
 func VrrpDecodeReceivedPkt(packet gopacket.Packet) {
 	//var err error
 	eth := packet.LinkLayer()
@@ -15,6 +19,7 @@ func VrrpDecodeReceivedPkt(packet gopacket.Packet) {
 	srcMac, dstMac := eth.LinkFlow().Endpoints()
 	logger.Info(fmt.Sprintln("src", srcIp, "dst", dstIp))
 	logger.Info(fmt.Sprintln("src", srcMac, "dst", dstMac))
+	//VrrpDecodeVrrpInfo(net.Layer.LayerPayload())
 }
 
 func VrrpReceivePackets(pHandle *pcap.Handle, IfIndex int32) {
