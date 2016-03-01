@@ -167,7 +167,6 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 	ent := server.IntfConfMap[key]
 	AreaId := convertIPv4ToUint32(ent.IfAreaId)
 	nbrListLen := len(nbr_list)
-        server.logger.Info(fmt.Sprintln("==========Hello Ashutosh==========", nbrListLen))
 
 	if areaId != AreaId {
 		return
@@ -245,7 +244,7 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 	for i := 0; i < numOfAttachedRtr; i++ {
 		entry.AttachedRtr[i] = attachedRtr[i]
 	}
-	server.logger.Info(fmt.Sprintln("Hello... Attached Routers:", entry.AttachedRtr))
+	server.logger.Info(fmt.Sprintln("Attached Routers:", entry.AttachedRtr))
 	selfOrigLsaEnt[lsaKey] = true
 	server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
 	server.logger.Info(fmt.Sprintln("Self Originated Router LSA Key:", server.AreaSelfOrigLsa[lsdbKey]))
@@ -356,7 +355,7 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 	ent.NumOfLinks = uint16(numOfLinks)
 	ent.LinkDetails = make([]LinkDetail, numOfLinks)
 	copy(ent.LinkDetails, linkDetails[0:])
-	server.logger.Info(fmt.Sprintln("Hello... LinkDetails:", ent.LinkDetails))
+	server.logger.Info(fmt.Sprintln("LinkDetails:", ent.LinkDetails))
 	selfOrigLsaEnt[lsaKey] = true
 	server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
 	server.logger.Info(fmt.Sprintln("Self Originated Router LSA Key:", server.AreaSelfOrigLsa[lsdbKey]))

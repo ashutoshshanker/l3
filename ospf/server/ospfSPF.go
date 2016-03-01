@@ -57,24 +57,6 @@ func findSelfOrigRouterLsaKey(ent map[LsaKey]bool) (LsaKey, error) {
         return key, err
 }
 
-/*
-func (server *OSPFServer)getDRId(ipAddr uint32, intfIdx uint32) uint32 {
-        IPAddr := config.IpAddress(convertUint32ToIPv4(ipAddr))
-        IntfIdx := config.InterfaceIndexOrZero(intfIdx)
-        key := IntfConfKey {
-                IPAddr: IPAddr,
-                IntfIdx: IntfIdx,
-        }
-
-        ent, exist := server.IntfConfMap[key]
-        if !exist {
-                server.logger.Err(fmt.Sprintln("No such interface exist with key as ", key))
-                return 0
-        }
-        return ent.IfDRtrId
-}
-*/
-
 func (server *OSPFServer)UpdateAreaGraphNetworkLsa(lsaEnt NetworkLsa, lsaKey LsaKey, areaId uint32) error {
         server.logger.Info(fmt.Sprintln("2: Using Lsa with key as:", dumpLsaKey(lsaKey), "for SPF calc"))
         vertexKey := VertexKey {
@@ -206,14 +188,6 @@ func (server *OSPFServer)UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaKe
                                 return err
                                 //continue
                         }
-                        /*
-                        DRId := server.getDRId(linkDetail.LinkData, 0)
-                        if DRId == 0 {
-                                server.logger.Err(fmt.Sprintln("No DR exists for vertex:", vKey))
-                                continue
-                        }
-                        vKey.AdvRtr = DRId
-                        */
                         vKey.AdvRtr = nLsaKey.AdvRouter
                         cost = linkDetail.LinkMetric
                         lData = linkDetail.LinkData
@@ -392,7 +366,6 @@ func (server *OSPFServer)ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
                                 return err
                         }
                         if tEnt.Distance > tEntry.Distance + cost {
-                                server.logger.Info("Hello1")
                                 tEnt.Distance = tEntry.Distance + cost
                                 for l := 0; l < tEnt.NumOfPaths; l++ {
                                         tEnt.Paths[l] = nil
@@ -410,7 +383,6 @@ func (server *OSPFServer)ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
                                 }
                                 tEnt.NumOfPaths = tEntry.NumOfPaths
                         } else if tEnt.Distance == tEntry.Distance + cost {
-                                server.logger.Info("Hello2")
                                 paths := make([]Path, (tEntry.NumOfPaths + tEnt.NumOfPaths))
                                 for l := 0; l < tEnt.NumOfPaths; l++ {
                                         var path Path
@@ -432,7 +404,6 @@ func (server *OSPFServer)ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
                                 tEnt.Paths = paths
                                 tEnt.NumOfPaths = tEntry.NumOfPaths + tEnt.NumOfPaths
                         }
-                        server.logger.Info("Hello3")
                         server.SPFTree[verKey] = tEnt
                         treeVSlice = append(treeVSlice, verKey)
                 }

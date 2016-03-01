@@ -2,10 +2,7 @@ package server
 
 import (
         "fmt"
-        //"l3/rib/ribdCommonDefs"
         "ribd"
-        //"utils/commonDefs"
-        //"errors"
 )
 
 type DestType bool
