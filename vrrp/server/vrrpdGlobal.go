@@ -46,7 +46,7 @@ type VrrpPktHeader struct {
 	Rsvd          uint8
 	MaxAdverInt   uint16
 	CheckSum      uint16
-	IPv4Addr      []string
+	IPv4Addr      []net.IP
 }
 
 type VrrpFsm struct {
