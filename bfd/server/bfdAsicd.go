@@ -2,6 +2,7 @@ package server
 
 import (
 	"asicd/asicdConstDefs"
+	"asicd/pluginManager/pluginCommon"
 	"asicdServices"
 	"encoding/json"
 	"fmt"
@@ -14,7 +15,9 @@ type AsicdClient struct {
 	ClientHdl *asicdServices.ASICDServicesClient
 }
 
-func (server *BFDServer) createASICdSubscriber() {
+func (server *BFDServer) CreateASICdSubscriber() {
+	server.logger.Info("Listen for ASICd updates")
+	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
 	for {
 		server.logger.Info("Read on ASICd subscriber socket...")
 		asicdrxBuf, err := server.asicdSubSocket.Recv(0)

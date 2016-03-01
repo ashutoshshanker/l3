@@ -6,6 +6,11 @@ const (
 	PUB_SOCKET_ADDR = "ipc:///tmp/bfdd.ipc"
 )
 
+type BfddNotifyMsg struct {
+	DestIp string
+	State  bool
+}
+
 type BfdSessionOwner int32
 
 // Owner
@@ -25,13 +30,6 @@ const (
 	ADMINUP   BfdSessionOperation = 3
 	ADMINDOWN BfdSessionOperation = 4
 )
-
-type BfdSessionConfig struct {
-	DestIp    string
-	PerLink   bool
-	Owner     string
-	Operation string
-}
 
 func ConvertBfdSessionOwnerStrToVal(owner string) BfdSessionOwner {
 	var ownerVal BfdSessionOwner

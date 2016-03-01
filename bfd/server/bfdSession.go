@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"crypto/sha1"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"l3/bfd/bfddCommonDefs"
 	"math/rand"
@@ -33,12 +34,41 @@ func (server *BFDServer) processSessionConfig(sessionConfig SessionConfig) error
 	return nil
 }
 
+func (server *BFDServer) StartBfdSessionRxTx() error {
+	for {
+		select {
+		case createdSessionId := <-server.CreatedSessionCh:
+			session := server.bfdGlobal.Sessions[createdSessionId]
+			if session != nil {
+				session.TxTimeoutCh = make(chan int32)
+				session.SessionTimeoutCh = make(chan int32)
+				session.SessionDeleteCh = make(chan bool)
+				if session.state.PerLinkSession {
+					server.logger.Info(fmt.Sprintln("Starting PerLink server for session ", createdSessionId))
+					go session.StartPerLinkSessionServer(server)
+					server.logger.Info(fmt.Sprintln("Starting PerLink client for session ", createdSessionId))
+					go session.StartPerLinkSessionClient(server)
+				} else {
+					server.logger.Info(fmt.Sprintln("Starting server for session ", createdSessionId))
+					go session.StartSessionServer(server)
+					server.logger.Info(fmt.Sprintln("Starting client for session ", createdSessionId))
+					go session.StartSessionClient(server)
+				}
+			} else {
+				server.logger.Info(fmt.Sprintf("Bfd session could not be initiated for ", createdSessionId))
+			}
+		}
+	}
+	return nil
+}
+
 func (server *BFDServer) StartSessionHandler() error {
 	server.CreateSessionCh = make(chan BfdSessionMgmt)
 	server.DeleteSessionCh = make(chan BfdSessionMgmt)
 	server.AdminUpSessionCh = make(chan BfdSessionMgmt)
 	server.AdminDownSessionCh = make(chan BfdSessionMgmt)
 	server.CreatedSessionCh = make(chan int32)
+	go server.StartBfdSessionRxTx()
 	for {
 		select {
 		case sessionMgmt := <-server.CreateSessionCh:
@@ -49,22 +79,6 @@ func (server *BFDServer) StartSessionHandler() error {
 			server.AdminUpBfdSession(sessionMgmt)
 		case sessionMgmt := <-server.AdminDownSessionCh:
 			server.AdminDownBfdSession(sessionMgmt)
-		case createdSessionId := <-server.CreatedSessionCh:
-			session, exist := server.bfdGlobal.Sessions[createdSessionId]
-			if exist && session != nil {
-				session.TxTimeoutCh = make(chan int32)
-				session.SessionTimeoutCh = make(chan int32)
-				session.SessionDeleteCh = make(chan bool)
-				if session.state.PerLinkSession {
-					go session.StartPerLinkSessionServer(server)
-					go session.StartPerLinkSessionClient(server)
-				} else {
-					go session.StartSessionServer(server)
-					go session.StartSessionClient(server)
-				}
-			} else {
-				server.logger.Info(fmt.Sprintf("Bfd session could not be initiated for ", createdSessionId))
-			}
 
 		}
 	}
@@ -119,6 +133,7 @@ func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLi
 		bfdSession.authKeyId = uint32(intf.conf.AuthenticationKeyId)
 		bfdSession.authData = intf.conf.AuthenticationData
 	}
+	bfdSession.server = server
 	bfdSession.bfdPacket = NewBfdControlPacketDefault()
 	server.bfdGlobal.Sessions[sessionId] = bfdSession
 	server.bfdGlobal.Interfaces[IfIndex].NumSessions++
@@ -146,10 +161,11 @@ func (server *BFDServer) NewPerLinkBfdSessions(IfIndex int32, DestIp string, Pro
 
 func (server *BFDServer) NewBfdSession(DestIp string, Protocol bfddCommonDefs.BfdSessionOwner, PerLink bool) *BfdSession {
 	IfIndex, _ := server.GetIfIndexAndLocalIpFromDestIp(DestIp)
-	IfType := asicdConstDefs.GetIntfTypeFromIfIndex(IfIndex)
 	if IfIndex == 0 {
+		server.logger.Info(fmt.Sprintln("RemoteIP ", DestIp, " is not reachable"))
 		return nil
 	}
+	IfType := asicdConstDefs.GetIntfTypeFromIfIndex(IfIndex)
 	intf, exist := server.bfdGlobal.Interfaces[IfIndex]
 	if exist {
 		if intf.Enabled {
@@ -368,7 +384,7 @@ func (server *BFDServer) HandleNextHopChange(DestIp string) error {
 }
 
 func (session *BfdSession) StartSessionServer(bfdServer *BFDServer) error {
-	destAddr := session.state.RemoteIpAddr + ":" + strconv.Itoa(DEST_PORT)
+	destAddr := session.state.LocalIpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
 		fmt.Println("Failed ResolveUDPAddr ", destAddr, err)
@@ -585,6 +601,25 @@ func (session *BfdSession) StopBfdSession() error {
 	return nil
 }
 
+func (session *BfdSession) SendBfdNotification() error {
+	var bfdState bool
+	if session.state.SessionState == STATE_UP {
+		bfdState = true
+	} else {
+		bfdState = false
+	}
+	bfdNotification := bfddCommonDefs.BfddNotifyMsg{
+		DestIp: session.state.RemoteIpAddr,
+		State:  bfdState,
+	}
+	bfdNotificationBuf, err := json.Marshal(bfdNotification)
+	if err != nil {
+		session.server.logger.Err(fmt.Sprintln("Failed to marshal BfdSessionNotification message for session ", session.state.SessionId))
+	}
+	session.server.notificationCh <- bfdNotificationBuf
+	return nil
+}
+
 // Restart session that was stopped earlier due to global Bfd disable.
 func (session *BfdSession) StartBfdSession() error {
 	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier / 1000)
@@ -655,6 +690,7 @@ func (session *BfdSession) MoveToDownState() error {
 		session.authSeqNum++
 	}
 	session.useDedicatedMac = true
+	session.SendBfdNotification()
 	session.txTimer.Reset(0)
 	return nil
 }
@@ -669,6 +705,7 @@ func (session *BfdSession) MoveToInitState() error {
 func (session *BfdSession) MoveToUpState() error {
 	session.state.SessionState = STATE_UP
 	session.state.LocalDiagType = DIAG_NONE
+	session.SendBfdNotification()
 	session.txTimer.Reset(0)
 	return nil
 }

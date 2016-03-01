@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bfdd"
 	"flag"
 	"fmt"
 	"l3/bgp/rpc"
@@ -38,16 +39,31 @@ func main() {
 	var ribdClient *ribd.RouteServiceClient = nil
 	ribdClientChan := make(chan *ribd.RouteServiceClient)
 
-	go rpc.StartClient(logger, fileName, ribdClientChan)
+	logger.Info("Connecting to RIBd")
+	go rpc.StartRibdClient(logger, fileName, ribdClientChan)
 	ribdClient = <-ribdClientChan
-	logger.Info("Connected to RIBd")
 	if ribdClient == nil {
 		logger.Err("Failed to connect to RIBd\n")
 		return
+	} else {
+		logger.Info("Connected to RIBd")
+	}
+
+	var bfddClient *bfdd.BFDDServicesClient = nil
+	bfddClientChan := make(chan *bfdd.BFDDServicesClient)
+
+	logger.Info("Connecting to BFDd")
+	go rpc.StartBfddClient(logger, fileName, bfddClientChan)
+	bfddClient = <-bfddClientChan
+	if bfddClient == nil {
+		logger.Err("Failed to connect to BFDd\n")
+		return
+	} else {
+		logger.Info("Connected to BFDd")
 	}
 
 	logger.Info(fmt.Sprintln("Starting BGP Server..."))
-	bgpServer := server.NewBGPServer(logger, ribdClient)
+	bgpServer := server.NewBGPServer(logger, ribdClient, bfddClient)
 	go bgpServer.StartServer()
 
 	logger.Info(fmt.Sprintln("Starting config listener..."))
