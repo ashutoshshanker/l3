@@ -9,28 +9,28 @@ import (
 )
 
 /*
-	0                   1                   2                   3
-	0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|                    IPv4 Fields or IPv6 Fields                 |
-	...                                                             ...
-	|                                                               |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|Version| Type  | Virtual Rtr ID|   Priority    |Count IPvX Addr|
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|(rsvd) |     Max Adver Int     |          Checksum             |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|                                                               |
-	+                                                               +
-	|                       IPvX Address(es)                        |
-	+                                                               +
-	+                                                               +
-	+                                                               +
-	+                                                               +
-	|                                                               |
-	+                                                               +
-	|                                                               |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+Octet Offset--> 0                   1                   2                   3
+ |		0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ |		+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ V		|                    IPv4 Fields or IPv6 Fields                 |
+		...                                                             ...
+		|                                                               |
+		+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ 0		|Version| Type  | Virtual Rtr ID|   Priority    |Count IPvX Addr|
+		+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ 4		|(rsvd) |     Max Adver Int     |          Checksum             |
+		+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ 8		|                                                               |
+		+                                                               +
+12		|                       IPvX Address(es)                        |
+		+                                                               +
+..		+                                                               +
+		+                                                               +
+		+                                                               +
+		|                                                               |
+		+                                                               +
+		|                                                               |
+		+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 func VrrpDecodeVrrpHeader(data []byte) {
 	var vrrpPkt VrrpPktHeader
@@ -43,7 +43,13 @@ func VrrpDecodeVrrpHeader(data []byte) {
 	vrrpPkt.Rsvd = uint8(rsvdAdver >> 13)
 	vrrpPkt.MaxAdverInt = rsvdAdver & 0x1FFF
 	vrrpPkt.CheckSum = binary.BigEndian.Uint16(data[6:8])
-	//logger.Info(fmt.Sprintln("vrrp payload:", vrrpPkt))
+	baseIpByte := 8
+	for i := 0; i < int(vrrpPkt.CountIPv4Addr); i++ {
+		vrrpPkt.IPv4Addr = append(vrrpPkt.IPv4Addr,
+			data[baseIpByte:(baseIpByte+4)])
+		baseIpByte += 4
+	}
+	logger.Info(fmt.Sprintln("vrrp payload:", vrrpPkt))
 }
 
 func VrrpDecodeReceivedPkt(packet gopacket.Packet) {
