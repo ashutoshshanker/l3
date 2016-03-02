@@ -5,7 +5,7 @@ import (
 	"bgpd"
 	"errors"
 	"fmt"
-	"l3/rib/ribdCommonDefs"
+	"utils/policy/policyCommonDefs"
 	"utils/patriciaDB"
 )
 
@@ -42,7 +42,7 @@ func CreatePolicyAggregateAction(cfg *bgpd.BGPPolicyActionConfig) (val bool, err
 	if policyAction == nil {
 		fmt.Println("Defining a new policy action with name ", cfg.Name)
 		aggregateActionInfo := PolicyAggregateActionInfo{GenerateASSet: cfg.AggregateActionInfo.GenerateASSet, SendSummaryOnly: cfg.AggregateActionInfo.SendSummaryOnly}
-		newPolicyAction := PolicyAction{name: cfg.Name, actionType: ribdCommonDefs.PolicyActionTypeAggregate, actionInfo: aggregateActionInfo, localDBSliceIdx: (len(localPolicyActionsDB))}
+		newPolicyAction := PolicyAction{name: cfg.Name, actionType: policyCommonDefs.PolicyActionTypeAggregate, actionInfo: aggregateActionInfo, localDBSliceIdx: (len(localPolicyActionsDB))}
 		var generateASSet, sendSummaryOnly string
 		if cfg.AggregateActionInfo.GenerateASSet == true {
 			generateASSet = "true"

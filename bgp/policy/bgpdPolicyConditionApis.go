@@ -5,7 +5,7 @@ import (
 	"bgpd"
 	"errors"
 	"fmt"
-	"l3/rib/ribdCommonDefs"
+	"utils/policy/policyCommonDefs"
 	"utils/patriciaDB"
 )
 
@@ -66,7 +66,7 @@ func CreatePolicyDstIpMatchPrefixSetCondition(inCfg *bgpd.BGPPolicyConditionConf
 	policyCondition := PolicyConditionsDB.Get(patriciaDB.Prefix(inCfg.Name))
 	if policyCondition == nil {
 		fmt.Println("Defining a new policy condition with name ", inCfg.Name)
-		newPolicyCondition := PolicyCondition{Name: inCfg.Name, ConditionType: ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch, ConditionInfo: conditionInfo, localDBSliceIdx: (len(localPolicyConditionsDB))}
+		newPolicyCondition := PolicyCondition{Name: inCfg.Name, ConditionType: policyCommonDefs.PolicyConditionTypeDstIpPrefixMatch, ConditionInfo: conditionInfo, localDBSliceIdx: (len(localPolicyConditionsDB))}
 		newPolicyCondition.ConditionGetBulkInfo = conditionGetBulkInfo
 		if ok := PolicyConditionsDB.Insert(patriciaDB.Prefix(inCfg.Name), newPolicyCondition); ok != true {
 			fmt.Println(" return value not ok")

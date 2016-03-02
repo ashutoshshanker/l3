@@ -7,11 +7,13 @@ import (
 	"log/syslog"
 	"os"
 	"ribd"
+	"utils/policy"
 )
 
 var logger *log.Logger
 var routeServiceHandler *RouteServiceHandler
 var PARAMSDIR string
+var PolicyEngineDB *policy.PolicyEngineDB
 
 func main() {
 	var transport thrift.TServerTransport
