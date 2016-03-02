@@ -22,7 +22,9 @@ const (
 	Valid   = 0
 )
 
+type UpdateFunc func(*bgpd.BGPRoute, Policy, interface{}) error
 type ApplyActionFunc func(*bgpd.BGPRoute, []string, interface{}, interface{}, interface{})
+type TraverseFunc func(UpdateFunc, Policy)
 
 type RouteParams struct {
 	DestNetIp     string
@@ -30,7 +32,8 @@ type RouteParams struct {
 	NextHopIp     string
 	CreateType    int
 	DeleteType    int
-	ActionFuncMap map[int]ApplyActionFunc
+	ActionFuncMap map[int][2]ApplyActionFunc
+	TraverseFunc  TraverseFunc
 }
 
 type PolicyRouteIndex struct {

@@ -553,6 +553,10 @@ func (h *BGPHandler) GetBulkBGPPolicyStmtState(fromIndex bgpd.Int, rcount bgpd.I
 	return policy.GetBulkBGPPolicyStmtState(fromIndex, rcount)
 }
 
+func (h *BGPHandler) DeleteBGPPolicyStmtConfig(name string) (val bool, err error) {
+	return policy.DeleteBGPPolicyStmtConfig(name)
+}
+
 func (h *BGPHandler) CreateBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val bool, err error) {
 	h.logger.Info(fmt.Sprintln("CreatePolicyDefinition"))
 	h.policy.DefinitionCfgCh <- cfg
@@ -563,6 +567,6 @@ func (h *BGPHandler) GetBulkBGPPolicyDefinitionState(fromIndex bgpd.Int, rcount 
 	return policy.GetBulkBGPPolicyDefinitionState(fromIndex, rcount)
 }
 
-func (h *BGPHandler) DeleteBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val bool, err error) {
-	return policy.DeleteBGPPolicyDefinitionConfig(cfg)
+func (h *BGPHandler) DeleteBGPPolicyDefinitionConfig(name string) (val bool, err error) {
+	return policy.DeleteBGPPolicyDefinitionConfig(name)
 }
