@@ -110,7 +110,7 @@ func NewBGPServer(logger *syslog.Writer, policyEngine *policy.BGPPolicyEngine, r
 	aggrActionFunc[0] = bgpServer.ApplyAggregateAction
 	aggrActionFunc[1] = bgpServer.UndoAggregateAction
 
-	bgpServer.actionFuncMap[ribdCommonDefs.PolicyActionTypeAggregate] = aggrActionFunc
+	bgpServer.actionFuncMap[policyCommonDefs.PolicyActionTypeAggregate] = aggrActionFunc
 
 	bgpServer.logger.Info(fmt.Sprintf("BGPServer: actionfuncmap=%v", bgpServer.actionFuncMap))
 	bgpServer.policyEngine.SetTraverseFunc(bgpServer.TraverseRibForPolicies)

@@ -588,51 +588,6 @@ func PolicyEngineFilter(route bgpd.BGPRoute, policyPath int, params interface{})
 	}
 }
 */
-<<<<<<< HEAD
-func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, handle patriciaDB.Item) (err error) {
-	fmt.Println("policyEngineApplyForRoute %v", prefix)
-	/*   policy := handle.(Policy)
-	   rmapInfoRecordList := item.(RouteInfoRecordList)
-	   policyHit := false
-	   if rmapInfoRecordList.routeInfoProtocolMap == nil {
-	      fmt.Println("rmapInfoRecordList.routeInfoProtocolMap) = nil")
-		  return err
-	   }
-	   fmt.Println("Selected route protocol = ", rmapInfoRecordList.selectedRouteProtocol)
-	   selectedRouteList := rmapInfoRecordList.routeInfoProtocolMap[rmapInfoRecordList.selectedRouteProtocol]
-	   if len(selectedRouteList) == 0 {
-	      fmt.Println("len(selectedRouteList) == 0")
-		  return err
-	  }
-	  for i:=0;i<len(selectedRouteList);i++ {
-	     selectedRouteInfoRecord := selectedRouteList[i]
-	     policyRoute := bgpd.BGPRoute{Network: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid:rmapInfoRecordList.isPolicyBasedStateValid}
-	     params := RouteParams{destNetIp:policyRoute.Network, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
-	     if len(rmapInfoRecordList.policyList) == 0 {
-		  fmt.Println("This route has no policy applied to it so far, just apply the new policy")
-	      policyEngineApplyPolicy(&policyRoute, policy, policyCommonDefs.PolicyPath_All,params, &policyHit)
-	     } else {
-	      fmt.Println("This route already has policy applied to it - len(route.PolicyList) - ", len(rmapInfoRecordList.policyList))
-
-		  for i:=0;i<len(rmapInfoRecordList.policyList);i++ {
-			 fmt.Println("policy at index ", i)
-		     policyInfo := PolicyDB.Get(patriciaDB.Prefix(rmapInfoRecordList.policyList[i]))
-		     if policyInfo == nil {
-			    fmt.Println("Unexpected: Invalid policy in the route policy list")
-		     } else {
-		       oldPolicy := policyInfo.(Policy)
-			   if !isPolicyTypeSame(oldPolicy, policy) {
-				 fmt.Println("The policy type applied currently is not the same as new policy, so apply new policy")
-	              policyEngineApplyPolicy(&policyRoute, policy, policyCommonDefs.PolicyPath_All,params, &policyHit)
-			   } else if oldPolicy.precedence < policy.precedence {
-				 fmt.Println("The policy types are same and precedence of the policy applied currently is lower than the new policy, so do nothing")
-				 return err
-			   } else {
-				fmt.Println("The new policy's precedence is lower, so undo old policy's actions and apply the new policy")
-				policyEngineUndoPolicyForRoute(policyRoute, oldPolicy, params)
-				policyEngineApplyPolicy(&policyRoute, policy, policyCommonDefs.PolicyPath_All,params, &policyHit)
-			   }
-=======
 func policyEngineApplyForRoute(route *bgpd.BGPRoute, policy Policy, ctx interface{}) (err error) {
 	fmt.Printf("policyEngineApplyForRoute %v/%v", route.Network, route.CIDRLen)
 	params := RouteParams{DestNetIp: route.Network, CreateType: Invalid, DeleteType: Invalid,
@@ -640,7 +595,7 @@ func policyEngineApplyForRoute(route *bgpd.BGPRoute, policy Policy, ctx interfac
 	hit := false
 	if len(route.PolicyList) == 0 {
 		fmt.Println("This route has no policy applied to it so far, just apply the new policy")
-		policyEngineApplyPolicy(route, policy, ribdCommonDefs.PolicyPath_All, params, ctx, &hit)
+		policyEngineApplyPolicy(route, policy, policyCommonDefs.PolicyPath_All, params, ctx, &hit)
 	} else {
 		fmt.Println("This route already has policy applied to it - len(route.PolicyList) - ", len(route.PolicyList))
 
@@ -653,16 +608,15 @@ func policyEngineApplyForRoute(route *bgpd.BGPRoute, policy Policy, ctx interfac
 				oldPolicy := policyInfo.(Policy)
 				if !isPolicyTypeSame(oldPolicy, policy) {
 					fmt.Println("The policy type applied currently is not the same as new policy, so apply new policy")
-					policyEngineApplyPolicy(route, policy, ribdCommonDefs.PolicyPath_All, params, ctx, &hit)
+					policyEngineApplyPolicy(route, policy, policyCommonDefs.PolicyPath_All, params, ctx, &hit)
 				} else if oldPolicy.precedence < policy.precedence {
 					fmt.Println("The policy types are same and precedence of the policy applied currently is lower than the new policy, so do nothing")
 					return err
 				} else {
 					fmt.Println("The new policy's precedence is lower, so undo old policy's actions and apply the new policy")
 					policyEngineUndoPolicyForRoute(route, oldPolicy, params)
-					policyEngineApplyPolicy(route, policy, ribdCommonDefs.PolicyPath_All, params, ctx, &hit)
+					policyEngineApplyPolicy(route, policy, policyCommonDefs.PolicyPath_All, params, ctx, &hit)
 				}
->>>>>>> upstream/master
 			}
 		}
 	}
