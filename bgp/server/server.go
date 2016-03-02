@@ -52,6 +52,7 @@ type IfState struct {
 
 type BGPServer struct {
 	logger           *syslog.Writer
+	policyEngine     *policy.BGPPolicyEngine
 	ribdClient       *ribd.RouteServiceClient
 	bfddClient       *bfdd.BFDDServicesClient
 	BgpConfig        config.Bgp
@@ -74,12 +75,14 @@ type BGPServer struct {
 	connRoutesPath *Path
 	ifacePeerMap   map[int32][]string
 	ifaceIP        net.IP
-	actionFuncMap  map[int]policy.ApplyActionFunc
+	actionFuncMap  map[int][2]policy.ApplyActionFunc
 }
 
-func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient, bfddClient *bfdd.BFDDServicesClient) *BGPServer {
+func NewBGPServer(logger *syslog.Writer, policyEngine *policy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
+	bfddClient *bfdd.BFDDServicesClient) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
+	bgpServer.policyEngine = policyEngine
 	bgpServer.ribdClient = ribdClient
 	bgpServer.bfddClient = bfddClient
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
@@ -99,8 +102,18 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient, bf
 	bgpServer.AdjRib = NewAdjRib(bgpServer)
 	bgpServer.ifacePeerMap = make(map[int32][]string)
 	bgpServer.ifaceIP = nil
-	bgpServer.actionFuncMap = make(map[int]policy.ApplyActionFunc)
-	bgpServer.actionFuncMap[ribdCommonDefs.PolicyActionTypeAggregate] = bgpServer.ApplyAggregateAction
+	bgpServer.actionFuncMap = make(map[int][2]policy.ApplyActionFunc)
+	//bgpServer.actionFuncMap[ribdCommonDefs.PolicyActionTypeAggregate] = make([2]policy.ApplyActionFunc)
+
+	var aggrActionFunc [2]policy.ApplyActionFunc
+	aggrActionFunc[0] = bgpServer.ApplyAggregateAction
+	aggrActionFunc[1] = bgpServer.UndoAggregateAction
+
+	bgpServer.actionFuncMap[ribdCommonDefs.PolicyActionTypeAggregate] = aggrActionFunc
+
+	bgpServer.logger.Info(fmt.Sprintf("BGPServer: actionfuncmap=%v", bgpServer.actionFuncMap))
+	bgpServer.policyEngine.SetTraverseFunc(bgpServer.TraverseRibForPolicies)
+	bgpServer.policyEngine.SetApplyActionFunc(bgpServer.actionFuncMap)
 	return bgpServer
 }
 
@@ -264,7 +277,7 @@ func (server *BGPServer) IsPeerLocal(peerIp string) bool {
 func (server *BGPServer) sendUpdateMsgToAllPeers(msg *packet.BGPMessage, path *Path) {
 	for _, peer := range server.PeerMap {
 		// If we recieve the route from IBGP peer, don't send it to other IBGP peers
-		if path.peer != nil {
+		if path != nil && path.peer != nil {
 			if path.peer.IsInternal() {
 
 				if peer.IsInternal() && !path.peer.IsRouteReflectorClient() && !peer.IsRouteReflectorClient() {
@@ -341,7 +354,8 @@ func (server *BGPServer) getAggPrefix(conditionsList []string) *packet.IPPrefix 
 	return ipPrefix
 }
 
-func (server *BGPServer) setWithdrawnWithAggPaths(actionCbInfo ActionCbInfo, withdrawn []*Destination) {
+func (server *BGPServer) setWithdrawnWithAggPaths(actionCbInfo ActionCbInfo, withdrawn []*Destination,
+	sendSummaryOnly bool) {
 	aggDestMap := make(map[*Destination]bool)
 	for _, aggDestination := range withdrawn {
 		aggDestMap[aggDestination] = true
@@ -377,6 +391,24 @@ func (server *BGPServer) setWithdrawnWithAggPaths(actionCbInfo ActionCbInfo, wit
 				}
 			}
 			(*actionCbInfo.updated)[path] = (*actionCbInfo.updated)[path][:lastIdx+1]
+		}
+	}
+
+	if sendSummaryOnly {
+		aggDestMap = make(map[*Destination]bool)
+		for _, dest := range *actionCbInfo.withdrawn {
+			aggDestMap[dest] = true
+		}
+
+		for _, dest := range withdrawn {
+			for _, singleDest := range dest.aggregatedDestMap {
+				if singleDest.locRibPath != nil {
+					if _, ok := (*actionCbInfo.updated)[singleDest.locRibPath]; !ok {
+						(*actionCbInfo.updated)[singleDest.locRibPath] = make([]*Destination, 0)
+					}
+					(*actionCbInfo.updated)[singleDest.locRibPath] = append((*actionCbInfo.updated)[singleDest.locRibPath], singleDest)
+				}
+			}
 		}
 	}
 
@@ -443,6 +475,41 @@ func (server *BGPServer) setUpdatedWithAggPaths(actionCbInfo ActionCbInfo, updat
 	}
 }
 
+func (server *BGPServer) UndoAggregateAction(route *bgpd.BGPRoute, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
+	ipPrefix := packet.NewIPPrefix(net.ParseIP(route.Network), uint8(route.CIDRLen))
+	aggPrefix := server.getAggPrefix(conditionList)
+	aggActions := action.(policy.PolicyAggregateActionInfo)
+	bgpAgg := config.BGPAggregate{
+		GenerateASSet:   aggActions.GenerateASSet,
+		SendSummaryOnly: aggActions.SendSummaryOnly,
+	}
+	allUpdated := make(map[*Path][]*Destination, 10)
+	allWithdrawn := make([]*Destination, 0)
+
+	var updated map[*Path][]*Destination
+	var withdrawn []*Destination
+	var origDest *Destination
+	var actionCbInfo ActionCbInfo
+	var ctxOk bool
+	if actionCbInfo, ctxOk = ctx.(ActionCbInfo); ctxOk {
+		origDest = actionCbInfo.dest
+	}
+	updated, withdrawn, _ = server.AdjRib.RemoveRouteFromAggregate(*ipPrefix, *aggPrefix,
+		server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest)
+
+	if !ctxOk {
+		actionCbInfo = ActionCbInfo{
+			updated:   &allUpdated,
+			withdrawn: &allWithdrawn,
+		}
+	}
+
+	server.setUpdatedWithAggPaths(actionCbInfo, updated, aggActions.SendSummaryOnly, *ipPrefix)
+	server.setWithdrawnWithAggPaths(actionCbInfo, withdrawn, aggActions.SendSummaryOnly)
+	server.SendUpdate(allUpdated, allWithdrawn, nil)
+	return
+}
+
 func (server *BGPServer) ApplyAggregateAction(route *bgpd.BGPRoute, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
 	ipPrefix := packet.NewIPPrefix(net.ParseIP(route.Network), uint8(route.CIDRLen))
 	aggPrefix := server.getAggPrefix(conditionList)
@@ -456,7 +523,7 @@ func (server *BGPServer) ApplyAggregateAction(route *bgpd.BGPRoute, conditionLis
 
 	var updated map[*Path][]*Destination
 	var withdrawn []*Destination
-	if routeParams.CreateType == policy.Valid {
+	if (routeParams.CreateType == policy.Valid) || (routeParams.DeleteType == policy.Invalid) {
 		updated, withdrawn, _ = server.AdjRib.AddRouteToAggregate(*ipPrefix, *aggPrefix,
 			server.BgpConfig.Global.Config.RouterId.String(), server.ifaceIP, &bgpAgg)
 	} else if routeParams.DeleteType == policy.Valid {
@@ -465,7 +532,7 @@ func (server *BGPServer) ApplyAggregateAction(route *bgpd.BGPRoute, conditionLis
 			server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest)
 	}
 	server.setUpdatedWithAggPaths(actionCbInfo, updated, aggActions.SendSummaryOnly, *ipPrefix)
-	server.setWithdrawnWithAggPaths(actionCbInfo, withdrawn)
+	server.setWithdrawnWithAggPaths(actionCbInfo, withdrawn, aggActions.SendSummaryOnly)
 	return
 }
 
@@ -519,6 +586,27 @@ func (server *BGPServer) checkForAggregation(updated map[*Path][]*Destination, w
 
 	server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - complete, updated %v withdrawn %v", updated, withdrawn))
 	return updated, withdrawn, withdrawPath
+}
+
+func (server *BGPServer) TraverseRibForPolicies(updateFunc policy.UpdateFunc, policy policy.Policy) {
+	server.logger.Info(fmt.Sprintf("BGPServer:TraverseRibForPolicies - start"))
+	updated := make(map[*Path][]*Destination, 10)
+	withdrawn := make([]*Destination, 0, 10)
+	locRib := server.AdjRib.GetLocRib()
+	for path, destinations := range locRib {
+		for _, dest := range destinations {
+			if !path.isAggregatePath() {
+				callbackInfo := ActionCbInfo{
+					dest:      dest,
+					updated:   &updated,
+					withdrawn: &withdrawn,
+				}
+				updateFunc(dest.GetLocRibPathRoute(), policy, callbackInfo)
+			}
+		}
+	}
+	server.logger.Info(fmt.Sprintf("BGPServer:TraverseRibForPolicies - updated %v withdrawn %v", updated, withdrawn))
+	server.SendUpdate(updated, withdrawn, nil)
 }
 
 func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {

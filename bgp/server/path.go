@@ -339,6 +339,10 @@ func (p *Path) removePathFromAggregate(destIP string, generateASSet bool) {
 	p.aggregateAllPaths(generateASSet)
 }
 
+func (p *Path) isAggregatePath() bool {
+	return (len(p.AggregatedPaths) > 0)
+}
+
 func (p *Path) isAggregatePathEmpty() bool {
 	return (len(p.AggregatedPaths) == 0)
 }

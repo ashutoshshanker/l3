@@ -63,13 +63,13 @@ func main() {
 		logger.Info("Connected to BFDd")
 	}
 
-	logger.Info(fmt.Sprintln("Starting BGP Server..."))
-	bgpServer := server.NewBGPServer(logger, ribdClient, bfddClient)
-	go bgpServer.StartServer()
-
 	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
 	bgpPolicyEng := policy.NewBGPPolicyEngine(logger)
 	go bgpPolicyEng.StartPolicyEngine()
+
+	logger.Info(fmt.Sprintln("Starting BGP Server..."))
+	bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient, bfddClient)
+	go bgpServer.StartServer()
 
 	logger.Info(fmt.Sprintln("Starting config listener..."))
 	confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
