@@ -110,7 +110,7 @@ var (
 	vrrpVlanId2Name               map[int]string
 	vrrpSnapshotLen               int32         = 1024
 	vrrpPromiscuous               bool          = false
-	vrrpTimeout                   time.Duration = 1 * time.Millisecond
+	vrrpTimeout                   time.Duration = 10 * time.Microsecond
 	vrrpRxPktCh                   chan VrrpPktChannelInfo
 	vrrpTxPktCh                   chan VrrpPktChannelInfo
 	vrrpRxChStarted               bool = false
@@ -144,7 +144,10 @@ const (
 	VRRP_TX_BUF_CHANNEL_SIZE              = 1
 
 	// ip/vrrp header Check Defines
-	VRRP_CHECK_TTL = 255
-	VRRP_VERSION2  = 2
-	VRRP_VERSION3  = 3
+	VRRP_TTL                 = 255
+	VRRP_VERSION2            = 2
+	VRRP_VERSION3            = 3
+	VRRP_PKT_TYPE            = 1 // Only one type is supported which is advertisement
+	VRRP_RSVD                = 0
+	VRRP_HDR_CREATE_CHECKSUM = 0
 )
