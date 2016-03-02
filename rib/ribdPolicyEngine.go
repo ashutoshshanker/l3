@@ -211,6 +211,39 @@ func policyEngineActionAcceptRoute(params interface{}) {
 	   return
 	}
 }
+func policyEngineActionUndoSetAdminDistance(actionItem interface{},conditionsList []string, conditionItem interface {}, policyStmt policy.PolicyStmt) {
+	logger.Println("policyEngineActionUndoSetAdminDistance")
+	actionInfo := actionItem.(policy.PolicyAction)
+	switch actionInfo.ActionType {
+		case policyCommonDefs.PoilcyActionTypeSetAdminDistance:
+		  logger.Println("PoilcyActionTypeSetAdminDistance action to be undone")
+		  if ProtocolAdminDistanceMapDB == nil {
+			   logger.Println("ProtocolAdminDistanceMap nil")
+			   break	
+		  }
+		  if conditionItem == nil {
+			 logger.Println("No valid condition provided for set admin distance action")
+			 return	
+		  }
+	      conditionInfo := conditionItem.(policy.PolicyCondition)
+		  switch conditionInfo.ConditionType {
+			case policyCommonDefs.PolicyConditionTypeProtocolMatch:
+			      routeDistanceConfig := ProtocolAdminDistanceMapDB[conditionInfo.ConditionInfo.(string)]
+				  routeDistanceConfig.configuredDistance = -1
+			      ProtocolAdminDistanceMapDB[conditionInfo.ConditionInfo.(string)] =  routeDistanceConfig
+			      logger.Println("Setting configured distance of prototype ", conditionInfo.ConditionInfo.(string), " to value ", 0, " default distance of this protocol is ", routeDistanceConfig.defaultDistance)
+				break
+		    default:
+		       logger.Println("Invalid condition type provided for undo set admin distance")
+			   return	
+		  }
+            policyEngineTraverseAndUpdate()
+	        break
+		    default:
+			   logger.Println("Invalid global policy action")
+			   return
+		}
+}
 func policyEngineActionSetAdminDistance(actionItem interface {}, conditionItem interface {}, params interface {}) {
 	logger.Println("policyEngipolicyEngineActionSetAdminDistance")
 	actionInfo := actionItem.(policy.PolicyAction)
@@ -229,9 +262,9 @@ func policyEngineActionSetAdminDistance(actionItem interface {}, conditionItem i
 		  switch conditionInfo.ConditionType {
 			case policyCommonDefs.PolicyConditionTypeProtocolMatch:
 			    routeDistanceConfig := ProtocolAdminDistanceMapDB[conditionInfo.ConditionInfo.(string)]
-				routeDistanceConfig.configuredDistance = int(actionInfo.ActionInfo.(ribd.Int))
+				routeDistanceConfig.configuredDistance = int(actionInfo.ActionInfo.(int))
 			    ProtocolAdminDistanceMapDB[conditionInfo.ConditionInfo.(string)] =  routeDistanceConfig
-			    logger.Println("Setting distance of prototype ", conditionInfo.ConditionInfo.(string), " to value ", actionInfo.ActionInfo.(ribd.Int))
+			    logger.Println("Setting distance of prototype ", conditionInfo.ConditionInfo.(string), " to value ", actionInfo.ActionInfo.(int))
 				break
 		    default:
 		       logger.Println("Invalid condition type provided for set admin distance")

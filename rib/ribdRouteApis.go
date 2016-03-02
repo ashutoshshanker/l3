@@ -694,6 +694,8 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		params.destNetIp = routeInfoRecord.destNetIp.String()
 		params.sliceIdx = ribd.Int(routeInfoRecord.sliceIdx)
 		params.networkMask = routeInfoRecord.networkMask.String()
+		params.metric = routeInfoRecord.metric
+		params.nextHopIp = routeInfoRecord.nextHopIp.String()
 		policyRoute.Ipaddr = routeInfoRecord.destNetIp.String()
 		policyRoute.Mask = routeInfoRecord.networkMask.String()
 		if policyPath == policyCommonDefs.PolicyPath_Export {
@@ -792,7 +794,9 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	    localRouteEventsDB = append(localRouteEventsDB,routeEventInfo)
 	    params.createType = Invalid
 	    params.destNetIp = routeInfoRecord.destNetIp.String()
+		params.metric = routeInfoRecord.metric
 		params.networkMask = routeInfoRecord.networkMask.String()
+		params.nextHopIp = routeInfoRecord.nextHopIp.String()
 		params.sliceIdx = ribd.Int(routeInfoRecord.sliceIdx)
 		policyRoute.PolicyList = routeInfoRecordList.policyList
 		PolicyEngineFilter(policyRoute, policyPath, params)
@@ -1252,9 +1256,11 @@ func createV4Route(destNetIp string,
 	    var params RouteParams
 		params.destNetIp = destNetIp
 		params.networkMask = networkMask
+		params.nextHopIp = nextHopIp
 		params.routeType = routeType
 		params.createType = addType
 		params.deleteType = Invalid
+		params.metric = metric
 		params.sliceIdx = sliceIdx
 		policyRoute.IsPolicyBasedStateValid = newRouteInfoRecordList.isPolicyBasedStateValid
 		PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Export, params)
