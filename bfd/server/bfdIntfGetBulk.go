@@ -1,8 +1,6 @@
 package server
 
-import (
-//"fmt"
-)
+import ()
 
 func (server *BFDServer) GetBulkBfdIntfStates(idx int, cnt int) (int, int, []IntfState) {
 	var nextIdx int

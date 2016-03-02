@@ -6,9 +6,128 @@ import (
 	"l3/bgp/config"
 	"l3/bgp/packet"
 	"log/syslog"
+	"math/rand"
 	"net"
 	"time"
+
+	"golang.org/x/net/ipv4"
 )
+
+type OutTCPConn struct {
+	fsm          *FSM
+	logger       *syslog.Writer
+	fsmConnCh    chan net.Conn
+	fsmConnErrCh chan error
+	StopConnCh   chan bool
+	id           uint32
+}
+
+func NewOutTCPConn(fsm *FSM, fsmConnCh chan net.Conn, fsmConnErrCh chan error) *OutTCPConn {
+	outConn := OutTCPConn{
+		fsm:          fsm,
+		logger:       fsm.logger,
+		fsmConnCh:    fsmConnCh,
+		fsmConnErrCh: fsmConnErrCh,
+		StopConnCh:   make(chan bool),
+	}
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	outConn.id = r.Uint32()
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+		"Creating new out TCP conn with id", outConn.id))
+	return &outConn
+}
+
+func (o *OutTCPConn) Connect(seconds uint32, addr string, connCh chan net.Conn, errCh chan error) {
+	_, err := o.fsm.peer.Server.ribdClient.GetRouteReachabilityInfo(o.fsm.pConf.NeighborAddress.String())
+	if err != nil {
+		duration := uint32(3)
+		for {
+			select {
+			case <-time.After(time.Duration(duration) * time.Second):
+				_, err = o.fsm.peer.Server.ribdClient.GetRouteReachabilityInfo(o.fsm.pConf.NeighborAddress.String())
+			}
+			seconds -= duration
+			if err == nil || seconds <= duration {
+				break
+			}
+		}
+		if err != nil {
+			errCh <- config.AddressNotResolvedError{"Neighbor is not reachable"}
+			return
+		}
+	}
+
+	o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+		"Connect called... calling DialTimeout with", seconds, "second timeout", "OutTCPCOnn id", o.id))
+	conn, err := net.DialTimeout("tcp", addr, time.Duration(seconds)*time.Second)
+	if err != nil {
+		errCh <- err
+	} else {
+		packetConn := ipv4.NewConn(conn)
+		ttl := 1
+		if o.fsm.pConf.MultiHopEnable {
+			ttl = int(o.fsm.pConf.MultiHopTTL)
+		}
+		if err = packetConn.SetTTL(ttl); err != nil {
+			conn.Close()
+			errCh <- err
+			return
+		}
+		connCh <- conn
+	}
+}
+
+func (o *OutTCPConn) ConnectToPeer(seconds uint32, addr string) {
+	var stopConn bool = false
+	connCh := make(chan net.Conn)
+	errCh := make(chan error)
+
+	o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id, "ConnectToPeer called",
+		"OutTCPCOnn id", o.id))
+	connTime := seconds - 3
+	if connTime <= 0 {
+		connTime = seconds
+	}
+
+	go o.Connect(seconds, addr, connCh, errCh)
+
+	for {
+		select {
+		case conn := <-connCh:
+			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+				"ConnectToPeer: Connected to peer", addr, "OutTCPCOnn id", o.id))
+			if stopConn {
+				conn.Close()
+				return
+			}
+
+			o.fsmConnCh <- conn
+			return
+
+		case err := <-errCh:
+			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+				"ConnectToPeer: Failed to connect to peer", addr, "with error:", err, "OutTCPCOnn id", o.id))
+			if stopConn {
+				return
+			}
+
+			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+				o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+					"Connect to peer timed out, retrying...", "OutTCPCOnn id", o.id))
+				go o.Connect(3, addr, connCh, errCh)
+			} else if _, ok := err.(config.AddressNotResolvedError); ok {
+				go o.Connect(3, addr, connCh, errCh)
+			} else {
+				o.fsmConnErrCh <- err
+			}
+
+		case <-o.StopConnCh:
+			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+				"ConnectToPeer: Recieved stop connecting to peer", addr, "OutTCPCOnn id", o.id))
+			stopConn = true
+		}
+	}
+}
 
 type PeerConn struct {
 	fsm       *FSM
@@ -19,6 +138,7 @@ type PeerConn struct {
 
 	readCh chan bool
 	stopCh chan bool
+	exitCh chan bool
 }
 
 func NewPeerConn(fsm *FSM, dir config.ConnDir, conn *net.Conn) *PeerConn {
@@ -32,6 +152,7 @@ func NewPeerConn(fsm *FSM, dir config.ConnDir, conn *net.Conn) *PeerConn {
 		},
 		readCh: make(chan bool),
 		stopCh: make(chan bool),
+		exitCh: make(chan bool),
 	}
 
 	return &peerConn
@@ -39,25 +160,43 @@ func NewPeerConn(fsm *FSM, dir config.ConnDir, conn *net.Conn) *PeerConn {
 
 func (p *PeerConn) StartReading() {
 	stopReading := false
+	readError := false
 	doneReadingCh := make(chan bool)
 	stopReadingCh := make(chan bool)
+	exitCh := make(chan bool)
 
-	p.logger.Info(fmt.Sprintln("conn:StartReading called"))
-	go p.ReadPkt(doneReadingCh, stopReadingCh)
+	p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id, "conn:StartReading called"))
+	go p.ReadPkt(doneReadingCh, stopReadingCh, exitCh)
 	p.readCh <- true
 
 	for {
 		select {
 		case <-p.stopCh:
-			if !stopReading {
-				stopReading = true
+			stopReading = true
+			if readError {
+				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+					"readError is true, send stopReadingCh"))
 				stopReadingCh <- true
-				return
 			}
 
+		case <-exitCh:
+			p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+				"conn: exit channel"))
+			p.exitCh <- true
+
 		case readOk := <-doneReadingCh:
-			if readOk && !stopReading {
-				p.readCh <- true
+			if stopReading {
+				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+					"stopReading is true, send stopReadingCh"))
+				stopReadingCh <- true
+			} else {
+				if readOk {
+					p.readCh <- true
+				} else {
+					p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+						"read failed, set readError to true"))
+					readError = true
+				}
 			}
 		}
 	}
@@ -73,8 +212,8 @@ func (p *PeerConn) readPartialPkt(length uint32) ([]byte, error) {
 	return buf, err
 }
 
-func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
-	p.logger.Info(fmt.Sprintln("conn:ReadPkt called"))
+func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool) {
+	p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id, "conn:ReadPkt called"))
 	var t time.Time
 	for {
 		select {
@@ -86,8 +225,10 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 					doneCh <- true
 					continue
 				} else {
-					p.logger.Info(fmt.Sprintln("readPartialPkt DID NOT time out, returned err:", err, "nerr:", nerr))
+					p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+						"readPartialPkt DID NOT time out, returned err:", err, "nerr:", nerr))
 					p.fsm.outConnErrCh <- err
+					doneCh <- false
 					break
 				}
 			}
@@ -95,7 +236,8 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 			header := packet.BGPHeader{}
 			err = header.Decode(buf)
 			if err != nil {
-				p.logger.Info(fmt.Sprintln("BGP packet header decode failed"))
+				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+					"BGP packet header decode failed"))
 				bgpPktInfo := packet.NewBGPPktInfo(nil, err.(*packet.BGPMessageError))
 				p.fsm.pktRxCh <- bgpPktInfo
 				doneCh <- false
@@ -103,7 +245,8 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 			}
 
 			if header.Type != packet.BGPMsgTypeKeepAlive {
-				p.logger.Info(fmt.Sprintln("Recieved BGP packet type=", header.Type))
+				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+					"Recieved BGP packet type=", header.Type))
 			}
 
 			(*p.conn).SetReadDeadline(t)
@@ -111,6 +254,7 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 				buf, err = p.readPartialPkt(header.Len() - packet.BGPMsgHeaderLen)
 				if err != nil {
 					p.fsm.outConnErrCh <- err
+					doneCh <- false
 					break
 				}
 			} else {
@@ -118,20 +262,24 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 			}
 
 			if header.Type != packet.BGPMsgTypeKeepAlive {
-				p.logger.Info(fmt.Sprintf("Received BGP packet %x", buf))
+				p.logger.Info(fmt.Sprintf("Neighbor:%s FSM %d Received BGP packet %x", p.fsm.pConf.NeighborAddress,
+					p.fsm.id, buf))
 			}
 
 			msg := &packet.BGPMessage{}
 			err = msg.Decode(&header, buf, p.peerAttrs)
 			bgpPktInfo := packet.NewBGPPktInfo(msg, nil)
 			msgOk := true
-			if err != nil {
-				p.logger.Info(fmt.Sprintln("BGP packet body decode failed, err:", err))
-				bgpPktInfo = packet.NewBGPPktInfo(msg, err.(*packet.BGPMessageError))
+			if header.Type == packet.BGPMsgTypeNotification {
 				msgOk = false
 			}
 
-			if header.Type == packet.BGPMsgTypeOpen {
+			if err != nil {
+				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+					"BGP packet body decode failed, err:", err))
+				bgpPktInfo = packet.NewBGPPktInfo(msg, err.(*packet.BGPMessageError))
+				msgOk = false
+			} else if header.Type == packet.BGPMsgTypeOpen {
 				p.peerAttrs.ASSize = packet.GetASSize(msg.Body.(*packet.BGPOpen))
 				p.peerAttrs.AddPathFamily = packet.GetAddPathFamily(msg.Body.(*packet.BGPOpen))
 			}
@@ -139,6 +287,12 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool) {
 			doneCh <- msgOk
 
 		case <-stopCh:
+			p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+				"Closing the peer connection"))
+			if p.conn != nil {
+				(*p.conn).Close()
+			}
+			exitCh <- true
 			return
 		}
 	}

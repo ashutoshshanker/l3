@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"l3/bfd/bfddCommonDefs"
 	"l3/bfd/server"
-	//    "log/syslog"
-	//    "net"
+	"strconv"
 )
 
 func (h *BFDHandler) convertGlobalStateToThrift(ent server.GlobalState) *bfdd.BfdGlobalState {
@@ -41,16 +40,16 @@ func (h *BFDHandler) GetBulkBfdGlobalState(fromIdx bfdd.Int, count bfdd.Int) (*b
 
 func (h *BFDHandler) convertIntfStateToThrift(ent server.IntfState) *bfdd.BfdIntfState {
 	intfState := bfdd.NewBfdIntfState()
-	intfState.InterfaceId = int32(ent.InterfaceId)
+	intfState.IfIndex = int32(ent.InterfaceId)
 	intfState.Enabled = ent.Enabled
 	intfState.NumSessions = int32(ent.NumSessions)
 	intfState.LocalMultiplier = int32(ent.LocalMultiplier)
-	intfState.DesiredMinTxInterval = int32(ent.DesiredMinTxInterval)
-	intfState.RequiredMinRxInterval = int32(ent.RequiredMinRxInterval)
-	intfState.RequiredMinEchoRxInterval = int32(ent.RequiredMinEchoRxInterval)
+	intfState.DesiredMinTxInterval = string(strconv.Itoa(int(ent.DesiredMinTxInterval)) + "(us)")
+	intfState.RequiredMinRxInterval = string(strconv.Itoa(int(ent.RequiredMinRxInterval)) + "(us)")
+	intfState.RequiredMinEchoRxInterval = string(strconv.Itoa(int(ent.RequiredMinEchoRxInterval)) + "(us)")
 	intfState.DemandEnabled = ent.DemandEnabled
 	intfState.AuthenticationEnabled = ent.AuthenticationEnabled
-	intfState.AuthenticationType = int32(ent.AuthenticationType)
+	intfState.AuthenticationType = string(h.server.ConvertBfdAuthTypeValToStr(ent.AuthenticationType))
 	intfState.AuthenticationKeyId = int32(ent.AuthenticationKeyId)
 	intfState.AuthenticationData = string(ent.AuthenticationData)
 	return intfState
@@ -79,6 +78,9 @@ func (h *BFDHandler) GetBulkBfdIntfState(fromIdx bfdd.Int, count bfdd.Int) (*bfd
 
 func (h *BFDHandler) convertBfdSessionProtocolsToString(Protocols []bool) string {
 	var protocols string
+	if Protocols[bfddCommonDefs.USER] {
+		protocols += "user, "
+	}
 	if Protocols[bfddCommonDefs.BGP] {
 		protocols += "bgp, "
 	}
@@ -93,20 +95,23 @@ func (h *BFDHandler) convertSessionStateToThrift(ent server.SessionState) *bfdd.
 	sessionState.SessionId = int32(ent.SessionId)
 	sessionState.LocalIpAddr = string(ent.LocalIpAddr)
 	sessionState.RemoteIpAddr = string(ent.RemoteIpAddr)
-	sessionState.InterfaceId = int32(ent.InterfaceId)
-	sessionState.RegisteredProtocols = h.convertBfdSessionProtocolsToString(ent.RegisteredProtocols)
-	sessionState.SessionState = int32(ent.SessionState)
-	sessionState.RemoteSessionState = int32(ent.RemoteSessionState)
+	sessionState.IfIndex = int32(ent.InterfaceId)
+	sessionState.PerLinkSession = ent.PerLinkSession
+	sessionState.LocalMacAddr = string(ent.LocalMacAddr.String())
+	sessionState.RemoteMacAddr = string(ent.RemoteMacAddr.String())
+	sessionState.RegisteredProtocols = string(h.convertBfdSessionProtocolsToString(ent.RegisteredProtocols))
+	sessionState.SessionState = string(h.server.ConvertBfdSessionStateValToStr(ent.SessionState))
+	sessionState.RemoteSessionState = string(h.server.ConvertBfdSessionStateValToStr(ent.RemoteSessionState))
 	sessionState.LocalDiscriminator = int32(ent.LocalDiscriminator)
 	sessionState.RemoteDiscriminator = int32(ent.RemoteDiscriminator)
-	sessionState.LocalDiagType = int32(ent.LocalDiagType)
-	sessionState.DesiredMinTxInterval = int32(ent.DesiredMinTxInterval)
-	sessionState.RequiredMinRxInterval = int32(ent.RequiredMinRxInterval)
-	sessionState.RemoteMinRxInterval = int32(ent.RemoteMinRxInterval)
+	sessionState.LocalDiagType = string(h.server.ConvertBfdSessionDiagValToStr(ent.LocalDiagType))
+	sessionState.DesiredMinTxInterval = string(strconv.Itoa(int(ent.DesiredMinTxInterval)) + "(us)")
+	sessionState.RequiredMinRxInterval = string(strconv.Itoa(int(ent.RequiredMinRxInterval)) + "(us)")
+	sessionState.RemoteMinRxInterval = string(strconv.Itoa(int(ent.RemoteMinRxInterval)) + "(us)")
 	sessionState.DetectionMultiplier = int32(ent.DetectionMultiplier)
 	sessionState.DemandMode = ent.DemandMode
 	sessionState.RemoteDemandMode = ent.RemoteDemandMode
-	sessionState.AuthType = int32(ent.AuthType)
+	sessionState.AuthType = string(h.server.ConvertBfdAuthTypeValToStr(ent.AuthType))
 	sessionState.AuthSeqKnown = ent.AuthSeqKnown
 	sessionState.ReceivedAuthSeq = int32(ent.ReceivedAuthSeq)
 	sessionState.SentAuthSeq = int32(ent.SentAuthSeq)

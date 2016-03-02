@@ -2,6 +2,7 @@
 package rpc
 
 import (
+	"bfdd"
 	"bgpd"
 	"encoding/json"
 	"fmt"
@@ -86,7 +87,7 @@ func connectToClient(logger *syslog.Writer, clientTransport thrift.TTransport) e
 	return clientTransport.Open()
 }
 
-func StartClient(logger *syslog.Writer, filePath string, ribdClient chan *ribd.RouteServiceClient) {
+func StartRibdClient(logger *syslog.Writer, filePath string, ribdClient chan *ribd.RouteServiceClient) {
 	fileName := filePath + ClientsFileName
 	clientJson, err := getClient(logger, fileName, "ribd")
 	if err != nil || clientJson == nil {
@@ -114,4 +115,34 @@ func StartClient(logger *syslog.Writer, filePath string, ribdClient chan *ribd.R
 
 	client := ribd.NewRouteServiceClientFactory(clientTransport, protocolFactory)
 	ribdClient <- client
+}
+
+func StartBfddClient(logger *syslog.Writer, filePath string, bfddClient chan *bfdd.BFDDServicesClient) {
+	fileName := filePath + ClientsFileName
+	clientJson, err := getClient(logger, fileName, "bfdd")
+	if err != nil || clientJson == nil {
+		bfddClient <- nil
+		return
+	}
+
+	clientTransport, protocolFactory, err := ipcutils.CreateIPCHandles("localhost:" + strconv.Itoa(clientJson.Port))
+	if err != nil {
+		logger.Info(fmt.Sprintf("Failed to connect to BFDd, retrying until connection is successful"))
+		count := 0
+		ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
+		for _ = range ticker.C {
+			clientTransport, protocolFactory, err = ipcutils.CreateIPCHandles("localhost:" + strconv.Itoa(clientJson.Port))
+			if err == nil {
+				ticker.Stop()
+				break
+			}
+			count++
+			if (count % 10) == 0 {
+				logger.Info(fmt.Sprintf("Still can't connect to BFDd, retrying..."))
+			}
+		}
+	}
+
+	client := bfdd.NewBFDDServicesClientFactory(clientTransport, protocolFactory)
+	bfddClient <- client
 }

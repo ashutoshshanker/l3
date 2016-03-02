@@ -64,6 +64,7 @@ type BaseConfig struct {
 	ConnectRetryTime        uint32
 	HoldTime                uint32
 	KeepaliveTime           uint32
+	BfdEnable               bool
 }
 
 type NeighborConfig struct {
@@ -89,6 +90,7 @@ type NeighborState struct {
 	ConnectRetryTime        uint32
 	HoldTime                uint32
 	KeepaliveTime           uint32
+	BfdNeighborState        string
 }
 
 type TransportConfig struct {
@@ -179,8 +181,15 @@ type PeerGroup struct {
 	AfiSafis []AfiSafiConfig
 }
 
+type BGPAggregate struct {
+	IPPrefix
+	GenerateASSet   bool
+	SendSummaryOnly bool
+}
+
 type Bgp struct {
 	Global     Global
 	PeerGroups map[string]*PeerGroup
 	Neighbors  []Neighbor
+	BgpAggs    map[string]*BGPAggregate
 }

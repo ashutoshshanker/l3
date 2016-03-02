@@ -76,6 +76,14 @@ func processArpReply(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_Na
                         // vlan_id = 1
                         return
                 }
+                local_ip_addr, _ := getIPv4ForInterface(arpd.Int(commonDefs.L2RefTypeVlan), arpd.Int(vlan_id))
+                if local_ip_addr == "" {
+                        logWriter.Info(fmt.Sprintln("Unable to get IPv4 configured on ", if_Name))
+                        return
+                } else if local_ip_addr != dest_ip_addr {
+                        logWriter.Info(fmt.Sprintln("Recvd Arp Response with wrong Dest IP Address", dest_ip_addr, "localIP:", local_ip_addr))
+                        return
+                }
                 arp_cache_update_chl <- arpUpdateMsg{
                         ip: src_ip_addr,
                         ent: arpEntry{
@@ -85,7 +93,7 @@ func processArpReply(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_Na
                                 port:    port_id,
                                 ifName:  if_Name,
                                 ifType:  ifType,
-                                localIP: dest_ip_addr,
+                                localIP: local_ip_addr,
                                 counter: timeout_counter,
                         },
                         msg_type: 3,
@@ -113,8 +121,12 @@ func processArpRequest(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_
                         // vlan_id = 1
                         return
                 }
+                local_ip_addr, _ := getIPv4ForInterface(arpd.Int(commonDefs.L2RefTypeVlan), arpd.Int(vlan_id))
+                if local_ip_addr == "" {
+                        logWriter.Info(fmt.Sprintln("Unable to get IPv4 configured on ", if_Name))
+                        return
+                }
                 if src_ip_addr == "0.0.0.0" { // ARP Probe Request
-                        local_ip_addr, _ := getIPv4ForInterface(arpd.Int(0), arpd.Int(vlan_id))
                         if local_ip_addr == dest_ip_addr {
                                 // Send Arp Reply for ARP Probe
                                 logger.Println("Linux will Send Arp Reply for recevied ARP Probe because of conflicting address")
@@ -123,7 +135,9 @@ func processArpRequest(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_
                 }
 
                 if src_ip_addr == dest_ip_addr { // Gratuitous ARP Request
-                        logger.Println("Received a Gratuitous ARP from ", src_ip_addr)
+                        //logger.Println("Received a Gratuitous ARP from ", src_ip_addr)
+                        logWriter.Info(fmt.Sprintln("Received a Gratuitous ARP from ", src_ip_addr))
+                        dest_ip_addr = local_ip_addr
                 } else { // Any other ARP request which are not locally originated
                         route, err := netlink.RouteGet(dstip)
                         var ifName string
@@ -137,8 +151,13 @@ func processArpRequest(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_
                                         }
                                 }
                         }
-                        logger.Println("Outgoing interface:", ifName)
+                        //logger.Println("Outgoing interface:", ifName)
                         if ifName != "lo" {
+                                return
+                        }
+                        ifName, _, _, ret := isInLocalSubnet(src_ip_addr)
+                        if ret == false {
+                                logWriter.Info(fmt.Sprintln("Received ARP Request Packet from SRC_IP not in local subnet on interface"))
                                 return
                         }
                 }
@@ -162,9 +181,11 @@ func processArpRequest(arp *layers.ARP, port_id int, myMac net.HardwareAddr, if_
 func processArpPackets(arpLayer gopacket.Layer, port_id int, myMac net.HardwareAddr, if_Name string) {
         arp := arpLayer.(*layers.ARP)
         if arp == nil {
+                logWriter.Err("Arp layer returns nil")
                 return
         }
         if bytes.Equal([]byte(myMac), arp.SourceHwAddress) {
+                logWriter.Err("Received ARP Packet with our own MAC Address, hence not processing it")
                 return
         }
 

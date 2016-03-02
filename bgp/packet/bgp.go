@@ -1569,6 +1569,17 @@ func (a *BGPPathAttrAtomicAggregate) Clone() BGPPathAttr {
 	return &x
 }
 
+func NewBGPPathAttrAtomicAggregate() *BGPPathAttrAtomicAggregate {
+	return &BGPPathAttrAtomicAggregate{
+		BGPPathAttrBase: BGPPathAttrBase{
+			Flags:          BGPPathAttrFlagTransitive,
+			Code:           BGPPathAttrTypeAtomicAggregate,
+			Length:         0,
+			BGPPathAttrLen: 3,
+		},
+	}
+}
+
 type BGPPathAttrAggregator struct {
 	BGPPathAttrBase
 	AS uint16
