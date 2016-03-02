@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	_ "github.com/google/gopacket"
 	"io/ioutil"
 	"log/syslog"
 	"net"
@@ -165,7 +166,7 @@ func VrrpSignalHandler(sigChannel <-chan os.Signal) {
 		logger.Alert("Received SIGHUP Signal")
 		VrrpCloseAllPcapHandlers()
 		VrrpDeAllocateMemoryToGlobalDS()
-		logger.Info("Closed vrrp pkt handlers")
+		logger.Alert("Closed all pcap's and freed memory")
 		os.Exit(0)
 	default:
 		logger.Info(fmt.Sprintln("Unhandled Signal:", signal))
@@ -235,6 +236,7 @@ func VrrpAllocateMemoryToGlobalDS() {
 		VRRP_LINUX_INTF_MAPPING_DEFAULT_SIZE)
 	vrrpVlanId2Name = make(map[int]string,
 		VRRP_VLAN_MAPPING_DEFAULT_SIZE)
+	vrrpRxPktCh = make(chan VrrpPktChannelInfo, VRRP_RX_BUF_CHANNEL_SIZE)
 }
 
 func VrrpDeAllocateMemoryToGlobalDS() {
@@ -242,6 +244,7 @@ func VrrpDeAllocateMemoryToGlobalDS() {
 	vrrpIfIndexIpAddr = nil
 	vrrpLinuxIfIndex2AsicdIfIndex = nil
 	vrrpVlanId2Name = nil
+	vrrpRxPktCh = nil
 }
 
 func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) error {
