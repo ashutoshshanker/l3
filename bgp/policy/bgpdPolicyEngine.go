@@ -130,13 +130,18 @@ func policyEngineActionUndoAggregate(route *bgpd.BGPRoute, aggregateActionInfo P
 func policyEngineActionUndoRejectRoute(route bgpd.BGPRoute, params interface{}, conditionsList []string) {
 	fmt.Println("policyEngineActionUndoRejectRoute - route: ", route.Network, "/", route.CIDRLen, " type ")
 }
-func policyEngineUndoActionsPolicyStmt(route *bgpd.BGPRoute, policy Policy, policyStmt PolicyStmt, params interface{}, conditionsAndActionsList ConditionsAndActionsList) {
+func policyEngineUndoActionsPolicyStmt(route *bgpd.BGPRoute, policy Policy, policyStmt PolicyStmt, params interface{},
+	conditionsAndActionsList ConditionsAndActionsList) {
 	fmt.Println("policyEngineUndoActionsPolicyStmt")
 	if conditionsAndActionsList.actionList == nil {
 		fmt.Println("No actions")
 		return
 	}
 	var i int
+	var callbackFunc [2]ApplyActionFunc
+	var ok bool
+	routeParams := params.(RouteParams)
+
 	for i = 0; i < len(conditionsAndActionsList.actionList); i++ {
 		fmt.Printf("Find policy action number %d name %s in the action database\n", i, conditionsAndActionsList.actionList[i])
 		actionItem := PolicyActionsDB.Get(patriciaDB.Prefix(policyStmt.actions[i]))
@@ -149,7 +154,13 @@ func policyEngineUndoActionsPolicyStmt(route *bgpd.BGPRoute, policy Policy, poli
 		switch action.actionType {
 		case ribdCommonDefs.PolicyActionTypeAggregate:
 			fmt.Println("PolicyActionTypeAggregate action to be applied")
-			policyEngineActionUndoAggregate(route, action.actionInfo.(PolicyAggregateActionInfo), params, conditionsAndActionsList.conditionList)
+			if callbackFunc, ok = routeParams.ActionFuncMap[action.actionType]; !ok {
+				fmt.Println("Callback function NOT found for action PolicyActionTypeAggregate actionfuncmap =", routeParams.ActionFuncMap,
+					"actiontype =", action.actionType)
+				break
+			}
+			callbackFunc[1](route, conditionsAndActionsList.conditionList,
+				action.actionInfo.(PolicyAggregateActionInfo), params, nil)
 			break
 		default:
 			fmt.Println("Unknown type of action")
@@ -183,7 +194,7 @@ func policyEngineImplementActions(route *bgpd.BGPRoute, policyStmt PolicyStmt, c
 		return actionList
 	}
 	var i int
-	var callbackFunc ApplyActionFunc
+	var callbackFunc [2]ApplyActionFunc
 	var ok bool
 	createRoute := false
 	addActionToList := false
@@ -206,7 +217,7 @@ func policyEngineImplementActions(route *bgpd.BGPRoute, policyStmt PolicyStmt, c
 				fmt.Println("Callback function NOT found for action PolicyActionTypeAggregate")
 				break
 			}
-			callbackFunc(route, conditionList, action.actionInfo.(PolicyAggregateActionInfo), params, ctx)
+			callbackFunc[0](route, conditionList, action.actionInfo.(PolicyAggregateActionInfo), params, ctx)
 			addActionToList = true
 			break
 		default:
@@ -577,59 +588,46 @@ func PolicyEngineFilter(route bgpd.BGPRoute, policyPath int, params interface{})
 	}
 }
 */
-func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, handle patriciaDB.Item) (err error) {
-	fmt.Println("policyEngineApplyForRoute %v", prefix)
-	/*   policy := handle.(Policy)
-	   rmapInfoRecordList := item.(RouteInfoRecordList)
-	   policyHit := false
-	   if rmapInfoRecordList.routeInfoProtocolMap == nil {
-	      fmt.Println("rmapInfoRecordList.routeInfoProtocolMap) = nil")
-		  return err
-	   }
-	   fmt.Println("Selected route protocol = ", rmapInfoRecordList.selectedRouteProtocol)
-	   selectedRouteList := rmapInfoRecordList.routeInfoProtocolMap[rmapInfoRecordList.selectedRouteProtocol]
-	   if len(selectedRouteList) == 0 {
-	      fmt.Println("len(selectedRouteList) == 0")
-		  return err
-	  }
-	  for i:=0;i<len(selectedRouteList);i++ {
-	     selectedRouteInfoRecord := selectedRouteList[i]
-	     policyRoute := bgpd.BGPRoute{Network: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: selectedRouteInfoRecord.nextHopIfIndex, Metric: selectedRouteInfoRecord.metric, Prototype: ribd.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid:rmapInfoRecordList.isPolicyBasedStateValid}
-	     params := RouteParams{destNetIp:policyRoute.Network, networkMask:policyRoute.Mask, routeType:policyRoute.Prototype, sliceIdx:policyRoute.SliceIdx, createType:Invalid, deleteType:Invalid}
-	     if len(rmapInfoRecordList.policyList) == 0 {
-		  fmt.Println("This route has no policy applied to it so far, just apply the new policy")
-	      policyEngineApplyPolicy(&policyRoute, policy, ribdCommonDefs.PolicyPath_All,params, &policyHit)
-	     } else {
-	      fmt.Println("This route already has policy applied to it - len(route.PolicyList) - ", len(rmapInfoRecordList.policyList))
+func policyEngineApplyForRoute(route *bgpd.BGPRoute, policy Policy, ctx interface{}) (err error) {
+	fmt.Printf("policyEngineApplyForRoute %v/%v", route.Network, route.CIDRLen)
+	params := RouteParams{DestNetIp: route.Network, CreateType: Invalid, DeleteType: Invalid,
+		ActionFuncMap: PolicyEngine.ActionFuncMap}
+	hit := false
+	if len(route.PolicyList) == 0 {
+		fmt.Println("This route has no policy applied to it so far, just apply the new policy")
+		policyEngineApplyPolicy(route, policy, ribdCommonDefs.PolicyPath_All, params, ctx, &hit)
+	} else {
+		fmt.Println("This route already has policy applied to it - len(route.PolicyList) - ", len(route.PolicyList))
 
-		  for i:=0;i<len(rmapInfoRecordList.policyList);i++ {
-			 fmt.Println("policy at index ", i)
-		     policyInfo := PolicyDB.Get(patriciaDB.Prefix(rmapInfoRecordList.policyList[i]))
-		     if policyInfo == nil {
-			    fmt.Println("Unexpected: Invalid policy in the route policy list")
-		     } else {
-		       oldPolicy := policyInfo.(Policy)
-			   if !isPolicyTypeSame(oldPolicy, policy) {
-				 fmt.Println("The policy type applied currently is not the same as new policy, so apply new policy")
-	              policyEngineApplyPolicy(&policyRoute, policy, ribdCommonDefs.PolicyPath_All,params, &policyHit)
-			   } else if oldPolicy.precedence < policy.precedence {
-				 fmt.Println("The policy types are same and precedence of the policy applied currently is lower than the new policy, so do nothing")
-				 return err
-			   } else {
-				fmt.Println("The new policy's precedence is lower, so undo old policy's actions and apply the new policy")
-				policyEngineUndoPolicyForRoute(policyRoute, oldPolicy, params)
-				policyEngineApplyPolicy(&policyRoute, policy, ribdCommonDefs.PolicyPath_All,params, &policyHit)
-			   }
+		for i := 0; i < len(route.PolicyList); i++ {
+			fmt.Println("policy at index ", i)
+			policyInfo := PolicyDB.Get(patriciaDB.Prefix(route.PolicyList[i]))
+			if policyInfo == nil {
+				fmt.Println("Unexpected: Invalid policy in the route policy list")
+			} else {
+				oldPolicy := policyInfo.(Policy)
+				if !isPolicyTypeSame(oldPolicy, policy) {
+					fmt.Println("The policy type applied currently is not the same as new policy, so apply new policy")
+					policyEngineApplyPolicy(route, policy, ribdCommonDefs.PolicyPath_All, params, ctx, &hit)
+				} else if oldPolicy.precedence < policy.precedence {
+					fmt.Println("The policy types are same and precedence of the policy applied currently is lower than the new policy, so do nothing")
+					return err
+				} else {
+					fmt.Println("The new policy's precedence is lower, so undo old policy's actions and apply the new policy")
+					policyEngineUndoPolicyForRoute(route, oldPolicy, params)
+					policyEngineApplyPolicy(route, policy, ribdCommonDefs.PolicyPath_All, params, ctx, &hit)
+				}
 			}
-		  }
-	    }
-	  }*/
+		}
+	}
 	return err
 }
+
 func PolicyEngineTraverseAndApply(policy Policy) {
 	fmt.Println("PolicyEngineTraverseAndApply - traverse routing table and apply policy ", policy.name)
 	//RouteInfoMap.VisitAndUpdate(policyEngineApplyForRoute, policy)
 	//TO-DO_Write your traver function here
+	PolicyEngine.TraverseFunc(policyEngineApplyForRoute, policy)
 }
 func PolicyEngineTraverseAndApplyPolicy(policy Policy) {
 	fmt.Println("PolicyEngineTraverseAndApplyPolicy -  apply policy ", policy.name)
@@ -651,7 +649,8 @@ func PolicyEngineTraverseAndReverse(policy Policy) {
 	var params RouteParams
 	for idx := 0; idx < len(policy.routeInfoList); idx++ {
 		policyRoute = policy.routeInfoList[idx]
-		params = RouteParams{DestNetIp: policyRoute.Network, PrefixLen: uint16(policyRoute.CIDRLen), CreateType: Invalid, DeleteType: Invalid}
+		params = RouteParams{DestNetIp: policyRoute.Network, PrefixLen: uint16(policyRoute.CIDRLen), CreateType: Invalid, DeleteType: Invalid,
+			ActionFuncMap: PolicyEngine.ActionFuncMap}
 		ipPrefix, err := getNetworkPrefixFromCIDR(policy.routeInfoList[idx].Network + "/" + strconv.Itoa(int(policy.routeInfoList[idx].CIDRLen)))
 		if err != nil {
 			fmt.Println("Invalid route ", policy.routeList[idx])

@@ -248,12 +248,12 @@ service BGPServer
 	BGPPolicyActionStateGetInfo GetBulkBGPPolicyActionState(1: int fromIndex, 2: int count);
 	bool CreateBGPPolicyStmtConfig(1: BGPPolicyStmtConfig config);
 //	bool UpdateBGPPolicyStmtConfig(1: BGPPolicyStmtConfig origconfig, 2: BGPPolicyStmtConfig newconfig, 3: list<bool> attrset);
-//	bool DeleteBGPPolicyStmtConfig(1: BGPPolicyStmtConfig config);
+	bool DeleteBGPPolicyStmtConfig(1: string name);
 
 	BGPPolicyStmtStateGetInfo GetBulkBGPPolicyStmtState(1: int fromIndex, 2: int count);
 	bool CreateBGPPolicyDefinitionConfig(1: BGPPolicyDefinitionConfig config);
 //	bool UpdateBGPPolicyDefinitionConfig(1: BGPPolicyDefinitionConfig origconfig, 2: BGPPolicyDefinitionConfig newconfig, 3: list<bool> attrset);
-	bool DeleteBGPPolicyDefinitionConfig(1: BGPPolicyDefinitionConfig config);
+	bool DeleteBGPPolicyDefinitionConfig(1: string name);
 
 	BGPPolicyDefinitionStateGetInfo GetBulkBGPPolicyDefinitionState(1: int fromIndex, 2: int count);
 	bool CreateBGPGlobal(1: BGPGlobalConfig bgpConf);

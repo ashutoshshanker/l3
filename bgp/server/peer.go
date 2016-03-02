@@ -250,6 +250,10 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 		return false
 	}
 
+	if len(bgpMsg.Body.(*packet.BGPUpdate).NLRI) == 0 {
+		return true
+	}
+
 	if p.ASSize == 2 {
 		packet.Convert4ByteTo2ByteASPath(bgpMsg)
 	}
