@@ -11,6 +11,7 @@ import (
 	"l3/bgp/packet"
 	"l3/bgp/policy"
 	"l3/rib/ribdCommonDefs"
+	"utils/policy/policyCommonDefs"
 	"log/syslog"
 	"net"
 	"ribd"
@@ -96,7 +97,7 @@ func NewBGPServer(logger *syslog.Writer, ribdClient *ribd.RouteServiceClient) *B
 	bgpServer.ifacePeerMap = make(map[int32][]string)
 	bgpServer.ifaceIP = nil
 	bgpServer.actionFuncMap = make(map[int]policy.ApplyActionFunc)
-	bgpServer.actionFuncMap[ribdCommonDefs.PolicyActionTypeAggregate] = bgpServer.ApplyAggregateAction
+	bgpServer.actionFuncMap[policyCommonDefs.PolicyActionTypeAggregate] = bgpServer.ApplyAggregateAction
 	return bgpServer
 }
 
@@ -292,7 +293,7 @@ func (server *BGPServer) getAggPrefix(conditionsList []string) *packet.IPPrefix 
 		conditionInfo := conditionItem.(policy.PolicyCondition)
 		server.logger.Info(fmt.Sprintf("BGPServer:getAggPrefix - policy condition type %d\n", conditionInfo.ConditionType))
 		switch conditionInfo.ConditionType {
-		case ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
+		case policyCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
 			server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - PolicyConditionTypeDstIpPrefixMatch case"))
 			condition := conditionInfo.ConditionInfo.(policy.MatchPrefixConditionInfo)
 			server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - exact prefix match conditiontype"))
@@ -461,7 +462,7 @@ func (server *BGPServer) checkForAggregation(updated map[*Path][]*Destination, w
 			updated:   &updated,
 			withdrawn: &withdrawn,
 		}
-		policy.PolicyEngineFilter(route, ribdCommonDefs.PolicyPath_Export, routeParams, callbackInfo)
+		policy.PolicyEngineFilter(route, policyCommonDefs.PolicyPath_Export, routeParams, callbackInfo)
 	}
 
 	for _, destinations := range updated {
@@ -479,7 +480,7 @@ func (server *BGPServer) checkForAggregation(updated map[*Path][]*Destination, w
 					updated:   &updated,
 					withdrawn: &withdrawn,
 				}
-				policy.PolicyEngineFilter(route, ribdCommonDefs.PolicyPath_Export, routeParams, callbackInfo)
+				policy.PolicyEngineFilter(route, policyCommonDefs.PolicyPath_Export, routeParams, callbackInfo)
 				server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - dest %s policylist %v hit %v after applying create policy",
 					dest.nlri.Prefix.String(), route.PolicyList, route.PolicyHitCounter))
 			}
