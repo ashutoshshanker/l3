@@ -2,6 +2,7 @@ package ribdCommonDefs
 import "ribd"
 
 const (
+	  NullIntfType = -1
       CONNECTED  = 0
       STATIC     = 1
       OSPF       = 89

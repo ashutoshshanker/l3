@@ -60,6 +60,11 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 	} else {
 		peer.Neighbor.State.PeerType = config.PeerTypeExternal
 	}
+	if peer.PeerConf.BfdEnable {
+		peer.Neighbor.State.BfdNeighborState = "Up"
+	} else {
+		peer.Neighbor.State.BfdNeighborState = "Down"
+	}
 
 	peer.afiSafiMap, _ = packet.GetProtocolFromConfig(&peer.Neighbor.AfiSafis)
 	peer.fsmManager = NewFSMManager(&peer, globalConf, &peerConf)
@@ -168,6 +173,7 @@ func (p *Peer) GetConfFromNeighbor(inConf *config.NeighborConfig, outConf *confi
 	}
 	outConf.NeighborAddress = inConf.NeighborAddress
 	outConf.PeerGroup = inConf.PeerGroup
+	outConf.BfdEnable = inConf.BfdEnable
 }
 
 func (p *Peer) setIfIdx(ifIdx int32) {
@@ -242,6 +248,10 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 	if bgpMsg == nil || bgpMsg.Body.(*packet.BGPUpdate).PathAttributes == nil {
 		p.logger.Err(fmt.Sprintf("Neighbor %s: Path attrs not found in BGP Update message", p.Neighbor.NeighborAddress))
 		return false
+	}
+
+	if len(bgpMsg.Body.(*packet.BGPUpdate).NLRI) == 0 {
+		return true
 	}
 
 	if p.ASSize == 2 {

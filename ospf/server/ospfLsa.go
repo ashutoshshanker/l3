@@ -256,7 +256,7 @@ func decodeRouterLsa(data []byte, lsa *RouterLsa, lsakey *LsaKey) {
 		end = start + 1
 		lsa.LinkDetails[i].NumOfTOS = uint8(data[start])
 		start = end
-		end = start + 4
+		end = start + 2
 		lsa.LinkDetails[i].LinkMetric = binary.BigEndian.Uint16(data[start:end])
 		start = end
 		lsa.LinkDetails[i].TOSDetails = make([]TOSDetail, lsa.LinkDetails[i].NumOfTOS)

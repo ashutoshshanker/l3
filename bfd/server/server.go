@@ -1,7 +1,6 @@
 package server
 
 import (
-	"asicd/pluginManager/pluginCommon"
 	"asicdServices"
 	"database/sql"
 	"encoding/json"
@@ -82,6 +81,7 @@ type BfdSession struct {
 	sendPcapHandle    *pcap.Handle
 	recvPcapHandle    *pcap.Handle
 	useDedicatedMac   bool
+	server            *BFDServer
 }
 
 type BfdGlobal struct {
@@ -118,6 +118,7 @@ type BFDServer struct {
 	CreatedSessionCh    chan int32
 	bfddPubSocket       *nanomsg.PubSocket
 	lagPropertyMap      map[int32]LagProperty
+	notificationCh      chan []byte
 	bfdGlobal           BfdGlobal
 }
 
@@ -133,6 +134,7 @@ func NewBFDServer(logger *syslog.Writer) *BFDServer {
 	bfdServer.vlanPropertyMap = make(map[int32]VlanProperty)
 	bfdServer.lagPropertyMap = make(map[int32]LagProperty)
 	bfdServer.SessionConfigCh = make(chan SessionConfig)
+	bfdServer.notificationCh = make(chan []byte)
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]*BfdInterface)
@@ -234,6 +236,20 @@ func (server *BFDServer) InitPublisher(pub_str string) (pub *nanomsg.PubSocket) 
 		return nil
 	}
 	return pub
+}
+
+func (server *BFDServer) PublishSessionNotifications() {
+	server.bfddPubSocket = server.InitPublisher(bfddCommonDefs.PUB_SOCKET_ADDR)
+	for {
+		select {
+		case event := <-server.notificationCh:
+			server.logger.Info(fmt.Sprintln("Received call to notify session state", event))
+			_, err := server.bfddPubSocket.Send(event, nanomsg.DontWait)
+			if err == syscall.EAGAIN {
+				server.logger.Err(fmt.Sprintln("Failed to publish event"))
+			}
+		}
+	}
 }
 
 func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
@@ -425,16 +441,20 @@ func (server *BFDServer) SigHandler() {
 }
 
 func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
+	// Start signal handler first
 	go server.SigHandler()
+	// Initialize BFD server from params file
 	server.InitServer(paramFile)
-	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
-	go server.createASICdSubscriber()
-	// Start session handler
+	// Start subcriber for ASICd events
+	go server.CreateASICdSubscriber()
+	// Start session management handler
 	go server.StartSessionHandler()
-	// Initialize publisher
-	server.bfddPubSocket = server.InitPublisher(bfddCommonDefs.PUB_SOCKET_ADDR)
+	// Initialize and run notification publisher
+	go server.PublishSessionNotifications()
+	// Read BFD configurations already present in DB
 	go server.ReadConfigFromDB(dbHdl)
+
+	// Now, wait on below channels to process
 	for {
 		select {
 		case gConf := <-server.GlobalConfigCh:

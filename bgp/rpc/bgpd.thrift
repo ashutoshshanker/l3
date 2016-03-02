@@ -161,6 +161,7 @@ struct BGPNeighborConfig {
 	11: i32 HoldTime,
 	12: i32 KeepaliveTime,
 	13: string PeerGroup,
+	14: bool BfdEnable
 }
 
 struct BGPNeighborState {
@@ -180,7 +181,8 @@ struct BGPNeighborState {
 	14: i32 ConnectRetryTime,
 	15: i32 HoldTime,
 	16: i32 KeepaliveTime,
-    17: string GroupName,
+	17: string GroupName,
+	18: string BfdNeighborState
 }
 
 struct BGPNeighborStateBulk {
@@ -246,12 +248,12 @@ service BGPServer
 	BGPPolicyActionStateGetInfo GetBulkBGPPolicyActionState(1: int fromIndex, 2: int count);
 	bool CreateBGPPolicyStmtConfig(1: BGPPolicyStmtConfig config);
 //	bool UpdateBGPPolicyStmtConfig(1: BGPPolicyStmtConfig origconfig, 2: BGPPolicyStmtConfig newconfig, 3: list<bool> attrset);
-//	bool DeleteBGPPolicyStmtConfig(1: BGPPolicyStmtConfig config);
+	bool DeleteBGPPolicyStmtConfig(1: string name);
 
 	BGPPolicyStmtStateGetInfo GetBulkBGPPolicyStmtState(1: int fromIndex, 2: int count);
 	bool CreateBGPPolicyDefinitionConfig(1: BGPPolicyDefinitionConfig config);
 //	bool UpdateBGPPolicyDefinitionConfig(1: BGPPolicyDefinitionConfig origconfig, 2: BGPPolicyDefinitionConfig newconfig, 3: list<bool> attrset);
-	bool DeleteBGPPolicyDefinitionConfig(1: BGPPolicyDefinitionConfig config);
+	bool DeleteBGPPolicyDefinitionConfig(1: string name);
 
 	BGPPolicyDefinitionStateGetInfo GetBulkBGPPolicyDefinitionState(1: int fromIndex, 2: int count);
 	bool CreateBGPGlobal(1: BGPGlobalConfig bgpConf);

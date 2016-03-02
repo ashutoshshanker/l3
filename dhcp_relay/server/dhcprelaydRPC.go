@@ -4,6 +4,7 @@ import (
 	"dhcprelayd"
 	"fmt"
 	_ "strconv"
+	"sync"
 )
 
 /******** Trift APIs *******/
@@ -15,6 +16,10 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobalConfig(
 	config *dhcprelayd.DhcpRelayGlobalConfig) (bool, error) {
 
 	if config.Enable {
+		if dhcprelayRefCountMutex == nil {
+			dhcprelayRefCountMutex = &sync.RWMutex{}
+			dhcprelayEnabledIntfRefCount = 0
+		}
 		dhcprelayEnable = config.Enable
 		if dhcprelayClientConn != nil {
 			logger.Info("DRA: no need to create pcap as its already created")
@@ -47,11 +52,8 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayGlobalConfig(
 
 func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
-	logger.Info("DRA: Intf Config Create")
-	logger.Info(fmt.Sprintln("DRA: IF Index:", config.IfIndex))
-	logger.Info(fmt.Sprintln("DRA: Enable:", config.Enable))
+	logger.Info(fmt.Sprintln("DRA: Intf Config Create for", config.IfIndex))
 	// Copy over configuration into globalInfo
-	//ifNum, _ := strconv.Atoi(config.IfIndex)
 	ifNum := config.IfIndex
 	gblEntry, ok := dhcprelayGblInfo[ifNum]
 	if !ok {
@@ -74,6 +76,15 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntfConfig(
 	if dhcprelayEnable == false {
 		logger.Err("DRA: Enable DHCP RELAY AGENT GLOBALLY")
 	}
+	if dhcprelayRefCountMutex == nil {
+		dhcprelayRefCountMutex = &sync.RWMutex{}
+		dhcprelayEnabledIntfRefCount = 0
+	}
+	if gblEntry.IntfConfig.Enable {
+		dhcprelayRefCountMutex.Lock()
+		dhcprelayEnabledIntfRefCount++
+		dhcprelayRefCountMutex.Unlock()
+	}
 	return true, nil
 }
 
@@ -92,7 +103,6 @@ func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntfConfig(
 	logger.Info(fmt.Sprintln("DRA: Enable: ", origconfig.Enable, "changed to",
 		newconfig.Enable))
 	// Copy over configuration into globalInfo
-	//ifNum, _ := strconv.Atoi(origconfig.IfIndex)
 	ifNum := origconfig.IfIndex
 	gblEntry, ok := dhcprelayGblInfo[ifNum]
 	if !ok {
@@ -124,7 +134,6 @@ func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntfConfig(
 func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 	config *dhcprelayd.DhcpRelayIntfConfig) (bool, error) {
 	logger.Info(fmt.Sprintln("DRA: deleting config for interface", config.IfIndex))
-	//ifNum, _ := strconv.Atoi(config.IfIndex)
 	ifNum := config.IfIndex
 	gblEntry, ok := dhcprelayGblInfo[ifNum]
 	if !ok {
@@ -133,11 +142,17 @@ func (h *DhcpRelayServiceHandler) DeleteDhcpRelayIntfConfig(
 		return ok, nil
 	}
 	// Setting up default values for globalEntry
-	gblEntry.IntfConfig.IfIndex = ifNum //strconv.Itoa(ifNum)
+	gblEntry.IntfConfig.IfIndex = ifNum
 	gblEntry.IntfConfig.Enable = false
-	gblEntry.PcapHandle.Close()
-	gblEntry.PcapHandle = nil
+	if gblEntry.PcapHandle != nil {
+		gblEntry.PcapHandle.Close()
+		gblEntry.PcapHandle = nil
+	}
 	dhcprelayGblInfo[ifNum] = gblEntry
+	dhcprelayRefCountMutex.Lock()
+	dhcprelayEnabledIntfRefCount--
+	dhcprelayRefCountMutex.Unlock()
+	logger.Info(fmt.Sprintln("DRA: deleted config for interface", config.IfIndex))
 	return true, nil
 }
 

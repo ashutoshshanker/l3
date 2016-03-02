@@ -271,6 +271,7 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 			ConnectRetryTime:        uint32(bgpNeighbor.ConnectRetryTime),
 			HoldTime:                uint32(bgpNeighbor.HoldTime),
 			KeepaliveTime:           uint32(bgpNeighbor.KeepaliveTime),
+			BfdEnable:               bgpNeighbor.BfdEnable,
 		},
 		NeighborAddress: ip,
 		PeerGroup:       bgpNeighbor.PeerGroup,
@@ -314,6 +315,7 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.ConnectRetryTime = int32(neighborState.ConnectRetryTime)
 	bgpNeighborResponse.HoldTime = int32(neighborState.HoldTime)
 	bgpNeighborResponse.KeepaliveTime = int32(neighborState.KeepaliveTime)
+	bgpNeighborResponse.BfdNeighborState = neighborState.BfdNeighborState
 
 	received := bgpd.NewBgpCounters()
 	received.Notification = int64(neighborState.Messages.Received.Notification)
@@ -551,6 +553,10 @@ func (h *BGPHandler) GetBulkBGPPolicyStmtState(fromIndex bgpd.Int, rcount bgpd.I
 	return policy.GetBulkBGPPolicyStmtState(fromIndex, rcount)
 }
 
+func (h *BGPHandler) DeleteBGPPolicyStmtConfig(name string) (val bool, err error) {
+	return policy.DeleteBGPPolicyStmtConfig(name)
+}
+
 func (h *BGPHandler) CreateBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val bool, err error) {
 	h.logger.Info(fmt.Sprintln("CreatePolicyDefinition"))
 	h.policy.DefinitionCfgCh <- cfg
@@ -561,6 +567,6 @@ func (h *BGPHandler) GetBulkBGPPolicyDefinitionState(fromIndex bgpd.Int, rcount 
 	return policy.GetBulkBGPPolicyDefinitionState(fromIndex, rcount)
 }
 
-func (h *BGPHandler) DeleteBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val bool, err error) {
-	return policy.DeleteBGPPolicyDefinitionConfig(cfg)
+func (h *BGPHandler) DeleteBGPPolicyDefinitionConfig(name string) (val bool, err error) {
+	return policy.DeleteBGPPolicyDefinitionConfig(name)
 }

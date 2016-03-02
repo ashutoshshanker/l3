@@ -1338,6 +1338,10 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 		err=errors.New("Invalid route protocol type")
 		return rc,err
 	}
+	if nextHopIfType == ribdCommonDefs.NullIntfType {
+		logger.Println("null route create request")
+		nextHopIp = "0.0.0.0"
+	}
 	policyRoute := ribd.Routes{Ipaddr: destNetIp, Mask: networkMask, NextHopIp: nextHopIp, NextHopIfType: nextHopIfType, IfIndex: nextHopIfIndex, Metric: metric, Prototype: ribd.Int(routeType)}
 	params := RouteParams{destNetIp: destNetIp, networkMask: networkMask, nextHopIp: nextHopIp, nextHopIfType: nextHopIfType, nextHopIfIndex: nextHopIfIndex, metric: metric, routeType: ribd.Int(routeType), sliceIdx: ribd.Int(len(destNetSlice)), createType: FIBAndRIB, deleteType: Invalid}
 	logger.Println("createType = ", params.createType, "deleteType = ", params.deleteType)

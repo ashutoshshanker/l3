@@ -394,14 +394,14 @@ func CreateBGPPolicyStmtConfig(cfg *bgpd.BGPPolicyStmtConfig) (val bool, err err
 	return val, err
 }
 
-func DeleteBGPPolicyStmtConfig(cfg *bgpd.BGPPolicyStmtConfig) (val bool, err error) {
-	fmt.Println("DeletePolicyStatement for name ", cfg.Name)
-	ok := PolicyStmtDB.Match(patriciaDB.Prefix(cfg.Name))
+func DeleteBGPPolicyStmtConfig(name string) (val bool, err error) {
+	fmt.Println("DeletePolicyStatement for name ", name)
+	ok := PolicyStmtDB.Match(patriciaDB.Prefix(name))
 	if !ok {
 		err = errors.New("No policy statement with this name found")
 		return val, err
 	}
-	policyStmtInfoGet := PolicyStmtDB.Get(patriciaDB.Prefix(cfg.Name))
+	policyStmtInfoGet := PolicyStmtDB.Get(patriciaDB.Prefix(name))
 	if policyStmtInfoGet != nil {
 		//invalidate localPolicyStmt
 		policyStmtInfo := policyStmtInfoGet.(PolicyStmt)
@@ -410,8 +410,8 @@ func DeleteBGPPolicyStmtConfig(cfg *bgpd.BGPPolicyStmtConfig) (val bool, err err
 			localPolicyStmtDB[policyStmtInfo.localDBSliceIdx].isValid = false
 		}
 		// PolicyEngineTraverseAndReverse(policyStmtInfo)
-		fmt.Println("Deleting policy statement with name ", cfg.Name)
-		if ok := PolicyStmtDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
+		fmt.Println("Deleting policy statement with name ", name)
+		if ok := PolicyStmtDB.Delete(patriciaDB.Prefix(name)); ok != true {
 			fmt.Println(" return value not ok for delete PolicyDB")
 			return val, err
 		}
@@ -564,14 +564,14 @@ func CreateBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val b
 	return val, err
 }
 
-func DeleteBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val bool, err error) {
-	fmt.Println("DeletePolicyDefinition for name ", cfg.Name)
-	ok := PolicyDB.Match(patriciaDB.Prefix(cfg.Name))
+func DeleteBGPPolicyDefinitionConfig(name string) (val bool, err error) {
+	fmt.Println("DeletePolicyDefinition for name ", name)
+	ok := PolicyDB.Match(patriciaDB.Prefix(name))
 	if !ok {
 		err = errors.New("No policy with this name found")
 		return val, err
 	}
-	policyInfoGet := PolicyDB.Get(patriciaDB.Prefix(cfg.Name))
+	policyInfoGet := PolicyDB.Get(patriciaDB.Prefix(name))
 	if policyInfoGet != nil {
 		//invalidate localPolicy
 		policyInfo := policyInfoGet.(Policy)
@@ -580,8 +580,8 @@ func DeleteBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val b
 			localPolicyDB[policyInfo.localDBSliceIdx].isValid = false
 		}
 		PolicyEngineTraverseAndReversePolicy(policyInfo)
-		fmt.Println("Deleting policy with name ", cfg.Name)
-		if ok := PolicyDB.Delete(patriciaDB.Prefix(cfg.Name)); ok != true {
+		fmt.Println("Deleting policy with name ", name)
+		if ok := PolicyDB.Delete(patriciaDB.Prefix(name)); ok != true {
 			fmt.Println(" return value not ok for delete PolicyDB")
 			return val, err
 		}

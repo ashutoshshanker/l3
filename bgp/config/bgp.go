@@ -64,6 +64,7 @@ type BaseConfig struct {
 	ConnectRetryTime        uint32
 	HoldTime                uint32
 	KeepaliveTime           uint32
+	BfdEnable               bool
 }
 
 type NeighborConfig struct {
@@ -89,6 +90,7 @@ type NeighborState struct {
 	ConnectRetryTime        uint32
 	HoldTime                uint32
 	KeepaliveTime           uint32
+	BfdNeighborState        string
 }
 
 type TransportConfig struct {
