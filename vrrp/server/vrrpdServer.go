@@ -237,6 +237,7 @@ func VrrpAllocateMemoryToGlobalDS() {
 	vrrpVlanId2Name = make(map[int]string,
 		VRRP_VLAN_MAPPING_DEFAULT_SIZE)
 	vrrpRxPktCh = make(chan VrrpPktChannelInfo, VRRP_RX_BUF_CHANNEL_SIZE)
+	vrrpTxPktCh = make(chan VrrpPktChannelInfo, VRRP_TX_BUF_CHANNEL_SIZE)
 }
 
 func VrrpDeAllocateMemoryToGlobalDS() {
@@ -245,6 +246,7 @@ func VrrpDeAllocateMemoryToGlobalDS() {
 	vrrpLinuxIfIndex2AsicdIfIndex = nil
 	vrrpVlanId2Name = nil
 	vrrpRxPktCh = nil
+	vrrpTxPktCh = nil
 }
 
 func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) error {

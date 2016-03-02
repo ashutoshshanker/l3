@@ -112,7 +112,9 @@ var (
 	vrrpPromiscuous               bool          = false
 	vrrpTimeout                   time.Duration = 1 * time.Millisecond
 	vrrpRxPktCh                   chan VrrpPktChannelInfo
+	vrrpTxPktCh                   chan VrrpPktChannelInfo
 	vrrpRxChStarted               bool = false
+	vrrpTxChStarted               bool = false
 )
 
 const (
@@ -129,6 +131,8 @@ const (
 	// VRRP multicast ip address for join
 	VRRP_GROUP_IP   = "224.0.0.18"
 	VRRP_BPF_FILTER = "ip host " + VRRP_GROUP_IP
+	VRRP_DST_MAC    = "01:00:5e:00:00:12"
+	VRRP_PROTO_ID   = 112
 
 	// Default Size
 	VRRP_GLOBAL_INFO_DEFAULT_SIZE         = 50
@@ -137,6 +141,7 @@ const (
 	VRRP_LINUX_INTF_MAPPING_DEFAULT_SIZE  = 5
 	VRRP_INTF_IPADDR_MAPPING_DEFAULT_SIZE = 5
 	VRRP_RX_BUF_CHANNEL_SIZE              = 100
+	VRRP_TX_BUF_CHANNEL_SIZE              = 1
 
 	// ip/vrrp header Check Defines
 	VRRP_CHECK_TTL = 255

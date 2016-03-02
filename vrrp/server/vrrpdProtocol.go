@@ -7,6 +7,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"net"
 )
 
 /*
@@ -103,7 +104,7 @@ func VrrpCheckHeader(hdr *VrrpPktHeader, layerContent []byte, key string) error 
 	return nil
 }
 
-func VrrpGetIpInfo(rcvdCh <-chan VrrpPktChannelInfo) { //packet gopacket.Packet, key string, IfIndex int32) {
+func VrrpCheckIpInfo(rcvdCh <-chan VrrpPktChannelInfo) {
 	logger.Info("started pre-fsm check")
 	for {
 		pktChannel := <-rcvdCh
@@ -131,7 +132,6 @@ func VrrpGetIpInfo(rcvdCh <-chan VrrpPktChannelInfo) { //packet gopacket.Packet,
 		}
 		// Get VRRP header from IP Payload
 		vrrpHeader := VrrpGetVrrpHeader(ipPayload)
-		//logger.Info(fmt.Sprintln("vrrp header:", vrrpHeader))
 		// Do Basic Vrrp Header Check
 		if err := VrrpCheckHeader(vrrpHeader, ipPayload, key); err != nil {
 			logger.Err(err.Error() + ". Dropping received packet")
@@ -152,6 +152,36 @@ func VrrpReceivePackets(pHandle *pcap.Handle, key string, IfIndex int32) {
 		}
 	}
 	logger.Info("Exiting Receive Packets")
+}
+
+func VrrpSendPkt(rcvdCh <-chan VrrpPktChannelInfo) {
+	logger.Info("started send packet routine")
+	for {
+		pktChannel := <-rcvdCh
+		//packet := pktChannel.pkt
+		key := pktChannel.key
+		gblInfo, found := vrrpGblInfo[key]
+		if !found {
+			logger.Err("No Entry for " + key)
+			continue
+		}
+		srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
+		dstMAC, _ := net.ParseMAC(VRRP_DST_MAC)
+		eth := &layers.Ethernet{
+			SrcMAC:       srcMAC,
+			DstMAC:       dstMAC,
+			EthernetType: layers.EthernetTypeIPv4,
+		}
+		logger.Info(fmt.Sprintln("Eth layer:", eth))
+		ipv4 := &layers.IPv4{
+			SrcIP:    net.ParseIP(gblInfo.IpAddr),
+			DstIP:    net.ParseIP(VRRP_GROUP_IP),
+			Version:  4,
+			Protocol: VRRP_PROTO_ID,
+			TTL:      VRRP_CHECK_TTL,
+		}
+		logger.Info(fmt.Sprintln("IP layer:", ipv4))
+	}
 }
 
 func VrrpInitPacketListener(key string, IfIndex int32) {
@@ -178,8 +208,12 @@ func VrrpInitPacketListener(key string, IfIndex int32) {
 	vrrpGblInfo[key] = gblInfo
 	logger.Info(fmt.Sprintln("VRRP listener running for", IfIndex))
 	if vrrpRxChStarted == false {
-		go VrrpGetIpInfo(vrrpRxPktCh)
+		go VrrpCheckIpInfo(vrrpRxPktCh)
 		vrrpRxChStarted = true
+	}
+	if vrrpTxChStarted == false {
+		go VrrpSendPkt(vrrpTxPktCh)
+		vrrpTxChStarted = true
 	}
 	go VrrpReceivePackets(handle, key, IfIndex)
 }
