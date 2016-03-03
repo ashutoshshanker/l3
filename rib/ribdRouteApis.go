@@ -788,6 +788,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 			logger.Println("Calling asicd to delete this route")
 			asicdclnt.ClientHdl.DeleteIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String())
 		}
+		delLinuxRoute(routeInfoRecord)
 		//update in the event log
 	    eventInfo := "Deleted route "+policyRoute.Ipaddr+" "+policyRoute.Mask+" type" + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)]
 	    t1 := time.Now()
