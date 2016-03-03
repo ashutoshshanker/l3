@@ -10,6 +10,7 @@ import (
 	"utils/patriciaDB"
 	//		"patricia"
 	"asicd/asicdConstDefs"
+	"utils/commonDefs"
 	"bytes"
 	"errors"
 	//	"github.com/op/go-nanomsg"
@@ -702,7 +703,7 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		  logger.Println("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ",routeInfoRecord.nextHopIp.String())
 		  //call asicd to add
 		  if asicdclnt.IsConnected {
-			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String())
+			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String(), int32(routeInfoRecord.nextHopIfType))
 		  }
 		  if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 			//call arpd to resolve the ip
@@ -1239,7 +1240,7 @@ func createV4Route(destNetIp string,
 		destNetSlice = append(destNetSlice, localDBRecord)
 		//call asicd
 		if asicdclnt.IsConnected {
-			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String())
+			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String(), int32(routeInfoRecord.nextHopIfType))
 		}
 		 
 		if arpdclnt.IsConnected && routeType != ribdCommonDefs.CONNECTED {
@@ -1338,7 +1339,7 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 		err=errors.New("Invalid route protocol type")
 		return rc,err
 	}
-	if nextHopIfType == ribdCommonDefs.NullIntfType {
+	if nextHopIfType == commonDefs.IfTypeNull {
 		logger.Println("null route create request")
 		nextHopIp = "0.0.0.0"
 	}
