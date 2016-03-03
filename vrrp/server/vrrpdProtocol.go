@@ -261,12 +261,12 @@ func VrrpAddMacEntry(add bool) {
 		MacAddrMask: VRRP_MAC_MASK,
 	}
 	if add {
-		inserted, _ := asicdClient.ClientHdl.CreateProtocolMac(&macConfig)
+		inserted, _ := asicdClient.ClientHdl.EnablePacketReception(&macConfig)
 		if !inserted {
 			logger.Info("Adding reserved mac failed")
 		}
 	} else {
-		deleted, _ := asicdClient.ClientHdl.DeleteProtocolMac(&macConfig)
+		deleted, _ := asicdClient.ClientHdl.DisablePacketReception(&macConfig)
 		if !deleted {
 			logger.Info("Adding reserved mac failed")
 		}
