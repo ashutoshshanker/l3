@@ -191,15 +191,15 @@ func (server *OSPFServer) processOspfData(data []byte, ethHdrMd *EthHdrMetadata,
 		}
 	case LSRequestType:
 		if exist {
-			err = server.ProcessLSAReqPkt(data, ospfHdrMd, ipHdrMd, key)
+			err = server.ProcessRxLSAReqPkt(data, ospfHdrMd, ipHdrMd, key)
 		}
 	case LSUpdateType:
 		if exist {
-			err = server.ProcessLsaUpdPkt(data, ospfHdrMd, ipHdrMd, key)
+			err = server.ProcessRxLsaUpdPkt(data, ospfHdrMd, ipHdrMd, key)
 		}
 	case LSAckType:
 		if exist {
-			err = server.ProcessLSAAckPkt(data, ospfHdrMd, ipHdrMd, key)
+			err = server.ProcessRxLSAAckPkt(data, ospfHdrMd, ipHdrMd, key)
 		}
 	default:
 		err = errors.New("Invalid Ospf packet type")

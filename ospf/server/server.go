@@ -91,10 +91,11 @@ type OSPFServer struct {
 	neighborDBDEventCh    chan ospfNeighborDBDMsg
 	neighborLSAReqEventCh chan ospfNeighborLSAreqMsg
 	neighborLSAUpdEventCh chan ospfNeighborLSAUpdMsg
-	neighborLSAACKEventCh chan ospfNeighborLSAACKMsg
+	neighborLSAACKEventCh chan ospfNeighborLSAAckMsg
 	ospfNbrDBDSendCh      chan ospfNeighborDBDMsg
-	ospfNbrLsaSendCh      chan ospfNeighborLSAreqMsg
+	ospfNbrLsaReqSendCh   chan ospfNeighborLSAreqMsg
 	ospfNbrLsaUpdSendCh   chan ospfLsdbToNbrMsg
+	ospfNbrLsaAckSendCh   chan ospfNeighborAckTxMsg
 	ospfRxTxNbrPktStopCh  chan bool
 
 	//neighborDBDEventCh   chan IntfToNeighDbdMsg
@@ -166,9 +167,10 @@ func NewOSPFServer(logger *syslog.Writer) *OSPFServer {
 	ospfServer.neighborDBDEventCh = make(chan ospfNeighborDBDMsg)
 	ospfServer.neighborLSAReqEventCh = make(chan ospfNeighborLSAreqMsg)
 	ospfServer.neighborLSAUpdEventCh = make(chan ospfNeighborLSAUpdMsg)
-	ospfServer.neighborLSAACKEventCh = make(chan ospfNeighborLSAACKMsg)
+	ospfServer.neighborLSAACKEventCh = make(chan ospfNeighborLSAAckMsg)
 	ospfServer.ospfNbrDBDSendCh = make(chan ospfNeighborDBDMsg)
-	ospfServer.ospfNbrLsaSendCh = make(chan ospfNeighborLSAreqMsg)
+	ospfServer.ospfNbrLsaAckSendCh = make(chan ospfNeighborAckTxMsg)
+	ospfServer.ospfNbrLsaReqSendCh = make(chan ospfNeighborLSAreqMsg)
 	ospfServer.ospfNbrLsaUpdSendCh = make(chan ospfLsdbToNbrMsg)
 	ospfServer.ospfRxTxNbrPktStopCh = make(chan bool)
 

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"net"
 )
 
 type AreaId string
@@ -378,7 +377,7 @@ type NbrConf struct {
 }
 
 type NeighborState struct {
-	NbrIpAddress               net.IP
+	NbrIpAddress               IpAddress
 	NbrAddressLessIndex        int
 	NbrRtrId                   string
 	NbrOptions                 int
