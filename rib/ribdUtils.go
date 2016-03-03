@@ -362,7 +362,7 @@ func delLinuxRoute(route RouteInfoRecord) {
 	logger.Println("delLinuxRoute")
 	if route.protocol == ribdCommonDefs.CONNECTED {
 		logger.Println("This is a connected route, do nothing")
-		return
+		//return
 	}
 	mask:=net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
 	maskedIP:=route.destNetIp.Mask(mask)
@@ -398,7 +398,7 @@ func addLinuxRoute(route RouteInfoRecord) {
 	logger.Println("addLinuxRoute")
 	if route.protocol == ribdCommonDefs.CONNECTED {
 		logger.Println("This is a connected route, do nothing")
-		return
+		//return
 	}
 	mask:=net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
 	maskedIP:=route.destNetIp.Mask(mask)
