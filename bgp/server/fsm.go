@@ -875,10 +875,12 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 
 		case outConnErrCh := <-fsm.outConnErrCh:
 			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
-				"OUT connection FAIL"))
+				"connection FAIL"))
 			fsm.outTCPConn = nil
 			fsm.ProcessEvent(BGPEventTcpConnFails, outConnErrCh)
-			fsm.Manager.fsmTcpConnFailed(fsm.id)
+			if !fsm.cleanup {
+				fsm.Manager.tcpConnFailCh <- fsm.id
+			}
 
 		case inConnCh := <-fsm.inConnCh:
 			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
@@ -1257,4 +1259,3 @@ func (fsm *FSM) StopConnToPeer() {
 		fsm.outTCPConn = nil
 	}
 }
-
