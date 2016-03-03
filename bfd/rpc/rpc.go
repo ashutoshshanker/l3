@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
-	"log/syslog"
 	"ribd"
 	"strconv"
 	"time"
+	"utils/logging"
 )
 
 type ClientJson struct {
@@ -17,7 +17,7 @@ type ClientJson struct {
 	Port int    `json:Port`
 }
 
-func getClient(logger *syslog.Writer, fileName string, process string) (*ClientJson, error) {
+func getClient(logger *logging.Writer, fileName string, process string) (*ClientJson, error) {
 	var allClients []ClientJson
 
 	data, err := ioutil.ReadFile(fileName)
@@ -37,7 +37,7 @@ func getClient(logger *syslog.Writer, fileName string, process string) (*ClientJ
 	return nil, nil
 }
 
-func StartServer(logger *syslog.Writer, handler *BFDHandler, fileName string) {
+func StartServer(logger *logging.Writer, handler *BFDHandler, fileName string) {
 	clientJson, err := getClient(logger, fileName, "bfdd")
 	if err != nil || clientJson == nil {
 		return
@@ -62,7 +62,7 @@ func StartServer(logger *syslog.Writer, handler *BFDHandler, fileName string) {
 	return
 }
 
-func createClientIPCHandles(logger *syslog.Writer, port string) (thrift.TTransport, thrift.TProtocolFactory, error) {
+func createClientIPCHandles(logger *logging.Writer, port string) (thrift.TTransport, thrift.TProtocolFactory, error) {
 	var clientTransport thrift.TTransport
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
@@ -78,11 +78,11 @@ func createClientIPCHandles(logger *syslog.Writer, port string) (thrift.TTranspo
 	return clientTransport, protocolFactory, err
 }
 
-func connectToClient(logger *syslog.Writer, clientTransport thrift.TTransport) error {
+func connectToClient(logger *logging.Writer, clientTransport thrift.TTransport) error {
 	return clientTransport.Open()
 }
 
-func StartClient(logger *syslog.Writer, fileName string, ribdClient chan *ribd.RouteServiceClient) {
+func StartClient(logger *logging.Writer, fileName string, ribdClient chan *ribd.RouteServiceClient) {
 	clientJson, err := getClient(logger, fileName, "ribd")
 	if err != nil || clientJson == nil {
 		ribdClient <- nil

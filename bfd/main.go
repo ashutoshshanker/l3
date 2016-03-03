@@ -7,12 +7,12 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"l3/bfd/rpc"
 	"l3/bfd/server"
-	"log/syslog"
+	"utils/logging"
 )
 
 func main() {
 	fmt.Println("Start the logger")
-	logger, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "SR BFD")
+	logger, err := logging.NewLogger("bfdd", "BFD")
 	if err != nil {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
