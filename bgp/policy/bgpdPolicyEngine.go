@@ -5,7 +5,7 @@ import (
 	"bgpd"
 	"bytes"
 	"fmt"
-	"l3/rib/ribdCommonDefs"
+	"utils/policy/policyCommonDefs"
 	"reflect"
 	"sort"
 	"strconv"
@@ -32,16 +32,16 @@ func actionListHasAction(actionList []string, actionType int, action string) (ma
 			continue
 		}
 		switch actionInfo.actionType {
-		case ribdCommonDefs.PolicyActionTypeRouteDisposition:
+		case policyCommonDefs.PolicyActionTypeRouteDisposition:
 			fmt.Println("RouteDisposition action = ", actionInfo.actionInfo)
 			if actionInfo.actionInfo.(string) == action {
 				match = true
 			}
 			break
-		case ribdCommonDefs.PolicyActionTypeRouteRedistribute:
+		case policyCommonDefs.PolicyActionTypeRouteRedistribute:
 			fmt.Println("PolicyActionTypeRouteRedistribute action ")
 			break
-		case ribdCommonDefs.PoilcyActionTypeSetAdminDistance:
+		case policyCommonDefs.PoilcyActionTypeSetAdminDistance:
 			fmt.Println("PoilcyActionTypeSetAdminDistance action")
 			match = true
 			break
@@ -69,7 +69,7 @@ func conditionCheckValid(route bgpd.BGPRoute, conditionsList []string) (valid bo
 		conditionInfo := conditionItem.(PolicyCondition)
 		fmt.Printf("policy condition number %d type %d\n", i, conditionInfo.ConditionType)
 		switch conditionInfo.ConditionType {
-		case ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
+		case policyCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
 			fmt.Println("PolicyConditionTypeDstIpPrefixMatch case")
 			routePrefix, err := getNetworkPrefixFromCIDR(route.Network + "/" + strconv.Itoa(int(route.CIDRLen)))
 			if err != nil {
@@ -152,7 +152,7 @@ func policyEngineUndoActionsPolicyStmt(route *bgpd.BGPRoute, policy Policy, poli
 		action := actionItem.(PolicyAction)
 		fmt.Printf("policy action number %d type %d\n", i, action.actionType)
 		switch action.actionType {
-		case ribdCommonDefs.PolicyActionTypeAggregate:
+		case policyCommonDefs.PolicyActionTypeAggregate:
 			fmt.Println("PolicyActionTypeAggregate action to be applied")
 			if callbackFunc, ok = routeParams.ActionFuncMap[action.actionType]; !ok {
 				fmt.Println("Callback function NOT found for action PolicyActionTypeAggregate actionfuncmap =", routeParams.ActionFuncMap,
@@ -211,7 +211,7 @@ func policyEngineImplementActions(route *bgpd.BGPRoute, policyStmt PolicyStmt, c
 		action := actionItem.(PolicyAction)
 		fmt.Printf("policy action number %d type %d\n", i, action.actionType)
 		switch action.actionType {
-		case ribdCommonDefs.PolicyActionTypeAggregate:
+		case policyCommonDefs.PolicyActionTypeAggregate:
 			fmt.Println("PolicyActionTypeAggregate action to be applied")
 			if callbackFunc, ok = routeParams.ActionFuncMap[action.actionType]; !ok {
 				fmt.Println("Callback function NOT found for action PolicyActionTypeAggregate")
@@ -291,7 +291,7 @@ func PolicyEngineMatchConditions(route bgpd.BGPRoute, policyStmt PolicyStmt) (ma
 		condition := conditionItem.(PolicyCondition)
 		fmt.Printf("policy condition number %d type %d\n", i, condition.ConditionType)
 		switch condition.ConditionType {
-		case ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
+		case policyCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
 			fmt.Println("PolicyConditionTypeDstIpPrefixMatch case")
 			ipPrefix, err := getNetworkPrefixFromCIDR(route.Network + "/" + strconv.Itoa(int(route.CIDRLen)))
 			if err != nil {
@@ -348,7 +348,7 @@ func policyEngineApplyPolicyStmt(route *bgpd.BGPRoute, policy Policy, policyStmt
 		}
 	}
 	actionList := policyEngineImplementActions(route, policyStmt, conditionList, params, ctx)
-	if actionListHasAction(actionList, ribdCommonDefs.PolicyActionTypeRouteDisposition, "Reject") {
+	if actionListHasAction(actionList, policyCommonDefs.PolicyActionTypeRouteDisposition, "Reject") {
 		fmt.Println("Reject action was applied for this route")
 		*routeDeleted = true
 	}
@@ -402,11 +402,11 @@ func policyEngineApplyPolicy(route *bgpd.BGPRoute, policy Policy, policyPath int
 func PolicyEngineFilter(route *bgpd.BGPRoute, policyPath int, params interface{}, ctx interface{}) {
 	fmt.Println("PolicyEngineFilter")
 	var policyPath_Str string
-	if policyPath == ribdCommonDefs.PolicyPath_Import {
+	if policyPath == policyCommonDefs.PolicyPath_Import {
 		policyPath_Str = "Import"
-	} else if policyPath == ribdCommonDefs.PolicyPath_Export {
+	} else if policyPath == policyCommonDefs.PolicyPath_Export {
 		policyPath_Str = "Export"
-	} else if policyPath == ribdCommonDefs.PolicyPath_All {
+	} else if policyPath == policyCommonDefs.PolicyPath_All {
 		policyPath_Str = "ALL"
 		fmt.Println("policy path ", policyPath_Str, " unexpected in this function")
 		return
@@ -417,11 +417,11 @@ func PolicyEngineFilter(route *bgpd.BGPRoute, policyPath int, params interface{}
 	var policyHit bool
 	idx := 0
 	var policyInfo interface{}
-	if policyPath == ribdCommonDefs.PolicyPath_Import {
+	if policyPath == policyCommonDefs.PolicyPath_Import {
 		for k := range ImportPolicyPrecedenceMap {
 			policyKeys = append(policyKeys, k)
 		}
-	} else if policyPath == ribdCommonDefs.PolicyPath_Export {
+	} else if policyPath == policyCommonDefs.PolicyPath_Export {
 		for k := range ExportPolicyPrecedenceMap {
 			policyKeys = append(policyKeys, k)
 		}
@@ -436,7 +436,7 @@ func PolicyEngineFilter(route *bgpd.BGPRoute, policyPath int, params interface{}
 				fmt.Println("getting policy ", idx, " from route.PolicyList")
 				policyInfo = PolicyDB.Get(patriciaDB.Prefix(route.PolicyList[idx]))
 				idx++
-				if policyInfo.(Policy).exportPolicy && policyPath == ribdCommonDefs.PolicyPath_Import || policyInfo.(Policy).importPolicy && policyPath == ribdCommonDefs.PolicyPath_Export {
+				if policyInfo.(Policy).exportPolicy && policyPath == policyCommonDefs.PolicyPath_Import || policyInfo.(Policy).importPolicy && policyPath == policyCommonDefs.PolicyPath_Export {
 					fmt.Println("policy ", policyInfo.(Policy).name, " not the same type as the policypath -", policyPath_Str)
 					continue
 				}
@@ -452,9 +452,9 @@ func PolicyEngineFilter(route *bgpd.BGPRoute, policyPath int, params interface{}
 				break
 			}
 			policyName := ""
-			if policyPath == ribdCommonDefs.PolicyPath_Import {
+			if policyPath == policyCommonDefs.PolicyPath_Import {
 				policyName = ImportPolicyPrecedenceMap[policyKeys[idx]]
-			} else if policyPath == ribdCommonDefs.PolicyPath_Export {
+			} else if policyPath == policyCommonDefs.PolicyPath_Export {
 				policyName = ExportPolicyPrecedenceMap[policyKeys[idx]]
 			}
 			fmt.Println("getting policy  ", idx, " policyKeys[idx] = ", policyKeys[idx], " ", policyName, " from PolicyDB")
@@ -478,11 +478,11 @@ func PolicyEngineFilter(route *bgpd.BGPRoute, policyPath int, params interface{}
 	}
 	if route.PolicyHitCounter == 0 {
 		fmt.Println("Need to apply default policy, policyPath = ", policyPath, "policyPath_Str= ", policyPath_Str)
-		if policyPath == ribdCommonDefs.PolicyPath_Import {
+		if policyPath == policyCommonDefs.PolicyPath_Import {
 			fmt.Println("Applying default import policy")
 			//TO-DO: Need to add the default policy to policyList of the route
 			policyEngineActionAcceptRoute(route, params)
-		} else if policyPath == ribdCommonDefs.PolicyPath_Export {
+		} else if policyPath == policyCommonDefs.PolicyPath_Export {
 			fmt.Println("Applying default export policy")
 		}
 	}
@@ -499,7 +499,7 @@ func PolicyEngineFilter(route bgpd.BGPRoute, policyPath int, params interface{})
 	var policyPath_Str string
 	idx :=0
 	var policyInfo interface{}
-	if policyPath == ribdCommonDefs.PolicyPath_Import {
+	if policyPath == policyCommonDefs.PolicyPath_Import {
 	   policyPath_Str = "Import"
 	} else {
 	   policyPath_Str = "Export"
@@ -535,8 +535,8 @@ func PolicyEngineFilter(route bgpd.BGPRoute, policyPath int, params interface{})
 		  continue
 	   }
 	   policyStmt := policyInfo.(PolicyStmt)
-	   if policyPath == ribdCommonDefs.PolicyPath_Import && policyStmt.importPolicy == false ||
-	      policyPath == ribdCommonDefs.PolicyPath_Export && policyStmt.exportPolicy == false {
+	   if policyPath == policyCommonDefs.PolicyPath_Import && policyStmt.importPolicy == false ||
+	      policyPath == policyCommonDefs.PolicyPath_Export && policyStmt.exportPolicy == false {
 	         fmt.Println("Cannot apply the policy ", policyStmt.name, " as ", policyPath_Str, " policy")
 			 continue
 	   }
@@ -557,13 +557,13 @@ func PolicyEngineFilter(route bgpd.BGPRoute, policyPath int, params interface{})
 				continue
 			}
 			policyStmt := policyInfo.(PolicyStmt)
-			if policyPath == ribdCommonDefs.PolicyPath_Import {
+			if policyPath == policyCommonDefs.PolicyPath_Import {
 				policyPath_Str = "Import"
 			} else {
 				policyPath_Str = "Export"
 			}
-			if policyPath == ribdCommonDefs.PolicyPath_Import && policyStmt.importPolicy == false ||
-			   policyPath == ribdCommonDefs.PolicyPath_Export && policyStmt.exportPolicy == false {
+			if policyPath == policyCommonDefs.PolicyPath_Import && policyStmt.importPolicy == false ||
+			   policyPath == policyCommonDefs.PolicyPath_Export && policyStmt.exportPolicy == false {
 				fmt.Println("Cannot apply the policy ", policyStmt.name, " as ", policyPath_Str, " policy")
 				continue
 			}
@@ -573,11 +573,11 @@ func PolicyEngineFilter(route bgpd.BGPRoute, policyPath int, params interface{})
 /*	fmt.Println("After policyEngineApply policyCounter = ", route.PolicyHitCounter)
 	if route.PolicyHitCounter == 0{
 		fmt.Println("Need to apply default policy, policyPath = ", policyPath, "policyPath_Str= ", policyPath_Str)
-		if policyPath == ribdCommonDefs.PolicyPath_Import {
+		if policyPath == policyCommonDefs.PolicyPath_Import {
 		   fmt.Println("Applying default import policy")
 		    //TO-DO: Need to add the default policy to policyList of the route
            policyEngineActionAcceptRoute(route , params )
-		} else if policyPath == ribdCommonDefs.PolicyPath_Export {
+		} else if policyPath == policyCommonDefs.PolicyPath_Export {
 			fmt.Println("Applying default export policy")
 		}
 	}
@@ -595,7 +595,7 @@ func policyEngineApplyForRoute(route *bgpd.BGPRoute, policy Policy, ctx interfac
 	hit := false
 	if len(route.PolicyList) == 0 {
 		fmt.Println("This route has no policy applied to it so far, just apply the new policy")
-		policyEngineApplyPolicy(route, policy, ribdCommonDefs.PolicyPath_All, params, ctx, &hit)
+		policyEngineApplyPolicy(route, policy, policyCommonDefs.PolicyPath_All, params, ctx, &hit)
 	} else {
 		fmt.Println("This route already has policy applied to it - len(route.PolicyList) - ", len(route.PolicyList))
 
@@ -608,14 +608,14 @@ func policyEngineApplyForRoute(route *bgpd.BGPRoute, policy Policy, ctx interfac
 				oldPolicy := policyInfo.(Policy)
 				if !isPolicyTypeSame(oldPolicy, policy) {
 					fmt.Println("The policy type applied currently is not the same as new policy, so apply new policy")
-					policyEngineApplyPolicy(route, policy, ribdCommonDefs.PolicyPath_All, params, ctx, &hit)
+					policyEngineApplyPolicy(route, policy, policyCommonDefs.PolicyPath_All, params, ctx, &hit)
 				} else if oldPolicy.precedence < policy.precedence {
 					fmt.Println("The policy types are same and precedence of the policy applied currently is lower than the new policy, so do nothing")
 					return err
 				} else {
 					fmt.Println("The new policy's precedence is lower, so undo old policy's actions and apply the new policy")
 					policyEngineUndoPolicyForRoute(route, oldPolicy, params)
-					policyEngineApplyPolicy(route, policy, ribdCommonDefs.PolicyPath_All, params, ctx, &hit)
+					policyEngineApplyPolicy(route, policy, policyCommonDefs.PolicyPath_All, params, ctx, &hit)
 				}
 			}
 		}

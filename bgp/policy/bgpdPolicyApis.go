@@ -5,7 +5,7 @@ import (
 	"bgpd"
 	"errors"
 	"fmt"
-	"l3/rib/ribdCommonDefs"
+	"utils/policy/policyCommonDefs"
 	"reflect"
 	"strconv"
 	"strings"
@@ -297,11 +297,11 @@ func updateConditions(policyStmt PolicyStmt, conditionName string, op int) (err 
 	if conditionItem != nil {
 		condition := conditionItem.(PolicyCondition)
 		switch condition.ConditionType {
-		case ribdCommonDefs.PolicyConditionTypeProtocolMatch:
+		case policyCommonDefs.PolicyConditionTypeProtocolMatch:
 			fmt.Println("PolicyConditionTypeProtocolMatch")
 			updateProtocolPolicyTable(condition.ConditionInfo.(string), policyStmt.name, op)
 			break
-		case ribdCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
+		case policyCommonDefs.PolicyConditionTypeDstIpPrefixMatch:
 			fmt.Println("PolicyConditionTypeDstIpPrefixMatch")
 			updatePrefixPolicyTable(condition.ConditionInfo, policyStmt.name, op)
 			break

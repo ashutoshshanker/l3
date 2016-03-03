@@ -25,6 +25,7 @@ struct Routes {
 	13: string RouteCreated,
 	14: string RouteUpdated,
 	15: string RoutePrototypeString
+	16: string DestNetIp
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -76,11 +77,6 @@ struct PolicyMatchTagSetCondition{
 	2 : i32 	MatchSetOptions
 }
 
-struct PolicyRedistributionAction{
-	1 : string    Redistribute
-	2 : string 	RedistributeTargetProtocol
-}
-
 struct PolicyStmtConfig{
 	1:  string  Name
 	2 : string 	AdminState
@@ -97,6 +93,7 @@ struct PolicyStmtState{
 	4 : string 	MatchConditions
 	5 : list<string> 	Conditions
 	6 : list<string> 	Actions
+	7 : list<string> 	PolicyList
 }
 struct PolicyStmtStateGetInfo {
 	1: int StartIdx
@@ -108,7 +105,7 @@ struct PolicyStmtStateGetInfo {
 struct PolicyConditionConfig {
 	1: string Name
 	2: string ConditionType
-	3: optional string MatchProtocolConditionInfo           
+	3: string MatchProtocolConditionInfo           
     4: optional PolicyDstIpMatchPrefixSetCondition MatchDstIpPrefixConditionInfo        
     5: optional PolicyMatchNeighborSetCondition MatchNeighborConditionInfo           
 	6: optional PolicyMatchTagSetCondition MatchTagConditionInfo                
@@ -131,7 +128,8 @@ struct PolicyActionConfig {
 	3: int SetAdminDistanceValue
 	4: bool Accept 
 	5: bool Reject 
-	6: optional PolicyRedistributionAction RedistributeActionInfo      
+	6: string RedistributeAction
+	7: string RedistributeTargetProtocol    
 }
 
 struct PolicyActionState{
