@@ -338,10 +338,10 @@ func (adjRib *AdjRib) ResetRouteList() {
 	}
 
 	lastIdx := len(adjRib.routeList) - 1
-	var modIdx int
-	for idx := 0; idx < len(adjRib.routeList); idx++ {
+	var modIdx, idx int
+	for idx = 0; idx < len(adjRib.routeList); idx++ {
 		if adjRib.routeList[idx] == nil {
-			for modIdx := lastIdx; modIdx > idx && adjRib.routeList[modIdx] == nil; modIdx-- {
+			for modIdx = lastIdx; modIdx > idx && adjRib.routeList[modIdx] == nil; modIdx-- {
 			}
 			if modIdx <= idx {
 				lastIdx = idx
@@ -353,7 +353,7 @@ func (adjRib *AdjRib) ResetRouteList() {
 			lastIdx = modIdx
 		}
 	}
-	adjRib.routeList = adjRib.routeList[:lastIdx]
+	adjRib.routeList = adjRib.routeList[:idx]
 	adjRib.routeListDirty = false
 }
 
