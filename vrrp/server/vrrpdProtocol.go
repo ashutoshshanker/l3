@@ -1,6 +1,7 @@
 package vrrpServer
 
 import (
+	"asicdServices"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"net"
+	"time"
 )
 
 /*
@@ -197,7 +199,7 @@ func VrrpSendPkt(rcvdCh <-chan VrrpPktChannelInfo) {
 		}
 		logger.Info(fmt.Sprintln("vrrp send hdr is", vrrpHeader))
 		srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
-		dstMAC, _ := net.ParseMAC(VRRP_DST_MAC)
+		dstMAC, _ := net.ParseMAC(VRRP_PROTOCOL_MAC)
 		eth := &layers.Ethernet{
 			SrcMAC:       srcMAC,
 			DstMAC:       dstMAC,
@@ -247,4 +249,26 @@ func VrrpInitPacketListener(key string, IfIndex int32) {
 		vrrpTxChStarted = true
 	}
 	go VrrpReceivePackets(handle, key, IfIndex)
+}
+
+func VrrpAddMacEntry(add bool) {
+	for !asicdClient.IsConnected {
+		time.Sleep(time.Millisecond * 750)
+		logger.Info("Waiting for vrrp to connect to asicd")
+	}
+	macConfig := asicdServices.RsvdProtocolMacConfig{
+		MacAddr:     VRRP_PROTOCOL_MAC,
+		MacAddrMask: VRRP_MAC_MASK,
+	}
+	if add {
+		inserted, _ := asicdClient.ClientHdl.CreateProtocolMac(&macConfig)
+		if !inserted {
+			logger.Info("Adding reserved mac failed")
+		}
+	} else {
+		deleted, _ := asicdClient.ClientHdl.DeleteProtocolMac(&macConfig)
+		if !deleted {
+			logger.Info("Adding reserved mac failed")
+		}
+	}
 }

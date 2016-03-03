@@ -73,6 +73,7 @@ func (h *VrrpServiceHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) 
 	vrrpGblInfo[key] = gblInfo
 	VrrpUpdateGblInfoTimers(key)
 	go VrrpInitPacketListener(key, config.IfIndex)
+	go VrrpAddMacEntry(true /*add vrrp protocol mac*/)
 	return true, nil
 }
 func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,
@@ -81,6 +82,7 @@ func (h *VrrpServiceHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConf
 }
 
 func (h *VrrpServiceHandler) DeleteVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
+	go VrrpAddMacEntry(false /*delete vrrp protocol mac*/)
 	return true, nil
 }
 
