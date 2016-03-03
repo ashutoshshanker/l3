@@ -349,7 +349,8 @@ func (p *Path) isAggregatePathEmpty() bool {
 
 func (p *Path) aggregateAllPaths(generateASSet bool) {
 	var origin, atomicAggregate packet.BGPPathAttr
-
+	asPathList := make([]*packet.BGPPathAttrASPath, 0, len(p.AggregatedPaths))
+	var aggASPath *packet.BGPPathAttrASPath
 	for _, individualPath := range p.AggregatedPaths {
 		for _, pathAttr := range individualPath.pathAttrs {
 			if pathAttr.GetCode() == packet.BGPPathAttrTypeOrigin {
@@ -363,7 +364,15 @@ func (p *Path) aggregateAllPaths(generateASSet bool) {
 					atomicAggregate = pathAttr
 				}
 			}
+
+			if pathAttr.GetCode() == packet.BGPPathAttrTypeASPath {
+				asPathList = append(asPathList, pathAttr.(*packet.BGPPathAttrASPath))
+			}
 		}
+	}
+
+	if generateASSet {
+		aggASPath = packet.AggregateASPaths(asPathList)
 	}
 
 	for idx, pathAttr := range p.pathAttrs {
@@ -371,9 +380,12 @@ func (p *Path) aggregateAllPaths(generateASSet bool) {
 			p.pathAttrs[idx] = origin
 		}
 
+		if pathAttr.GetCode() == packet.BGPPathAttrTypeASPath && aggASPath != nil {
+			p.pathAttrs[idx] = aggASPath
+		}
+
 		if pathAttr.GetCode() == packet.BGPPathAttrTypeAtomicAggregate && atomicAggregate != nil {
 			p.pathAttrs[idx] = atomicAggregate
 		}
 	}
-	return
 }

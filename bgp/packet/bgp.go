@@ -168,8 +168,9 @@ const (
 type BGPASPathSegmentType uint8
 
 const (
-	BGPASPathSet BGPASPathSegmentType = iota + 1
-	BGPASPathSequence
+	BGPASPathSegmentSet BGPASPathSegmentType = iota + 1
+	BGPASPathSegmentSequence
+	BGPASPathSegmentUnknown
 )
 
 var BGPPathAttrWellKnownMandatory = []BGPPathAttrType{
@@ -1031,6 +1032,7 @@ type BGPASPathSegment interface {
 	Encode(pkt []byte) error
 	Decode(pkt []byte, data interface{}) error
 	PrependAS(as uint32) bool
+	AppendAS(as uint32) bool
 	TotalLen() uint16
 	GetType() BGPASPathSegmentType
 	GetLen() uint8
@@ -1119,7 +1121,7 @@ func (ps *BGPAS2PathSegment) Decode(pkt []byte, data interface{}) error {
 }
 
 func (ps *BGPAS2PathSegment) GetNumASes() uint8 {
-	if ps.Type == BGPASPathSet {
+	if ps.Type == BGPASPathSegmentSet {
 		return 1
 	} else {
 		return uint8(len(ps.AS))
@@ -1139,6 +1141,17 @@ func (ps *BGPAS2PathSegment) PrependAS(as uint32) bool {
 	return true
 }
 
+func (ps *BGPAS2PathSegment) AppendAS(as uint32) bool {
+	if ps.Length >= 255 {
+		return false
+	}
+
+	ps.AS = append(ps.AS, uint16(as))
+	ps.Length += 1
+	ps.BGPASPathSegmentLen += 2
+	return true
+}
+
 func NewBGPAS2PathSegment(segType BGPASPathSegmentType) *BGPAS2PathSegment {
 	as := make([]uint16, 0)
 	return &BGPAS2PathSegment{
@@ -1152,7 +1165,7 @@ func NewBGPAS2PathSegment(segType BGPASPathSegmentType) *BGPAS2PathSegment {
 }
 
 func NewBGPAS2PathSegmentSeq() *BGPAS2PathSegment {
-	return NewBGPAS2PathSegment(BGPASPathSequence)
+	return NewBGPAS2PathSegment(BGPASPathSegmentSequence)
 }
 
 type BGPAS4PathSegment struct {
@@ -1221,7 +1234,7 @@ func (ps *BGPAS4PathSegment) Decode(pkt []byte, data interface{}) error {
 }
 
 func (ps *BGPAS4PathSegment) GetNumASes() uint8 {
-	if ps.Type == BGPASPathSet {
+	if ps.Type == BGPASPathSegmentSet {
 		return 1
 	} else {
 		return uint8(len(ps.AS))
@@ -1241,16 +1254,35 @@ func (ps *BGPAS4PathSegment) PrependAS(as uint32) bool {
 	return true
 }
 
-func NewBGPAS4PathSegmentSeq() *BGPAS4PathSegment {
+func (ps *BGPAS4PathSegment) AppendAS(as uint32) bool {
+	if ps.Length >= 255 {
+		return false
+	}
+
+	ps.AS = append(ps.AS, as)
+	ps.Length += 1
+	ps.BGPASPathSegmentLen += 4
+	return true
+}
+
+func NewBGPAS4PathSegment(segType BGPASPathSegmentType) *BGPAS4PathSegment {
 	as := make([]uint32, 0)
 	return &BGPAS4PathSegment{
 		BGPASPathSegmentBase: BGPASPathSegmentBase{
-			Type:                BGPASPathSequence,
+			Type:                segType,
 			Length:              0,
 			BGPASPathSegmentLen: 2,
 		},
 		AS: as,
 	}
+}
+
+func NewBGPAS4PathSegmentSeq() *BGPAS4PathSegment {
+	return NewBGPAS4PathSegment(BGPASPathSegmentSequence)
+}
+
+func NewBGPAS4PathSegmentSet() *BGPAS4PathSegment {
+	return NewBGPAS4PathSegment(BGPASPathSegmentSet)
 }
 
 type BGPPathAttrASPath struct {
