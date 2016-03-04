@@ -61,21 +61,23 @@ func VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16) {
 	if pktLen < VRRP_HEADER_MIN_SIZE {
 		pktLen = VRRP_HEADER_MIN_SIZE
 	}
-	pkt := make([]byte, pktLen)
-	logger.Info(fmt.Sprintln("no.of bytes for vrrp tx header is", len(pkt)))
-	pkt[0] = (hdr.Version << 4) | hdr.Type
-	pkt[1] = hdr.VirtualRtrId
-	pkt[2] = hdr.Priority
-	pkt[3] = hdr.CountIPv4Addr
+	bytes := make([]byte, pktLen)
+	bytes[0] = (hdr.Version << 4) | hdr.Type
+	bytes[1] = hdr.VirtualRtrId
+	bytes[2] = hdr.Priority
+	bytes[3] = hdr.CountIPv4Addr
 	rsvdAdver := (uint16(hdr.Rsvd) << 13) | hdr.MaxAdverInt
-	binary.BigEndian.PutUint16(pkt[4:], rsvdAdver)
-	binary.BigEndian.PutUint16(pkt[6:8], hdr.CheckSum)
-	j := 0
-	for i := VRRP_HEADER_SIZE_EXCLUDING_IPVX; i < int(hdr.CountIPv4Addr); i = i + 4 {
-		copy(pkt[i:(i+4)], hdr.IPv4Addr[j])
-		j++
+	binary.BigEndian.PutUint16(bytes[4:], rsvdAdver)
+	binary.BigEndian.PutUint16(bytes[6:8], hdr.CheckSum)
+	baseIpByte := 8
+	for i := 0; i < int(hdr.CountIPv4Addr); i++ {
+		copy(bytes[baseIpByte:(baseIpByte+4)], hdr.IPv4Addr[i].To4())
+		baseIpByte += 4
 	}
-	return pkt, uint16(pktLen)
+	// Create Checksum for the header and store it
+	binary.BigEndian.PutUint16(bytes[6:8],
+		VrrpComputeChecksum(hdr.Version, bytes))
+	return bytes, uint16(pktLen)
 }
 
 func VrrpComputeChecksum(version uint8, content []byte) uint16 {
@@ -199,12 +201,7 @@ func VrrpFormVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16) {
 	}
 	ip, _, _ := net.ParseCIDR(gblInfo.IpAddr)
 	vrrpHeader.IPv4Addr = append(vrrpHeader.IPv4Addr, ip)
-	logger.Info(fmt.Sprintln("vrrp send hdr is", vrrpHeader))
 	vrrpEncHdr, hdrLen := VrrpEncodeHeader(vrrpHeader)
-	// Create Checksum for the header and store it
-	chksum := VrrpComputeChecksum(vrrpHeader.Version, vrrpEncHdr)
-	binary.BigEndian.PutUint16(vrrpEncHdr[6:8], chksum)
-
 	logger.Info(fmt.Sprintln("vrrp header after enc is",
 		VrrpDecodeHeader(vrrpEncHdr)))
 	return vrrpEncHdr, hdrLen
