@@ -425,6 +425,7 @@ func CreateRoutes(routeFile string){
 func processAsicdEvents(sub *nanomsg.SubSocket) {
 
 	logger.Println("in process Asicd events")
+	logger.Println(" asicdConstDefs.NOTIFY_IPV4INTF_CREATE = ", asicdConstDefs.NOTIFY_IPV4INTF_CREATE, "asicdConstDefs.asicdConstDefs.NOTIFY_IPV4INTF_DELETE: ", asicdConstDefs.NOTIFY_IPV4INTF_DELETE)
 	for {
 		logger.Println("In for loop")
 		rcvdMsg, err := sub.Recv(0)
@@ -498,6 +499,10 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				logger.Printf("Route create failed with err %s\n", err)
 				return
 			}
+			break
+		case asicdConstDefs.NOTIFY_IPV4INTF_DELETE:
+		   logger.Println("NOTIFY_IPV4INTF_DELETE  event")
+		   break
 		}
 	}
 }

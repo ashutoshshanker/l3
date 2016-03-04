@@ -22,6 +22,7 @@ type RouteDistanceConfig struct{
 	configuredDistance int
 }
 type AdminDistanceSlice []ribd.RouteDistanceState
+var RedistributeRouteMap = make(map[string] []ribd.Routes)
 var RouteProtocolTypeMapDB = make(map[string]int)
 var ReverseRouteProtoTypeMapDB = make(map[int]string)
 var ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
@@ -334,6 +335,34 @@ func updateRoutePolicyState(route ribd.Routes, op int, policy string, policyStmt
 		addRoutePolicyState(route, policy, policyStmt)
     }
 }
+func UpdateRedistributeTargetMap( evt int, protocol string, route ribd.Routes) {
+	logger.Println("UpdateRedistributeTargetMap")
+		if evt == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
+		redistributeMapInfo := RedistributeRouteMap[protocol]
+		if redistributeMapInfo == nil {
+			redistributeMapInfo = make([]ribd.Routes,0)
+		}
+		redistributeMapInfo = append(redistributeMapInfo,route)
+   	    RedistributeRouteMap[protocol] = redistributeMapInfo
+	} else if evt == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
+		redistributeMapInfo := RedistributeRouteMap[protocol]
+		if redistributeMapInfo != nil {
+			found :=false
+			i:=0
+			for i=0;i<len(redistributeMapInfo);i++ {
+				if isSameRoute((redistributeMapInfo[i]),route) {
+					logger.Println("Found the route that is to be taken off the redistribution list for ", protocol)
+					found = true
+					break
+				}
+			}
+			if found {
+		       redistributeMapInfo = append(redistributeMapInfo[:i],redistributeMapInfo[i+1:]...)
+			}
+	        RedistributeRouteMap[protocol] = redistributeMapInfo
+		}
+	}
+}
 func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes, evt int) {
 	logger.Println("RouteNotificationSend") 
 	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo : route}
@@ -362,7 +391,7 @@ func delLinuxRoute(route RouteInfoRecord) {
 	logger.Println("delLinuxRoute")
 	if route.protocol == ribdCommonDefs.CONNECTED {
 		logger.Println("This is a connected route, do nothing")
-		return
+		//return
 	}
 	mask:=net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
 	maskedIP:=route.destNetIp.Mask(mask)
@@ -398,7 +427,7 @@ func addLinuxRoute(route RouteInfoRecord) {
 	logger.Println("addLinuxRoute")
 	if route.protocol == ribdCommonDefs.CONNECTED {
 		logger.Println("This is a connected route, do nothing")
-		return
+		//return
 	}
 	mask:=net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
 	maskedIP:=route.destNetIp.Mask(mask)
