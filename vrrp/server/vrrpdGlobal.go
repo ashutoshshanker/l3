@@ -145,10 +145,12 @@ const (
 	VRRP_TX_BUF_CHANNEL_SIZE              = 1
 
 	// ip/vrrp header Check Defines
-	VRRP_TTL                 = 255
-	VRRP_VERSION2            = 2
-	VRRP_VERSION3            = 3
-	VRRP_PKT_TYPE            = 1 // Only one type is supported which is advertisement
-	VRRP_RSVD                = 0
-	VRRP_HDR_CREATE_CHECKSUM = 0
+	VRRP_TTL                        = 255
+	VRRP_VERSION2                   = 2
+	VRRP_VERSION3                   = 3
+	VRRP_PKT_TYPE                   = 1 // Only one type is supported which is advertisement
+	VRRP_RSVD                       = 0
+	VRRP_HDR_CREATE_CHECKSUM        = 0
+	VRRP_HEADER_SIZE_EXCLUDING_IPVX = 8 // 8 bytes...
+	VRRP_IPV4_HEADER_MIN_SIZE       = 20
 )

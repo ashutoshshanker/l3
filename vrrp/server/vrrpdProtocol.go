@@ -36,7 +36,7 @@ Octet Offset--> 0                   1                   2                   3
 		|                                                               |
 		+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
-func VrrpGetVrrpHeader(data []byte) *VrrpPktHeader {
+func VrrpDecodeHeader(data []byte) *VrrpPktHeader {
 	var vrrpPkt VrrpPktHeader
 	vrrpPkt.Version = uint8(data[0]) >> 4
 	vrrpPkt.Type = uint8(data[0]) & 0x0F
@@ -54,6 +54,27 @@ func VrrpGetVrrpHeader(data []byte) *VrrpPktHeader {
 		baseIpByte += 4
 	}
 	return &vrrpPkt
+}
+
+func VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16) {
+	pktLen := VRRP_HEADER_SIZE_EXCLUDING_IPVX + (hdr.CountIPv4Addr * 4)
+	pkt := make([]byte, pktLen)
+	logger.Info(fmt.Sprintln("no.of bytes for vrrp tx header is", len(pkt)))
+	pkt[0] = hdr.Version << 4
+	pkt[0] = hdr.Type & 0x0F
+	pkt[1] = hdr.VirtualRtrId
+	pkt[2] = hdr.Priority
+	pkt[3] = hdr.CountIPv4Addr
+	rsvdAdver := (uint16(hdr.Rsvd) << 13) | hdr.MaxAdverInt
+	binary.BigEndian.PutUint16(pkt[4:], rsvdAdver)
+	binary.BigEndian.PutUint16(pkt[6:8], hdr.CheckSum)
+	j := 0
+	for i := VRRP_HEADER_SIZE_EXCLUDING_IPVX; i < int(hdr.CountIPv4Addr); i = i + 4 {
+		//binary.BigEndian.PutUint32(pkt[i:(i+4)], hdr.IPv4Addr[i].String())
+		copy(pkt[i:(i+4)], hdr.IPv4Addr[j])
+		j++
+	}
+	return pkt, uint16(pktLen)
 }
 
 func VrrpComputeChecksum(version uint8, content []byte) uint16 {
@@ -113,7 +134,7 @@ func VrrpCheckIpInfo(rcvdCh <-chan VrrpPktChannelInfo) {
 		pktChannel := <-rcvdCh
 		packet := pktChannel.pkt
 		key := pktChannel.key
-		//IfIndex := pktChannel.IfIndex
+		IfIndex := pktChannel.IfIndex
 		// Get Entire IP layer Info
 		ipLayer := packet.Layer(layers.LayerTypeIPv4)
 		if ipLayer == nil {
@@ -134,7 +155,7 @@ func VrrpCheckIpInfo(rcvdCh <-chan VrrpPktChannelInfo) {
 			continue
 		}
 		// Get VRRP header from IP Payload
-		vrrpHeader := VrrpGetVrrpHeader(ipPayload)
+		vrrpHeader := VrrpDecodeHeader(ipPayload)
 		// Do Basic Vrrp Header Check
 		if err := VrrpCheckHeader(vrrpHeader, ipPayload, key); err != nil {
 			logger.Err(fmt.Sprintln(err.Error(),
@@ -143,13 +164,11 @@ func VrrpCheckIpInfo(rcvdCh <-chan VrrpPktChannelInfo) {
 		}
 
 		logger.Info("Vrrp Info Check Pass...Start FSM")
-		/*
-			vrrpTxPktCh <- VrrpPktChannelInfo{
-				pkt:     packet,
-				key:     key,
-				IfIndex: IfIndex,
-			}
-		*/
+		vrrpTxPktCh <- VrrpPktChannelInfo{
+			pkt:     packet,
+			key:     key,
+			IfIndex: IfIndex,
+		}
 	}
 }
 
@@ -165,11 +184,68 @@ func VrrpReceivePackets(pHandle *pcap.Handle, key string, IfIndex int32) {
 	logger.Info("Exiting Receive Packets")
 }
 
+func VrrpFormVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16) {
+	// @TODO: handle v6 packets.....
+	var vip []net.IP
+	//@TODO: Update check from string to len of configured virtual ip's
+	if gblInfo.IntfConfig.VirtualIPv4Addr != "" {
+		vip = append(vip,
+			net.ParseIP(gblInfo.IntfConfig.VirtualIPv4Addr))
+	} else {
+		vip = append(vip, net.ParseIP(gblInfo.IpAddr))
+	}
+	vrrpHeader := VrrpPktHeader{
+		Version:       VRRP_VERSION2,
+		Type:          VRRP_PKT_TYPE,
+		VirtualRtrId:  uint8(gblInfo.IntfConfig.VRID),
+		Priority:      uint8(gblInfo.IntfConfig.Priority),
+		CountIPv4Addr: 1, // @TODO: FIXME for more than 1 vip
+		Rsvd:          VRRP_RSVD,
+		MaxAdverInt:   uint16(gblInfo.IntfConfig.AdvertisementInterval),
+		CheckSum:      VRRP_HDR_CREATE_CHECKSUM,
+		IPv4Addr:      vip,
+	}
+	logger.Info(fmt.Sprintln("vrrp send hdr is", vrrpHeader))
+	vrrpEncHdr, hdrLen := VrrpEncodeHeader(vrrpHeader)
+	logger.Info(fmt.Sprintln("vrrp send enc hdr is", vrrpEncHdr))
+	// Create Checksum for the header and store it
+	chksum := VrrpComputeChecksum(vrrpHeader.Version, vrrpEncHdr)
+	binary.BigEndian.PutUint16(vrrpEncHdr[6:8], chksum)
+
+	return vrrpEncHdr, hdrLen
+}
+
+func VrrpFormPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte, hdrLen uint16) []byte {
+	srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
+	dstMAC, _ := net.ParseMAC(VRRP_PROTOCOL_MAC)
+	eth := &layers.Ethernet{
+		SrcMAC:       srcMAC,
+		DstMAC:       dstMAC,
+		EthernetType: layers.EthernetTypeIPv4,
+	}
+	logger.Info(fmt.Sprintln("Send Eth layer:", eth))
+	ipv4 := &layers.IPv4{
+		SrcIP:    net.ParseIP(gblInfo.IpAddr),
+		DstIP:    net.ParseIP(VRRP_GROUP_IP),
+		Version:  4,
+		Protocol: VRRP_PROTO_ID,
+		TTL:      VRRP_TTL,
+		Length:   uint16(VRRP_IPV4_HEADER_MIN_SIZE + hdrLen),
+	}
+	logger.Info(fmt.Sprintln("Send IP layer:", ipv4))
+
+	buffer := gopacket.NewSerializeBuffer()
+	options := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	gopacket.SerializeLayers(buffer, options, eth, ipv4, gopacket.Payload(vrrpEncHdr))
+	return buffer.Bytes()
+}
+
 func VrrpSendPkt(rcvdCh <-chan VrrpPktChannelInfo) {
 	logger.Info("started send packet routine")
 	for {
-		// @TODO: handle v6 packets.....
-		var vip []net.IP
 		pktChannel := <-rcvdCh
 		//packet := pktChannel.pkt
 		key := pktChannel.key
@@ -179,41 +255,9 @@ func VrrpSendPkt(rcvdCh <-chan VrrpPktChannelInfo) {
 			continue
 		}
 		logger.Info("Found gblInfo entry for " + key)
-		//@TODO: Update check from string to len of configured virtual ip's
-		if gblInfo.IntfConfig.VirtualIPv4Addr != "" {
-			vip = append(vip,
-				net.ParseIP(gblInfo.IntfConfig.VirtualIPv4Addr))
-		} else {
-			vip = append(vip, net.ParseIP(gblInfo.IpAddr))
-		}
-		vrrpHeader := VrrpPktHeader{
-			Version:       VRRP_VERSION2,
-			Type:          VRRP_PKT_TYPE,
-			VirtualRtrId:  uint8(gblInfo.IntfConfig.VRID),
-			Priority:      uint8(gblInfo.IntfConfig.Priority),
-			CountIPv4Addr: 1, // @TODO: FIXME for more than 1 vip
-			Rsvd:          VRRP_RSVD,
-			MaxAdverInt:   uint16(gblInfo.IntfConfig.AdvertisementInterval),
-			CheckSum:      VRRP_HDR_CREATE_CHECKSUM,
-			IPv4Addr:      vip,
-		}
-		logger.Info(fmt.Sprintln("vrrp send hdr is", vrrpHeader))
-		srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
-		dstMAC, _ := net.ParseMAC(VRRP_PROTOCOL_MAC)
-		eth := &layers.Ethernet{
-			SrcMAC:       srcMAC,
-			DstMAC:       dstMAC,
-			EthernetType: layers.EthernetTypeIPv4,
-		}
-		logger.Info(fmt.Sprintln("Send Eth layer:", eth))
-		ipv4 := &layers.IPv4{
-			SrcIP:    net.ParseIP(gblInfo.IpAddr),
-			DstIP:    net.ParseIP(VRRP_GROUP_IP),
-			Version:  4,
-			Protocol: VRRP_PROTO_ID,
-			TTL:      VRRP_TTL,
-		}
-		logger.Info(fmt.Sprintln("Send IP layer:", ipv4))
+		vrrpEncHdr, hdrLen := VrrpFormVrrpHeader(gblInfo)
+		vrrpTxPkt := VrrpFormPkt(gblInfo, vrrpEncHdr, hdrLen)
+		logger.Info(fmt.Sprintln("send pkt", vrrpTxPkt))
 	}
 }
 
