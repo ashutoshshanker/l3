@@ -58,10 +58,12 @@ func VrrpDecodeHeader(data []byte) *VrrpPktHeader {
 
 func VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16) {
 	pktLen := VRRP_HEADER_SIZE_EXCLUDING_IPVX + (hdr.CountIPv4Addr * 4)
+	if pktLen < VRRP_HEADER_MIN_SIZE {
+		pktLen = VRRP_HEADER_MIN_SIZE
+	}
 	pkt := make([]byte, pktLen)
 	logger.Info(fmt.Sprintln("no.of bytes for vrrp tx header is", len(pkt)))
-	pkt[0] = hdr.Version << 4
-	pkt[0] = hdr.Type & 0x0F
+	pkt[0] = (hdr.Version << 4) | hdr.Type
 	pkt[1] = hdr.VirtualRtrId
 	pkt[2] = hdr.Priority
 	pkt[3] = hdr.CountIPv4Addr
@@ -70,7 +72,6 @@ func VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16) {
 	binary.BigEndian.PutUint16(pkt[6:8], hdr.CheckSum)
 	j := 0
 	for i := VRRP_HEADER_SIZE_EXCLUDING_IPVX; i < int(hdr.CountIPv4Addr); i = i + 4 {
-		//binary.BigEndian.PutUint32(pkt[i:(i+4)], hdr.IPv4Addr[i].String())
 		copy(pkt[i:(i+4)], hdr.IPv4Addr[j])
 		j++
 	}
@@ -186,14 +187,6 @@ func VrrpReceivePackets(pHandle *pcap.Handle, key string, IfIndex int32) {
 
 func VrrpFormVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16) {
 	// @TODO: handle v6 packets.....
-	var vip []net.IP
-	//@TODO: Update check from string to len of configured virtual ip's
-	if gblInfo.IntfConfig.VirtualIPv4Addr != "" {
-		vip = append(vip,
-			net.ParseIP(gblInfo.IntfConfig.VirtualIPv4Addr))
-	} else {
-		vip = append(vip, net.ParseIP(gblInfo.IpAddr))
-	}
 	vrrpHeader := VrrpPktHeader{
 		Version:       VRRP_VERSION2,
 		Type:          VRRP_PKT_TYPE,
@@ -203,15 +196,17 @@ func VrrpFormVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16) {
 		Rsvd:          VRRP_RSVD,
 		MaxAdverInt:   uint16(gblInfo.IntfConfig.AdvertisementInterval),
 		CheckSum:      VRRP_HDR_CREATE_CHECKSUM,
-		IPv4Addr:      vip,
 	}
+	ip, _, _ := net.ParseCIDR(gblInfo.IpAddr)
+	vrrpHeader.IPv4Addr = append(vrrpHeader.IPv4Addr, ip)
 	logger.Info(fmt.Sprintln("vrrp send hdr is", vrrpHeader))
 	vrrpEncHdr, hdrLen := VrrpEncodeHeader(vrrpHeader)
-	logger.Info(fmt.Sprintln("vrrp send enc hdr is", vrrpEncHdr))
 	// Create Checksum for the header and store it
 	chksum := VrrpComputeChecksum(vrrpHeader.Version, vrrpEncHdr)
 	binary.BigEndian.PutUint16(vrrpEncHdr[6:8], chksum)
 
+	logger.Info(fmt.Sprintln("vrrp header after enc is",
+		VrrpDecodeHeader(vrrpEncHdr)))
 	return vrrpEncHdr, hdrLen
 }
 
