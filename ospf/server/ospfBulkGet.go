@@ -247,9 +247,10 @@ func (server *OSPFServer) GetBulkOspfNbrEntryState(idx int, cnt int) (int, int, 
 		 */
 
 		if ent, ok := server.NeighborConfigMap[key]; ok {
-			result[i].NbrIpAddress = ent.OspfNbrIPAddr
+			result[i].NbrIpAddress = config.IpAddress(ent.OspfNbrIPAddr.String())
 			result[i].NbrAddressLessIndex = int(ent.intfConfKey.IntfIdx)
-			result[i].NbrRtrId = string(key)
+			id := net.IPv4(result[i].NbrRtrId[0], result[i].NbrRtrId[1], result[i].NbrRtrId[2], result[i].NbrRtrId[3])
+			result[i].NbrRtrId = id.String()
 			result[i].NbrOptions = ent.OspfNbrOptions
 			result[i].NbrPriority = uint8(ent.OspfRtrPrio)
 			result[i].NbrState = ent.OspfNbrState

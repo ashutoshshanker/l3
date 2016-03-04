@@ -56,6 +56,7 @@ func (server *OSPFServer) adjacancyEstablishementCheck(isNbrDRBDR bool, isRtrDRB
 func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfDatabaseDescriptionData) {
 	_, exists := server.NeighborConfigMap[nbrKey.OspfNbrRtrId]
 	var dbd_mdata ospfDatabaseDescriptionData
+	last_exchange := true
 	if exists {
 		nbrConf := server.NeighborConfigMap[nbrKey.OspfNbrRtrId]
 		//intConf := server.IntfConfMap[nbrConf.intfConfKey]
@@ -96,6 +97,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					negotiationDone = true
 					//nbrConf.ospfNbrDBDTickerCh.Stop()
 					nbrConf.OspfNbrState = config.NbrExchange
+					nbrConf.nbrEvent = config.NbrNegotiationDone
 				}
 
 				/*   The initialize(I) and master(MS) bits are off, the
@@ -113,37 +115,43 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					negotiationDone = true
 					//nbrConf.ospfNbrDBDTickerCh.Stop()
 					nbrConf.OspfNbrState = config.NbrExchange
+					nbrConf.nbrEvent = config.NbrNegotiationDone
 				}
 
 			} else {
 				nbrConf.OspfNbrState = config.NbrTwoWay
 			}
 
+			var lsa_attach uint8
 			if negotiationDone {
 				server.logger.Info(fmt.Sprintln("DBD: (Exstart) lsa_headers = ", len(nbrDbPkt.lsa_headers)))
+				server.generateDbSummaryList(nbrKey)
 				if nbrConf.isMaster != true { // i am the master
-					dbd_mdata = server.ConstructAndSendDbdPacket(nbrKey, 0, false, true, true,
-						nbrDbPkt.options, nbrDbPkt.dd_sequence_number+1, false, false)
-					// send  DBD with LSA description
+					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, true, true,
+						nbrDbPkt.options, nbrDbPkt.dd_sequence_number+1, true, false)
 				} else {
 					// send acknowledgement DBD with I and MS bit false , mbit = 1
-					/* TODO - check if LSA needs to be sent else mark m bit as 0 and
-					   state as exchange. */
-					dbd_mdata = server.ConstructAndSendDbdPacket(nbrKey, 0, false, false, false,
-						nbrDbPkt.options, nbrDbPkt.dd_sequence_number, false, false)
+					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, true, false,
+						nbrDbPkt.options, nbrDbPkt.dd_sequence_number, true, false)
 					dbd_mdata.dd_sequence_number++
-
 				}
+
+				if last_exchange {
+					nbrConf.nbrEvent = config.NbrExchangeDone
+				}
+
 			} else { // negotiation not done
-				if nbrConf.isMaster {
+				nbrConf.OspfNbrState = config.NbrExchangeStart
+				if nbrConf.isMaster &&
+					nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
 					dbd_mdata.dd_sequence_number = nbrDbPkt.dd_sequence_number
-					dbd_mdata = server.ConstructAndSendDbdPacket(nbrKey, 0, true, true, false,
+					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, true, true, false,
 						nbrDbPkt.options, nbrDbPkt.dd_sequence_number, false, false)
 					dbd_mdata.dd_sequence_number++
 				} else {
 					//start with new seq number
 					dbd_mdata.dd_sequence_number = uint32(time.Now().Nanosecond()) //nbrConf.ospfNbrSeqNum
-					dbd_mdata = server.ConstructAndSendDbdPacket(nbrKey, 0, true, true, true,
+					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, true, true, true,
 						nbrDbPkt.options, nbrDbPkt.dd_sequence_number, false, false)
 				}
 			}
@@ -161,9 +169,10 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					OspfNbrInactivityTimer: time.Now(),
 					OspfNbrDeadTimer:       nbrConf.OspfNbrDeadTimer,
 					ospfNbrSeqNum:          dbd_mdata.dd_sequence_number,
-					isSeqNumUpdate:          true,
+					isSeqNumUpdate:         true,
 					isMaster:               nbrConf.isMaster,
-					ospfNbrLsaIndex:        0,
+					nbrEvent:               nbrConf.nbrEvent,
+					ospfNbrLsaIndex:        nbrConf.ospfNbrLsaIndex + lsa_attach,
 				},
 				nbrMsgType: NBRUPD,
 			}
@@ -172,7 +181,6 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 
 		case config.NbrExchange:
 			isDiscard := server.exchangePacketDiscardCheck(nbrConf, nbrDbPkt)
-			last_exchange := false
 			if isDiscard {
 				server.logger.Info(fmt.Sprintln("NBRDBD: Discard packet. nbr", nbrKey.OspfNbrRtrId,
 					" nbr state ", nbrConf.OspfNbrState))
@@ -202,30 +210,19 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				server.logger.Info(fmt.Sprintln("DBD:(Exchange) Total elements in req_list ", len(ospfNeighborRequest_list[nbrKey.OspfNbrRtrId])))
 
 				/* 2) Add lsa_headers to db packet from db_summary list */
-				max_lsa_headers := calculateMaxLsaHeaders()
-				db_list := ospfNeighborDBSummary_list[nbrKey.OspfNbrRtrId]
-				slice_len := len(db_list)
-				var lsa_attach uint8
-				if max_lsa_headers > (uint8(slice_len) - uint8(nbrConf.ospfNbrLsaIndex)) {
-					lsa_attach = uint8(slice_len) - uint8(nbrConf.ospfNbrLsaIndex)
-				} else {
-					lsa_attach = max_lsa_headers
-				}
-				if (nbrConf.ospfNbrLsaIndex + lsa_attach) >= uint8(slice_len) {
-					// the last slice in the list being sent
-					server.logger.Info(fmt.Sprintln("DBD: (Exchange) Send the last dd packet with nbr ", nbrKey.OspfNbrRtrId))
-					last_exchange = true
-				}
 
 				if nbrConf.isMaster != true { // i am master
-					/* send DBD with seq num + 1 , ibit = 0 ,  ms = 1
+					/* Send the DBD only if packet has mbit =1 or event != NbrExchangeDone
+						send DBD with seq num + 1 , ibit = 0 ,  ms = 1
 					 * if this is the last DBD for LSA description set mbit = 0
-					 */
-					if nbrDbPkt.dd_sequence_number == nbrConf.ospfNbrSeqNum {
+					*/
+					server.logger.Info(fmt.Sprintln("DBD:(master/Exchange) nbr_event ", nbrConf.nbrEvent, " mbit ", nbrDbPkt.mbit))
+					if nbrDbPkt.dd_sequence_number == nbrConf.ospfNbrSeqNum &&
+						(nbrConf.nbrEvent != config.NbrExchangeDone ||
+							nbrDbPkt.mbit) {
 						server.logger.Info(fmt.Sprintln("DBD: (master/Exchange) Send next packet in the exchange  to nbr ", nbrKey.OspfNbrRtrId))
-						dbd_mdata = server.ConstructAndSendDbdPacket(nbrKey, lsa_attach, false, !last_exchange, true,
+						dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, false, true,
 							nbrDbPkt.options, nbrDbPkt.dd_sequence_number+1, true, false)
-						nbrConf.ospfNbrLsaIndex = nbrConf.ospfNbrLsaIndex + lsa_attach
 						OspfNeighborLastDbd[nbrKey] = dbd_mdata
 					} else {
 						// send old packet
@@ -236,12 +233,12 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					}
 				} else { // i am slave
 					/* send acknowledgement DBD with I and MS bit false and mbit same as
-					rx packet */
+					rx packet
+					 if mbit is 0 && last_exchange == true generate NbrExchangeDone*/
 					server.logger.Info(fmt.Sprintln("DBD: (slave/Exchange) Send next packet in the exchange  to nbr ", nbrKey.OspfNbrRtrId))
 					if nbrDbPkt.dd_sequence_number == nbrConf.ospfNbrSeqNum {
-						dbd_mdata = server.ConstructAndSendDbdPacket(nbrKey, lsa_attach, false, !last_exchange, false,
+						dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, nbrDbPkt.mbit, false,
 							nbrDbPkt.options, nbrDbPkt.dd_sequence_number, true, false)
-						nbrConf.ospfNbrLsaIndex = nbrConf.ospfNbrLsaIndex + lsa_attach
 						OspfNeighborLastDbd[nbrKey] = dbd_mdata
 						dbd_mdata.dd_sequence_number++
 					} else {
@@ -250,22 +247,25 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 						// send old ACK
 						data := newDbdMsg(nbrKey.OspfNbrRtrId, OspfNeighborLastDbd[nbrKey])
 						server.ospfNbrDBDSendCh <- data
-						//nbrConf.ospfNbrDBDSendCh <- OspfNeighborLastDbd[nbrKey]
+
 						dbd_mdata = OspfNeighborLastDbd[nbrKey]
 
 					}
+					if !nbrDbPkt.mbit && last_exchange {
+						nbrConf.nbrEvent = config.NbrExchangeDone
+					}
 				}
-			}
-			if !nbrDbPkt.mbit || last_exchange {
-				server.logger.Info(fmt.Sprintln("DBD: Exchange done with nbr ", nbrKey.OspfNbrRtrId))
-				nbrConf.OspfNbrState = config.NbrLoading
-				server.lsaReTxTimerCheck(nbrKey.OspfNbrRtrId)
-			}
-			if nbrDbPkt.mbit && last_exchange {
-				nbrConf.OspfNbrState = config.NbrLoading
-				server.logger.Info(fmt.Sprintln("DBD: FULL , nbr ", nbrKey.OspfNbrRtrId))
-				server.updateNeighborMdata(nbrConf.intfConfKey, nbrKey.OspfNbrRtrId)
-				server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
+				if !nbrDbPkt.mbit || last_exchange {
+					server.logger.Info(fmt.Sprintln("DBD: Exchange done with nbr ", nbrKey.OspfNbrRtrId))
+					nbrConf.OspfNbrState = config.NbrLoading
+					server.lsaReTxTimerCheck(nbrKey.OspfNbrRtrId)
+				}
+				if !nbrDbPkt.mbit && last_exchange {
+					nbrConf.OspfNbrState = config.NbrLoading
+					server.logger.Info(fmt.Sprintln("DBD: FULL , nbr ", nbrKey.OspfNbrRtrId))
+					server.updateNeighborMdata(nbrConf.intfConfKey, nbrKey.OspfNbrRtrId)
+					server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
+				}
 			}
 
 			nbrConfMsg := ospfNeighborConfMsg{
@@ -283,6 +283,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					ospfNbrSeqNum:          dbd_mdata.dd_sequence_number,
 					isSeqNumUpdate:         true,
 					isMaster:               nbrConf.isMaster,
+					nbrEvent:               nbrConf.nbrEvent,
 					ospfNbrLsaReqIndex:     nbrConf.ospfNbrLsaReqIndex,
 				},
 				nbrMsgType: NBRUPD,
@@ -300,8 +301,9 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				//update neighbor to exchange start state and send dbd
 
 				nbrConf.OspfNbrState = config.NbrExchangeStart
+				nbrConf.nbrEvent = config.Nbr2WayReceived
 				nbrConf.isMaster = false
-				dbd_mdata = server.ConstructAndSendDbdPacket(nbrKey, 0, true, true, true,
+				dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, true, true, true,
 					nbrDbPkt.options, nbrConf.ospfNbrSeqNum+1, false, false)
 				seq_num = dbd_mdata.dd_sequence_number
 			} else {
@@ -310,15 +312,16 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					master - discard
 				*/
 				if nbrConf.isMaster {
-					dbd_mdata := server.ConstructAndSendDbdPacket(nbrKey, 0, false, nbrDbPkt.mbit, false,
-                                        nbrDbPkt.options, nbrConf.ospfNbrSeqNum, false, false)
+					dbd_mdata, _ := server.ConstructAndSendDbdPacket(nbrKey, false, nbrDbPkt.mbit, false,
+						nbrDbPkt.options, nbrConf.ospfNbrSeqNum, false, false)
 					//data := newDbdMsg(nbrKey.OspfNbrRtrId, OspfNeighborLastDbd[nbrKey])
 					seq_num = dbd_mdata.dd_sequence_number + 1
 				}
 				nbrConf.ospfNbrLsaReqIndex = server.BuildAndSendLSAReq(nbrKey.OspfNbrRtrId, nbrConf)
 				seq_num = OspfNeighborLastDbd[nbrKey].dd_sequence_number
+				nbrConf.OspfNbrState = config.NbrFull
 			}
-			nbrConf.OspfNbrState = config.NbrFull
+
 			nbrConfMsg := ospfNeighborConfMsg{
 				ospfNbrConfKey: NeighborConfKey{
 					OspfNbrRtrId: nbrKey.OspfNbrRtrId,
@@ -339,11 +342,9 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				nbrMsgType: NBRUPD,
 			}
 			server.neighborConfCh <- nbrConfMsg
-			//areaid := binary.BigEndian.Uint32(intConf.IfAreaId)
 			server.updateNeighborMdata(nbrConf.intfConfKey, nbrKey.OspfNbrRtrId)
+			server.logger.Info(fmt.Sprintln("NBREVENT: Flood the LSA. nbr full state ", nbrKey.OspfNbrRtrId))
 			server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
-			//intConf.NbrFullStateCh <- intfMsg
-			//server.SendRouterLsa(areaid, nbrConf)
 		case config.NbrTwoWay:
 			/* ignore packet */
 			server.logger.Info(fmt.Sprintln("NBRDBD: Ignore packet as NBR state is two way"))
@@ -424,13 +425,14 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 						ospfNbrSeqNum:          nbrConf.ospfNbrSeqNum,
 						isSeqNumUpdate:         seq_update,
 						isMaster:               nbrConf.isMaster,
+						nbrEvent:               nbrConf.nbrEvent,
 					},
 					nbrMsgType: NBRUPD,
 				}
 				server.neighborConfCh <- nbrConfMsg
 
 				if send_dbd {
-					server.ConstructAndSendDbdPacket(nbrConfMsg.ospfNbrConfKey, 0, true, true, true,
+					server.ConstructAndSendDbdPacket(nbrConfMsg.ospfNbrConfKey, true, true, true,
 						INTF_OPTIONS, nbrConf.ospfNbrSeqNum, false, false)
 				}
 				server.logger.Info(fmt.Sprintln("NBREVENT: update Nbr ", nbrData.RouterId, "state ", nbrConf.OspfNbrState))
@@ -446,7 +448,7 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 					startAdjacency := server.adjacancyEstablishementCheck(false, true)
 					if startAdjacency {
 						nbrState = config.NbrExchangeStart
-						dbd_mdata.dd_sequence_number = uint32(time.Now().Nanosecond())	
+						dbd_mdata.dd_sequence_number = uint32(time.Now().Nanosecond())
 						seq_update = true
 						// send dbd packets
 						ticker = time.NewTicker(time.Second * 10)
@@ -525,7 +527,7 @@ func (server *OSPFServer) ProcessRxNbrPkt() {
 			}
 
 		case nbrLSAAckPkt := <-(server.neighborLSAACKEventCh):
-			nbr, exists := server.NeighborConfigMap[nbrLSAAckPkt.nbrId]
+			nbr, exists := server.NeighborConfigMap[nbrLSAAckPkt.nbrKey]
 
 			if exists && nbr.OspfNbrState >= config.NbrExchange {
 				server.logger.Info(fmt.Sprintln("ACK : received - ", nbrLSAAckPkt))
@@ -554,7 +556,7 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 
 			}
 
-		case lsa_data := <-server.ospfNbrLsaSendCh:
+		case lsa_data := <-server.ospfNbrLsaReqSendCh:
 			nbrConf, exists := server.NeighborConfigMap[lsa_data.nbrKey]
 			if exists {
 				intConf, exist := server.IntfConfMap[nbrConf.intfConfKey]
@@ -570,6 +572,9 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 		case msg := <-server.ospfNbrLsaUpdSendCh:
 			server.processTxLsaUpdate(msg)
 
+		case msg := <-server.ospfNbrLsaAckSendCh:
+			server.processTxLsaAck(msg)
+
 		case stop := <-server.ospfRxTxNbrPktStopCh:
 			if stop == true {
 				return
@@ -577,6 +582,79 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 		}
 	}
 
+}
+
+func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
+	nbrConf, exists := server.NeighborConfigMap[nbrConfKey.OspfNbrRtrId]
+
+	if !exists {
+		server.logger.Info(fmt.Sprintln("negotiation: db_list Nbr  doesnt exist. nbr ", nbrConfKey))
+		return
+	}
+	intf, _ := server.IntfConfMap[nbrConf.intfConfKey]
+	nbrMdata, exists := ospfIntfToNbrMap[nbrConf.intfConfKey]
+
+	areaId := convertIPv4ToUint32(intf.IfAreaId)
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	self_orig_lsa, exist := server.AreaSelfOrigLsa[lsdbKey]
+	if !exist {
+		server.logger.Info(fmt.Sprintln("negotiation: db_list self originated lsas dont exist. Nbr , lsdb_key ", nbrConfKey, lsdbKey))
+		return
+	}
+	ospfNeighborDBSummary_list[nbrConfKey.OspfNbrRtrId] = nil
+	db_list := []*ospfNeighborDBSummary{}
+	for lsaKey, _ := range self_orig_lsa {
+
+		// check if lsa instance is marked true
+		db_summary := newospfNeighborDBSummary()
+		switch lsaKey.LSType {
+		case RouterLSA:
+			drlsa, ret := server.getRouterLsaFromLsdb(areaId, lsaKey)
+			if ret == LsdbEntryNotFound {
+				continue
+			}
+			db_summary.lsa_headers = getLsaHeaderFromLsa(drlsa.LsaMd.LSAge, drlsa.LsaMd.Options,
+				RouterLSA, lsaKey.LSId, lsaKey.AdvRouter,
+				uint32(drlsa.LsaMd.LSSequenceNum), drlsa.LsaMd.LSChecksum,
+				drlsa.LsaMd.LSLen)
+			db_summary.valid = true
+		case NetworkLSA:
+			if nbrMdata.isDR {
+				dnlsa, ret := server.getNetworkLsaFromLsdb(areaId, lsaKey)
+				if ret == LsdbEntryNotFound {
+					continue
+				}
+				db_summary.lsa_headers = getLsaHeaderFromLsa(dnlsa.LsaMd.LSAge, dnlsa.LsaMd.Options,
+					NetworkLSA, lsaKey.LSId, intf.IfDRtrId,
+					uint32(dnlsa.LsaMd.LSSequenceNum), dnlsa.LsaMd.LSChecksum,
+					dnlsa.LsaMd.LSLen)
+				db_summary.valid = true
+			}
+		}
+		/* add entry to the db summary list  */
+		db_list = append(db_list, db_summary)
+		server.logger.Info(fmt.Sprintln("negotiation: db_list appended with lsakey ", lsaKey, db_list))
+	} // end of for
+	nbrConf.db_summary_list_mutex.Lock()
+	ospfNeighborDBSummary_list[nbrConfKey.OspfNbrRtrId] = db_list
+	nbrConf.db_summary_list_mutex.Unlock()
+}
+
+func getLsaHeaderFromLsa(ls_age uint16, options uint8, ls_type uint8, link_state_id uint32,
+	adv_router_id uint32, ls_sequence_num uint32, ls_checksum uint16, ls_len uint16) ospfLSAHeader {
+
+	var lsa_header ospfLSAHeader
+	lsa_header.ls_age = ls_age
+	lsa_header.options = options
+	lsa_header.ls_type = ls_type
+	lsa_header.link_state_id = link_state_id
+	lsa_header.adv_router_id = adv_router_id
+	lsa_header.ls_sequence_num = ls_sequence_num
+	lsa_header.ls_checksum = ls_checksum
+	lsa_header.ls_len = ls_len
+	return lsa_header
 }
 
 func (server *OSPFServer) neighborDeadTimerEvent(nbrConfKey NeighborConfKey) {
