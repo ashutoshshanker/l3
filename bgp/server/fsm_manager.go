@@ -95,7 +95,7 @@ func (mgr *FSMManager) Init() {
 			}
 
 		case fsmId := <-mgr.tcpConnFailCh:
-			mgr.logger.Info(fmt.Sprintf("Neighbor %s: Received a TCP conn failed from FSM %d",
+			mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s: Received a TCP conn failed from FSM %d",
 				mgr.pConf.NeighborAddress, fsmId))
 			mgr.fsmTcpConnFailed(fsmId)
 
@@ -179,8 +179,8 @@ func (mgr *FSMManager) fsmStateChange(id uint8, state BGPFSMState) {
 }
 
 func (mgr *FSMManager) SendUpdateMsg(bgpMsg *packet.BGPMessage) {
-	defer mgr.fsmMutex.Unlock()
-	mgr.fsmMutex.Lock()
+	defer mgr.fsmMutex.RUnlock()
+	mgr.fsmMutex.RLock()
 
 	if mgr.activeFSM == uint8(config.ConnDirInvalid) {
 		mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s FSM is not in ESTABLISHED state", mgr.pConf.NeighborAddress))
@@ -223,19 +223,21 @@ func (mgr *FSMManager) getNewId(id uint8) uint8 {
 	return uint8((id + 1) % 2)
 }
 
-func (mgr *FSMManager) handleAnotherConnection(id uint8, connDir config.ConnDir, conn *net.Conn) {
+func (mgr *FSMManager) createFSMForNewConnection(id uint8, connDir config.ConnDir) (*FSM, BaseStateIface,
+	chan net.Conn) {
 	defer mgr.fsmMutex.Unlock()
 	mgr.fsmMutex.Lock()
 
+	var state BaseStateIface
+
 	if mgr.fsms[id] != nil {
 		mgr.logger.Err(fmt.Sprintf("FSMManager: Neighbor %s - FSM with id %d already exists", mgr.pConf.NeighborAddress, id))
-		return
+		return nil, state, nil
 	}
 
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s Creating new FSM with id %d", mgr.pConf.NeighborAddress, id))
 	fsm := NewFSM(mgr, id, mgr.Peer)
 
-	var state BaseStateIface
 	state = NewActiveState(fsm)
 	connCh := fsm.inConnCh
 	if connDir == config.ConnDirOut {
@@ -243,9 +245,16 @@ func (mgr *FSMManager) handleAnotherConnection(id uint8, connDir config.ConnDir,
 		connCh = fsm.outConnCh
 	}
 	mgr.fsms[id] = fsm
-	go fsm.StartFSM(state)
-	connCh <- *conn
-	fsm.passiveTcpEstCh <- true
+	return fsm, state, connCh
+}
+
+func (mgr *FSMManager) handleAnotherConnection(id uint8, connDir config.ConnDir, conn *net.Conn) {
+	fsm, state, connCh := mgr.createFSMForNewConnection(id, connDir)
+	if fsm != nil {
+		go fsm.StartFSM(state)
+		fsm.passiveTcpEstCh <- true
+		connCh <- *conn
+	}
 }
 
 func (mgr *FSMManager) getFSMIdByDir(connDir config.ConnDir) uint8 {
