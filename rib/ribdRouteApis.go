@@ -281,7 +281,63 @@ func (m RouteServiceHandler) 	 GetBulkIPV4EventState( fromIndex ribd.Int, rcount
 	events.Count = validCount
 	return events, err
 }
-
+func (m RouteServiceHandler) GetBulkRoutesForProtocol(srcProtocol string, fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.RoutesGetInfo, err error) {
+	logger.Println("GetBulkRoutesForProtocol")
+	var i, validCount, toIndex ribd.Int
+//	var temproute []ribd.Routes = make([]ribd.Routes, rcount)
+	var nextRoute *ribd.Routes
+	var returnRoutes []*ribd.Routes
+	var returnRouteGetInfo ribd.RoutesGetInfo
+	//var prefixNodeRouteList RouteInfoRecordList
+	//var prefixNodeRoute RouteInfoRecord
+	i = 0
+	//sel:=0
+	//found := false
+	routes = &returnRouteGetInfo
+	moreRoutes := true
+	redistributeRouteMap := RedistributeRouteMap[srcProtocol]
+	if redistributeRouteMap == nil {
+		logger.Println("no routes to be advertised for this protocol ", srcProtocol)
+		return routes, err
+	}
+	for ; ; i++ {
+		logger.Printf("Fetching trie record for index %d\n", i+fromIndex)
+		if i+fromIndex >= ribd.Int(len(redistributeRouteMap)) {
+			logger.Println("All the routes fetched")
+			moreRoutes = false
+			break
+		}
+		if validCount == rcount {
+			logger.Println("Enough routes fetched")
+			break
+		}
+		logger.Printf("Fetching route for index %d and prefix %v\n", i+fromIndex)
+			nextRoute = &redistributeRouteMap[i+fromIndex]
+			/*prefixNodeRoute = redistributeRouteMap[i+fromIndex] //prefixNodeRouteList.routeInfoList[prefixNodeRouteList.selectedRouteIdx]
+			nextRoute = &temproute[validCount]
+			nextRoute.Ipaddr = prefixNodeRoute.destNetIp.String()
+			nextRoute.Mask = prefixNodeRoute.networkMask.String()
+			nextRoute.DestNetIp = prefixNodeRoute.networkAddr
+			nextRoute.NextHopIp = prefixNodeRoute.nextHopIp.String()
+			nextRoute.NextHopIfType = ribd.Int(prefixNodeRoute.nextHopIfType)
+			nextRoute.IfIndex = prefixNodeRoute.nextHopIfIndex
+			nextRoute.Metric = prefixNodeRoute.metric
+			nextRoute.RoutePrototypeString = ReverseRouteProtoTypeMapDB[int(prefixNodeRoute.protocol)]
+			toIndex = ribd.Int(i+fromIndex)*/
+			if len(returnRoutes) == 0 {
+				returnRoutes = make([]*ribd.Routes, 0)
+			}
+			returnRoutes = append(returnRoutes, nextRoute)
+			validCount++
+	}
+	logger.Printf("Returning %d list of routes\n", validCount)
+	routes.RouteList = returnRoutes
+	routes.StartIdx = fromIndex
+	routes.EndIdx = toIndex + 1
+	routes.More = moreRoutes
+	routes.Count = validCount
+	return routes, err
+}
 func (m RouteServiceHandler) GetBulkRoutes(fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.RoutesGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkRoutes")
 	var i, validCount, toIndex ribd.Int
@@ -414,7 +470,6 @@ func (m RouteServiceHandler) GetBulkRoutes(fromIndex ribd.Int, rcount ribd.Int) 
 	routes.Count = validCount
 	return routes, err
 }
-
 func (m RouteServiceHandler) GetConnectedRoutesInfo() (routes []*ribd.Routes, err error) {
 	var returnRoutes []*ribd.Routes
 	var nextRoute *ribd.Routes
@@ -531,7 +586,8 @@ func SelectBestRoute(routeInfoRecordList RouteInfoRecordList) (addRouteList []Ro
         for j :=0;j<len(routeInfoList);j++ {
 		   routeInfoRecord := routeInfoList[j]
            policyRoute := ribd.Routes{Ipaddr: routeInfoRecord.destNetIp.String(), Mask: routeInfoRecord.networkMask.String(), NextHopIp: routeInfoRecord.nextHopIp.String(), NextHopIfType: ribd.Int(routeInfoRecord.nextHopIfType), IfIndex: routeInfoRecord.nextHopIfIndex, Metric: routeInfoRecord.metric, Prototype: ribd.Int(routeInfoRecord.protocol), IsPolicyBasedStateValid:routeInfoRecordList.isPolicyBasedStateValid}
-		   actionList := PolicyEngineDB.PolicyEngineCheck(policyRoute, policyCommonDefs.PolicyConditionTypeProtocolMatch)
+           entity := buildPolicyEntityFromRoute(policyRoute,RouteParams{})
+		   actionList := PolicyEngineDB.PolicyEngineCheckActionsForEntity(entity, policyCommonDefs.PolicyConditionTypeProtocolMatch)
 		   if !PolicyEngineDB.ActionListHasAction(actionList, policyCommonDefs.PolicyActionTypeRouteDisposition,"Reject") {
 		       logger.Println("atleast one of the routes of this protocol will not be rejected by the policy engine")
 		       tempSelectedProtocol = ProtocolAdminDistanceSlice[i].Protocol

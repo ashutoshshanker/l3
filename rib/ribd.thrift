@@ -191,9 +191,10 @@ service RouteService
 	bool UpdateIPV4Route(1: Routes origconfig, 2: Routes newconfig, 3: list<bool> attrset);
     int deleteV4Route (1:string destNetIp, 2:string networkMask, 3:string routeType, 4:string nextHopIp);
     NextHopInfo getRouteReachabilityInfo(1: string desIPv4MasktNet);
-	list<Routes> getConnectedRoutesInfo();
+	//list<Routes> getConnectedRoutesInfo();
     void printV4Routes();
 	RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
+	RoutesGetInfo getBulkRoutesForProtocol(1: string srcProtocol, 2: int fromIndex ,3: int rcount)
 	IPV4EventStateGetInfo GetBulkIPV4EventState(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	void linkDown(1: int ifType, 2:int ifIndex);

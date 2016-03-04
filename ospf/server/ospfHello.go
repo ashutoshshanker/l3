@@ -265,11 +265,12 @@ func (server *OSPFServer) processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloD
 		ent.IfType, TwoWayStatus, ospfHelloData.rtrPrio, key)
 
 	var backupSeenMsg BackupSeenMsg
-
 	if TwoWayStatus == true && ent.IfFSMState == config.Waiting {
 		if bytesEqual(ipHdrMd.srcIP, ospfHelloData.designatedRtr) == true {
 			if bytesEqual(ospfHelloData.backupDesignatedRtr, []byte{0, 0, 0, 0}) == false {
 				ret := ent.WaitTimer.Stop()
+				server.logger.Info("DIE")
+
 				if ret == true {
 					backupSeenMsg.RouterId = routerId
 					backupSeenMsg.DRId = append(backupSeenMsg.DRId, ipHdrMd.srcIP...)
