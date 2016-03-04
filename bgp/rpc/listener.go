@@ -316,6 +316,7 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.HoldTime = int32(neighborState.HoldTime)
 	bgpNeighborResponse.KeepaliveTime = int32(neighborState.KeepaliveTime)
 	bgpNeighborResponse.BfdNeighborState = neighborState.BfdNeighborState
+	bgpNeighborResponse.PeerGroup = neighborState.PeerGroup
 
 	received := bgpd.NewBgpCounters()
 	received.Notification = int64(neighborState.Messages.Received.Notification)
