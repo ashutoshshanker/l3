@@ -8,7 +8,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"net"
+	_ "net"
 	"time"
 )
 
@@ -54,30 +54,6 @@ func VrrpDecodeHeader(data []byte) *VrrpPktHeader {
 		baseIpByte += 4
 	}
 	return &vrrpPkt
-}
-
-func VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16) {
-	pktLen := VRRP_HEADER_SIZE_EXCLUDING_IPVX + (hdr.CountIPv4Addr * 4)
-	if pktLen < VRRP_HEADER_MIN_SIZE {
-		pktLen = VRRP_HEADER_MIN_SIZE
-	}
-	bytes := make([]byte, pktLen)
-	bytes[0] = (hdr.Version << 4) | hdr.Type
-	bytes[1] = hdr.VirtualRtrId
-	bytes[2] = hdr.Priority
-	bytes[3] = hdr.CountIPv4Addr
-	rsvdAdver := (uint16(hdr.Rsvd) << 13) | hdr.MaxAdverInt
-	binary.BigEndian.PutUint16(bytes[4:], rsvdAdver)
-	binary.BigEndian.PutUint16(bytes[6:8], hdr.CheckSum)
-	baseIpByte := 8
-	for i := 0; i < int(hdr.CountIPv4Addr); i++ {
-		copy(bytes[baseIpByte:(baseIpByte+4)], hdr.IPv4Addr[i].To4())
-		baseIpByte += 4
-	}
-	// Create Checksum for the header and store it
-	binary.BigEndian.PutUint16(bytes[6:8],
-		VrrpComputeChecksum(hdr.Version, bytes))
-	return bytes, uint16(pktLen)
 }
 
 func VrrpComputeChecksum(version uint8, content []byte) uint16 {
@@ -185,72 +161,6 @@ func VrrpReceivePackets(pHandle *pcap.Handle, key string, IfIndex int32) {
 		}
 	}
 	logger.Info("Exiting Receive Packets")
-}
-
-func VrrpFormVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16) {
-	// @TODO: handle v6 packets.....
-	vrrpHeader := VrrpPktHeader{
-		Version:       VRRP_VERSION2,
-		Type:          VRRP_PKT_TYPE,
-		VirtualRtrId:  uint8(gblInfo.IntfConfig.VRID),
-		Priority:      uint8(gblInfo.IntfConfig.Priority),
-		CountIPv4Addr: 1, // @TODO: FIXME for more than 1 vip
-		Rsvd:          VRRP_RSVD,
-		MaxAdverInt:   uint16(gblInfo.IntfConfig.AdvertisementInterval),
-		CheckSum:      VRRP_HDR_CREATE_CHECKSUM,
-	}
-	ip, _, _ := net.ParseCIDR(gblInfo.IpAddr)
-	vrrpHeader.IPv4Addr = append(vrrpHeader.IPv4Addr, ip)
-	vrrpEncHdr, hdrLen := VrrpEncodeHeader(vrrpHeader)
-	logger.Info(fmt.Sprintln("vrrp header after enc is",
-		VrrpDecodeHeader(vrrpEncHdr)))
-	return vrrpEncHdr, hdrLen
-}
-
-func VrrpFormPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte, hdrLen uint16) []byte {
-	srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
-	dstMAC, _ := net.ParseMAC(VRRP_PROTOCOL_MAC)
-	eth := &layers.Ethernet{
-		SrcMAC:       srcMAC,
-		DstMAC:       dstMAC,
-		EthernetType: layers.EthernetTypeIPv4,
-	}
-	logger.Info(fmt.Sprintln("Send Eth layer:", eth))
-	ipv4 := &layers.IPv4{
-		SrcIP:    net.ParseIP(gblInfo.IpAddr),
-		DstIP:    net.ParseIP(VRRP_GROUP_IP),
-		Version:  4,
-		Protocol: VRRP_PROTO_ID,
-		TTL:      VRRP_TTL,
-		Length:   uint16(VRRP_IPV4_HEADER_MIN_SIZE + hdrLen),
-	}
-	logger.Info(fmt.Sprintln("Send IP layer:", ipv4))
-
-	buffer := gopacket.NewSerializeBuffer()
-	options := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
-	gopacket.SerializeLayers(buffer, options, eth, ipv4, gopacket.Payload(vrrpEncHdr))
-	return buffer.Bytes()
-}
-
-func VrrpSendPkt(rcvdCh <-chan VrrpPktChannelInfo) {
-	logger.Info("started send packet routine")
-	for {
-		pktChannel := <-rcvdCh
-		//packet := pktChannel.pkt
-		key := pktChannel.key
-		gblInfo, found := vrrpGblInfo[key]
-		if !found {
-			logger.Err("No Entry for " + key)
-			continue
-		}
-		logger.Info("Found gblInfo entry for " + key)
-		vrrpEncHdr, hdrLen := VrrpFormVrrpHeader(gblInfo)
-		vrrpTxPkt := VrrpFormPkt(gblInfo, vrrpEncHdr, hdrLen)
-		logger.Info(fmt.Sprintln("send pkt", vrrpTxPkt))
-	}
 }
 
 func VrrpInitPacketListener(key string, IfIndex int32) {

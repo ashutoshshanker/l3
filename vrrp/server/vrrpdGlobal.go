@@ -127,6 +127,7 @@ const (
 	VRRP_SAME_OWNER                     = "Local Router should not be same as the VRRP Ip Address"
 	VRRP_MISSING_VRID_CONFIG            = "VRID is not configured on interface"
 	VRRP_CHECKSUM_ERR                   = "VRRP checksum failure"
+	VRRP_INVALID_PCAP                   = "Invalid Pcap Handler"
 
 	// VRRP multicast ip address for join
 	VRRP_GROUP_IP     = "224.0.0.18"
