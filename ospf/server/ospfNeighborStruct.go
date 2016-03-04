@@ -46,6 +46,7 @@ type OspfNeighborEntry struct {
 	NbrDeadTimer           *time.Timer
 	isDRBDR                bool
 	ospfNbrSeqNum          uint32
+	nbrEvent               config.NbrEvent
 	isSeqNumUpdate         bool
 	isMaster               bool
 	ospfNbrDBDTickerCh     *time.Ticker
@@ -178,6 +179,7 @@ func (server *OSPFServer) UpdateNeighborConf() {
 			nbrConf.ospfNbrDBDTickerCh = nbrMsg.ospfNbrEntry.ospfNbrDBDTickerCh
 			nbrConf.isMaster = nbrMsg.ospfNbrEntry.isMaster
 			nbrConf.ospfNbrLsaReqIndex = nbrMsg.ospfNbrEntry.ospfNbrLsaReqIndex
+			nbrConf.nbrEvent = nbrMsg.ospfNbrEntry.nbrEvent
 
 			if nbrMsg.nbrMsgType == NBRADD {
 				nbrConf.OspfNbrIPAddr = nbrMsg.ospfNbrEntry.OspfNbrIPAddr
@@ -190,12 +192,14 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				nbrConf.retx_list_mutex = &sync.Mutex{}
 				updateLSALists(nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
 				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
-				server.neighborDeadTimerEvent(nbrMsg.ospfNbrConfKey)
-
 				if nbrMsg.ospfNbrEntry.OspfNbrState >= config.NbrTwoWay {
 					server.ConstructAndSendDbdPacket(nbrMsg.ospfNbrConfKey, true, true, true,
 						INTF_OPTIONS, uint32(time.Now().Nanosecond()), false, false)
+					nbrConf.OspfNbrState = config.NbrExchangeStart
+					nbrConf.nbrEvent = config.Nbr2WayReceived
 				}
+				server.neighborDeadTimerEvent(nbrMsg.ospfNbrConfKey)
+
 			}
 
 			if nbrMsg.nbrMsgType == NBRUPD {
@@ -274,7 +278,7 @@ func (server *OSPFServer) updateNeighborMdata(intf IntfConfKey, nbr uint32) {
 	nbrMdata.areaId = binary.BigEndian.Uint32(intfData.IfAreaId)
 	nbrMdata.isDR = bytesEqual(intfData.IfDRIp, intfData.IfIpAddr.To4())
 	for inst := range nbrMdata.nbrList {
-		if inst == int(nbr) {
+		if nbrMdata.nbrList[inst] == nbr {
 			// nbr already exist no need to add.
 			return
 		}

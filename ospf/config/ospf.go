@@ -1,7 +1,6 @@
 package config
 
-import (
-)
+import ()
 
 type AreaId string
 type RouterId string
@@ -164,6 +163,16 @@ const (
 	NbrExchange      NbrState = 6
 	NbrLoading       NbrState = 7
 	NbrFull          NbrState = 8
+)
+
+type NbrEvent int
+
+const (
+	Nbr1WayReceived    NbrEvent = 1
+	Nbr2WayReceived    NbrEvent = 2
+	NbrNegotiationDone NbrEvent = 3
+	NbrExchangeDone    NbrEvent = 4
+	NbrLoadingDone     NbrEvent = 5
 )
 
 type NbmaNbrPermanence int

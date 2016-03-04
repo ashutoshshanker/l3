@@ -161,8 +161,8 @@ func encodeLSAHeader(dd_data ospfDatabaseDescriptionData) []byte {
 		lsa_header := dd_data.lsa_headers[index]
 		pkt_index := 20 * index
 		binary.BigEndian.PutUint16(pkt[pkt_index:pkt_index+2], lsa_header.ls_age)
-		pkt[2] = lsa_header.options
-		pkt[3] = lsa_header.ls_type
+		pkt[pkt_index+2] = lsa_header.options
+		pkt[pkt_index+3] = lsa_header.ls_type
 		binary.BigEndian.PutUint32(pkt[pkt_index+4:pkt_index+8], lsa_header.link_state_id)
 		binary.BigEndian.PutUint32(pkt[pkt_index+8:pkt_index+12], lsa_header.adv_router_id)
 		binary.BigEndian.PutUint32(pkt[pkt_index+12:pkt_index+16], lsa_header.ls_sequence_num)
@@ -371,18 +371,19 @@ func (server *OSPFServer) ConstructAndSendDbdPacket(nbrKey NeighborConfKey,
 			for index = 0; index < uint8(len(db_list)); index++ {
 				if db_list[index].valid {
 					dbd_mdata.lsa_headers = append(dbd_mdata.lsa_headers, db_list[index].lsa_headers)
+				} else {
 					lsa_count++
 				}
 				db_list[index].valid = false
 			}
 		}
 		nbrCon.db_summary_list_mutex.Unlock()
+		if lsa_count == 0 {
+			dbd_mdata.mbit = false
+			last_exchange = true
+		}
 	}
 
-	if lsa_count > 0 {
-		dbd_mdata.mbit = true
-		last_exchange = false
-	}
 	server.logger.Info(fmt.Sprintln("DBDSEND: nbr state ", nbrCon.OspfNbrState,
 		" imms ", dbd_mdata.ibit, dbd_mdata.mbit, dbd_mdata.msbit,
 		" seq num ", seq, "options ", dbd_mdata.options, " headers_list ", dbd_mdata.lsa_headers))

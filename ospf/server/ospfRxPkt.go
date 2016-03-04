@@ -183,7 +183,7 @@ func (server *OSPFServer) processOspfData(data []byte, ethHdrMd *EthHdrMetadata,
 	routerid := binary.BigEndian.Uint32(ospfHdrMd.routerId)
 	exist := server.neighborExist(routerid)
 	switch ospfHdrMd.pktType {
-	case HelloType:
+	case HelloType:	
 		err = server.processRxHelloPkt(data, ospfHdrMd, ipHdrMd, ethHdrMd, key)
 	case DBDescriptionType:
 		if exist {
