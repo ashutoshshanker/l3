@@ -9,6 +9,14 @@ import (
 
 func (server *OSPFServer) StartOspfIntfFSM(key IntfConfKey) {
 	ent, _ := server.IntfConfMap[key]
+	 areaId := convertIPv4ToUint32(ent.IfAreaId)
+        msg := LSAChangeMsg{
+                areaId: areaId,
+        }
+
+        server.logger.Info("Sending msg for router LSA generation")
+        server.IntfStateChangeCh <- msg
+
 	if ent.IfType == config.PointToPoint {
 		server.StartOspfP2PIntfFSM(key)
 	} else if ent.IfType == config.Broadcast {

@@ -10,7 +10,6 @@ import (
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
 	"l3/bfd/bfddCommonDefs"
-	"log/syslog"
 	"net"
 	"os"
 	"os/signal"
@@ -19,6 +18,7 @@ import (
 	"syscall"
 	"time"
 	"utils/ipcutils"
+	"utils/logging"
 )
 
 var (
@@ -98,7 +98,7 @@ type BfdGlobal struct {
 }
 
 type BFDServer struct {
-	logger              *syslog.Writer
+	logger              *logging.Writer
 	ribdClient          RibdClient
 	asicdClient         AsicdClient
 	GlobalConfigCh      chan GlobalConfig
@@ -122,7 +122,7 @@ type BFDServer struct {
 	bfdGlobal           BfdGlobal
 }
 
-func NewBFDServer(logger *syslog.Writer) *BFDServer {
+func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer := &BFDServer{}
 	bfdServer.logger = logger
 	bfdServer.GlobalConfigCh = make(chan GlobalConfig)
