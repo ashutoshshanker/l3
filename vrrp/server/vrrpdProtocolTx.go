@@ -69,8 +69,14 @@ func VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16) {
 		MaxAdverInt:   uint16(gblInfo.IntfConfig.AdvertisementInterval),
 		CheckSum:      VRRP_HDR_CREATE_CHECKSUM,
 	}
+	var ip net.IP
 	//FIXME with Virtual Ip Addr.... and not IfIndex Ip Addr
-	ip, _, _ := net.ParseCIDR(gblInfo.IpAddr)
+	// If no virtual ip then use interface/router ip address as virtual ip
+	if gblInfo.IntfConfig.VirtualIPv4Addr == "" {
+		ip, _, _ = net.ParseCIDR(gblInfo.IpAddr)
+	} else {
+		ip = net.ParseIP(gblInfo.IntfConfig.VirtualIPv4Addr)
+	}
 	vrrpHeader.IPv4Addr = append(vrrpHeader.IPv4Addr, ip)
 	vrrpEncHdr, hdrLen := VrrpEncodeHeader(vrrpHeader)
 	logger.Info(fmt.Sprintln("vrrp header after enc is",
@@ -88,7 +94,6 @@ func VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte,
 		DstMAC:       dstMAC,
 		EthernetType: layers.EthernetTypeIPv4,
 	}
-	logger.Info(fmt.Sprintln("Send Eth layer:", eth))
 
 	// IP Layer
 	sip, _, _ := net.ParseCIDR(gblInfo.IpAddr)
@@ -101,7 +106,6 @@ func VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte,
 		SrcIP:    sip,
 		DstIP:    net.ParseIP(VRRP_GROUP_IP),
 	}
-	logger.Info(fmt.Sprintln("Send IP layer:", ipv4))
 
 	// Construct go Packet Buffer
 	buffer := gopacket.NewSerializeBuffer()

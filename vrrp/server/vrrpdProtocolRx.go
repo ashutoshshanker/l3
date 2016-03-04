@@ -95,10 +95,15 @@ func VrrpCheckHeader(hdr *VrrpPktHeader, layerContent []byte, key string) error 
 		return errors.New(VRRP_INCORRECT_FIELDS)
 	}
 	gblInfo := vrrpGblInfo[key]
-	for i := 0; i < int(hdr.CountIPv4Addr); i++ {
-		// @TODO: confirm this check with HARI
-		if gblInfo.IntfConfig.VirtualIPv4Addr == hdr.IPv4Addr[i].String() {
-			return errors.New(VRRP_SAME_OWNER)
+	if gblInfo.IntfConfig.VirtualIPv4Addr == "" {
+		for i := 0; i < int(hdr.CountIPv4Addr); i++ {
+			/* If Virtual Ip is not configured then check whether the ip
+			 * address of router/interface is not same as the received
+			 * Virtual Ip Addr
+			 */
+			if gblInfo.IpAddr == hdr.IPv4Addr[i].String() {
+				return errors.New(VRRP_SAME_OWNER)
+			}
 		}
 	}
 	if gblInfo.IntfConfig.VRID == 0 {
@@ -142,7 +147,7 @@ func VrrpCheckIpInfo(rcvdCh <-chan VrrpPktChannelInfo) {
 			continue
 		}
 
-		logger.Info("Vrrp Info Check Pass...Start FSM")
+		//logger.Info("Vrrp Info Check Pass...Start FSM")
 		vrrpTxPktCh <- VrrpPktChannelInfo{
 			pkt:     packet,
 			key:     key,
