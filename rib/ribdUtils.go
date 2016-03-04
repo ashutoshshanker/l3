@@ -7,10 +7,13 @@ import (
 	"github.com/op/go-nanomsg"
 	"net"
 	"errors"
+	"strconv"
 	"utils/patriciaDB"
 	"github.com/vishvananda/netlink"
 	"asicd/asicdConstDefs"
 	"l3/rib/ribdCommonDefs"
+	"utils/policy"
+	"utils/netUtils"
 	"time"
 	"sort"
 )
@@ -26,19 +29,25 @@ var ProtocolAdminDistanceSlice AdminDistanceSlice
 
 func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["CONNECTED"] = ribdCommonDefs.CONNECTED
+	RouteProtocolTypeMapDB["EBGP"]       = ribdCommonDefs.EBGP
+	RouteProtocolTypeMapDB["IBGP"]       = ribdCommonDefs.IBGP
 	RouteProtocolTypeMapDB["BGP"]       = ribdCommonDefs.BGP
+	RouteProtocolTypeMapDB["OSPF"]      = ribdCommonDefs.OSPF
 	RouteProtocolTypeMapDB["STATIC"]       = ribdCommonDefs.STATIC
 	
 	//reverse
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.CONNECTED] = "CONNECTED"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.IBGP] = "IBGP"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.EBGP] = "EBGP"
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.BGP] = "BGP"
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.STATIC] = "STATIC"
 }
 func BuildProtocolAdminDistanceMapDB() {
-	ProtocolAdminDistanceMapDB["CONNECTED"] = RouteDistanceConfig{defaultDistance:0}
-	ProtocolAdminDistanceMapDB["STATIC"]       = RouteDistanceConfig{defaultDistance:1}	
-	ProtocolAdminDistanceMapDB["BGP"]       = RouteDistanceConfig{defaultDistance:200}
-	ProtocolAdminDistanceMapDB["OSPF"]       = RouteDistanceConfig{defaultDistance:110}
+	ProtocolAdminDistanceMapDB["CONNECTED"] = RouteDistanceConfig{defaultDistance:0, configuredDistance:-1}
+	ProtocolAdminDistanceMapDB["STATIC"]       = RouteDistanceConfig{defaultDistance:1, configuredDistance:-1}	
+	ProtocolAdminDistanceMapDB["EBGP"]       = RouteDistanceConfig{defaultDistance:20, configuredDistance:-1}
+	ProtocolAdminDistanceMapDB["IBGP"]       = RouteDistanceConfig{defaultDistance:200, configuredDistance:-1}
+	ProtocolAdminDistanceMapDB["OSPF"]       = RouteDistanceConfig{defaultDistance:110, configuredDistance:-1}
 }
 func (slice AdminDistanceSlice ) Len() int {
 	return len(slice )
@@ -58,7 +67,7 @@ func BuildProtocolAdminDistanceSlice() {
 	for k,v:=range ProtocolAdminDistanceMapDB {
 		protocol=k
 		distance = v.defaultDistance
-		if v.configuredDistance != 0 {
+		if v.configuredDistance != -1 {
 			distance = v.configuredDistance
 		}
 		routeDistance:=ribd.RouteDistanceState{Protocol:protocol,Distance:ribd.Int(distance)}
@@ -83,6 +92,24 @@ func BuildProtocolAdminDistanceSlice() {
    }
    return isBetter
 }*/
+func buildPolicyEntityFromRoute(route ribd.Routes, params interface {}) (entity policy.PolicyEngineFilterEntityParams) {
+	routeInfo := params.(RouteParams)
+	destNetIp, err := netUtils.GetCIDR(route.Ipaddr, route.Mask)
+	if err != nil {
+		logger.Println("error getting CIDR address for ", route.Ipaddr,":", route.Mask)
+		return
+	}
+	entity.DestNetIp = destNetIp
+	entity.NextHopIp = route.NextHopIp
+	entity.RouteProtocol = ReverseRouteProtoTypeMapDB[int(route.Prototype)]
+	if routeInfo.createType != Invalid {
+		entity.CreatePath = true
+	}
+	if routeInfo.deleteType != Invalid {
+		entity.DeletePath = true
+	}
+	return entity
+}
 func findRouteWithNextHop(routeInfoList []RouteInfoRecord, nextHopIP string) (found bool, routeInfoRecord RouteInfoRecord, index int) {
 	logger.Println("findRouteWithNextHop")
 	index = -1
@@ -146,6 +173,86 @@ func getNetworkPrefixFromCIDR(ipAddr string) (ipPrefix patriciaDB.Prefix, err er
 	ipPrefix ,err= getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
     return ipPrefix, err
 }
+func getPolicyRouteMapIndex(entity policy.PolicyEngineFilterEntityParams, policy string) (policyRouteIndex policy.PolicyEntityMapIndex) {
+	logger.Println("getPolicyRouteMapIndex")
+	policyRouteIndex = PolicyRouteIndex{destNetIP:entity.DestNetIp,policy:policy}
+	return policyRouteIndex
+}
+func addPolicyRouteMap(route ribd.Routes, policyName string) {
+	logger.Println("addPolicyRouteMap")
+	ipPrefix,err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
+	if err != nil {
+		logger.Println("Invalid ip prefix")
+		return
+	}
+	maskIp, err := getIP(route.Mask)
+	if err != nil {
+		return
+	}
+	prefixLen,err := getPrefixLen(maskIp)
+	if err != nil {
+		return
+	}
+	logger.Println("prefixLen= ", prefixLen)
+	var newRoute string
+	found := false
+	newRoute = route.Ipaddr + "/"+strconv.Itoa(prefixLen)
+//	newRoute := string(ipPrefix[:])
+	logger.Println("Adding ip prefix %s %v ", newRoute, ipPrefix)
+	policyInfo:=PolicyEngineDB.PolicyDB.Get(patriciaDB.Prefix(policyName))
+	if policyInfo == nil {
+		logger.Println("Unexpected:policyInfo nil for policy ", policyName)
+		return
+	}
+	tempPolicyInfo:=policyInfo.(policy.Policy)
+	tempPolicy := tempPolicyInfo.Extensions.(PolicyExtensions)
+	tempPolicy.hitCounter++
+	if tempPolicy.routeList == nil {
+		logger.Println("routeList nil")
+		tempPolicy.routeList = make([]string, 0)
+	}
+	logger.Println("routelist len= ", len(tempPolicy.routeList)," prefix list so far")
+	for i:=0;i<len(tempPolicy.routeList);i++ {
+		logger.Println(tempPolicy.routeList[i])
+		if tempPolicy.routeList[i] == newRoute {
+			logger.Println(newRoute, " already is a part of ", policyName, "'s routelist")
+			found = true
+		}
+	}
+	if !found {
+       tempPolicy.routeList = append(tempPolicy.routeList, newRoute)
+	}
+	found=false
+	logger.Println("routeInfoList details")
+	for i:=0;i<len(tempPolicy.routeInfoList);i++ {
+		logger.Println("IP: ",tempPolicy.routeInfoList[i].Ipaddr, ":", tempPolicy.routeInfoList[i].Mask, " routeType: ", tempPolicy.routeInfoList[i].Prototype)
+		if tempPolicy.routeInfoList[i].Ipaddr==route.Ipaddr && tempPolicy.routeInfoList[i].Mask == route.Mask && tempPolicy.routeInfoList[i].Prototype == route.Prototype {
+			logger.Println("route already is a part of ", policyName, "'s routeInfolist")
+			found = true
+		}
+	}
+	if tempPolicy.routeInfoList == nil {
+		tempPolicy.routeInfoList = make([]ribd.Routes, 0)
+	}
+	if found == false {
+       tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
+	}
+	tempPolicyInfo.Extensions = tempPolicy
+	PolicyEngineDB.PolicyDB.Set(patriciaDB.Prefix(policyName), tempPolicyInfo)
+}
+func deletePolicyRouteMap(route ribd.Routes, policyName string) {
+	logger.Println("deletePolicyRouteMap")
+}
+func updatePolicyRouteMap(route ribd.Routes, policy string, op int) {
+	logger.Println("updatePolicyRouteMap")
+	if op == add {
+		addPolicyRouteMap(route, policy)
+	} else if op == del {
+		deletePolicyRouteMap(route, policy)
+	}
+	
+}
+
 func deleteRoutePolicyStateAll(route ribd.Routes) {
 	logger.Println("deleteRoutePolicyStateAll")
 	destNet, err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
@@ -192,34 +299,6 @@ func addRoutePolicyState(route ribd.Routes, policy string, policyStmt string) {
 	RouteInfoMap.Set(destNet,routeInfoRecordList)
 	return
 }
-func	 addPolicyRouteMapEntry(route *ribd.Routes, policy string, policyStmt string, conditionList []string, actionList []string) {
-	logger.Println("addPolicyRouteMapEntry")
-	var policyStmtMap PolicyStmtMap
-	var conditionsAndActionsList ConditionsAndActionsList
-	if PolicyRouteMap == nil {
-		PolicyRouteMap = make(map[PolicyRouteIndex]PolicyStmtMap)
-	}
-	policyRouteIndex := PolicyRouteIndex{routeIP:route.Ipaddr, routeMask:route.Mask,policy:policy}
-	policyStmtMap, ok:= PolicyRouteMap[policyRouteIndex]
-	if !ok {
-		policyStmtMap.policyStmtMap = make(map[string]ConditionsAndActionsList)
-	}
-	_, ok = policyStmtMap.policyStmtMap[policyStmt]
-	if ok {
-		logger.Println("policy statement map for statement ", policyStmt, " already in place for policy ", policy)
-		return
-	} 
-	conditionsAndActionsList.conditionList = make([]string,0)
-	conditionsAndActionsList.actionList = make([]string,0)
-	for i:=0;conditionList != nil && i<len(conditionList);i++ {
-		conditionsAndActionsList.conditionList = append(conditionsAndActionsList.conditionList,conditionList[i])
-	}
-	for i:=0;actionList != nil && i<len(actionList);i++ {
-		conditionsAndActionsList.actionList = append(conditionsAndActionsList.actionList,actionList[i])
-	}
-	policyStmtMap.policyStmtMap[policyStmt]=conditionsAndActionsList
-	PolicyRouteMap[policyRouteIndex]=policyStmtMap
-}
 func deleteRoutePolicyState( ipPrefix patriciaDB.Prefix, policyName string) {
 	logger.Println("deleteRoutePolicyState")
 	found := false
@@ -246,22 +325,11 @@ func deleteRoutePolicyState( ipPrefix patriciaDB.Prefix, policyName string) {
 	routeInfoRecordList.policyList = append(routeInfoRecordList.policyList[:idx], routeInfoRecordList.policyList[idx+1:]...)
 	RouteInfoMap.Set(ipPrefix, routeInfoRecordList)
 }
-func	 deletePolicyRouteMapEntry(route ribd.Routes, policy string) {
-	logger.Println("deletePolicyRouteMapEntry for policy ", policy, "route ", route.Ipaddr, ":", route.Mask)
-	if PolicyRouteMap == nil {
-		logger.Println("PolicyRouteMap empty")
-		return
-	}
-	policyRouteIndex := PolicyRouteIndex{routeIP:route.Ipaddr,routeMask:route.Mask, policy:policy}
-	//PolicyRouteMap[policyRouteIndex].policyStmtMap=nil
-	delete(PolicyRouteMap,policyRouteIndex)
-}
 
 func updateRoutePolicyState(route ribd.Routes, op int, policy string, policyStmt string) {
 	logger.Println("updateRoutePolicyState")
 	if op == delAll {
 		deleteRoutePolicyStateAll(route)
-		deletePolicyRouteMapEntry(route, policy)
 	} else if op == add {
 		addRoutePolicyState(route, policy, policyStmt)
     }
@@ -294,7 +362,7 @@ func delLinuxRoute(route RouteInfoRecord) {
 	logger.Println("delLinuxRoute")
 	if route.protocol == ribdCommonDefs.CONNECTED {
 		logger.Println("This is a connected route, do nothing")
-		return
+		//return
 	}
 	mask:=net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
 	maskedIP:=route.destNetIp.Mask(mask)
@@ -330,7 +398,7 @@ func addLinuxRoute(route RouteInfoRecord) {
 	logger.Println("addLinuxRoute")
 	if route.protocol == ribdCommonDefs.CONNECTED {
 		logger.Println("This is a connected route, do nothing")
-		return
+		//return
 	}
 	mask:=net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
 	maskedIP:=route.destNetIp.Mask(mask)

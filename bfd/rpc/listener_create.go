@@ -20,18 +20,29 @@ func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobalConfig) 
 
 func (h *BFDHandler) SendBfdIntfConfig(bfdIntfConfig *bfdd.BfdIntfConfig) bool {
 	ifConf := server.IntfConfig{
-		InterfaceId:               bfdIntfConfig.Interface,
+		InterfaceId:               bfdIntfConfig.IfIndex,
 		LocalMultiplier:           bfdIntfConfig.LocalMultiplier,
 		DesiredMinTxInterval:      bfdIntfConfig.DesiredMinTxInterval,
 		RequiredMinRxInterval:     bfdIntfConfig.RequiredMinRxInterval,
 		RequiredMinEchoRxInterval: bfdIntfConfig.RequiredMinEchoRxInterval,
 		DemandEnabled:             bfdIntfConfig.DemandEnabled,
 		AuthenticationEnabled:     bfdIntfConfig.AuthenticationEnabled,
-		AuthenticationType:        bfdIntfConfig.AuthType,
+		AuthenticationType:        h.server.ConvertBfdAuthTypeStrToVal(bfdIntfConfig.AuthType),
 		AuthenticationKeyId:       bfdIntfConfig.AuthKeyId,
 		AuthenticationData:        bfdIntfConfig.AuthData,
 	}
 	h.server.IntfConfigCh <- ifConf
+	return true
+}
+
+func (h *BFDHandler) SendBfdSessionConfig(bfdSessionConfig *bfdd.BfdSessionConfig) bool {
+	sessionConf := server.SessionConfig{
+		DestIp:    bfdSessionConfig.IpAddr,
+		PerLink:   bfdSessionConfig.PerLink,
+		Protocol:  bfddCommonDefs.ConvertBfdSessionOwnerStrToVal(bfdSessionConfig.Owner),
+		Operation: bfddCommonDefs.ConvertBfdSessionOperationStrToVal(bfdSessionConfig.Operation),
+	}
+	h.server.SessionConfigCh <- sessionConf
 	return true
 }
 
@@ -54,11 +65,10 @@ func (h *BFDHandler) CreateBfdIntfConfig(bfdIntfConf *bfdd.BfdIntfConfig) (bool,
 }
 
 func (h *BFDHandler) CreateBfdSessionConfig(bfdSessionConf *bfdd.BfdSessionConfig) (bool, error) {
-	bfdSessionCommand := bfddCommonDefs.BfdSessionConfig{
-		DestIp:    bfdSessionConf.IpAddr,
-		Protocol:  int(bfdSessionConf.Owner),
-		Operation: int(bfdSessionConf.Operation),
+	if bfdSessionConf == nil {
+		err := errors.New("Invalid Session Configuration")
+		return false, err
 	}
-	h.server.SessionConfigCh <- bfdSessionCommand
-	return true, nil
+	h.logger.Info(fmt.Sprintln("Create session config attrs:", bfdSessionConf))
+	return h.SendBfdSessionConfig(bfdSessionConf), nil
 }

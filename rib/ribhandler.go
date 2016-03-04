@@ -6,6 +6,8 @@ import (
 	//	"portdServices"
 	"encoding/json"
 	"l3/rib/ribdCommonDefs"
+	"utils/policy"
+	 "utils/policy/policyCommonDefs"
 	"ribd"
 	"utils/patriciaDB"
 	//		"patricia"
@@ -178,7 +180,7 @@ func processL3IntfUpEvent(ipAddr string) {
 			ConnectedRoutes[i].IsValid = true
 	        policyRoute := ribd.Routes{Ipaddr: ConnectedRoutes[i].Ipaddr, Mask: ConnectedRoutes[i].Mask, NextHopIp: ConnectedRoutes[i].NextHopIp, NextHopIfType: ConnectedRoutes[i].NextHopIfType, IfIndex: ConnectedRoutes[i].IfIndex, Metric: ConnectedRoutes[i].Metric, Prototype: ConnectedRoutes[i].Prototype}
 	        params := RouteParams{destNetIp:ConnectedRoutes[i].Ipaddr, networkMask:ConnectedRoutes[i].Mask, nextHopIp:ConnectedRoutes[i].NextHopIp, nextHopIfType:ConnectedRoutes[i].NextHopIfType, nextHopIfIndex:ConnectedRoutes[i].IfIndex, metric:ConnectedRoutes[i].Metric, routeType:ConnectedRoutes[i].Prototype,sliceIdx: ConnectedRoutes[i].SliceIdx, createType:FIBOnly, deleteType:Invalid}
-	        PolicyEngineFilter(policyRoute, ribdCommonDefs.PolicyPath_Import, params)
+	        PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Import, params)
 /*
 			//Send a event
 			msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: *ConnectedRoutes[i]}
@@ -553,7 +555,22 @@ func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 	}
 	return pub
 }
-
+func InitializePolicyDB() {
+	PolicyEngineDB = policy.NewPolicyEngineDB()
+	PolicyEngineDB.SetDefaultImportPolicyActionFunc(defaultImportPolicyEngineActionFunc)
+	PolicyEngineDB.SetDefaultExportPolicyActionFunc(defaultExportPolicyEngineActionFunc)
+	PolicyEngineDB.SetIsEntityPresentFunc(DoesRouteExist)
+	PolicyEngineDB.SetEntityUpdateFunc(UpdateRouteAndPolicyDB)
+	PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineRouteDispositionAction)
+	PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionRedistribute)
+	PolicyEngineDB.SetActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionSetAdminDistance)
+	PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineUndoRouteDispositionAction)
+	PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionUndoRedistribute)
+	PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionUndoSetAdminDistance)
+	PolicyEngineDB.SetTraverseAndApplyPolicyFunc(policyEngineTraverseAndApply)
+	PolicyEngineDB.SetTraverseAndReversePolicyFunc(policyEngineTraverseAndReverse)
+	PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
+}
 func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
 	PARAMSDIR = paramsDir
@@ -567,6 +584,7 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	//CreateRoutes("RouteSetup.json")
+	InitializePolicyDB()
 	UpdateFromDB()//(paramsDir)
 	return &RouteServiceHandler{}
 }

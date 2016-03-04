@@ -15,6 +15,7 @@ type AreaConf struct {
         AreaSummary                             config.AreaSummary
         AreaNssaTranslatorRole                  config.NssaTranslatorRole
         AreaNssaTranslatorStabilityInterval     config.PositiveInteger
+        TransitCapability                       bool
 }
 
 type AreaState struct {

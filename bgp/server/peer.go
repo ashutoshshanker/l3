@@ -41,17 +41,18 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 		ifIdx:      -1,
 	}
 
+	peer.SetPeerConf(peerGroup, &peer.PeerConf)
 	peer.Neighbor.State = config.NeighborState{
-		PeerAS:           peerConf.PeerAS,
-		LocalAS:          peerConf.LocalAS,
-		AuthPassword:     peerConf.AuthPassword,
-		Description:      peerConf.Description,
-		NeighborAddress:  peerConf.NeighborAddress,
-		MultiHopEnable:   peerConf.MultiHopEnable,
-		MultiHopTTL:      peerConf.MultiHopTTL,
-		ConnectRetryTime: peerConf.ConnectRetryTime,
-		HoldTime:         peerConf.HoldTime,
-		KeepaliveTime:    peerConf.KeepaliveTime,
+		PeerAS:           peer.PeerConf.PeerAS,
+		LocalAS:          peer.PeerConf.LocalAS,
+		AuthPassword:     peer.PeerConf.AuthPassword,
+		Description:      peer.PeerConf.Description,
+		NeighborAddress:  peer.PeerConf.NeighborAddress,
+		MultiHopEnable:   peer.PeerConf.MultiHopEnable,
+		MultiHopTTL:      peer.PeerConf.MultiHopTTL,
+		ConnectRetryTime: peer.PeerConf.ConnectRetryTime,
+		HoldTime:         peer.PeerConf.HoldTime,
+		KeepaliveTime:    peer.PeerConf.KeepaliveTime,
 	}
 
 	if peerConf.LocalAS == peerConf.PeerAS {
@@ -59,8 +60,12 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 	} else {
 		peer.Neighbor.State.PeerType = config.PeerTypeExternal
 	}
+	if peer.PeerConf.BfdEnable {
+		peer.Neighbor.State.BfdNeighborState = "Up"
+	} else {
+		peer.Neighbor.State.BfdNeighborState = "Down"
+	}
 
-	peer.SetPeerConf(peerGroup, &peer.PeerConf)
 	peer.afiSafiMap, _ = packet.GetProtocolFromConfig(&peer.Neighbor.AfiSafis)
 	peer.fsmManager = NewFSMManager(&peer, globalConf, &peerConf)
 	return &peer
@@ -168,6 +173,7 @@ func (p *Peer) GetConfFromNeighbor(inConf *config.NeighborConfig, outConf *confi
 	}
 	outConf.NeighborAddress = inConf.NeighborAddress
 	outConf.PeerGroup = inConf.PeerGroup
+	outConf.BfdEnable = inConf.BfdEnable
 }
 
 func (p *Peer) setIfIdx(ifIdx int32) {
@@ -244,6 +250,10 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 		return false
 	}
 
+	if len(bgpMsg.Body.(*packet.BGPUpdate).NLRI) == 0 {
+		return true
+	}
+
 	if p.ASSize == 2 {
 		packet.Convert4ByteTo2ByteASPath(bgpMsg)
 	}
@@ -292,6 +302,7 @@ func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 }
 
 func (p *Peer) FSMStateChange(state BGPFSMState) {
+	p.logger.Info(fmt.Sprintf("Neighbor %s: FSMStateChange %d", p.Neighbor.NeighborAddress, state))
 	p.Neighbor.State.SessionState = uint32(state)
 }
 
