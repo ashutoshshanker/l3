@@ -43,16 +43,19 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 
 	peer.SetPeerConf(peerGroup, &peer.PeerConf)
 	peer.Neighbor.State = config.NeighborState{
-		PeerAS:           peer.PeerConf.PeerAS,
-		LocalAS:          peer.PeerConf.LocalAS,
-		AuthPassword:     peer.PeerConf.AuthPassword,
-		Description:      peer.PeerConf.Description,
-		NeighborAddress:  peer.PeerConf.NeighborAddress,
-		MultiHopEnable:   peer.PeerConf.MultiHopEnable,
-		MultiHopTTL:      peer.PeerConf.MultiHopTTL,
-		ConnectRetryTime: peer.PeerConf.ConnectRetryTime,
-		HoldTime:         peer.PeerConf.HoldTime,
-		KeepaliveTime:    peer.PeerConf.KeepaliveTime,
+		PeerAS:                  peer.PeerConf.PeerAS,
+		LocalAS:                 peer.PeerConf.LocalAS,
+		AuthPassword:            peer.PeerConf.AuthPassword,
+		Description:             peer.PeerConf.Description,
+		NeighborAddress:         peer.PeerConf.NeighborAddress,
+		RouteReflectorClusterId: peer.PeerConf.RouteReflectorClusterId,
+		RouteReflectorClient:    peer.PeerConf.RouteReflectorClient,
+		MultiHopEnable:          peer.PeerConf.MultiHopEnable,
+		MultiHopTTL:             peer.PeerConf.MultiHopTTL,
+		ConnectRetryTime:        peer.PeerConf.ConnectRetryTime,
+		HoldTime:                peer.PeerConf.HoldTime,
+		KeepaliveTime:           peer.PeerConf.KeepaliveTime,
+		PeerGroup:               peer.PeerConf.PeerGroup,
 	}
 
 	if peerConf.LocalAS == peerConf.PeerAS {

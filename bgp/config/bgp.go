@@ -91,6 +91,7 @@ type NeighborState struct {
 	HoldTime                uint32
 	KeepaliveTime           uint32
 	BfdNeighborState        string
+	PeerGroup               string
 }
 
 type TransportConfig struct {

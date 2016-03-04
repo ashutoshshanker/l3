@@ -181,7 +181,7 @@ struct BGPNeighborState {
 	14: i32 ConnectRetryTime,
 	15: i32 HoldTime,
 	16: i32 KeepaliveTime,
-	17: string GroupName,
+	17: string PeerGroup,
 	18: string BfdNeighborState
 }
 
