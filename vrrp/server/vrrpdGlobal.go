@@ -129,10 +129,11 @@ const (
 	VRRP_CHECKSUM_ERR                   = "VRRP checksum failure"
 
 	// VRRP multicast ip address for join
-	VRRP_GROUP_IP   = "224.0.0.18"
-	VRRP_BPF_FILTER = "ip host " + VRRP_GROUP_IP
-	VRRP_DST_MAC    = "01:00:5e:00:00:12"
-	VRRP_PROTO_ID   = 112
+	VRRP_GROUP_IP     = "224.0.0.18"
+	VRRP_BPF_FILTER   = "ip host " + VRRP_GROUP_IP
+	VRRP_PROTOCOL_MAC = "01:00:5e:00:00:12"
+	VRRP_MAC_MASK     = "ff:ff:ff:ff:ff:ff"
+	VRRP_PROTO_ID     = 112
 
 	// Default Size
 	VRRP_GLOBAL_INFO_DEFAULT_SIZE         = 50
