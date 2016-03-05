@@ -472,12 +472,14 @@ func (m RouteServiceHandler) GetConnectedRoutesInfo() (routes []*ribd.Routes, er
 	return routes, err
 }
 func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIntf *ribd.NextHopInfo, err error) {
+	logger.Println("GetRouteReachabilityInfo")
 	t1 := time.Now()
 	var retnextHopIntf ribd.NextHopInfo
 	nextHopIntf = &retnextHopIntf
 	var found bool
 	destNetIp, err := getIP(destNet)
 	if err != nil {
+		logger.Println("getIP returned Invalid dest ip address for ", destNet)
 		return nextHopIntf, errors.New("Invalid dest ip address")
 	}
 	rmapInfoListItem := RouteInfoMap.GetLongestPrefixNode(patriciaDB.Prefix(destNetIp))
@@ -501,12 +503,12 @@ func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIn
 	}
 
 	if found == false {
-		logger.Printf("dest IP %s not reachable\n", destNetIp)
+		logger.Println("dest IP", destNetIp, " not reachable ")
 		err = errors.New("dest ip address not reachable")
 	}
 	duration := time.Since(t1)
-	logger.Printf("time to get longestPrefixLen = %d\n", duration.Nanoseconds())
-	logger.Printf("next hop ip of the route = %s\n", nextHopIntf.NextHopIfIndex)
+	logger.Println("time to get longestPrefixLen = ", duration.Nanoseconds())
+	logger.Println("next hop ip of the route = ", nextHopIntf.NextHopIfIndex)
 	return nextHopIntf, err
 }
 func (m RouteServiceHandler) GetRoute(destNetIp string, networkMask string) (route *ribd.Routes, err error) {
