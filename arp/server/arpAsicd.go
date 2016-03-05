@@ -24,7 +24,7 @@ func (server *ARPServer) createASICdSubscriber() {
 			server.asicdSubSocketErrCh <- err
 			continue
 		}
-		server.logger.Info(fmt.Sprintln("ASIC subscriber recv returned:", asicdrxBuf))
+		//server.logger.Info(fmt.Sprintln("ASIC subscriber recv returned:", asicdrxBuf))
 		server.asicdSubSocketCh <- asicdrxBuf
 	}
 }

@@ -5,7 +5,6 @@ import (
         "time"
         "utils/commonDefs"
         "asicd/asicdConstDefs"
-        //"asicd/pluginManager/pluginCommon"
 )
 
 type UpdateArpEntryMsg struct {
@@ -200,7 +199,7 @@ func (server *ARPServer)processArpCounterUpdateMsg() {
         oneMinCnt := (60/server.timerGranularity)
         thirtySecCnt := (30/server.timerGranularity)
         for ip, arpEnt := range server.arpCache {
-                if arpEnt.Counter == server.minCnt {
+                if arpEnt.Counter <= server.minCnt {
                         server.deleteArpEntryInDB(ip)
                         delete(server.arpCache, ip)
                         server.logger.Info(fmt.Sprintln("5 Calling Asicd Delete Ip:", ip))

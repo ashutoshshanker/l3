@@ -1,7 +1,7 @@
 package server
 
 import (
-        "fmt"
+//        "fmt"
         "time"
 )
 
@@ -19,7 +19,7 @@ func (server *ARPServer)GetBulkArpEntry(idx int, cnt int) (int, int, []ArpState)
         result := make([]ArpState, cnt)
         var i int
         var j int
-        server.logger.Info(fmt.Sprintln("idx:", idx, "cnt:", cnt, "length of Arp Slice", length))
+        //server.logger.Info(fmt.Sprintln("idx:", idx, "cnt:", cnt, "length of Arp Slice", length))
         for i, j = 0, idx; i < cnt && j < length; j++ {
                 arpSliceEnt := server.arpSlice[j]
                 arpEnt, exist := server.arpCache[arpSliceEnt]

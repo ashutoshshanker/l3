@@ -65,15 +65,16 @@ func (server *ARPServer)updateArpCacheFromDB() {
                 ent.PortNum = port
             server.arpCache[ip] = ent
         }
+        server.logger.Info(fmt.Sprintln("Arp Cache after restoring: ", server.arpCache))
 
 }
 
 func (server *ARPServer) refreshArpDB() {
         var dbCmd string
         dbCmd = "DELETE FROM ARPCache ;"
-        server.logger.Info(dbCmd)
+        //server.logger.Info(dbCmd)
         if server.dbHdl != nil {
-            server.logger.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
+            //server.logger.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
             _, err := dbutils.ExecuteSQLStmt(dbCmd, server.dbHdl)
             if err != nil {
                 server.logger.Err(fmt.Sprintln("Failed to Delete all ARP entries from DB"))
@@ -86,9 +87,9 @@ func (server *ARPServer) refreshArpDB() {
 
 func (server *ARPServer) deleteArpEntryInDB(ipAddr string) {
         dbCmd := fmt.Sprintf(`DELETE FROM ARPCache WHERE ipAddr='%s';`, ipAddr)
-        server.logger.Info(dbCmd)
+        //server.logger.Info(dbCmd)
         if server.dbHdl != nil {
-            server.logger.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
+            //server.logger.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
             _, err := dbutils.ExecuteSQLStmt(dbCmd, server.dbHdl)
             if err != nil {
                 server.logger.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for:", ipAddr))

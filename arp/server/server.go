@@ -147,7 +147,7 @@ func (server *ARPServer)initArpParams() {
         server.probeMax = 10
         server.arpSliceRefreshDuration = time.Duration(10) * time.Minute
         server.usrConfDbName = "UsrConfDb.db"
-        server.dumpArpTable = true
+        server.dumpArpTable = false
 }
 
 func (server *ARPServer) connectToClients(paramsFile string) {

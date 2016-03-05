@@ -7,7 +7,7 @@ import (
         "asicd/asicdConstDefs"
         "github.com/google/gopacket"
         "github.com/google/gopacket/layers"
-        //"github.com/google/gopacket/pcap"
+        "github.com/google/gopacket/pcap"
 
 )
 
@@ -33,6 +33,30 @@ func (server *ARPServer) StartArpRx(port int) {
         server.processRxPkts(port)
 }
 */
+
+func (server *ARPServer) StartArpRxTx(port int) {
+        portEnt, _ := server.portPropMap[port]
+        //filter := fmt.Sprintf("not ether src", portEnt.MacAddr, "and not ether proto 0x8809")
+        filter := fmt.Sprintf(`not ether src %s`, portEnt.MacAddr)
+        filter = filter +  " and not ether proto 0x8809"
+        server.logger.Info(fmt.Sprintln("Port: ", port, "Pcap filter:", filter))
+        pcapHdl, err := pcap.OpenLive(portEnt.IfName, server.snapshotLen, server.promiscuous, server.pcapTimeout)
+        if pcapHdl == nil {
+                server.logger.Info(fmt.Sprintln("Unable to open pcap handler on:", portEnt.IfName, "error:", err))
+                return
+        } else {
+                err := pcapHdl.SetBPFFilter(filter)
+                if err != nil {
+                        server.logger.Err(fmt.Sprintln("Unable to set filter on port:", port))
+                }
+        }
+
+        portEnt.PcapHdl = pcapHdl
+        server.portPropMap[port] = portEnt
+        go server.processRxPkts(port)
+        server.logger.Info(fmt.Sprintln("Send Arp Probe on port:", port))
+        go server.SendArpProbe(port)
+}
 
 func (server *ARPServer) processRxPkts(port int) {
         portEnt, _ := server.portPropMap[port]
@@ -85,7 +109,6 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
         srcIp := (net.IP(arp.SourceProtAddress)).String()
         destIp := (net.IP(arp.DstProtAddress)).String()
 
-        // TODO
         /* Check for Local Subnet for SrcIP */
         /* Check for Local Subnet for DestIP */
         if srcIp != "0.0.0.0" {
@@ -117,7 +140,7 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                 }
         }
 
-        server.logger.Info(fmt.Sprintln("Received Arp Request SrcIP:", srcIp, "SrcMAC: ", srcMac, "DstIP:", destIp))
+        //server.logger.Info(fmt.Sprintln("Received Arp Request SrcIP:", srcIp, "SrcMAC: ", srcMac, "DstIP:", destIp))
 
         srcExist := false
         destExist := false
@@ -183,7 +206,6 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                         }
                 }
         } else if srcExist == true {
-                // Since SrcIP is not my IP installing 
                 server.logger.Info(fmt.Sprintln("Received our own ARP Request with SrcIP:", srcIp, "DestIP:", destIp))
         } else if destExist == true {
                 server.logger.Info(fmt.Sprintln("Received ARP Request for our IP with SrcIP:", srcIp, "DestIP:", destIp, "linux should respond to this request"))
@@ -203,18 +225,17 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
 func (server *ARPServer) processArpReply(arp *layers.ARP, port int) {
         srcMac := (net.HardwareAddr(arp.SourceHwAddress)).String()
         srcIp := (net.IP(arp.SourceProtAddress)).String()
-        destMac := (net.HardwareAddr(arp.DstHwAddress)).String()
+        //destMac := (net.HardwareAddr(arp.DstHwAddress)).String()
         destIp := (net.IP(arp.DstProtAddress)).String()
 
 
-        server.logger.Info(fmt.Sprintln("Received Arp Response SrcIP:", srcIp, "SrcMAC: ", srcMac, "DstIP:", destIp, "DestMac:", destMac))
+        //server.logger.Info(fmt.Sprintln("Received Arp Response SrcIP:", srcIp, "SrcMAC: ", srcMac, "DstIP:", destIp, "DestMac:", destMac))
 
         if destIp == "0.0.0.0" {
                 server.logger.Err(fmt.Sprintln("Recevied Arp reply for ARP Probe and there is a conflicting IP Address:", srcIp))
                 return
         }
 
-        // TODO
         /* Check for Local Subnet for SrcIP */
         /* Check for Local Subnet for DestIP */
         portEnt, _ := server.portPropMap[port]

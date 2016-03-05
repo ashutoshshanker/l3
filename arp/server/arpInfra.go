@@ -23,7 +23,6 @@ type PortProperty struct {
         L3IfIdx                 int
         LagIfIdx                int
         CtrlCh                  chan bool
-        //PcapHdlMutex            *sync.Mutex
         PcapHdl                 *pcap.Handle
 }
 
@@ -411,14 +410,14 @@ func (server *ARPServer)constructVlanInfra() {
                         break
                 }
         }
-        server.logger.Info(fmt.Sprintln("Vlan Property Map:", server.vlanPropMap))
+        //server.logger.Info(fmt.Sprintln("Vlan Property Map:", server.vlanPropMap))
 }
 
 func (server *ARPServer)updateVlanInfra(msg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
         vlanId := int(msg.VlanId)
         ifIdx := int(asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(vlanId, commonDefs.L2RefTypeVlan))
         portList := msg.UntagPorts
-        server.logger.Info(fmt.Sprintln("Vlan Property Map:", server.vlanPropMap))
+        //server.logger.Info(fmt.Sprintln("Vlan Property Map:", server.vlanPropMap))
         vlanEnt, _ := server.vlanPropMap[ifIdx]
         if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // VLAN CREATE
                 server.logger.Info(fmt.Sprintln("Received Vlan Create or Update Notification Vlan:", vlanId, "PortList:", portList))
@@ -464,13 +463,13 @@ func (server *ARPServer)updateVlanInfra(msg asicdConstDefs.VlanNotifyMsg, msgTyp
                 vlanEnt.UntagPortMap = nil
                 delete(server.vlanPropMap, ifIdx)
         }
-        server.logger.Info(fmt.Sprintln("Vlan Property Map:", server.vlanPropMap))
+        //server.logger.Info(fmt.Sprintln("Vlan Property Map:", server.vlanPropMap))
 }
 
 func (server *ARPServer)updateLagInfra(msg asicdConstDefs.LagNotifyMsg, msgType uint8) {
         ifIdx := int(msg.IfIndex)
         portList := msg.IfIndexList
-        server.logger.Info(fmt.Sprintln("Lag Property Map:", server.lagPropMap))
+        //server.logger.Info(fmt.Sprintln("Lag Property Map:", server.lagPropMap))
         lagEnt, _ := server.lagPropMap[ifIdx]
         if msgType == asicdConstDefs.NOTIFY_LAG_CREATE {
                 server.logger.Info(fmt.Sprintln("Received Lag Create Notification IfIdx:", ifIdx, "PortList:", portList))
@@ -531,7 +530,7 @@ func (server *ARPServer)updateLagInfra(msg asicdConstDefs.LagNotifyMsg, msgType 
                 lagEnt.PortMap = nil
                 delete(server.lagPropMap, ifIdx)
         }
-        server.logger.Info(fmt.Sprintln("Lag Property Map:", server.lagPropMap))
+        //server.logger.Info(fmt.Sprintln("Lag Property Map:", server.lagPropMap))
 }
 
 /*
@@ -567,28 +566,3 @@ func (server *ARPServer)constructLagInfra() {
         }
 }
 */
-
-func (server *ARPServer) StartArpRxTx(port int) {
-        portEnt, _ := server.portPropMap[port]
-        //filter := fmt.Sprintf("not ether src", portEnt.MacAddr, "and not ether proto 0x8809")
-        filter := fmt.Sprintf(`not ether src %s`, portEnt.MacAddr)
-        filter = filter +  " and not ether proto 0x8809"
-        server.logger.Info(fmt.Sprintln("*************Port: ", port, "filter:", filter, "********************"))
-        pcapHdl, err := pcap.OpenLive(portEnt.IfName, server.snapshotLen, server.promiscuous, server.pcapTimeout)
-        if pcapHdl == nil {
-                server.logger.Info(fmt.Sprintln("Unable to open pcap handler on:", portEnt.IfName, "error:", err))
-                return
-        } else {
-                err := pcapHdl.SetBPFFilter(filter)
-                if err != nil {
-                        server.logger.Err(fmt.Sprintln("Unable to set filter on port:", port))
-                }
-        }
-
-        portEnt.PcapHdl = pcapHdl
-        //portEnt.pcapMutex = make(sync.Mutex)
-        server.portPropMap[port] = portEnt
-        go server.processRxPkts(port)
-        server.logger.Info(fmt.Sprintln("Send Arp Probe on port:", port))
-        go server.SendArpProbe(port)
-}
