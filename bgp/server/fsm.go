@@ -836,7 +836,7 @@ func NewFSM(fsmManager *FSMManager, id uint8, peer *Peer) *FSM {
 		autoStart:        true,
 		autoStop:         true,
 		passiveTcpEst:    false,
-		passiveTcpEstCh:  make(chan bool),
+		passiveTcpEstCh:  make(chan bool, 2),
 		dampPeerOscl:     false,
 		idleHoldTime:     BGPIdleHoldTimeDefault,
 		afiSafiMap:       make(map[uint32]bool),

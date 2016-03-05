@@ -10,7 +10,6 @@ import (
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
 	"l3/bfd/bfddCommonDefs"
-	"log/syslog"
 	"net"
 	"os"
 	"os/signal"
@@ -18,7 +17,9 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+	"utils/dbutils"
 	"utils/ipcutils"
+	"utils/logging"
 )
 
 var (
@@ -65,7 +66,9 @@ type BfdSessionMgmt struct {
 
 type BfdSession struct {
 	state             SessionState
+	rxInterval        int32
 	sessionTimer      *time.Timer
+	txInterval        int32
 	txTimer           *time.Timer
 	TxTimeoutCh       chan int32
 	SessionTimeoutCh  chan int32
@@ -98,7 +101,7 @@ type BfdGlobal struct {
 }
 
 type BFDServer struct {
-	logger              *syslog.Writer
+	logger              *logging.Writer
 	ribdClient          RibdClient
 	asicdClient         AsicdClient
 	GlobalConfigCh      chan GlobalConfig
@@ -122,7 +125,7 @@ type BFDServer struct {
 	bfdGlobal           BfdGlobal
 }
 
-func NewBFDServer(logger *syslog.Writer) *BFDServer {
+func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer := &BFDServer{}
 	bfdServer.logger = logger
 	bfdServer.GlobalConfigCh = make(chan GlobalConfig)
@@ -258,29 +261,21 @@ func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdGlobalConfig: ", err))
-		dbHdl.Close()
 		return err
 	}
 
 	for rows.Next() {
 		var rtrBfd string
 		var enable int
-		var enableBool bool
 		err = rows.Scan(&rtrBfd, &enable)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdGlobalConfig: ", err))
-			dbHdl.Close()
 			return err
 		}
-		if enable == 1 {
-			enableBool = true
-		} else {
-			enableBool = false
-		}
-		server.logger.Info(fmt.Sprintln("BfdGlobalConfig - Enable: ", enableBool))
-		if !enableBool {
+		server.logger.Info(fmt.Sprintln("BfdGlobalConfig - Enable: ", enable))
+		if enable != 1 {
 			gConf := GlobalConfig{
-				Enable: enableBool,
+				Enable: dbutils.ConvertIntToBool(enable),
 			}
 			server.GlobalConfigCh <- gConf
 		}
@@ -294,7 +289,6 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdIntfConfig: ", err))
-		dbHdl.Close()
 		return err
 	}
 
@@ -305,27 +299,14 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 		var requiredMinRxInterval int32
 		var requiredMinEchoRxInterval int32
 		var demandEnabled int
-		var demandEnabledBool bool
 		var authenticationEnabled int
-		var authenticationEnabledBool bool
 		var authenticationType string
 		var authenticationKeyId int32
 		var authenticationData string
 		err = rows.Scan(&interfaceId, &localMultiplier, &desiredMinTxInterval, &requiredMinRxInterval, &requiredMinEchoRxInterval, &demandEnabled, &authenticationEnabled, &authenticationType, &authenticationKeyId, &authenticationData)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdIntfConfig: ", err))
-			dbHdl.Close()
 			return err
-		}
-		if demandEnabled == 1 {
-			demandEnabledBool = true
-		} else {
-			demandEnabledBool = false
-		}
-		if demandEnabled == 1 {
-			demandEnabledBool = true
-		} else {
-			demandEnabledBool = false
 		}
 		ifConf := IntfConfig{
 			InterfaceId:               interfaceId,
@@ -333,8 +314,8 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 			DesiredMinTxInterval:      desiredMinTxInterval,
 			RequiredMinRxInterval:     requiredMinRxInterval,
 			RequiredMinEchoRxInterval: requiredMinEchoRxInterval,
-			DemandEnabled:             demandEnabledBool,
-			AuthenticationEnabled:     authenticationEnabledBool,
+			DemandEnabled:             dbutils.ConvertIntToBool(demandEnabled),
+			AuthenticationEnabled:     dbutils.ConvertIntToBool(authenticationEnabled),
 			AuthenticationType:        server.ConvertBfdAuthTypeStrToVal(authenticationType),
 			AuthenticationKeyId:       authenticationKeyId,
 			AuthenticationData:        authenticationData,
@@ -351,30 +332,22 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdSessionConfig: ", err))
-		dbHdl.Close()
 		return err
 	}
 
 	for rows.Next() {
 		var dstIp string
 		var perLink int
-		var perLinkBool bool
 		var owner string
 		var operation string
-		err = rows.Scan(&dstIp, &owner, &operation)
+		err = rows.Scan(&dstIp, &perLink, &owner, &operation)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSessionConfig: ", err))
-			dbHdl.Close()
 			return err
-		}
-		if perLink == 1 {
-			perLinkBool = true
-		} else {
-			perLinkBool = false
 		}
 		sessionConf := SessionConfig{
 			DestIp:    dstIp,
-			PerLink:   perLinkBool,
+			PerLink:   dbutils.ConvertIntToBool(perLink),
 			Protocol:  bfddCommonDefs.USER,
 			Operation: bfddCommonDefs.CREATE,
 		}
@@ -386,6 +359,7 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 
 func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB) error {
 	var err error
+	defer dbHdl.Close()
 	// BfdGlobalConfig
 	err = server.ReadGlobalConfigFromDB(dbHdl)
 	if err != nil {
@@ -401,7 +375,6 @@ func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	dbHdl.Close()
 	return nil
 }
 

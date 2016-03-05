@@ -54,6 +54,11 @@ func (session *BfdSession) StartPerLinkSessionServer(bfdServer *BFDServer) error
 		appLayer := receivedPacket.ApplicationLayer()
 		bfdServer.logger.Info(fmt.Sprintln("Application ", appLayer))
 
+		if bytes.Equal(ethPacket.SrcMAC, myMacAddr) {
+			bfdServer.logger.Info(fmt.Sprintln("My packet looped back"))
+			continue
+		}
+
 		buf := transLayer.LayerPayload()
 		if len(buf) >= DEFAULT_CONTROL_PACKET_LEN {
 			bfdPacket, err := DecodeBfdControlPacket(buf)

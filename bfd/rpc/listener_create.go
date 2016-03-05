@@ -4,10 +4,8 @@ import (
 	"bfdd"
 	"errors"
 	"fmt"
-	"l3/bfd/server"
-	//"log/syslog"
-	//"net"
 	"l3/bfd/bfddCommonDefs"
+	"l3/bfd/server"
 )
 
 func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobalConfig) bool {
