@@ -214,7 +214,7 @@ struct BGPRoute {
 	3: string NextHop
 	4: i32 Metric
 	5: i32 LocalPref
-	6: list<i32> Path
+	6: list<list<i32>> Path
 	7: string Updated
 	8: list<string> PolicyList
 	9: int PolicyHitCounter,
