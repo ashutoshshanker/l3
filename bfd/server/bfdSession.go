@@ -16,20 +16,46 @@ import (
 	"utils/commonDefs"
 )
 
-func (server *BFDServer) processSessionConfig(sessionConfig SessionConfig) error {
-	var sessionMgmt BfdSessionMgmt
-	sessionMgmt.DestIp = sessionConfig.DestIp
-	sessionMgmt.Protocol = sessionConfig.Protocol
-	sessionMgmt.PerLink = sessionConfig.PerLink
-	switch sessionConfig.Operation {
-	case bfddCommonDefs.CREATE:
-		server.CreateSessionCh <- sessionMgmt
-	case bfddCommonDefs.DELETE:
-		server.DeleteSessionCh <- sessionMgmt
-	case bfddCommonDefs.ADMINUP:
-		server.AdminUpSessionCh <- sessionMgmt
-	case bfddCommonDefs.ADMINDOWN:
-		server.AdminDownSessionCh <- sessionMgmt
+func (server *BFDServer) StartSessionHandler() error {
+	server.CreateSessionCh = make(chan BfdSessionMgmt)
+	server.DeleteSessionCh = make(chan BfdSessionMgmt)
+	server.AdminUpSessionCh = make(chan BfdSessionMgmt)
+	server.AdminDownSessionCh = make(chan BfdSessionMgmt)
+	server.CreatedSessionCh = make(chan int32)
+	//go server.StartBfdSessionDiscoverer()
+	go server.StartBfdSessionRxTx()
+	for {
+		select {
+		case sessionMgmt := <-server.CreateSessionCh:
+			server.CreateBfdSession(sessionMgmt)
+		case sessionMgmt := <-server.DeleteSessionCh:
+			server.DeleteBfdSession(sessionMgmt)
+		case sessionMgmt := <-server.AdminUpSessionCh:
+			server.AdminUpBfdSession(sessionMgmt)
+		case sessionMgmt := <-server.AdminDownSessionCh:
+			server.AdminDownBfdSession(sessionMgmt)
+
+		}
+	}
+	return nil
+}
+
+func (server *BFDServer) StartBfdSessionDiscoverer() error {
+	destAddr := ":" + strconv.Itoa(DEST_PORT)
+	DefaultListener, err := net.Listen("udp", destAddr)
+	if err != nil {
+		server.logger.Info(fmt.Sprintln("Failed Listener creation - ", err))
+		return nil
+	}
+	defer DefaultListener.Close()
+	for {
+		conn, err := DefaultListener.Accept()
+		if err != nil {
+			server.logger.Info(fmt.Sprintln("Failed to accept connection - ", err))
+		} else {
+			server.logger.Info(fmt.Sprintln("Received connection from ", conn.RemoteAddr().String()))
+			go server.ReadFromConnection(conn)
+		}
 	}
 	return nil
 }
@@ -62,26 +88,34 @@ func (server *BFDServer) StartBfdSessionRxTx() error {
 	return nil
 }
 
-func (server *BFDServer) StartSessionHandler() error {
-	server.CreateSessionCh = make(chan BfdSessionMgmt)
-	server.DeleteSessionCh = make(chan BfdSessionMgmt)
-	server.AdminUpSessionCh = make(chan BfdSessionMgmt)
-	server.AdminDownSessionCh = make(chan BfdSessionMgmt)
-	server.CreatedSessionCh = make(chan int32)
-	go server.StartBfdSessionRxTx()
-	for {
-		select {
-		case sessionMgmt := <-server.CreateSessionCh:
-			server.CreateBfdSession(sessionMgmt)
-		case sessionMgmt := <-server.DeleteSessionCh:
-			server.DeleteBfdSession(sessionMgmt)
-		case sessionMgmt := <-server.AdminUpSessionCh:
-			server.AdminUpBfdSession(sessionMgmt)
-		case sessionMgmt := <-server.AdminDownSessionCh:
-			server.AdminDownBfdSession(sessionMgmt)
-
-		}
+func (server *BFDServer) processSessionConfig(sessionConfig SessionConfig) error {
+	sessionMgmt := BfdSessionMgmt{
+		DestIp:   sessionConfig.DestIp,
+		Protocol: sessionConfig.Protocol,
+		PerLink:  sessionConfig.PerLink,
 	}
+	switch sessionConfig.Operation {
+	case bfddCommonDefs.CREATE:
+		server.CreateSessionCh <- sessionMgmt
+	case bfddCommonDefs.DELETE:
+		server.DeleteSessionCh <- sessionMgmt
+	case bfddCommonDefs.ADMINUP:
+		server.AdminUpSessionCh <- sessionMgmt
+	case bfddCommonDefs.ADMINDOWN:
+		server.AdminDownSessionCh <- sessionMgmt
+	}
+	return nil
+}
+
+func (server *BFDServer) ReadFromConnection(conn net.Conn) error {
+	defer conn.Close()
+	sessionConf := SessionConfig{
+		DestIp:    conn.RemoteAddr().String(),
+		PerLink:   false,
+		Protocol:  bfddCommonDefs.DISC,
+		Operation: bfddCommonDefs.CREATE,
+	}
+	server.processSessionConfig(sessionConf)
 	return nil
 }
 
@@ -122,6 +156,8 @@ func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLi
 	bfdSession.state.LocalDiagType = DIAG_NONE
 	intf, exist := server.bfdGlobal.Interfaces[bfdSession.state.InterfaceId]
 	if exist {
+		bfdSession.txInterval = STARTUP_TX_INTERVAL / 1000
+		bfdSession.rxInterval = (STARTUP_RX_INTERVAL * intf.conf.LocalMultiplier) / 1000
 		bfdSession.state.LocalIpAddr = intf.property.IpAddr.String()
 		bfdSession.state.DesiredMinTxInterval = intf.conf.DesiredMinTxInterval
 		bfdSession.state.RequiredMinRxInterval = intf.conf.RequiredMinRxInterval
@@ -398,7 +434,7 @@ func (session *BfdSession) StartSessionServer(bfdServer *BFDServer) error {
 	defer ServerConn.Close()
 	buf := make([]byte, 1024)
 	for {
-		len, addr, err := ServerConn.ReadFromUDP(buf)
+		len, _, err := ServerConn.ReadFromUDP(buf)
 		if err != nil {
 			fmt.Println("Failed to read from ", ServerAddr)
 		} else {
@@ -406,12 +442,12 @@ func (session *BfdSession) StartSessionServer(bfdServer *BFDServer) error {
 				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
 				if err == nil {
 					sessionId := int32(bfdPacket.YourDiscriminator)
-					if sessionId == 0 {
-						fmt.Println("Ignore bfd packet for session ", sessionId, " from ", addr)
-					} else {
+					if sessionId != 0 {
 						bfdSession := bfdServer.bfdGlobal.Sessions[sessionId]
-						bfdSession.state.NumRxPackets++
-						bfdSession.ProcessBfdPacket(bfdPacket)
+						if bfdSession != nil {
+							bfdSession.state.NumRxPackets++
+							bfdSession.ProcessBfdPacket(bfdPacket)
+						}
 					}
 				} else {
 					fmt.Println("Failed to decode packet - ", err)
@@ -536,7 +572,8 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	session.RemoteChangedDemandMode(bfdPacket)
 	session.ProcessPollSequence(bfdPacket)
 	session.sessionTimer.Stop()
-	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier / 1000)
+	session.rxInterval = (int32(bfdPacket.DesiredMinTxInterval) * int32(bfdPacket.MyDiscriminator)) / 1000
+	sessionTimeoutMS := time.Duration(session.rxInterval)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
 	return nil
 }
@@ -559,7 +596,7 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 		}
 		if wasDemand && !isDemand {
 			fmt.Sprintln("Disabled demand for session ", session.state.SessionId)
-			sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier / 1000)
+			sessionTimeoutMS := time.Duration(session.rxInterval)
 			session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
 		}
 	}
@@ -622,8 +659,8 @@ func (session *BfdSession) SendBfdNotification() error {
 
 // Restart session that was stopped earlier due to global Bfd disable.
 func (session *BfdSession) StartBfdSession() error {
-	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier / 1000)
-	txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
+	sessionTimeoutMS := time.Duration(session.rxInterval)
+	txTimerMS := time.Duration(session.txInterval)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
 	session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session.state.SessionId })
 	session.state.SessionState = STATE_DOWN
@@ -691,6 +728,7 @@ func (session *BfdSession) MoveToDownState() error {
 	}
 	session.useDedicatedMac = true
 	session.SendBfdNotification()
+	session.txInterval = STARTUP_TX_INTERVAL / 1000
 	session.txTimer.Reset(0)
 	return nil
 }
@@ -698,6 +736,7 @@ func (session *BfdSession) MoveToDownState() error {
 func (session *BfdSession) MoveToInitState() error {
 	session.state.SessionState = STATE_INIT
 	session.useDedicatedMac = true
+	session.txInterval = STARTUP_TX_INTERVAL / 1000
 	session.txTimer.Reset(0)
 	return nil
 }
@@ -706,6 +745,7 @@ func (session *BfdSession) MoveToUpState() error {
 	session.state.SessionState = STATE_UP
 	session.state.LocalDiagType = DIAG_NONE
 	session.SendBfdNotification()
+	session.txInterval = session.state.DesiredMinTxInterval / 1000
 	session.txTimer.Reset(0)
 	return nil
 }
@@ -725,8 +765,8 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 	if err != nil {
 		fmt.Println("Failed DialUDP ", ClientAddr, ServerAddr, err)
 	}
-	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier / 1000)
-	txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
+	sessionTimeoutMS := time.Duration(session.rxInterval)
+	txTimerMS := time.Duration(session.txInterval)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
 	session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session.state.SessionId })
 	defer Conn.Close()
@@ -746,7 +786,7 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 					bfdSession.state.NumTxPackets++
 				}
 				bfdSession.txTimer.Stop()
-				txTimerMS = time.Duration(bfdSession.state.DesiredMinTxInterval / 1000)
+				txTimerMS = time.Duration(bfdSession.txInterval)
 				bfdSession.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { bfdSession.TxTimeoutCh <- bfdSession.state.SessionId })
 			}
 		case sessionId := <-session.SessionTimeoutCh:
@@ -754,7 +794,7 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 			bfdSession.state.LocalDiagType = DIAG_TIME_EXPIRED
 			bfdSession.EventHandler(TIMEOUT)
 			bfdSession.sessionTimer.Stop()
-			sessionTimeoutMS = time.Duration(bfdSession.state.RequiredMinRxInterval * bfdSession.state.DetectionMultiplier / 1000)
+			sessionTimeoutMS = time.Duration(bfdSession.rxInterval)
 			bfdSession.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { bfdSession.SessionTimeoutCh <- bfdSession.state.SessionId })
 		case <-session.SessionDeleteCh:
 			return nil
@@ -771,7 +811,7 @@ func (session *BfdSession) RemoteChangedDemandMode(bfdPacket *BfdControlPacket) 
 		session.txTimer.Stop()
 	}
 	if wasDemandMode && !isDemandMode {
-		txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
+		txTimerMS := time.Duration(session.txInterval)
 		session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session.state.SessionId })
 	}
 	return nil
