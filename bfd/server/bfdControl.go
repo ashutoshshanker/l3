@@ -117,6 +117,8 @@ const (
 	SRC_PORT                              = 49152
 	DEST_PORT_LAG                         = 6784
 	SRC_PORT_LAG                          = 49153
+	STARTUP_TX_INTERVAL                   = 2000000
+	STARTUP_RX_INTERVAL                   = 2000000
 	//DEDICATED_MAC                         = net.HardwareAddr{0x01, 0x00, 0x5E, 0x90, 0x00, 0x01}
 )
 

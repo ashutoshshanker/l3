@@ -15,10 +15,11 @@ type BfdSessionOwner int32
 
 // Owner
 const (
-	USER              BfdSessionOwner = 1
-	BGP               BfdSessionOwner = 2
-	OSPF              BfdSessionOwner = 3
-	MAX_NUM_PROTOCOLS BfdSessionOwner = 4
+	DISC              BfdSessionOwner = 1
+	USER              BfdSessionOwner = 2
+	BGP               BfdSessionOwner = 3
+	OSPF              BfdSessionOwner = 4
+	MAX_NUM_PROTOCOLS BfdSessionOwner = 5
 )
 
 type BfdSessionOperation int32
@@ -34,6 +35,8 @@ const (
 func ConvertBfdSessionOwnerStrToVal(owner string) BfdSessionOwner {
 	var ownerVal BfdSessionOwner
 	switch owner {
+	case "discover":
+		ownerVal = DISC
 	case "user":
 		ownerVal = USER
 	case "bgp":
@@ -47,6 +50,8 @@ func ConvertBfdSessionOwnerStrToVal(owner string) BfdSessionOwner {
 func ConvertBfdSessionOwnerValToStr(owner BfdSessionOwner) string {
 	var ownerStr string
 	switch owner {
+	case DISC:
+		ownerStr = "discover"
 	case USER:
 		ownerStr = "user"
 	case BGP:
