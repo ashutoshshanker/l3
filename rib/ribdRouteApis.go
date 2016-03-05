@@ -284,15 +284,10 @@ func (m RouteServiceHandler) 	 GetBulkIPV4EventState( fromIndex ribd.Int, rcount
 func (m RouteServiceHandler) GetBulkRoutesForProtocol(srcProtocol string, fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.RoutesGetInfo, err error) {
 	logger.Println("GetBulkRoutesForProtocol")
 	var i, validCount, toIndex ribd.Int
-//	var temproute []ribd.Routes = make([]ribd.Routes, rcount)
 	var nextRoute *ribd.Routes
 	var returnRoutes []*ribd.Routes
 	var returnRouteGetInfo ribd.RoutesGetInfo
-	//var prefixNodeRouteList RouteInfoRecordList
-	//var prefixNodeRoute RouteInfoRecord
 	i = 0
-	//sel:=0
-	//found := false
 	routes = &returnRouteGetInfo
 	moreRoutes := true
 	redistributeRouteMap := RedistributeRouteMap[srcProtocol]
@@ -312,18 +307,7 @@ func (m RouteServiceHandler) GetBulkRoutesForProtocol(srcProtocol string, fromIn
 			break
 		}
 		logger.Printf("Fetching route for index %d and prefix %v\n", i+fromIndex)
-			nextRoute = &redistributeRouteMap[i+fromIndex]
-			/*prefixNodeRoute = redistributeRouteMap[i+fromIndex] //prefixNodeRouteList.routeInfoList[prefixNodeRouteList.selectedRouteIdx]
-			nextRoute = &temproute[validCount]
-			nextRoute.Ipaddr = prefixNodeRoute.destNetIp.String()
-			nextRoute.Mask = prefixNodeRoute.networkMask.String()
-			nextRoute.DestNetIp = prefixNodeRoute.networkAddr
-			nextRoute.NextHopIp = prefixNodeRoute.nextHopIp.String()
-			nextRoute.NextHopIfType = ribd.Int(prefixNodeRoute.nextHopIfType)
-			nextRoute.IfIndex = prefixNodeRoute.nextHopIfIndex
-			nextRoute.Metric = prefixNodeRoute.metric
-			nextRoute.RoutePrototypeString = ReverseRouteProtoTypeMapDB[int(prefixNodeRoute.protocol)]
-			toIndex = ribd.Int(i+fromIndex)*/
+			nextRoute = &redistributeRouteMap[i+fromIndex].route
 			if len(returnRoutes) == 0 {
 				returnRoutes = make([]*ribd.Routes, 0)
 			}
@@ -1398,7 +1382,7 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	}
 	if nextHopIfType == commonDefs.IfTypeNull {
 		logger.Println("null route create request")
-		nextHopIp = "0.0.0.0"
+		nextHopIp = "255.255.255.255"
 	}
 	policyRoute := ribd.Routes{Ipaddr: destNetIp, Mask: networkMask, NextHopIp: nextHopIp, NextHopIfType: nextHopIfType, IfIndex: nextHopIfIndex, Metric: metric, Prototype: ribd.Int(routeType)}
 	params := RouteParams{destNetIp: destNetIp, networkMask: networkMask, nextHopIp: nextHopIp, nextHopIfType: nextHopIfType, nextHopIfIndex: nextHopIfIndex, metric: metric, routeType: ribd.Int(routeType), sliceIdx: ribd.Int(len(destNetSlice)), createType: FIBAndRIB, deleteType: Invalid}

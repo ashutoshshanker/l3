@@ -198,18 +198,18 @@ func (server *BGPServer) listenForBFDNotifications(socket *nanomsg.SubSocket, so
 }
 
 func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
-	var route ribdCommonDefs.RoutelistInfo
+	var routeListInfo ribdCommonDefs.RoutelistInfo
 	routes := make([]*ribd.Routes, 0)
 	reader := bytes.NewReader(rxBuf)
 	decoder := json.NewDecoder(reader)
 	msg := ribdCommonDefs.RibdNotifyMsg{}
 	for err := decoder.Decode(&msg); err == nil; err = decoder.Decode(&msg) {
-		err = json.Unmarshal(msg.MsgBuf, &route)
+		err = json.Unmarshal(msg.MsgBuf, &routeListInfo)
 		if err != nil {
 			server.logger.Err(fmt.Sprintf("Unmarshal RIB route update failed with err %s", err))
 		}
-		server.logger.Info(fmt.Sprintln("Remove connected route, dest:", route.RouteInfo.Ipaddr, "netmask:", route.RouteInfo.Mask, "nexthop:", route.RouteInfo.NextHopIp))
-		routes = append(routes, &route.RouteInfo)
+		server.logger.Info(fmt.Sprintln("Remove connected route, dest:", routeListInfo.RouteInfo.Ipaddr, "netmask:", routeListInfo.RouteInfo.Mask, "nexthop:", routeListInfo.RouteInfo.NextHopIp))
+		routes = append(routes, &routeListInfo.RouteInfo)
 	}
 
 	if len(routes) > 0 {
@@ -627,6 +627,7 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 func (server *BGPServer) convertDestIPToIPPrefix(routes []*ribd.Routes) []packet.IPPrefix {
 	dest := make([]packet.IPPrefix, 0, len(routes))
 	for _, r := range routes {
+		server.logger.Info(fmt.Sprintln("Route NS : ", r.NetworkStatement, " Route Origin ", r.RouteOrigin))
 		ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
 		dest = append(dest, *ipPrefix)
 	}

@@ -26,6 +26,8 @@ struct Routes {
 	14: string RouteUpdated,
 	15: string RoutePrototypeString
 	16: string DestNetIp
+	17: bool NetworkStatement
+	18: string RouteOrigin
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -129,7 +131,8 @@ struct PolicyActionConfig {
 	4: bool Accept 
 	5: bool Reject 
 	6: string RedistributeAction
-	7: string RedistributeTargetProtocol    
+	7: string RedistributeTargetProtocol   
+	8: string NetworkStatementTargetProtocol 
 }
 
 struct PolicyActionState{

@@ -8,7 +8,7 @@ import (
 
 func (m RouteServiceHandler) CreatePolicyAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {
 	logger.Println("CreatePolicyAction")
-	newAction:=policy.PolicyActionConfig{Name:cfg.Name, ActionType:cfg.ActionType,SetAdminDistanceValue:int(cfg.SetAdminDistanceValue),Accept:cfg.Accept, Reject:cfg.Reject, RedistributeAction:cfg.RedistributeAction, RedistributeTargetProtocol:cfg.RedistributeTargetProtocol }
+	newAction:=policy.PolicyActionConfig{Name:cfg.Name, ActionType:cfg.ActionType,SetAdminDistanceValue:int(cfg.SetAdminDistanceValue),Accept:cfg.Accept, Reject:cfg.Reject, RedistributeAction:cfg.RedistributeAction, RedistributeTargetProtocol:cfg.RedistributeTargetProtocol, NetworkStatementTargetProtocol:cfg.NetworkStatementTargetProtocol }
 	err = PolicyEngineDB.CreatePolicyAction(newAction)
 	return val,err
 }
