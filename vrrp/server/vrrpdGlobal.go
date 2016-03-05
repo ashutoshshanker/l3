@@ -127,6 +127,7 @@ const (
 	VRRP_SAME_OWNER                     = "Local Router should not be same as the VRRP Ip Address"
 	VRRP_MISSING_VRID_CONFIG            = "VRID is not configured on interface"
 	VRRP_CHECKSUM_ERR                   = "VRRP checksum failure"
+	VRRP_INVALID_PCAP                   = "Invalid Pcap Handler"
 
 	// VRRP multicast ip address for join
 	VRRP_GROUP_IP     = "224.0.0.18"
@@ -145,10 +146,13 @@ const (
 	VRRP_TX_BUF_CHANNEL_SIZE              = 1
 
 	// ip/vrrp header Check Defines
-	VRRP_TTL                 = 255
-	VRRP_VERSION2            = 2
-	VRRP_VERSION3            = 3
-	VRRP_PKT_TYPE            = 1 // Only one type is supported which is advertisement
-	VRRP_RSVD                = 0
-	VRRP_HDR_CREATE_CHECKSUM = 0
+	VRRP_TTL                        = 255
+	VRRP_VERSION2                   = 2
+	VRRP_VERSION3                   = 3
+	VRRP_PKT_TYPE                   = 1 // Only one type is supported which is advertisement
+	VRRP_RSVD                       = 0
+	VRRP_HDR_CREATE_CHECKSUM        = 0
+	VRRP_HEADER_SIZE_EXCLUDING_IPVX = 8 // 8 bytes...
+	VRRP_IPV4_HEADER_MIN_SIZE       = 20
+	VRRP_HEADER_MIN_SIZE            = 20
 )
