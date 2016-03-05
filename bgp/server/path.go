@@ -163,8 +163,8 @@ func (p *Path) GetPreference() uint32 {
 	return p.Pref
 }
 
-func (p *Path) GetAS4ByteList() []int32 {
-	asList := make([]int32, 0)
+func (p *Path) GetAS4ByteList() [][]int32 {
+	asList := make([][]int32, 0)
 	for _, attr := range p.pathAttrs {
 		if attr.GetCode() == packet.BGPPathAttrTypeASPath {
 			asPaths := attr.(*packet.BGPPathAttrASPath).Value
@@ -172,13 +172,37 @@ func (p *Path) GetAS4ByteList() []int32 {
 			for _, asSegment := range asPaths {
 				if asSize == 4 {
 					seg := asSegment.(*packet.BGPAS4PathSegment)
-					for _, as := range seg.AS {
-						asList = append(asList, int32(as))
+					if seg.Type == packet.BGPASPathSegmentSet {
+						asSetList := make([]int32, 0, len(seg.AS))
+						for _, as := range seg.AS {
+							asSetList = append(asSetList, int32(as))
+						}
+						asList = append(asList, asSetList)
+					} else if seg.Type == packet.BGPASPathSegmentSequence {
+						asSeqList := make([][]int32, len(seg.AS))
+						for _, as := range seg.AS {
+							asSeq := make([]int32, 1)
+							asSeq[0] = int32(as)
+							asSeqList = append(asSeqList, asSeq)
+						}
+						asList = append(asList, asSeqList...)
 					}
 				} else {
 					seg := asSegment.(*packet.BGPAS2PathSegment)
-					for _, as := range seg.AS {
-						asList = append(asList, int32(as))
+					if seg.Type == packet.BGPASPathSegmentSet {
+						asSetList := make([]int32, 0, len(seg.AS))
+						for _, as := range seg.AS {
+							asSetList = append(asSetList, int32(as))
+						}
+						asList = append(asList, asSetList)
+					} else if seg.Type == packet.BGPASPathSegmentSequence {
+						asSeqList := make([][]int32, len(seg.AS))
+						for _, as := range seg.AS {
+							asSeq := make([]int32, 1)
+							asSeq[0] = int32(as)
+							asSeqList = append(asSeqList, asSeq)
+						}
+						asList = append(asList, asSeqList...)
 					}
 				}
 			}
