@@ -78,6 +78,9 @@ func (h *BFDHandler) GetBulkBfdIntfState(fromIdx bfdd.Int, count bfdd.Int) (*bfd
 
 func (h *BFDHandler) convertBfdSessionProtocolsToString(Protocols []bool) string {
 	var protocols string
+	if Protocols[bfddCommonDefs.DISC] {
+		protocols += "doscover, "
+	}
 	if Protocols[bfddCommonDefs.USER] {
 		protocols += "user, "
 	}
