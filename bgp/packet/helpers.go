@@ -191,15 +191,12 @@ func HasASLoop(pathAttrs []BGPPathAttr, localAS uint32) bool {
 
 func GetNumASes(pathAttrs []BGPPathAttr) uint32 {
 	var total uint32 = 0
+	utils.Logger.Info(fmt.Sprintln("helpers:GetNumASes - path attrs =", pathAttrs))
 	for _, attr := range pathAttrs {
 		if attr.GetCode() == BGPPathAttrTypeASPath {
 			asPaths := attr.(*BGPPathAttrASPath).Value
 			for _, asPath := range asPaths {
-				if asPath.GetType() == BGPASPathSegmentSet {
-					total += 1
-				} else if asPath.GetType() == BGPASPathSegmentSequence {
-					total += uint32(asPath.GetLen())
-				}
+				total += uint32(asPath.GetNumASes())
 			}
 			break
 		}
