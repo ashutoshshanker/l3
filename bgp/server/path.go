@@ -71,6 +71,7 @@ func NewPath(server *BGPServer, peer *Peer, pa []packet.BGPPathAttr, withdrawn b
 		AggregatedPaths: make(map[string]*Path),
 	}
 
+	path.logger.Info(fmt.Sprintln("Path:NewPath - path attr =", pa, "path.path attrs =", path.pathAttrs))
 	path.Pref = path.calculatePref()
 	return path
 }
@@ -179,7 +180,7 @@ func (p *Path) GetAS4ByteList() [][]int32 {
 						}
 						asList = append(asList, asSetList)
 					} else if seg.Type == packet.BGPASPathSegmentSequence {
-						asSeqList := make([][]int32, len(seg.AS))
+						asSeqList := make([][]int32, 0, len(seg.AS))
 						for _, as := range seg.AS {
 							asSeq := make([]int32, 1)
 							asSeq[0] = int32(as)
@@ -196,7 +197,7 @@ func (p *Path) GetAS4ByteList() [][]int32 {
 						}
 						asList = append(asList, asSetList)
 					} else if seg.Type == packet.BGPASPathSegmentSequence {
-						asSeqList := make([][]int32, len(seg.AS))
+						asSeqList := make([][]int32, 0, len(seg.AS))
 						for _, as := range seg.AS {
 							asSeq := make([]int32, 1)
 							asSeq[0] = int32(as)
@@ -237,6 +238,7 @@ func (p *Path) IsInternal() bool {
 }
 
 func (p *Path) GetNumASes() uint32 {
+	p.logger.Info(fmt.Sprintln("Path:GetNumASes - path attrs =", p.pathAttrs))
 	return packet.GetNumASes(p.pathAttrs)
 }
 
