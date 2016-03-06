@@ -436,7 +436,7 @@ func (session *BfdSession) StartSessionServer(server *BFDServer) error {
 	for {
 		len, _, err := ServerConn.ReadFromUDP(buf)
 		if err != nil {
-			fmt.Println("Failed to read from ", ServerAddr)
+			server.logger.Info(fmt.Sprintln("Failed to read from ", ServerAddr))
 		} else {
 			if len >= DEFAULT_CONTROL_PACKET_LEN {
 				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
@@ -823,7 +823,7 @@ func (session *BfdSession) RemoteChangedDemandMode(bfdPacket *BfdControlPacket) 
 }
 
 func (session *BfdSession) InitiatePollSequence() error {
-	fmt.Println("Starting poll sequence for session ", session.state.SessionId)
+	session.server.logger.Info(fmt.Sprintln("Starting poll sequence for session ", session.state.SessionId))
 	session.pollSequence = true
 	session.txTimer.Reset(0)
 	return nil
@@ -832,11 +832,11 @@ func (session *BfdSession) InitiatePollSequence() error {
 func (session *BfdSession) ProcessPollSequence(bfdPacket *BfdControlPacket) error {
 	if session.state.SessionState != STATE_ADMIN_DOWN {
 		if bfdPacket.Poll {
-			fmt.Println("Received packet with poll bit for session ", session.state.SessionId)
+			session.server.logger.Info(fmt.Sprintln("Received packet with poll bit for session ", session.state.SessionId))
 			session.pollSequenceFinal = true
 		}
 		if bfdPacket.Final {
-			fmt.Println("Received packet with final bit for session ", session.state.SessionId)
+			session.server.logger.Info(fmt.Sprintln("Received packet with final bit for session ", session.state.SessionId))
 			session.pollSequence = false
 		}
 		session.txTimer.Reset(0)
