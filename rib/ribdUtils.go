@@ -22,7 +22,10 @@ type RouteDistanceConfig struct{
 	configuredDistance int
 }
 type AdminDistanceSlice []ribd.RouteDistanceState
-var RedistributeRouteMap = make(map[string] []ribd.Routes)
+type RedistributeRouteInfo struct {
+	route ribd.Routes
+}
+var RedistributeRouteMap = make(map[string] []RedistributeRouteInfo)
 var RouteProtocolTypeMapDB = make(map[string]int)
 var ReverseRouteProtoTypeMapDB = make(map[int]string)
 var ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
@@ -340,9 +343,10 @@ func UpdateRedistributeTargetMap( evt int, protocol string, route ribd.Routes) {
 		if evt == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
 		redistributeMapInfo := RedistributeRouteMap[protocol]
 		if redistributeMapInfo == nil {
-			redistributeMapInfo = make([]ribd.Routes,0)
+			redistributeMapInfo = make([]RedistributeRouteInfo,0)
 		}
-		redistributeMapInfo = append(redistributeMapInfo,route)
+		redistributeRouteInfo := RedistributeRouteInfo{route:route}
+		redistributeMapInfo = append(redistributeMapInfo,redistributeRouteInfo)
    	    RedistributeRouteMap[protocol] = redistributeMapInfo
 	} else if evt == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
 		redistributeMapInfo := RedistributeRouteMap[protocol]
@@ -350,7 +354,7 @@ func UpdateRedistributeTargetMap( evt int, protocol string, route ribd.Routes) {
 			found :=false
 			i:=0
 			for i=0;i<len(redistributeMapInfo);i++ {
-				if isSameRoute((redistributeMapInfo[i]),route) {
+				if isSameRoute((redistributeMapInfo[i].route),route) {
 					logger.Println("Found the route that is to be taken off the redistribution list for ", protocol)
 					found = true
 					break
@@ -379,7 +383,11 @@ func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes, evt int) {
 	} else if evt == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
 		evtStr = "NOTIFY_ROUTE_DELETED"
 	}
-	eventInfo := "Redistribute "+evtStr+" for route "+route.Ipaddr+" "+route.Mask+" type" + ReverseRouteProtoTypeMapDB[int(route.Prototype)]
+	eventInfo := "Redistribute "
+	if route.NetworkStatement == true {
+		eventInfo="Advertise Network Statement "
+	}
+	eventInfo = eventInfo + evtStr +" for route "+route.Ipaddr+" "+route.Mask+" type" + ReverseRouteProtoTypeMapDB[int(route.Prototype)]
    	logger.Println("Sending ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " ", buf)
 	t1 := time.Now()
     routeEventInfo := RouteEventInfo{timeStamp:t1.String(),eventInfo:eventInfo}
