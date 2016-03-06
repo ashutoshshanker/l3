@@ -441,14 +441,8 @@ func (session *BfdSession) StartSessionServer(server *BFDServer) error {
 			if len >= DEFAULT_CONTROL_PACKET_LEN {
 				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
 				if err == nil {
-					sessionId := int32(bfdPacket.YourDiscriminator)
-					if sessionId != 0 {
-						bfdSession := server.bfdGlobal.Sessions[sessionId]
-						if bfdSession != nil {
-							bfdSession.state.NumRxPackets++
-							bfdSession.ProcessBfdPacket(bfdPacket)
-						}
-					}
+					session.state.NumRxPackets++
+					session.ProcessBfdPacket(bfdPacket)
 				} else {
 					server.logger.Info(fmt.Sprintln("Failed to decode packet - ", err))
 				}
@@ -461,15 +455,6 @@ func (session *BfdSession) StartSessionServer(server *BFDServer) error {
 func (session *BfdSession) CanProcessBfdControlPacket(bfdPacket *BfdControlPacket) bool {
 	var canProcess bool
 	canProcess = true
-	/*
-		sessionId := bfdPacket.YourDiscriminator
-		session := server.bfdGlobal.Sessions[int32(sessionId)]
-		if session != nil {
-			if session.state.SessionState == STATE_ADMIN_DOWN {
-				canProcess = false
-			}
-		}
-	*/
 	if bfdPacket.Version != DEFAULT_BFD_VERSION {
 		canProcess = false
 		fmt.Sprintln("Can't process version mismatch ", bfdPacket.Version, DEFAULT_BFD_VERSION)
@@ -486,10 +471,20 @@ func (session *BfdSession) CanProcessBfdControlPacket(bfdPacket *BfdControlPacke
 		canProcess = false
 		fmt.Sprintln("Can't process remote discriminator ", bfdPacket.MyDiscriminator)
 	}
-	if bfdPacket.YourDiscriminator == 0 {
-		canProcess = false
-		fmt.Sprintln("Can't process local discriminator ", bfdPacket.YourDiscriminator)
-	}
+	/*
+		if bfdPacket.YourDiscriminator == 0 {
+			canProcess = false
+			fmt.Sprintln("Can't process local discriminator ", bfdPacket.YourDiscriminator)
+		} else {
+			sessionId := bfdPacket.YourDiscriminator
+			session := server.bfdGlobal.Sessions[int32(sessionId)]
+			if session != nil {
+				if session.state.SessionState == STATE_ADMIN_DOWN {
+					canProcess = false
+				}
+			}
+		}
+	*/
 	return canProcess
 }
 
@@ -548,12 +543,12 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	var event BfdSessionEvent
 	authenticated := session.AuthenticateReceivedControlPacket(bfdPacket)
 	if authenticated == false {
-		fmt.Sprintln("Can't authenticatereceived bfd packet for session ", session.state.SessionId)
+		session.server.logger.Info(fmt.Sprintln("Can't authenticatereceived bfd packet for session ", session.state.SessionId))
 		return nil
 	}
 	canProcess := session.CanProcessBfdControlPacket(bfdPacket)
 	if canProcess == false {
-		fmt.Sprintln("Can't process received bfd packet for session ", session.state.SessionId)
+		session.server.logger.Info(fmt.Sprintln("Can't process received bfd packet for session ", session.state.SessionId))
 		return nil
 	}
 	session.state.RemoteSessionState = bfdPacket.State
