@@ -27,7 +27,7 @@ func (server *ARPServer)GetBulkArpEntry(idx int, cnt int) (int, int, []ArpState)
                         continue
                 }
                 result[i].IpAddr = arpSliceEnt
-                if result[i].MacAddr != "incomplete" {
+                if arpEnt.MacAddr != "incomplete" {
                         result[i].MacAddr = arpEnt.MacAddr
                         result[i].Intf = arpEnt.IfName
                         result[i].VlanId = arpEnt.VlanId

@@ -11,6 +11,7 @@ type UpdateArpEntryMsg struct {
         PortNum         int
         IpAddr          string
         MacAddr         string
+        Type            bool  // True: RIB False: Rx
 }
 
 /*
@@ -135,12 +136,23 @@ func (server *ARPServer)processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
                         }
                 } else if arpEnt.MacAddr == "incomplete" &&
                         msg.MacAddr != "incomplete" {
-                        server.logger.Info(fmt.Sprintln("3 Calling Asicd Create Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:",vlanId, "IfIndex:", ifIdx))
-                        rv, err := server.asicdClient.ClientHdl.CreateIPv4Neighbor(msg.IpAddr,
-                                        msg.MacAddr, int32(vlanId), ifIdx)
-                        if rv < 0 || err != nil {
-                                server.logger.Err(fmt.Sprintln("Asicd Create IPv4 Neighbor failed for IpAddr:", msg.IpAddr, "VlanId:", vlanId, "IfIdx:", ifIdx, "err:", err, "rv:", rv))
-                                return
+                        if arpEnt.Type == false {
+                                server.logger.Info(fmt.Sprintln("3 Calling Asicd Create Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:",vlanId, "IfIndex:", ifIdx))
+                                rv, err := server.asicdClient.ClientHdl.CreateIPv4Neighbor(msg.IpAddr,
+                                                msg.MacAddr, int32(vlanId), ifIdx)
+                                if rv < 0 || err != nil {
+                                        server.logger.Err(fmt.Sprintln("Asicd Create IPv4 Neighbor failed for IpAddr:", msg.IpAddr, "VlanId:", vlanId, "IfIdx:", ifIdx, "err:", err, "rv:", rv))
+                                        return
+                                }
+                        } else if arpEnt.Type == true {
+                                // Since RIB would already created the neighbor entry
+                                server.logger.Info(fmt.Sprintln("2.1 Calling Asicd Update Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:", vlanId, "IfIndex:", ifIdx))
+                                rv, err := server.asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.IpAddr,
+                                                msg.MacAddr, int32(vlanId), ifIdx)
+                                if rv < 0  || err != nil {
+                                        server.logger.Err(fmt.Sprintln("Asicd Update IPv4 Neighbor failed for IpAddr:", msg.IpAddr, "MacAddr:", msg.MacAddr, "VlanId:", vlanId, "IfIdx:", ifIdx, "err:", err, "rv:", rv))
+                                        return
+                                }
                         }
                 }
 /*
@@ -183,6 +195,12 @@ func (server *ARPServer)processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
         arpEnt.IfName = portEnt.IfName
         arpEnt.L3IfIdx = portEnt.L3IfIdx
         arpEnt.Counter = server.timeoutCounter
+        if exist  &&
+                arpEnt.Type == true {
+                arpEnt.Type = true
+        } else {
+                arpEnt.Type = msg.Type
+        }
         if arpEnt.MacAddr != "incomplete" {
                 arpEnt.TimeStamp = time.Now()
         }
