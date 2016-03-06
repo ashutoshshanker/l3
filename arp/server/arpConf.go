@@ -21,6 +21,7 @@ func (server *ARPServer)processResolveIPv4(conf ResolveIPv4) {
                                 PortNum: port,
                                 IpAddr: conf.TargetIP,
                                 MacAddr: "incomplete",
+                                Type: true,
                         }
                 }
         } else if conf.IfType == commonDefs.L2RefTypeLag {
@@ -31,6 +32,7 @@ func (server *ARPServer)processResolveIPv4(conf ResolveIPv4) {
                                 PortNum: port,
                                 IpAddr: conf.TargetIP,
                                 MacAddr: "incomplete",
+                                Type: true,
                         }
                 }
         } else if conf.IfType == commonDefs.L2RefTypePort {
@@ -39,6 +41,7 @@ func (server *ARPServer)processResolveIPv4(conf ResolveIPv4) {
                         PortNum: IfIndex,
                         IpAddr: conf.TargetIP,
                         MacAddr: "incomplete",
+                        Type: true,
                 }
         }
 }

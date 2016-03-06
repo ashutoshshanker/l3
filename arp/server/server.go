@@ -35,6 +35,7 @@ type ArpEntry struct {
         //Valid           bool
         TimeStamp       time.Time
         PortNum         int
+        Type            bool    //True : RIB False: RX
 }
 
 type ArpState struct {
