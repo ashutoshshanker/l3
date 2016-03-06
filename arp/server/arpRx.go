@@ -106,6 +106,7 @@ func (server *ARPServer)processArpPkt(arpLayer gopacket.Layer, port int) {
 
 func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
         srcMac := (net.HardwareAddr(arp.SourceHwAddress)).String()
+        //dstMac := (net.HardwareAddr(arp.DstHwAddress)).String()
         srcIp := (net.IP(arp.SourceProtAddress)).String()
         destIp := (net.IP(arp.DstProtAddress)).String()
 
@@ -124,6 +125,7 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                         myNet.Equal(destNet) != true {
                         server.logger.Info(fmt.Sprintln("Received Arp Request but srcIp:", srcIp, " and destIp:", destIp, "are not in same network. Hence, not processing it"))
                         server.logger.Info(fmt.Sprintln("Ip and Netmask on the recvd interface is", myIP, mask))
+                        //server.logger.Info(fmt.Sprintln("SrcIP:", srcIp, "DstIP:", destIp, "SrcMac:", srcMac, "DstMac:", dstMac, "intfIP:", myIP, "intfPort:", port, "intfMask:", mask, "srcNet:", srcNet, "dstNet:", destNet, "myNet:", myNet))
                         return
                 }
         } else {
