@@ -176,6 +176,7 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                                 PortNum: port,
                                 IpAddr: srcIp,
                                 MacAddr: srcMac,
+                                Type: false,
                         }
                 } else {
                         if srcIp == "0.0.0.0" {
@@ -185,6 +186,7 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                                         PortNum: port,
                                         IpAddr: destIp,
                                         MacAddr: "incomplete",
+                                        Type: false,
                                 }
                         } else {
                                 // Arp Request Pkt from neighbor1 for neighbor2 IP
@@ -195,6 +197,7 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                                         PortNum: port,
                                         IpAddr: srcIp,
                                         MacAddr: srcMac,
+                                        Type: false,
                                 }
 
                                 server.logger.Info(fmt.Sprintln("4 Installing Arp entry IP:", destIp, "MAC: incomplete"))
@@ -202,6 +205,7 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                                         PortNum: port,
                                         IpAddr: destIp,
                                         MacAddr: "incomplete",
+                                        Type: false,
                                 }
                         }
                 }
@@ -215,6 +219,7 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                                 PortNum: port,
                                 IpAddr: srcIp,
                                 MacAddr: srcMac,
+                                Type: false,
                         }
                 } else {
                         server.logger.Info(fmt.Sprintln("Received Arp Probe for IP:", destIp, "linux should respond to this"))
@@ -257,6 +262,7 @@ func (server *ARPServer) processArpReply(arp *layers.ARP, port int) {
                 PortNum: port,
                 IpAddr: srcIp,
                 MacAddr: srcMac,
+                Type: false,
         }
 }
 
@@ -274,24 +280,49 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
                 }
                 eth := ethLayer.(*layers.Ethernet)
                 srcMac := (eth.SrcMAC).String()
+                //dstMac := (eth.DstMAC).String()
+               // server.logger.Info(fmt.Sprintln("========Hello======= SrcIP:", srcIp, "DstIP:", dstIp, "SrcMac:", srcMac, "DstMac:", dstMac))
 
                 l3IntfIdx := server.getL3IntfOnSameSubnet(srcIp)
 
+                //server.logger.Info(fmt.Sprintln("---Hello---", l3IntfIdx))
                 if l3IntfIdx != -1 {
                         arpEnt, exist := server.arpCache[srcIp]
+                        //server.logger.Info(fmt.Sprintln("====Hello2===", arpEnt, exist))
                         if exist {
-                                vlanEnt, exist := server.vlanPropMap[l3IntfIdx]
+                                ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(l3IntfIdx))
                                 flag := false
-                                if exist {
-                                        vlanId := int(asicdConstDefs.GetIntfIdFromIfIndex(int32(l3IntfIdx)))
-                                        for p, _ := range vlanEnt.UntagPortMap {
-                                                if p == port &&
-                                                        arpEnt.VlanId == vlanId {
-                                                        flag = true
+                                if ifType == commonDefs.L2RefTypeVlan {
+                                        vlanEnt, exist := server.vlanPropMap[l3IntfIdx]
+                                        if exist {
+                                                vlanId := int(asicdConstDefs.GetIntfIdFromIfIndex(int32(l3IntfIdx)))
+                                                for p, _ := range vlanEnt.UntagPortMap {
+                                                        if p == port &&
+                                                                arpEnt.VlanId == vlanId {
+                                                                flag = true
+                                                        }
                                                 }
+                                        } else {
+                                                flag = false
                                         }
-                                } else {
-                                        flag = false
+                                } else if ifType == commonDefs.L2RefTypePort {
+                                        if l3IntfIdx == port &&
+                                                arpEnt.VlanId == asicdConstDefs.SYS_RSVD_VLAN {
+                                                flag = true
+                                        }
+                                } else if ifType == commonDefs.L2RefTypeLag {
+                                        lagEnt, exist := server.lagPropMap[l3IntfIdx]
+                                        if exist {
+                                                for p, _ := range lagEnt.PortMap {
+                                                        if p == port &&
+                                                                arpEnt.VlanId == asicdConstDefs.SYS_RSVD_VLAN {
+                                                                flag = true
+                                                        }
+                                                }
+                                        } else {
+                                                flag = false
+                                        }
+
                                 }
                                 if !(exist && arpEnt.MacAddr == srcMac &&
                                         port == arpEnt.PortNum && flag == true) {
