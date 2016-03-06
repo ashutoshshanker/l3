@@ -284,15 +284,10 @@ func (m RouteServiceHandler) 	 GetBulkIPV4EventState( fromIndex ribd.Int, rcount
 func (m RouteServiceHandler) GetBulkRoutesForProtocol(srcProtocol string, fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.RoutesGetInfo, err error) {
 	logger.Println("GetBulkRoutesForProtocol")
 	var i, validCount, toIndex ribd.Int
-//	var temproute []ribd.Routes = make([]ribd.Routes, rcount)
 	var nextRoute *ribd.Routes
 	var returnRoutes []*ribd.Routes
 	var returnRouteGetInfo ribd.RoutesGetInfo
-	//var prefixNodeRouteList RouteInfoRecordList
-	//var prefixNodeRoute RouteInfoRecord
 	i = 0
-	//sel:=0
-	//found := false
 	routes = &returnRouteGetInfo
 	moreRoutes := true
 	redistributeRouteMap := RedistributeRouteMap[srcProtocol]
@@ -312,18 +307,7 @@ func (m RouteServiceHandler) GetBulkRoutesForProtocol(srcProtocol string, fromIn
 			break
 		}
 		logger.Printf("Fetching route for index %d and prefix %v\n", i+fromIndex)
-			nextRoute = &redistributeRouteMap[i+fromIndex]
-			/*prefixNodeRoute = redistributeRouteMap[i+fromIndex] //prefixNodeRouteList.routeInfoList[prefixNodeRouteList.selectedRouteIdx]
-			nextRoute = &temproute[validCount]
-			nextRoute.Ipaddr = prefixNodeRoute.destNetIp.String()
-			nextRoute.Mask = prefixNodeRoute.networkMask.String()
-			nextRoute.DestNetIp = prefixNodeRoute.networkAddr
-			nextRoute.NextHopIp = prefixNodeRoute.nextHopIp.String()
-			nextRoute.NextHopIfType = ribd.Int(prefixNodeRoute.nextHopIfType)
-			nextRoute.IfIndex = prefixNodeRoute.nextHopIfIndex
-			nextRoute.Metric = prefixNodeRoute.metric
-			nextRoute.RoutePrototypeString = ReverseRouteProtoTypeMapDB[int(prefixNodeRoute.protocol)]
-			toIndex = ribd.Int(i+fromIndex)*/
+			nextRoute = &redistributeRouteMap[i+fromIndex].route
 			if len(returnRoutes) == 0 {
 				returnRoutes = make([]*ribd.Routes, 0)
 			}
@@ -488,12 +472,14 @@ func (m RouteServiceHandler) GetConnectedRoutesInfo() (routes []*ribd.Routes, er
 	return routes, err
 }
 func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIntf *ribd.NextHopInfo, err error) {
+	logger.Println("GetRouteReachabilityInfo")
 	t1 := time.Now()
 	var retnextHopIntf ribd.NextHopInfo
 	nextHopIntf = &retnextHopIntf
 	var found bool
 	destNetIp, err := getIP(destNet)
 	if err != nil {
+		logger.Println("getIP returned Invalid dest ip address for ", destNet)
 		return nextHopIntf, errors.New("Invalid dest ip address")
 	}
 	rmapInfoListItem := RouteInfoMap.GetLongestPrefixNode(patriciaDB.Prefix(destNetIp))
@@ -517,12 +503,12 @@ func (m RouteServiceHandler) GetRouteReachabilityInfo(destNet string) (nextHopIn
 	}
 
 	if found == false {
-		logger.Printf("dest IP %s not reachable\n", destNetIp)
+		logger.Println("dest IP", destNetIp, " not reachable ")
 		err = errors.New("dest ip address not reachable")
 	}
 	duration := time.Since(t1)
-	logger.Printf("time to get longestPrefixLen = %d\n", duration.Nanoseconds())
-	logger.Printf("next hop ip of the route = %s\n", nextHopIntf.NextHopIfIndex)
+	logger.Println("time to get longestPrefixLen = ", duration.Nanoseconds())
+	logger.Println("next hop ip of the route = ", nextHopIntf.NextHopIfIndex)
 	return nextHopIntf, err
 }
 func (m RouteServiceHandler) GetRoute(destNetIp string, networkMask string) (route *ribd.Routes, err error) {
@@ -1398,7 +1384,7 @@ func (m RouteServiceHandler) CreateV4Route(destNetIp string,
 	}
 	if nextHopIfType == commonDefs.IfTypeNull {
 		logger.Println("null route create request")
-		nextHopIp = "0.0.0.0"
+		nextHopIp = "255.255.255.255"
 	}
 	policyRoute := ribd.Routes{Ipaddr: destNetIp, Mask: networkMask, NextHopIp: nextHopIp, NextHopIfType: nextHopIfType, IfIndex: nextHopIfIndex, Metric: metric, Prototype: ribd.Int(routeType)}
 	params := RouteParams{destNetIp: destNetIp, networkMask: networkMask, nextHopIp: nextHopIp, nextHopIfType: nextHopIfType, nextHopIfIndex: nextHopIfIndex, metric: metric, routeType: ribd.Int(routeType), sliceIdx: ribd.Int(len(destNetSlice)), createType: FIBAndRIB, deleteType: Invalid}
