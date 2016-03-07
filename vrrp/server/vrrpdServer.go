@@ -5,9 +5,7 @@ import (
 	"asicdServices"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
-	"git.apache.org/thrift.git/lib/go/thrift"
 	_ "github.com/google/gopacket"
 	"io/ioutil"
 	"log/syslog"
@@ -21,28 +19,24 @@ import (
 	"vrrpd"
 )
 
-func NewVrrpServer() *VrrpServiceHandler {
-	return &VrrpServiceHandler{}
+func (svr *VrrpServer) VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
+	svr.logger.Info(fmt.Sprintln("VRID:", gblInfo.IntfConfig.VRID))
+	svr.logger.Info(fmt.Sprintln("IpAddr:", gblInfo.IpAddr))
+	svr.logger.Info(fmt.Sprintln("IfIndex:", gblInfo.IntfConfig.IfIndex))
+	svr.logger.Info(fmt.Sprintln("Priority:", gblInfo.IntfConfig.Priority))
+	svr.logger.Info(fmt.Sprintln("Preempt Mode:", gblInfo.IntfConfig.PreemptMode))
+	svr.logger.Info(fmt.Sprintln("Virt Mac Addr:", gblInfo.IntfConfig.VirtualRouterMACAddress))
+	svr.logger.Info(fmt.Sprintln("VirtualIPv4Addr:", gblInfo.IntfConfig.VirtualIPv4Addr))
+	svr.logger.Info(fmt.Sprintln("AdvertisementTime:", gblInfo.IntfConfig.AdvertisementInterval))
+	svr.logger.Info(fmt.Sprintln("MasterAdverInterval:", gblInfo.MasterAdverInterval))
+	svr.logger.Info(fmt.Sprintln("Skew Time:", gblInfo.SkewTime))
+	svr.logger.Info(fmt.Sprintln("Master Down Interval:", gblInfo.MasterDownInterval))
 }
 
-func VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
-	logger.Info(fmt.Sprintln("VRID:", gblInfo.IntfConfig.VRID))
-	logger.Info(fmt.Sprintln("IpAddr:", gblInfo.IpAddr))
-	logger.Info(fmt.Sprintln("IfIndex:", gblInfo.IntfConfig.IfIndex))
-	logger.Info(fmt.Sprintln("Priority:", gblInfo.IntfConfig.Priority))
-	logger.Info(fmt.Sprintln("Preempt Mode:", gblInfo.IntfConfig.PreemptMode))
-	logger.Info(fmt.Sprintln("Virt Mac Addr:", gblInfo.IntfConfig.VirtualRouterMACAddress))
-	logger.Info(fmt.Sprintln("VirtualIPv4Addr:", gblInfo.IntfConfig.VirtualIPv4Addr))
-	logger.Info(fmt.Sprintln("AdvertisementTime:", gblInfo.IntfConfig.AdvertisementInterval))
-	logger.Info(fmt.Sprintln("MasterAdverInterval:", gblInfo.MasterAdverInterval))
-	logger.Info(fmt.Sprintln("Skew Time:", gblInfo.SkewTime))
-	logger.Info(fmt.Sprintln("Master Down Interval:", gblInfo.MasterDownInterval))
-}
-
-func VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
-	IpAddr, ok := vrrpIfIndexIpAddr[gblInfo.IntfConfig.IfIndex]
+func (svr *VrrpServer) VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
+	IpAddr, ok := svr.vrrpIfIndexIpAddr[gblInfo.IntfConfig.IfIndex]
 	if ok == false {
-		logger.Err(fmt.Sprintln("missed ipv4 intf notification for IfIndex:",
+		svr.logger.Err(fmt.Sprintln("missed ipv4 intf notification for IfIndex:",
 			gblInfo.IntfConfig.IfIndex))
 		return false
 	}
@@ -50,10 +44,10 @@ func VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
 	return true
 }
 
-func VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfState) {
-	gblInfo, ok := vrrpGblInfo[key]
+func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfState) {
+	gblInfo, ok := svr.vrrpGblInfo[key]
 	if ok == false {
-		logger.Err(fmt.Sprintln("Entry not found for", key))
+		svr.logger.Err(fmt.Sprintln("Entry not found for", key))
 		return
 	}
 	entry.IfIndex = gblInfo.IntfConfig.IfIndex
@@ -68,19 +62,46 @@ func VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfState) {
 	entry.MasterDownInterval = gblInfo.MasterDownInterval
 }
 
-/*
-	// The initial value is the same as Advertisement_Interval.
-	MasterAdverInterval int32
-	// (((256 - priority) * Master_Adver_Interval) / 256)
-	SkewTime int32
-	// (3 * Master_Adver_Interval) + Skew_time
-	MasterDownInterval int32
-	// IfIndex IpAddr which needs to be used if no Virtual Ip is specified
-	IpAddr string
-*/
+func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key string) {
+	key := strconv.Itoa(int(config.IfIndex)) + strconv.Itoa(int(config.VRID))
+	gblInfo := svr.vrrpGblInfo[key]
 
-func VrrpUpdateGblInfoTimers(key string) {
-	gblInfo := vrrpGblInfo[key]
+	gblInfo.IntfConfig.IfIndex = config.IfIndex
+	gblInfo.IntfConfig.VRID = config.VRID
+	gblInfo.IntfConfig.VirtualIPv4Addr = config.VirtualIPv4Addr
+	gblInfo.IntfConfig.PreemptMode = config.PreemptMode
+
+	if config.Priority == 0 {
+		gblInfo.IntfConfig.Priority = VRRP_DEFAULT_PRIORITY
+	} else {
+		gblInfo.IntfConfig.Priority = config.Priority
+	}
+	if config.AdvertisementInterval == 0 {
+		gblInfo.IntfConfig.AdvertisementInterval = 1
+	} else {
+		gblInfo.IntfConfig.AdvertisementInterval = config.AdvertisementInterval
+	}
+
+	if config.AcceptMode == true {
+		gblInfo.IntfConfig.AcceptMode = true
+	} else {
+		gblInfo.IntfConfig.AcceptMode = false
+	}
+
+	if config.VirtualRouterMACAddress != "" {
+		gblInfo.IntfConfig.VirtualRouterMACAddress =
+			config.VirtualRouterMACAddress
+	} else {
+		if gblInfo.IntfConfig.VRID < 10 {
+			gblInfo.IntfConfig.VirtualRouterMACAddress = VRRP_IEEE_MAC_ADDR +
+				"0" + strconv.Itoa(int(gblInfo.IntfConfig.VRID))
+
+		} else {
+			gblInfo.IntfConfig.VirtualRouterMACAddress = VRRP_IEEE_MAC_ADDR +
+				strconv.Itoa(int(gblInfo.IntfConfig.VRID))
+		}
+	}
+
 	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
 	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
 		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
@@ -88,111 +109,139 @@ func VrrpUpdateGblInfoTimers(key string) {
 	}
 	gblInfo.MasterDownInterval = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
 
-	if ok := VrrpUpdateIntfIpAddr(&gblInfo); ok == false {
+	if ok := svr.VrrpUpdateIntfIpAddr(&gblInfo); ok == false {
 		// If we miss Asic Notification then do one time get bulk for Ipv4
 		// Interface... Once done then update Ip Addr again
-		logger.Err("recalling get ipv4interface list")
-		VrrpGetIPv4IntfList()
-		VrrpUpdateIntfIpAddr(&gblInfo)
+		svr.logger.Err("recalling get ipv4interface list")
+		svr.VrrpGetIPv4IntfList()
+		svr.VrrpUpdateIntfIpAddr(&gblInfo)
 	}
-	vrrpGblInfo[key] = gblInfo
-	vrrpIntfStateSlice = append(vrrpIntfStateSlice, key)
+	svr.vrrpGblInfo[key] = gblInfo
+	svr.vrrpIntfStateSlice = append(svr.vrrpIntfStateSlice, key)
+	go svr.VrrpInitPacketListener(key, config.IfIndex)
+	if !svr.vrrpMacConfigAdded {
+		go svr.VrrpAddMacEntry(true /*add vrrp protocol mac*/)
+	}
 	//VrrpDumpIntfInfo(gblInfo)
 }
 
-func VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
+func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(fromIndex int, cnt int) (int,
+	int, []*vrrpd.VrrpIntfState) {
+	var nextIdx int
+	var nextEntry vrrpd.VrrpIntfState
+	var count int
+	if svr.vrrpIntfStateSlice == nil {
+		svr.logger.Info("DRA: Interface Slice is not initialized")
+		return 0, 0, nil
+	}
+	length := len(svr.vrrpIntfStateSlice)
+	if fromIndex+cnt > length {
+		count = length - fromIndex
+		nextIdx = 0
+	} else {
+		nextIdx = fromIndex + cnt
+	}
+	result := make([]*vrrpd.VrrpIntfState, count)
+	for i := 0; i < count; i++ {
+		key := svr.vrrpIntfStateSlice[fromIndex+i]
+		svr.VrrpPopulateIntfState(key, &nextEntry)
+		result = append(result, &nextEntry)
+	}
+	return nextIdx, count, result
+}
+
+func (svr *VrrpServer) VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
 	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
-	vlanName, ok := vrrpVlanId2Name[vlanId]
+	vlanName, ok := svr.vrrpVlanId2Name[vlanId]
 	if ok == false {
-		logger.Err(fmt.Sprintln("no mapping for vlan", vlanId))
+		svr.logger.Err(fmt.Sprintln("no mapping for vlan", vlanId))
 		return
 	}
 	linuxInterface, err := net.InterfaceByName(vlanName)
 	if err != nil {
-		logger.Err(fmt.Sprintln("Getting linux If index for",
+		svr.logger.Err(fmt.Sprintln("Getting linux If index for",
 			"IfIndex:", IfIndex, "failed with ERROR:", err))
 		return
 	}
-	logger.Info(fmt.Sprintln("Linux Id:", linuxInterface.Index,
+	svr.logger.Info(fmt.Sprintln("Linux Id:", linuxInterface.Index,
 		"maps to IfIndex:", IfIndex))
-	vrrpLinuxIfIndex2AsicdIfIndex[IfIndex] = linuxInterface
+	svr.vrrpLinuxIfIndex2AsicdIfIndex[IfIndex] = linuxInterface
 }
 
-func VrrpConnectToAsicd(client VrrpClientJson) error {
-	logger.Info(fmt.Sprintln("VRRP: Connecting to asicd at port",
+func (svr *VrrpServer) VrrpConnectToAsicd(client VrrpClientJson) error {
+	svr.logger.Info(fmt.Sprintln("VRRP: Connecting to asicd at port",
 		client.Port))
 	var err error
-	asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-	asicdClient.Transport, asicdClient.PtrProtocolFactory, err =
-		ipcutils.CreateIPCHandles(asicdClient.Address)
-	if asicdClient.Transport == nil ||
-		asicdClient.PtrProtocolFactory == nil ||
+	svr.asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
+	svr.asicdClient.Transport, svr.asicdClient.PtrProtocolFactory, err =
+		ipcutils.CreateIPCHandles(svr.asicdClient.Address)
+	if svr.asicdClient.Transport == nil ||
+		svr.asicdClient.PtrProtocolFactory == nil ||
 		err != nil {
-		logger.Err(fmt.Sprintln("VRRP: Connecting to",
+		svr.logger.Err(fmt.Sprintln("VRRP: Connecting to",
 			client.Name, "failed ", err))
 		return err
 	}
-	asicdClient.ClientHdl =
+	svr.asicdClient.ClientHdl =
 		asicdServices.NewASICDServicesClientFactory(
-			asicdClient.Transport,
-			asicdClient.PtrProtocolFactory)
-	asicdClient.IsConnected = true
+			svr.asicdClient.Transport,
+			svr.asicdClient.PtrProtocolFactory)
+	svr.asicdClient.IsConnected = true
 	return nil
 }
 
-func VrrpConnectToUnConnectedClient(client VrrpClientJson) error {
+func (svr *VrrpServer) VrrpConnectToUnConnectedClient(client VrrpClientJson) error {
 	switch client.Name {
 	case "asicd":
-		return VrrpConnectToAsicd(client)
+		return svr.VrrpConnectToAsicd(client)
 	default:
 		return errors.New(VRRP_CLIENT_CONNECTION_NOT_REQUIRED)
 	}
 }
 
-func VrrpCloseAllPcapHandlers() {
-	for i := 0; i < len(vrrpIntfStateSlice); i++ {
-		key := vrrpIntfStateSlice[i]
-		gblInfo := vrrpGblInfo[key]
+func (svr *VrrpServer) VrrpCloseAllPcapHandlers() {
+	for i := 0; i < len(svr.vrrpIntfStateSlice); i++ {
+		key := svr.vrrpIntfStateSlice[i]
+		gblInfo := svr.vrrpGblInfo[key]
 		if gblInfo.pHandle != nil {
 			gblInfo.pHandle.Close()
 		}
 	}
 }
 
-func VrrpSignalHandler(sigChannel <-chan os.Signal) {
+func (svr *VrrpServer) VrrpSignalHandler(sigChannel <-chan os.Signal) {
 	signal := <-sigChannel
 	switch signal {
 	case syscall.SIGHUP:
-		logger.Alert("Received SIGHUP Signal")
-		VrrpCloseAllPcapHandlers()
-		VrrpDeAllocateMemoryToGlobalDS()
-		logger.Alert("Closed all pcap's and freed memory")
+		svr.logger.Alert("Received SIGHUP Signal")
+		svr.VrrpCloseAllPcapHandlers()
+		svr.VrrpDeAllocateMemoryToGlobalDS()
+		svr.logger.Alert("Closed all pcap's and freed memory")
 		os.Exit(0)
 	default:
-		logger.Info(fmt.Sprintln("Unhandled Signal:", signal))
+		svr.logger.Info(fmt.Sprintln("Unhandled Signal:", signal))
 	}
 }
 
-func VrrpOSSignalHandle() {
+func (svr *VrrpServer) VrrpOSSignalHandle() {
 	sigChannel := make(chan os.Signal, 1)
 	signalList := []os.Signal{syscall.SIGHUP}
 	signal.Notify(sigChannel, signalList...)
-	go VrrpSignalHandler(sigChannel)
+	go svr.VrrpSignalHandler(sigChannel)
 }
 
-func VrrpConnectAndInitPortVlan() error {
-
-	configFile := paramsDir + "/clients.json"
+func (svr *VrrpServer) VrrpConnectAndInitPortVlan() error {
+	configFile := svr.paramsDir + "/clients.json"
 	bytes, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		logger.Err(fmt.Sprintln("VRRP:Error while reading configuration file",
+		svr.logger.Err(fmt.Sprintln("VRRP:Error while reading configuration file",
 			configFile))
 		return err
 	}
 	var unConnectedClients []VrrpClientJson
 	err = json.Unmarshal(bytes, &unConnectedClients)
 	if err != nil {
-		logger.Err("VRRP: Error in Unmarshalling Json")
+		svr.logger.Err("VRRP: Error in Unmarshalling Json")
 		return err
 	}
 
@@ -200,92 +249,89 @@ func VrrpConnectAndInitPortVlan() error {
 	for {
 		time.Sleep(time.Millisecond * 500)
 		for i := 0; i < len(unConnectedClients); i++ {
-			err := VrrpConnectToUnConnectedClient(unConnectedClients[i])
+			err := svr.VrrpConnectToUnConnectedClient(unConnectedClients[i])
 			if err == nil {
-				logger.Info("VRRP: Connected to " +
+				svr.logger.Info("VRRP: Connected to " +
 					unConnectedClients[i].Name)
 				unConnectedClients = append(unConnectedClients[:i],
 					unConnectedClients[i+1:]...)
 
 			} else if err.Error() == VRRP_CLIENT_CONNECTION_NOT_REQUIRED {
-				logger.Info("VRRP: connection to " + unConnectedClients[i].Name +
+				svr.logger.Info("VRRP: connection to " + unConnectedClients[i].Name +
 					" not required")
 				unConnectedClients = append(unConnectedClients[:i],
 					unConnectedClients[i+1:]...)
 			}
 		}
 		if len(unConnectedClients) == 0 {
-			logger.Info("VRRP: all clients connected successfully")
+			svr.logger.Info("VRRP: all clients connected successfully")
 			break
 		}
 	}
 
-	VrrpGetInfoFromAsicd()
+	svr.VrrpGetInfoFromAsicd()
 
 	// OS Signal channel listener thread
-	VrrpOSSignalHandle()
+	svr.VrrpOSSignalHandle()
 	return err
 }
 
-func VrrpAllocateMemoryToGlobalDS() {
-	vrrpGblInfo = make(map[string]VrrpGlobalInfo,
+func (vrrpServer *VrrpServer) VrrpInitGlobalDS() {
+	vrrpServer.vrrpGblInfo = make(map[string]VrrpGlobalInfo,
 		VRRP_GLOBAL_INFO_DEFAULT_SIZE)
-	vrrpIfIndexIpAddr = make(map[int32]string,
+	vrrpServer.vrrpIfIndexIpAddr = make(map[int32]string,
 		VRRP_INTF_IPADDR_MAPPING_DEFAULT_SIZE)
-	vrrpLinuxIfIndex2AsicdIfIndex = make(map[int32]*net.Interface,
+	vrrpServer.vrrpLinuxIfIndex2AsicdIfIndex = make(map[int32]*net.Interface,
 		VRRP_LINUX_INTF_MAPPING_DEFAULT_SIZE)
-	vrrpVlanId2Name = make(map[int]string,
+	vrrpServer.vrrpVlanId2Name = make(map[int]string,
 		VRRP_VLAN_MAPPING_DEFAULT_SIZE)
-	vrrpRxPktCh = make(chan VrrpPktChannelInfo, VRRP_RX_BUF_CHANNEL_SIZE)
-	vrrpTxPktCh = make(chan VrrpPktChannelInfo, VRRP_TX_BUF_CHANNEL_SIZE)
+	vrrpServer.VrrpIntfConfigCh = make(chan vrrpd.VrrpIntfConfig, //VrrpGlobalInfo,
+		VRRP_INTF_CONFIG_CH_SIZE)
+	vrrpServer.vrrpRxPktCh = make(chan VrrpPktChannelInfo, VRRP_RX_BUF_CHANNEL_SIZE)
+	vrrpServer.vrrpTxPktCh = make(chan VrrpPktChannelInfo, VRRP_TX_BUF_CHANNEL_SIZE)
+	vrrpServer.vrrpSnapshotLen = 1024
+	vrrpServer.vrrpPromiscuous = false
+	vrrpServer.vrrpTimeout = 10 * time.Microsecond
+	vrrpServer.vrrpMacConfigAdded = false
 }
 
-func VrrpDeAllocateMemoryToGlobalDS() {
-	vrrpGblInfo = nil
-	vrrpIfIndexIpAddr = nil
-	vrrpLinuxIfIndex2AsicdIfIndex = nil
-	vrrpVlanId2Name = nil
-	vrrpRxPktCh = nil
-	vrrpTxPktCh = nil
+func (svr *VrrpServer) VrrpDeAllocateMemoryToGlobalDS() {
+	svr.vrrpGblInfo = nil
+	svr.vrrpIfIndexIpAddr = nil
+	svr.vrrpLinuxIfIndex2AsicdIfIndex = nil
+	svr.vrrpVlanId2Name = nil
+	svr.vrrpRxPktCh = nil
+	svr.vrrpTxPktCh = nil
 }
 
-func StartServer(log *syslog.Writer, handler *VrrpServiceHandler, addr string) error {
-	logger = log
-	logger.Info("VRRP: allocating memory to global ds")
-
+func (svr *VrrpServer) StartServer(paramsDir string) {
 	// Allocate memory to all the Data Structures
-	VrrpAllocateMemoryToGlobalDS()
-
-	params := flag.String("params", "", "Directory Location for config files")
-	flag.Parse()
-	paramsDir = *params
-
+	svr.VrrpInitGlobalDS()
+	svr.paramsDir = paramsDir
 	// Initialize DB
-	err := VrrpInitDB()
+	err := svr.VrrpInitDB()
 	if err != nil {
-		logger.Err("VRRP: DB init failed")
+		svr.logger.Err("VRRP: DB init failed")
 	} else {
-		VrrpReadDB()
+		svr.VrrpReadDB()
 	}
 
-	go VrrpConnectAndInitPortVlan()
+	svr.VrrpConnectAndInitPortVlan()
 
-	// create transport and protocol for server
-	transportFactory := thrift.NewTBufferedTransportFactory(8192)
-	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
-	transport, err := thrift.NewTServerSocket(addr)
-	if err != nil {
-		logger.Info(fmt.Sprintln("VRRP: StartServer: NewTServerSocket "+
-			"failed with error:", err))
-		return err
+	// Start receviing in rpc values in the channell
+	for {
+		select {
+		case intfConf := <-svr.VrrpIntfConfigCh:
+			svr.VrrpUpdateGblInfo(intfConf)
+		}
+
 	}
-	processor := vrrpd.NewVRRPDServicesProcessor(handler)
-	server := thrift.NewTSimpleServer4(processor, transport,
-		transportFactory, protocolFactory)
-	err = server.Serve()
-	if err != nil {
-		logger.Err(fmt.Sprintln("VRRP: Failed to start the listener, err:", err))
-		return err
-	}
-	return nil
+	//return
+
+}
+
+func VrrpNewServer(log *syslog.Writer) *VrrpServer {
+	vrrpServerInfo := &VrrpServer{}
+	vrrpServerInfo.logger = log
+	return vrrpServerInfo
 }
