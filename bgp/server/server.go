@@ -13,7 +13,6 @@ import (
 	"l3/bgp/packet"
 	"l3/bgp/policy"
 	"l3/rib/ribdCommonDefs"
-	"utils/policy/policyCommonDefs"
 	"log/syslog"
 	"net"
 	"ribd"
@@ -21,6 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"utils/patriciaDB"
+	"utils/policy/policyCommonDefs"
 
 	nanomsg "github.com/op/go-nanomsg"
 )
@@ -232,9 +232,17 @@ func (server *BGPServer) handleBfdNotifications(rxBuf []byte) {
 		server.logger.Err(fmt.Sprintf("Unmarshal BFD notification failed with err %s", err))
 	}
 
-	if peer, ok := server.PeerMap[bfd.DestIp]; ok && !bfd.State {
-		peer.StopFSM("Peer BFD Down")
-		peer.Neighbor.State.BfdNeighborState = "Down"
+	if peer, ok := server.PeerMap[bfd.DestIp]; ok {
+		if !bfd.State {
+			if peer.Neighbor.State.BfdNeighborState == "up" {
+				peer.StopFSM("Peer BFD Down")
+				peer.Neighbor.State.BfdNeighborState = "Down"
+			}
+		} else {
+			if peer.Neighbor.State.BfdNeighborState == "down" {
+				peer.Neighbor.State.BfdNeighborState = "up"
+			}
+		}
 	}
 }
 
@@ -648,8 +656,8 @@ func (server *BGPServer) ProcessRoutesFromRIB() {
 	var count ribd.Int
 	count = 100
 	for {
-		server.logger.Info(fmt.Sprintln("Getting ", count, " objects from currMarker" , currMarker))
-	    getBulkInfo,err := server.ribdClient.GetBulkRoutesForProtocol("BGP", currMarker, count)
+		server.logger.Info(fmt.Sprintln("Getting ", count, " objects from currMarker", currMarker))
+		getBulkInfo, err := server.ribdClient.GetBulkRoutesForProtocol("BGP", currMarker, count)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("GetBulkRoutesForProtocol with err ", err))
 			return
@@ -658,8 +666,8 @@ func (server *BGPServer) ProcessRoutesFromRIB() {
 			server.logger.Info("0 objects returned from GetBulkRoutesForProtocol")
 			return
 		}
-		server.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ",len(getBulkInfo.RouteList)," num objects returned = ", getBulkInfo.Count))
-        server.ProcessConnectedRoutes(getBulkInfo.RouteList, make([]*ribd.Routes, 0))
+		server.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ", len(getBulkInfo.RouteList), " num objects returned = ", getBulkInfo.Count))
+		server.ProcessConnectedRoutes(getBulkInfo.RouteList, make([]*ribd.Routes, 0))
 		if getBulkInfo.More == false {
 			server.logger.Info("more returned as false, so no more get bulks")
 			return
@@ -795,9 +803,9 @@ func (server *BGPServer) StartServer() {
 	acceptCh := make(chan *net.TCPConn)
 	go server.listenForPeers(acceptCh)
 
-//	routes, _ := server.ribdClient.GetConnectedRoutesInfo()
-    server.ProcessRoutesFromRIB()
-//	server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
+	//	routes, _ := server.ribdClient.GetConnectedRoutesInfo()
+	server.ProcessRoutesFromRIB()
+	//	server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
 
 	go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
 	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
