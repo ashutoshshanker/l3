@@ -1,13 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"l3/vrrp/rpc"
 	"l3/vrrp/server"
 	"log/syslog"
 )
-
-const IP = "localhost"
-const VRRP_PORT = "10000"
 
 func main() {
 	fmt.Printf("VRRP: Start the logger\n")
@@ -17,14 +16,20 @@ func main() {
 		return
 	}
 	logger.Info("VRRP: Started the logger successfully.")
-	var addr = IP + ":" + VRRP_PORT
-	logger.Info("Starting VRRP....")
-	// Create a handler
-	handler := vrrpServer.NewVrrpServer()
-	err = vrrpServer.StartServer(logger, handler, addr)
+	paramsDir := flag.String("params", "./params", "Params directory")
+	flag.Parse()
+	logger.Info("Starting VRRP server....")
+	// Create vrrp server handler
+	vrrpSvr := vrrpServer.VrrpNewServer(logger)
+	go vrrpSvr.StartServer(*paramsDir)
+
+	logger.Info("Starting VRRP Rpc listener....")
+	// Create vrrp rpc handler
+	vrrpHdl := vrrpRpc.VrrpNewHandler(vrrpSvr, logger)
+	err = vrrpRpc.StartServer(logger, vrrpHdl, *paramsDir)
 	if err != nil {
 		logger.Err(fmt.Sprintln("VRRP: Cannot start vrrp server", err))
 		return
 	}
-	logger.Info("VRRP: Server Started Successfully at " + addr)
+	logger.Info("Started Successfully")
 }
