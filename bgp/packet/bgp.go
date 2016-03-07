@@ -4,6 +4,7 @@ package packet
 import (
 	"encoding/binary"
 	"fmt"
+	"l3/bgp/utils"
 	"math"
 	"net"
 )
@@ -233,6 +234,10 @@ type BGPHeader struct {
 	Marker [BGPHeaderMarkerLen]byte
 	Length uint16
 	Type   uint8
+}
+
+func NewBGPHeader() *BGPHeader {
+	return &BGPHeader{}
 }
 
 func (header *BGPHeader) Clone() *BGPHeader {
@@ -883,6 +888,7 @@ type BGPPathAttr interface {
 	Decode(pkt []byte, data interface{}) error
 	TotalLen() uint32
 	GetCode() BGPPathAttrType
+	New() BGPPathAttr
 }
 
 type BGPPathAttrBase struct {
@@ -1013,6 +1019,10 @@ func (o *BGPPathAttrOrigin) Decode(pkt []byte, data interface{}) error {
 	return nil
 }
 
+func (o *BGPPathAttrOrigin) New() BGPPathAttr {
+	return &BGPPathAttrOrigin{}
+}
+
 func NewBGPPathAttrOrigin(originType BGPPathAttrOriginType) *BGPPathAttrOrigin {
 	origin := &BGPPathAttrOrigin{
 		BGPPathAttrBase: BGPPathAttrBase{
@@ -1122,8 +1132,10 @@ func (ps *BGPAS2PathSegment) Decode(pkt []byte, data interface{}) error {
 
 func (ps *BGPAS2PathSegment) GetNumASes() uint8 {
 	if ps.Type == BGPASPathSegmentSet {
+		utils.Logger.Info(fmt.Sprintln("BGPAS2PathSegment:GetNumASes - AS SET num =", 1))
 		return 1
 	} else {
+		utils.Logger.Info(fmt.Sprintln("BGPAS2PathSegment:GetNumASes - AS SEQUENCE num =", len(ps.AS), "ASes =", ps.AS))
 		return uint8(len(ps.AS))
 	}
 }
@@ -1235,8 +1247,10 @@ func (ps *BGPAS4PathSegment) Decode(pkt []byte, data interface{}) error {
 
 func (ps *BGPAS4PathSegment) GetNumASes() uint8 {
 	if ps.Type == BGPASPathSegmentSet {
+		utils.Logger.Info(fmt.Sprintln("BGPAS2PathSegment:GetNumASes - AS SET num =", 1))
 		return 1
 	} else {
+		utils.Logger.Info(fmt.Sprintln("BGPAS2PathSegment:GetNumASes - AS SEQUENCE num =", len(ps.AS), "ASes = ", ps.AS))
 		return uint8(len(ps.AS))
 	}
 }
@@ -1378,6 +1392,10 @@ func (as *BGPPathAttrASPath) AppendASPathSegment(pathSeg BGPASPathSegment) {
 	as.BGPPathAttrBase.Length += pathSeg.TotalLen()
 }
 
+func (o *BGPPathAttrASPath) New() BGPPathAttr {
+	return &BGPPathAttrASPath{}
+}
+
 func NewBGPPathAttrASPath() *BGPPathAttrASPath {
 	asPath := &BGPPathAttrASPath{
 		BGPPathAttrBase: BGPPathAttrBase{
@@ -1459,6 +1477,10 @@ func (as *BGPPathAttrAS4Path) AddASPathSegment(pathSeg *BGPAS4PathSegment) {
 	as.BGPPathAttrBase.Length += pathSeg.TotalLen()
 }
 
+func (o *BGPPathAttrAS4Path) New() BGPPathAttr {
+	return &BGPPathAttrAS4Path{}
+}
+
 func NewBGPPathAttrAS4Path() *BGPPathAttrAS4Path {
 	asPath := &BGPPathAttrAS4Path{
 		BGPPathAttrBase: BGPPathAttrBase{
@@ -1506,6 +1528,10 @@ func (n *BGPPathAttrNextHop) Decode(pkt []byte, data interface{}) error {
 	return nil
 }
 
+func (o *BGPPathAttrNextHop) New() BGPPathAttr {
+	return &BGPPathAttrNextHop{}
+}
+
 func NewBGPPathAttrNextHop() *BGPPathAttrNextHop {
 	return &BGPPathAttrNextHop{
 		BGPPathAttrBase: BGPPathAttrBase{
@@ -1549,6 +1575,10 @@ func (m *BGPPathAttrMultiExitDisc) Decode(pkt []byte, data interface{}) error {
 	return nil
 }
 
+func (o *BGPPathAttrMultiExitDisc) New() BGPPathAttr {
+	return &BGPPathAttrMultiExitDisc{}
+}
+
 type BGPPathAttrLocalPref struct {
 	BGPPathAttrBase
 	Value uint32
@@ -1580,6 +1610,10 @@ func (l *BGPPathAttrLocalPref) Decode(pkt []byte, data interface{}) error {
 	return nil
 }
 
+func (o *BGPPathAttrLocalPref) New() BGPPathAttr {
+	return &BGPPathAttrLocalPref{}
+}
+
 func NewBGPPathAttrLocalPref() *BGPPathAttrLocalPref {
 	return &BGPPathAttrLocalPref{
 		BGPPathAttrBase: BGPPathAttrBase{
@@ -1599,6 +1633,10 @@ func (a *BGPPathAttrAtomicAggregate) Clone() BGPPathAttr {
 	x := *a
 	x.BGPPathAttrBase = a.BGPPathAttrBase.Clone()
 	return &x
+}
+
+func (o *BGPPathAttrAtomicAggregate) New() BGPPathAttr {
+	return &BGPPathAttrAtomicAggregate{}
 }
 
 func NewBGPPathAttrAtomicAggregate() *BGPPathAttrAtomicAggregate {
@@ -1647,6 +1685,10 @@ func (a *BGPPathAttrAggregator) Decode(pkt []byte, data interface{}) error {
 	a.IP = make(net.IP, 4)
 	copy(a.IP, pkt[a.BGPPathAttrLen+2:a.BGPPathAttrLen+6])
 	return nil
+}
+
+func (o *BGPPathAttrAggregator) New() BGPPathAttr {
+	return &BGPPathAttrAggregator{}
 }
 
 func NewBGPPathAttrAggregator() *BGPPathAttrAggregator {
@@ -1699,6 +1741,10 @@ func (a *BGPPathAttrAS4Aggregator) Decode(pkt []byte, data interface{}) error {
 	return nil
 }
 
+func (o *BGPPathAttrAS4Aggregator) New() BGPPathAttr {
+	return &BGPPathAttrAS4Aggregator{}
+}
+
 func NewBGPPathAttrAS4Aggregator() *BGPPathAttrAS4Aggregator {
 	return &BGPPathAttrAS4Aggregator{
 		BGPPathAttrBase: BGPPathAttrBase{
@@ -1742,6 +1788,10 @@ func (o *BGPPathAttrOriginatorId) Decode(pkt []byte, data interface{}) error {
 	o.Value = make(net.IP, o.BGPPathAttrBase.Length)
 	copy(o.Value, pkt[o.BGPPathAttrLen:o.BGPPathAttrLen+o.BGPPathAttrBase.Length])
 	return nil
+}
+
+func (o *BGPPathAttrOriginatorId) New() BGPPathAttr {
+	return &BGPPathAttrOriginatorId{}
 }
 
 func NewBGPPathAttrOriginatorId(id net.IP) *BGPPathAttrOriginatorId {
@@ -1803,6 +1853,10 @@ func (c *BGPPathAttrClusterList) PrependId(id uint32) {
 	copy(c.Value[1:], c.Value[0:])
 	c.Value[0] = id
 	c.Length += 4
+}
+
+func (o *BGPPathAttrClusterList) New() BGPPathAttr {
+	return &BGPPathAttrClusterList{}
 }
 
 func NewBGPPathAttrClusterList() *BGPPathAttrClusterList {
@@ -1897,6 +1951,10 @@ func (r *BGPPathAttrMPReachNLRI) Decode(pkt []byte, data interface{}) error {
 	return nil
 }
 
+func (o *BGPPathAttrMPReachNLRI) New() BGPPathAttr {
+	return &BGPPathAttrMPReachNLRI{}
+}
+
 func NewBGPPathAttrMPReachNLRI() *BGPPathAttrMPReachNLRI {
 	return &BGPPathAttrMPReachNLRI{
 		BGPPathAttrBase: BGPPathAttrBase{
@@ -1970,6 +2028,10 @@ func (u *BGPPathAttrMPUnreachNLRI) Decode(pkt []byte, data interface{}) error {
 	return nil
 }
 
+func (o *BGPPathAttrMPUnreachNLRI) New() BGPPathAttr {
+	return &BGPPathAttrMPUnreachNLRI{}
+}
+
 func NewBGPPathAttrMPUnreachNLRI() *BGPPathAttrMPUnreachNLRI {
 	return &BGPPathAttrMPUnreachNLRI{
 		BGPPathAttrBase: BGPPathAttrBase{
@@ -2016,6 +2078,10 @@ func (u *BGPPathAttrUnknown) Decode(pkt []byte, data interface{}) error {
 	return nil
 }
 
+func (o *BGPPathAttrUnknown) New() BGPPathAttr {
+	return &BGPPathAttrUnknown{}
+}
+
 func BGPGetPathAttr(pkt []byte) BGPPathAttr {
 	typeCode := pkt[1]
 	var pathAttr BGPPathAttr
@@ -2024,7 +2090,7 @@ func BGPGetPathAttr(pkt []byte) BGPPathAttr {
 	if !ok {
 		return &BGPPathAttrUnknown{}
 	} else {
-		return pathAttr
+		return pathAttr.New()
 	}
 }
 
@@ -2202,6 +2268,10 @@ func NewBGPUpdateMessage(wdRoutes []IPPrefix, pa []BGPPathAttr, nlri []IPPrefix)
 type BGPMessage struct {
 	Header BGPHeader
 	Body   BGPBody
+}
+
+func NewBGPMessage() *BGPMessage {
+	return &BGPMessage{}
 }
 
 func (msg *BGPMessage) Clone() *BGPMessage {
