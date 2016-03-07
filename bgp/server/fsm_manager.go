@@ -161,14 +161,16 @@ func (mgr *FSMManager) fsmClose(id uint8) {
 func (mgr *FSMManager) fsmEstablished(id uint8, conn *net.Conn) {
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d connection established", mgr.pConf.NeighborAddress.String(), id))
 	mgr.activeFSM = id
-	mgr.Peer.PeerConnEstablished(conn)
+	mgr.Peer.Server.PeerFSMConnCh <- PeerFSMConn{mgr.Peer.Neighbor.NeighborAddress.String(), true, conn}
+	//mgr.Peer.PeerConnEstablished(conn)
 }
 
 func (mgr *FSMManager) fsmBroken(id uint8, fsmDelete bool) {
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d connection broken", mgr.pConf.NeighborAddress.String(), id))
 	if mgr.activeFSM == id {
 		mgr.activeFSM = uint8(config.ConnDirInvalid)
-		mgr.Peer.PeerConnBroken(fsmDelete)
+		mgr.Peer.Server.PeerFSMConnCh <- PeerFSMConn{mgr.Peer.Neighbor.NeighborAddress.String(), false, nil}
+		//mgr.Peer.PeerConnBroken(fsmDelete)
 	}
 }
 

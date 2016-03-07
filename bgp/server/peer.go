@@ -289,13 +289,13 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 		return
 	}
 	p.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
-	p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
+	//p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
 }
 
 func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 	if p.Neighbor.Transport.Config.LocalAddress != nil {
 		p.Neighbor.Transport.Config.LocalAddress = nil
-		p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
+		//p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
 	}
 
 	p.Neighbor.State.ConnectRetryTime = p.PeerConf.ConnectRetryTime
