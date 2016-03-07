@@ -157,9 +157,6 @@ struct PolicyDefinitionConfig{
 	2: int Precedence
 	3: string MatchType
 	4: list<PolicyDefinitionStmtPrecedence> PolicyDefinitionStatements
-	6 : bool     Export
-	7 : bool     Import
-	8 : bool     Global
 }
 
 struct PolicyDefinitionState{
