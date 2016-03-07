@@ -753,11 +753,11 @@ func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 }
 
 func (server *BGPServer) ProcessBfd(peer *Peer) {
+	bfdSession := bfdd.NewBfdSessionConfig()
+	bfdSession.IpAddr = peer.Neighbor.NeighborAddress.String()
+	bfdSession.Owner = "bgp"
 	if peer.PeerConf.BfdEnable {
 		server.logger.Info(fmt.Sprintln("Bfd enabled on :", peer.Neighbor.NeighborAddress))
-		bfdSession := bfdd.NewBfdSessionConfig()
-		bfdSession.IpAddr = peer.Neighbor.NeighborAddress.String()
-		bfdSession.Owner = "bgp"
 		bfdSession.Operation = "create"
 		server.logger.Info(fmt.Sprintln("Creating BFD Session: ", bfdSession))
 		ret, err := server.bfddClient.CreateBfdSessionConfig(bfdSession)
@@ -765,6 +765,20 @@ func (server *BGPServer) ProcessBfd(peer *Peer) {
 			server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:", ret, "err:", err))
 		} else {
 			server.logger.Info("Bfd session configured")
+			peer.Neighbor.State.BfdNeighborState = "up"
+		}
+	} else {
+		if peer.Neighbor.State.BfdNeighborState != "" {
+			server.logger.Info(fmt.Sprintln("Bfd disabled on :", peer.Neighbor.NeighborAddress))
+			bfdSession.Operation = "delete"
+			server.logger.Info(fmt.Sprintln("Deleting BFD Session: ", bfdSession))
+			ret, err := server.bfddClient.CreateBfdSessionConfig(bfdSession)
+			if !ret {
+				server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:", ret, "err:", err))
+			} else {
+				server.logger.Info(fmt.Sprintln("Bfd session removed for ", peer.Neighbor.NeighborAddress))
+				peer.Neighbor.State.BfdNeighborState = ""
+			}
 		}
 	}
 }
@@ -908,11 +922,11 @@ func (server *BGPServer) StartServer() {
 				server.logger.Info(fmt.Sprintln("Add neighbor, ip:", newPeer.NeighborAddress.String()))
 				peer = NewPeer(server, &server.BgpConfig.Global.Config, groupConfig, newPeer)
 				server.PeerMap[newPeer.NeighborAddress.String()] = peer
-				server.ProcessBfd(peer)
 				server.NeighborMutex.Lock()
 				server.addPeerToList(peer)
 				server.NeighborMutex.Unlock()
 			}
+			server.ProcessBfd(peer)
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:

@@ -43,6 +43,13 @@ func main() {
 	logger.Info(fmt.Sprintln("Starting BFD Server..."))
 	bfdServer := server.NewBFDServer(logger)
 	go bfdServer.StartServer(fileName, dbHdl)
+	logger.Info(fmt.Sprintln("Waiting for BFD server to come up"))
+	up := <-bfdServer.ServerUpCh
+	logger.Info(fmt.Sprintln("BFD server is up: ", up))
+	if !up {
+		logger.Err(fmt.Sprintln("BFD server didn't come up. Exiting!!"))
+		return
+	}
 
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewBFDHandler(logger, bfdServer)
