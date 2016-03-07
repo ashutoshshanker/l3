@@ -267,12 +267,12 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 		TTL:      uint8(1),
 		Protocol: layers.IPProtocol(OSPF_PROTO_ID),
 		SrcIP:    ent.IfIpAddr,
-		DstIP:    nbrConf.OspfNbrIPAddr, //net.IP{40, 1, 1, 2},
+		DstIP:    nbrConf.OspfNbrIPAddr,
 	}
 
 	ethLayer := layers.Ethernet{
 		SrcMAC:       ent.IfMacAddr,
-		DstMAC:       dstMAC, //net.HardwareAddr{0x00, 0xe0, 0x4c, 0x68, 0x00, 0x81},
+		DstMAC:       dstMAC,
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 
@@ -298,6 +298,10 @@ func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadat
 	pktlen := ospfHdrMd.pktlen
 	/*  TODO check min length
 	 */
+	if pktlen < OSPF_DBD_MIN_SIZE+OSPF_HEADER_SIZE {
+		server.logger.Warning(fmt.Sprintln("DBD WARNING: Packet < min DBD length. pktlen ", pktlen,
+			" min_dbd_len ", OSPF_DBD_MIN_SIZE+OSPF_HEADER_SIZE))
+	}
 
 	decodeDatabaseDescriptionData(data, ospfdbd_data, pktlen)
 
@@ -328,7 +332,8 @@ func (server *OSPFServer) ConstructAndSendDbdPacket(nbrKey NeighborConfKey,
 	last_exchange = true
 	nbrCon, exists := server.NeighborConfigMap[nbrKey.OspfNbrRtrId]
 	if !exists {
-		server.logger.Info(fmt.Sprintln("DBD: Failed to send initial dbd packet as nbr doesnt exist. nbr", nbrKey.OspfNbrRtrId))
+		server.logger.Err(fmt.Sprintln("DBD: Failed to send initial dbd packet as nbr doesnt exist. nbr",
+			nbrKey.OspfNbrRtrId))
 		return dbd_mdata, last_exchange
 	}
 
@@ -340,28 +345,11 @@ func (server *OSPFServer) ConstructAndSendDbdPacket(nbrKey NeighborConfKey,
 	dbd_mdata.options = options
 	dbd_mdata.dd_sequence_number = seq
 
-	/*
-		if append_lsa && exists {
-			dbd_mdata.lsa_headers = []ospfLSAHeader{}
-			//	fmt.Sprintln("DBD: add lsa to the packet..")
-			var index uint8
-			nbrCon.db_summary_list_mutex.Lock()
-			db_list, exist := ospfNeighborDBSummary_list[nbrKey.OspfNbrRtrId]
-			server.logger.Info(fmt.Sprintln("DBD: db_list ", db_list))
-			if exist && len(db_list) != 0 {
-				for index = 0; index < lsa_attach; index++ {
-					dbd_mdata.lsa_headers = append(dbd_mdata.lsa_headers, db_list[nbrCon.ospfNbrLsaIndex+index].lsa_headers)
-					db_list[nbrCon.ospfNbrLsaIndex+index].valid = false
-				}
-			}
-			nbrCon.db_summary_list_mutex.Unlock()
-		}
-	*/
-	lsa_count := 0
+	lsa_count_done := 0
+	lsa_count_att := 0
 	if append_lsa && exists {
 
 		dbd_mdata.lsa_headers = []ospfLSAHeader{}
-		//	fmt.Sprintln("DBD: add lsa to the packet..")
 		var index uint8
 
 		nbrCon.db_summary_list_mutex.Lock()
@@ -371,14 +359,15 @@ func (server *OSPFServer) ConstructAndSendDbdPacket(nbrKey NeighborConfKey,
 			for index = 0; index < uint8(len(db_list)); index++ {
 				if db_list[index].valid {
 					dbd_mdata.lsa_headers = append(dbd_mdata.lsa_headers, db_list[index].lsa_headers)
+					lsa_count_att++
 				} else {
-					lsa_count++
+					lsa_count_done++
 				}
 				db_list[index].valid = false
 			}
 		}
 		nbrCon.db_summary_list_mutex.Unlock()
-		if lsa_count == 0 {
+		if (lsa_count_att + lsa_count_done) == len(db_list) {
 			dbd_mdata.mbit = false
 			last_exchange = true
 		}

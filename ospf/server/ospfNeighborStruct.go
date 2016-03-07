@@ -302,7 +302,7 @@ func (server *OSPFServer) sendLsdbToNeighborEvent(key uint32, areaId uint32, lsT
 		lsOp:   op,
 	}
 	server.ospfNbrLsaUpdSendCh <- msg
-	server.logger.Info("Send flood data to Tx thread")
+	//server.logger.Info("Send flood data to Tx thread")
 }
 
 func (server *OSPFServer) calculateDBLsaAttach(nbrKey NeighborConfKey, nbrConf OspfNeighborEntry) (last_exchange bool, lsa_attach uint8) {

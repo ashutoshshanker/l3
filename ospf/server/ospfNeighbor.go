@@ -49,7 +49,7 @@ func (server *OSPFServer) adjacancyEstablishementCheck(isNbrDRBDR bool, isRtrDRB
 	if isNbrDRBDR || isRtrDRBDR {
 		return true
 	}
-	/* return true if n/w is p2p , p2mp, virtual link */
+	/* TODO - check if n/w is p2p , p2mp, virtual link */
 	return false
 }
 
@@ -196,7 +196,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				for i := 0; i < headers_len; i++ {
 					var lsaheader ospfLSAHeader
 					lsaheader = nbrDbPkt.lsa_headers[i]
-					result := server.lsaAddCheck(lsaheader) // check lsdb
+					result := server.lsaAddCheck(lsaheader, nbrConf) // check lsdb
 					if result {
 						req := newospfNeighborReq()
 						req.lsa_headers = lsaheader
@@ -224,13 +224,13 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 						dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, false, true,
 							nbrDbPkt.options, nbrDbPkt.dd_sequence_number+1, true, false)
 						OspfNeighborLastDbd[nbrKey] = dbd_mdata
-					} else {
+					} /*else {
 						// send old packet
 						server.logger.Info(fmt.Sprintln("DBD: (master/exchange) Duplicated dbd. Resend . dbd_seq , nbr_seq_num ",
 							nbrDbPkt.dd_sequence_number, nbrConf.ospfNbrSeqNum))
 						data := newDbdMsg(nbrKey.OspfNbrRtrId, OspfNeighborLastDbd[nbrKey])
 						server.ospfNbrDBDSendCh <- data
-					}
+					}*/
 				} else { // i am slave
 					/* send acknowledgement DBD with I and MS bit false and mbit same as
 					rx packet
@@ -314,7 +314,6 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				if nbrConf.isMaster {
 					dbd_mdata, _ := server.ConstructAndSendDbdPacket(nbrKey, false, nbrDbPkt.mbit, false,
 						nbrDbPkt.options, nbrConf.ospfNbrSeqNum, false, false)
-					//data := newDbdMsg(nbrKey.OspfNbrRtrId, OspfNeighborLastDbd[nbrKey])
 					seq_num = dbd_mdata.dd_sequence_number + 1
 				}
 				nbrConf.ospfNbrLsaReqIndex = server.BuildAndSendLSAReq(nbrKey.OspfNbrRtrId, nbrConf)
@@ -376,8 +375,6 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 			send_dbd = false
 			seq_update = false
 			if exists {
-				//fmt.Println("NBREVENT:Nbr ", nbrData.RouterId, "exists in the global list.")
-
 				nbrConf = server.NeighborConfigMap[nbrData.RouterId]
 				if nbrData.TwoWayStatus { // update the state
 					startAdjacency := server.adjacancyEstablishementCheck(nbrConf.isDRBDR, true)
@@ -534,7 +531,11 @@ func (server *OSPFServer) ProcessRxNbrPkt() {
 				//server.DecodeLSAAck(nbrLSAAckPkt)
 			}
 
-			/* TODO add stop channel */
+		case stop := <-(server.ospfRxNbrPktStopCh):
+			if stop {
+				return
+			}
+
 		}
 
 	}
@@ -575,7 +576,7 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 		case msg := <-server.ospfNbrLsaAckSendCh:
 			server.processTxLsaAck(msg)
 
-		case stop := <-server.ospfRxTxNbrPktStopCh:
+		case stop := <-server.ospfTxNbrPktStopCh:
 			if stop == true {
 				return
 			}
@@ -642,21 +643,6 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 	nbrConf.db_summary_list_mutex.Unlock()
 }
 
-func getLsaHeaderFromLsa(ls_age uint16, options uint8, ls_type uint8, link_state_id uint32,
-	adv_router_id uint32, ls_sequence_num uint32, ls_checksum uint16, ls_len uint16) ospfLSAHeader {
-
-	var lsa_header ospfLSAHeader
-	lsa_header.ls_age = ls_age
-	lsa_header.options = options
-	lsa_header.ls_type = ls_type
-	lsa_header.link_state_id = link_state_id
-	lsa_header.adv_router_id = adv_router_id
-	lsa_header.ls_sequence_num = ls_sequence_num
-	lsa_header.ls_checksum = ls_checksum
-	lsa_header.ls_len = ls_len
-	return lsa_header
-}
-
 func (server *OSPFServer) neighborDeadTimerEvent(nbrConfKey NeighborConfKey) {
 	var nbr_entry_dead_func func()
 
@@ -712,7 +698,7 @@ func (server *OSPFServer) refreshNeighborSlice() {
 				idx++
 			}
 
-			fmt.Println("Tick at", t)
+			server.logger.Info(fmt.Sprintln("Get bulk slice refreshed - ", t))
 		}
 	}()
 

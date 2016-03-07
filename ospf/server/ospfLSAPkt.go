@@ -93,6 +93,21 @@ func newospfNeighborLSAUpdPkt() *ospfNeighborLSAUpdPkt {
 	return &ospfNeighborLSAUpdPkt{}
 }
 
+func getLsaHeaderFromLsa(ls_age uint16, options uint8, ls_type uint8, link_state_id uint32,
+	adv_router_id uint32, ls_sequence_num uint32, ls_checksum uint16, ls_len uint16) ospfLSAHeader {
+
+	var lsa_header ospfLSAHeader
+	lsa_header.ls_age = ls_age
+	lsa_header.options = options
+	lsa_header.ls_type = ls_type
+	lsa_header.link_state_id = link_state_id
+	lsa_header.adv_router_id = adv_router_id
+	lsa_header.ls_sequence_num = ls_sequence_num
+	lsa_header.ls_checksum = ls_checksum
+	lsa_header.ls_len = ls_len
+	return lsa_header
+}
+
 func decodeLSAReq(data []byte) (lsa_req ospfLSAReq) {
 	lsa_req.ls_type = binary.BigEndian.Uint32(data[0:4])
 	lsa_req.link_state_id = binary.BigEndian.Uint32(data[4:8])
@@ -434,6 +449,7 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			lsaAckMsg := newospfNeighborAckTxMsg()
 			lsaAckMsg.lsa_headers_byte = append(lsaAckMsg.lsa_headers_byte, lsa_header_byte...)
 			lsaAckMsg.nbrKey = msg.nbrKey
+			server.logger.Info(fmt.Sprintln("ACK TX: nbr ", msg.nbrKey, " ack ", lsaAckMsg.lsa_headers_byte))
 			server.ospfNbrLsaAckSendCh <- *lsaAckMsg
 		}
 	}
@@ -444,10 +460,6 @@ func (server *OSPFServer) lsaUpdDiscardCheck(nbrConf OspfNeighborEntry, data []b
 		server.logger.Info(fmt.Sprintln("LSAUPD: Discard .. Nbrstate (expected less than exchange)", nbrConf.OspfNbrState))
 		return true
 	}
-
-	/* TODO
-	check the router DB if packet needs to be updated.
-	if not found in LSDB generate LSAReqEvent */
 
 	return false
 }
@@ -643,7 +655,7 @@ func (server *OSPFServer) BuildLSAAckPkt(intfKey IntfConfKey, ent IntfConf,
 	ospfPktlen := OSPF_HEADER_SIZE
 	ospfPktlen = ospfPktlen + lsa_pkt_size
 	ospfHdr.pktlen = uint16(ospfPktlen)
-
+	server.logger.Info(fmt.Sprintln("LSAACK : packet legth header(24) + ack ", ospfPktlen))
 	ospfEncHdr := encodeOspfHdr(ospfHdr)
 	server.logger.Info(fmt.Sprintln("ospfEncHdr:", ospfEncHdr))
 
@@ -692,7 +704,7 @@ func (server *OSPFServer) ProcessRxLSAAckPkt(data []byte, ospfHdrMd *OspfHdrMeta
 	link_ack := newospfNeighborLSAAckMsg()
 	headers_len := ospfHdrMd.pktlen - OSPF_HEADER_SIZE
 	if headers_len >= 20 && headers_len < ospfHdrMd.pktlen {
-		fmt.Println("LSAACK: LSA headers length ", headers_len)
+		server.logger.Info(fmt.Sprintln("LSAACK: LSA headers length ", headers_len))
 		num_headers := int(headers_len / 20)
 		server.logger.Info(fmt.Sprintln("LSAACK: Received ", num_headers, " LSA headers."))
 		header_byte := make([]byte, num_headers*OSPF_LSA_HEADER_SIZE)
@@ -838,10 +850,58 @@ func (server *OSPFServer) lsaAckPacketDiscardCheck(nbrConf OspfNeighborEntry) bo
 	return false
 }
 
-func (server *OSPFServer) lsaAddCheck(lsaheader ospfLSAHeader) (result bool) {
-	/*
-		TODO check if the entry exist in LSDB.
-	*/
+/*
+@fn lsaAddCheck
+	This API checks if the LSA header received in DBD
+	is to be added in the req list.
+*/
+
+func (server *OSPFServer) lsaAddCheck(lsaheader ospfLSAHeader,
+	nbr OspfNeighborEntry) (result bool) {
+
+	lsa_max_age := false
+	intf := server.IntfConfMap[nbr.intfConfKey]
+	areaId := convertIPv4ToUint32(intf.IfAreaId)
+	if lsaheader.ls_age == LSA_MAX_AGE {
+		lsa_max_age = true
+	}
+	lsa_key := NewLsaKey()
+	lsa_key.AdvRouter = lsaheader.adv_router_id
+	lsa_key.LSId = lsaheader.link_state_id
+	lsa_key.LSType = lsaheader.ls_type
+
+	discard := true
+	var op uint8
+
+	switch lsaheader.ls_type {
+	case RouterLSA:
+		rlsa := NewRouterLsa()
+		drlsa, ret := server.getRouterLsaFromLsdb(areaId, *lsa_key)
+		discard, op = server.sanityCheckRouterLsa(*rlsa, drlsa, nbr, intf, ret, lsa_max_age)
+
+	case NetworkLSA:
+		nlsa := NewNetworkLsa()
+		dnlsa, ret := server.getNetworkLsaFromLsdb(areaId, *lsa_key)
+		discard, op = server.sanityCheckNetworkLsa(*nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
+
+	case Summary3LSA:
+	case Summary4LSA:
+		slsa := NewSummaryLsa()
+		dslsa, ret := server.getSummaryLsaFromLsdb(areaId, *lsa_key)
+		discard, op = server.sanityCheckSummaryLsa(*slsa, dslsa, nbr, intf, ret, lsa_max_age)
+
+	case ASExternalLSA:
+		alsa := NewASExternalLsa()
+		dalsa, ret := server.getASExternalLsaFromLsdb(areaId, *lsa_key)
+		discard, op = server.sanityCheckASExternalLsa(*alsa, dalsa, nbr, intf, intf.IfAreaId, ret, lsa_max_age)
+
+	}
+	if discard {
+		server.logger.Info(fmt.Sprintln("DBD: LSA is not added in the request list. ls_type ",
+			lsaheader.ls_type, " op ", op))
+		return false
+	}
+
 	return true
 }
 
@@ -896,6 +956,7 @@ func (server *OSPFServer) processTxLsaAck(lsa_data ospfNeighborAckTxMsg) {
 	}
 	nbrConf, exists := server.NeighborConfigMap[lsa_data.nbrKey]
 	if !exists {
+		server.logger.Warning(fmt.Sprintln("TX ACK: neighbor doesnt exist  to send ack ", lsa_data.nbrKey))
 		return
 	}
 	intf, _ := server.IntfConfMap[nbrConf.intfConfKey]
