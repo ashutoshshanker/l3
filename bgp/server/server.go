@@ -13,7 +13,6 @@ import (
 	"l3/bgp/packet"
 	"l3/bgp/policy"
 	"l3/rib/ribdCommonDefs"
-	"utils/policy/policyCommonDefs"
 	"log/syslog"
 	"net"
 	"ribd"
@@ -21,6 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"utils/patriciaDB"
+	"utils/policy/policyCommonDefs"
 
 	nanomsg "github.com/op/go-nanomsg"
 )
@@ -51,6 +51,12 @@ type IfState struct {
 	state uint8
 }
 
+type PeerFSMConn struct {
+	peerIP      string
+	established bool
+	conn        *net.Conn
+}
+
 type BGPServer struct {
 	logger           *syslog.Writer
 	policyEngine     *policy.BGPPolicyEngine
@@ -64,6 +70,7 @@ type BGPServer struct {
 	RemPeerGroupCh   chan string
 	AddAggCh         chan AggUpdate
 	RemAggCh         chan string
+	PeerFSMConnCh    chan PeerFSMConn
 	PeerConnEstCh    chan string
 	PeerConnBrokenCh chan string
 	PeerCommandCh    chan config.PeerCommand
@@ -93,6 +100,7 @@ func NewBGPServer(logger *syslog.Writer, policyEngine *policy.BGPPolicyEngine, r
 	bgpServer.RemPeerGroupCh = make(chan string)
 	bgpServer.AddAggCh = make(chan AggUpdate)
 	bgpServer.RemAggCh = make(chan string)
+	bgpServer.PeerFSMConnCh = make(chan PeerFSMConn, 50)
 	bgpServer.PeerConnEstCh = make(chan string)
 	bgpServer.PeerConnBrokenCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
@@ -648,8 +656,8 @@ func (server *BGPServer) ProcessRoutesFromRIB() {
 	var count ribd.Int
 	count = 100
 	for {
-		server.logger.Info(fmt.Sprintln("Getting ", count, " objects from currMarker" , currMarker))
-	    getBulkInfo,err := server.ribdClient.GetBulkRoutesForProtocol("BGP", currMarker, count)
+		server.logger.Info(fmt.Sprintln("Getting ", count, " objects from currMarker", currMarker))
+		getBulkInfo, err := server.ribdClient.GetBulkRoutesForProtocol("BGP", currMarker, count)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("GetBulkRoutesForProtocol with err ", err))
 			return
@@ -658,8 +666,8 @@ func (server *BGPServer) ProcessRoutesFromRIB() {
 			server.logger.Info("0 objects returned from GetBulkRoutesForProtocol")
 			return
 		}
-		server.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ",len(getBulkInfo.RouteList)," num objects returned = ", getBulkInfo.Count))
-        server.ProcessConnectedRoutes(getBulkInfo.RouteList, make([]*ribd.Routes, 0))
+		server.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ", len(getBulkInfo.RouteList), " num objects returned = ", getBulkInfo.Count))
+		server.ProcessConnectedRoutes(getBulkInfo.RouteList, make([]*ribd.Routes, 0))
 		if getBulkInfo.More == false {
 			server.logger.Info("more returned as false, so no more get bulks")
 			return
@@ -768,6 +776,38 @@ func (server *BGPServer) getIfaceIP(ip string) {
 	}
 }
 
+func (server *BGPServer) setInterfaceMapForPeer(peerIP string, peer *Peer) {
+	reachInfo, err := server.ribdClient.GetRouteReachabilityInfo(peerIP)
+	if err != nil {
+		server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
+	} else {
+		ifIdx := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
+		server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d", peerIP, ifIdx))
+		if _, ok := server.ifacePeerMap[ifIdx]; !ok {
+			server.ifacePeerMap[ifIdx] = make([]string, 0)
+		}
+		server.ifacePeerMap[ifIdx] = append(server.ifacePeerMap[ifIdx], peerIP)
+		peer.setIfIdx(ifIdx)
+	}
+}
+
+func (server *BGPServer) clearInterfaceMapForPeer(peerIP string, peer *Peer) {
+	ifIdx := peer.getIfIdx()
+	server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection broken ifIdx %v", peerIP, ifIdx))
+	if peerList, ok := server.ifacePeerMap[ifIdx]; ok {
+		for idx, ip := range peerList {
+			if ip == peerIP {
+				server.ifacePeerMap[ifIdx] = append(server.ifacePeerMap[ifIdx][:idx], server.ifacePeerMap[ifIdx][idx+1:]...)
+				if len(server.ifacePeerMap[ifIdx]) == 0 {
+					delete(server.ifacePeerMap, ifIdx)
+				}
+				break
+			}
+		}
+	}
+	peer.setIfIdx(-1)
+}
+
 func (server *BGPServer) StartServer() {
 	gConf := <-server.GlobalConfigCh
 	server.logger.Info(fmt.Sprintln("Recieved global conf:", gConf))
@@ -795,9 +835,9 @@ func (server *BGPServer) StartServer() {
 	acceptCh := make(chan *net.TCPConn)
 	go server.listenForPeers(acceptCh)
 
-//	routes, _ := server.ribdClient.GetConnectedRoutesInfo()
-    server.ProcessRoutesFromRIB()
-//	server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
+	//	routes, _ := server.ribdClient.GetConnectedRoutesInfo()
+	server.ProcessRoutesFromRIB()
+	//	server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
 
 	go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
 	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
@@ -932,6 +972,24 @@ func (server *BGPServer) StartServer() {
 					peerCommand.Command, peerCommand.IP))
 			}
 			peer.Command(peerCommand.Command)
+
+		case peerFSMConn := <-server.PeerFSMConnCh:
+			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM established/broken channel", peerFSMConn.peerIP))
+			peer, ok := server.PeerMap[peerFSMConn.peerIP]
+			if !ok {
+				server.logger.Info(fmt.Sprintf("Failed to process FSM connection success, Peer %s does not exist", peerFSMConn.peerIP))
+				break
+			}
+
+			if peerFSMConn.established {
+				peer.PeerConnEstablished(peerFSMConn.conn)
+				server.setInterfaceMapForPeer(peerFSMConn.peerIP, peer)
+				server.SendAllRoutesToPeer(peer)
+			} else {
+				peer.PeerConnBroken(true)
+				server.clearInterfaceMapForPeer(peerFSMConn.peerIP, peer)
+				server.ProcessRemoveNeighbor(peerFSMConn.peerIP, peer)
+			}
 
 		case peerIP := <-server.PeerConnEstCh:
 			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection established", peerIP))

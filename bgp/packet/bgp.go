@@ -1835,7 +1835,7 @@ func (c *BGPPathAttrClusterList) Encode() ([]byte, error) {
 }
 
 func (c *BGPPathAttrClusterList) Decode(pkt []byte, data interface{}) error {
-	pkt, err := c.BGPPathAttrBase.Encode()
+	err := c.BGPPathAttrBase.Decode(pkt, data)
 	if err != nil {
 		return err
 	}
