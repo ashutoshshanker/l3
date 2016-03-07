@@ -33,7 +33,7 @@ Octet Offset--> 0                   1                   2                   3
 		|                                                               |
 		+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
-func VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16) {
+func (svr *VrrpServer) VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16) {
 	pktLen := VRRP_HEADER_SIZE_EXCLUDING_IPVX + (hdr.CountIPv4Addr * 4)
 	if pktLen < VRRP_HEADER_MIN_SIZE {
 		pktLen = VRRP_HEADER_MIN_SIZE
@@ -53,11 +53,11 @@ func VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16) {
 	}
 	// Create Checksum for the header and store it
 	binary.BigEndian.PutUint16(bytes[6:8],
-		VrrpComputeChecksum(hdr.Version, bytes))
+		svr.VrrpComputeChecksum(hdr.Version, bytes))
 	return bytes, uint16(pktLen)
 }
 
-func VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16) {
+func (svr *VrrpServer) VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16) {
 	// @TODO: handle v6 packets.....
 	vrrpHeader := VrrpPktHeader{
 		Version:       VRRP_VERSION2,
@@ -78,13 +78,13 @@ func VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16) {
 		ip = net.ParseIP(gblInfo.IntfConfig.VirtualIPv4Addr)
 	}
 	vrrpHeader.IPv4Addr = append(vrrpHeader.IPv4Addr, ip)
-	vrrpEncHdr, hdrLen := VrrpEncodeHeader(vrrpHeader)
-	logger.Info(fmt.Sprintln("vrrp header after enc is",
-		VrrpDecodeHeader(vrrpEncHdr)))
+	vrrpEncHdr, hdrLen := svr.VrrpEncodeHeader(vrrpHeader)
+	svr.logger.Info(fmt.Sprintln("vrrp header after enc is",
+		svr.VrrpDecodeHeader(vrrpEncHdr)))
 	return vrrpEncHdr, hdrLen
 }
 
-func VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte,
+func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte,
 	hdrLen uint16) []byte {
 	// Ethernet Layer
 	srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
@@ -118,26 +118,26 @@ func VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte,
 	return buffer.Bytes()
 }
 
-func VrrpSendPkt(rcvdCh <-chan VrrpPktChannelInfo) {
-	logger.Info("started send packet routine")
+func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan VrrpPktChannelInfo) {
+	svr.logger.Info("started send packet routine")
 	for {
 		pktChannel := <-rcvdCh
 		key := pktChannel.key
-		gblInfo, found := vrrpGblInfo[key]
+		gblInfo, found := svr.vrrpGblInfo[key]
 		if !found {
-			logger.Err("No Entry for " + key)
+			svr.logger.Err("No Entry for " + key)
 			continue
 		}
 		if gblInfo.pHandle == nil {
-			logger.Info("Invalid Pcap Handle")
+			svr.logger.Info("Invalid Pcap Handle")
 			continue
 		}
-		vrrpEncHdr, hdrLen := VrrpCreateVrrpHeader(gblInfo)
-		vrrpTxPkt := VrrpCreateSendPkt(gblInfo, vrrpEncHdr, hdrLen)
-		logger.Info(fmt.Sprintln("send pkt", vrrpTxPkt))
+		vrrpEncHdr, hdrLen := svr.VrrpCreateVrrpHeader(gblInfo)
+		vrrpTxPkt := svr.VrrpCreateSendPkt(gblInfo, vrrpEncHdr, hdrLen)
+		svr.logger.Info(fmt.Sprintln("send pkt", vrrpTxPkt))
 		err := gblInfo.pHandle.WritePacketData(vrrpTxPkt)
 		if err != nil {
-			logger.Info(fmt.Sprintln("Sending Packet failed", err))
+			svr.logger.Info(fmt.Sprintln("Sending Packet failed", err))
 		}
 	}
 }

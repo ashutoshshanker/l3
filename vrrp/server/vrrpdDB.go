@@ -6,38 +6,38 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func VrrpInitDB() error {
-	logger.Info("VRRP: Initializing SQL DB")
+func (svr *VrrpServer) VrrpInitDB() error {
+	svr.logger.Info("VRRP: Initializing SQL DB")
 	var err error
-	dbName := paramsDir + VRRP_USR_CONF_DB
-	logger.Info("VRRP: location for DB is " + dbName)
-	vrrpDbHdl, err = sql.Open("sqlite3", dbName)
+	dbName := svr.paramsDir + VRRP_USR_CONF_DB
+	svr.logger.Info("VRRP: location for DB is " + dbName)
+	svr.vrrpDbHdl, err = sql.Open("sqlite3", dbName)
 	if err != nil {
-		logger.Err(fmt.Sprintln("VRRP: Failed to Create DB Handle", err))
+		svr.logger.Err(fmt.Sprintln("VRRP: Failed to Create DB Handle", err))
 		return err
 	}
 
-	if err = vrrpDbHdl.Ping(); err != nil {
-		logger.Err(fmt.Sprintln("Failed to keep db connection alive", err))
+	if err = svr.vrrpDbHdl.Ping(); err != nil {
+		svr.logger.Err(fmt.Sprintln("Failed to keep db connection alive", err))
 		return err
 	}
-	logger.Info("VRRP: DB connection is established")
+	svr.logger.Info("VRRP: DB connection is established")
 	return err
 }
 
-func VrrpReadDB() error {
-	logger.Info("VRRP: Reading from Database")
+func (svr *VrrpServer) VrrpReadDB() error {
+	svr.logger.Info("VRRP: Reading from Database")
 	dbCmd := "SELECT * FROM VrrpIntfConfig"
-	rows, err := vrrpDbHdl.Query(dbCmd)
+	rows, err := svr.vrrpDbHdl.Query(dbCmd)
 	if err != nil {
-		logger.Err(fmt.Sprintln("VRRP: Unable to querry DB:", err))
-		vrrpDbHdl.Close()
+		svr.logger.Err(fmt.Sprintln("VRRP: Unable to querry DB:", err))
+		svr.vrrpDbHdl.Close()
 		return err
 	}
 
 	for rows.Next() {
 		//@TODO: finish implementation
 	}
-	vrrpDbHdl.Close()
+	svr.vrrpDbHdl.Close()
 	return err
 }
