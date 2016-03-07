@@ -102,7 +102,7 @@ func (m RouteServiceHandler) GetBulkPolicyStmtState( fromIndex ribd.Int, rcount 
 
 func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Println("CreatePolicyDefinition")
-	newPolicy:=policy.PolicyDefinitionConfig{Name:cfg.Name, Precedence:int(cfg.Precedence),MatchType:cfg.MatchType,Export:cfg.Export,Import:cfg.Import,Global:cfg.Global}
+	newPolicy:=policy.PolicyDefinitionConfig{Name:cfg.Name, Precedence:int(cfg.Precedence),MatchType:cfg.MatchType}
 	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence,0)
 	var policyDefinitionStatement policy.PolicyDefinitionStmtPrecedence
 	for i:=0;i<len(cfg.PolicyDefinitionStatements);i++ {
