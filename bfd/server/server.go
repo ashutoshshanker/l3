@@ -65,26 +65,26 @@ type BfdSessionMgmt struct {
 }
 
 type BfdSession struct {
-	state             SessionState
-	rxInterval        int32
-	sessionTimer      *time.Timer
-	txInterval        int32
-	txTimer           *time.Timer
-	TxTimeoutCh       chan int32
-	SessionTimeoutCh  chan int32
-	bfdPacket         *BfdControlPacket
-	SessionDeleteCh   chan bool
-	pollSequence      bool
-	pollSequenceFinal bool
-	authEnabled       bool
-	authType          AuthenticationType
-	authSeqNum        uint32
-	authKeyId         uint32
-	authData          string
-	sendPcapHandle    *pcap.Handle
-	recvPcapHandle    *pcap.Handle
-	useDedicatedMac   bool
-	server            *BFDServer
+	state               SessionState
+	rxInterval          int32
+	sessionTimer        *time.Timer
+	txInterval          int32
+	txTimer             *time.Timer
+	TxTimeoutCh         chan int32
+	SessionTimeoutCh    chan int32
+	bfdPacket           *BfdControlPacket
+	SessionStopClientCh chan bool
+	pollSequence        bool
+	pollSequenceFinal   bool
+	authEnabled         bool
+	authType            AuthenticationType
+	authSeqNum          uint32
+	authKeyId           uint32
+	authData            string
+	sendPcapHandle      *pcap.Handle
+	recvPcapHandle      *pcap.Handle
+	useDedicatedMac     bool
+	server              *BFDServer
 }
 
 type BfdGlobal struct {
@@ -341,8 +341,7 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 		var dstIp string
 		var perLink string
 		var owner string
-		var operation string
-		err = rows.Scan(&dstIp, &perLink, &owner, &operation)
+		err = rows.Scan(&dstIp, &perLink, &owner)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSessionConfig: ", err))
 			return err
