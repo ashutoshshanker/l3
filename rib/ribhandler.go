@@ -592,6 +592,6 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	//CreateRoutes("RouteSetup.json")
 	InitializePolicyDB()
-	UpdateFromDB()//(paramsDir)
+	//UpdateFromDB()//(paramsDir)
 	return &RouteServiceHandler{}
 }

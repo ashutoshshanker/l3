@@ -42,6 +42,7 @@ func main() {
 		return
 	} 
 	routeServiceHandler = handler
+	UpdateFromDB()//(paramsDir)
 	processor := ribd.NewRouteServiceProcessor(handler)
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()

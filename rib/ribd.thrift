@@ -109,8 +109,6 @@ struct PolicyConditionConfig {
 	2: string ConditionType
 	3: string MatchProtocolConditionInfo           
     4: optional PolicyDstIpMatchPrefixSetCondition MatchDstIpPrefixConditionInfo        
-    5: optional PolicyMatchNeighborSetCondition MatchNeighborConditionInfo           
-	6: optional PolicyMatchTagSetCondition MatchTagConditionInfo                
 }
 struct PolicyConditionState{
 	1 : string 	Name
