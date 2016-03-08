@@ -68,7 +68,7 @@ func (server *BFDServer) StartBfdSessionRxTx() error {
 			if session != nil {
 				session.TxTimeoutCh = make(chan int32)
 				session.SessionTimeoutCh = make(chan int32)
-				session.SessionDeleteCh = make(chan bool)
+				session.SessionStopClientCh = make(chan bool)
 				if session.state.PerLinkSession {
 					server.logger.Info(fmt.Sprintln("Starting PerLink server for session ", createdSessionId))
 					go session.StartPerLinkSessionServer(server)
@@ -312,7 +312,7 @@ func (server *BFDServer) SessionDeleteHandler(session *BfdSession, Protocol bfdd
 	if session.CheckIfAnyProtocolRegistered() == false {
 		session.txTimer.Stop()
 		session.sessionTimer.Stop()
-		session.SessionDeleteCh <- true
+		session.SessionStopClientCh <- true
 		server.bfdGlobal.Interfaces[session.state.InterfaceId].NumSessions--
 		server.bfdGlobal.NumSessions--
 		delete(server.bfdGlobal.Sessions, sessionId)
@@ -431,9 +431,13 @@ func (session *BfdSession) StartSessionServer(server *BFDServer) error {
 		server.logger.Info(fmt.Sprintln("Failed ListenUDP ", err))
 		return nil
 	}
+	sessionId := session.state.SessionId
 	defer ServerConn.Close()
 	buf := make([]byte, 1024)
 	for {
+		if server.bfdGlobal.Sessions[sessionId] == nil {
+			return nil
+		}
 		len, _, err := ServerConn.ReadFromUDP(buf)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Failed to read from ", ServerAddr))
@@ -796,7 +800,7 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 			bfdSession.sessionTimer.Stop()
 			sessionTimeoutMS = time.Duration(bfdSession.rxInterval)
 			bfdSession.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { bfdSession.SessionTimeoutCh <- bfdSession.state.SessionId })
-		case <-session.SessionDeleteCh:
+		case <-session.SessionStopClientCh:
 			return nil
 		}
 	}

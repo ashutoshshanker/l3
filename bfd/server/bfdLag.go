@@ -39,7 +39,12 @@ func (session *BfdSession) StartPerLinkSessionServer(bfdServer *BFDServer) error
 		}
 	}
 	bfdPacketSrc := gopacket.NewPacketSource(session.recvPcapHandle, layers.LayerTypeEthernet)
+	sessionId := session.state.SessionId
+	defer session.recvPcapHandle.Close()
 	for receivedPacket := range bfdPacketSrc.Packets() {
+		if bfdServer.bfdGlobal.Sessions[sessionId] == nil {
+			return nil
+		}
 		bfdServer.logger.Info(fmt.Sprintln("Receive packet ", receivedPacket))
 
 		ethLayer := receivedPacket.Layer(layers.LayerTypeEthernet)
@@ -109,6 +114,7 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 	txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
 	session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session.state.SessionId })
+	defer session.sendPcapHandle.Close()
 	for {
 		select {
 		case sessionId := <-session.TxTimeoutCh:
@@ -164,7 +170,7 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 			bfdSession.sessionTimer.Stop()
 			sessionTimeoutMS = time.Duration(bfdSession.state.RequiredMinRxInterval * bfdSession.state.DetectionMultiplier / 1000)
 			bfdSession.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { bfdSession.SessionTimeoutCh <- bfdSession.state.SessionId })
-		case <-session.SessionDeleteCh:
+		case <-session.SessionStopClientCh:
 			return nil
 		}
 	}

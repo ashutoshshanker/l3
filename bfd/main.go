@@ -15,8 +15,16 @@ func main() {
 	paramsDir := flag.String("params", "./params", "Params directory")
 	flag.Parse()
 
+	dbName := *paramsDir + "/UsrConfDb.db"
+	fmt.Println("BFDd opening Config DB: ", dbName)
+	dbHdl, err := sql.Open("sqlite3", dbName)
+	if err != nil {
+		fmt.Println("Failed to open connection to DB. ", err, " Exiting!!")
+		return
+	}
+
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(*paramsDir, "bfdd", "BFD")
+	logger, err := logging.NewLogger(*paramsDir, "bfdd", "BFD", dbHdl)
 	if err != nil {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
@@ -30,15 +38,6 @@ func main() {
 		fileName = fileName + "/"
 	}
 	fileName = fileName + "clients.json"
-
-	dbName := *paramsDir + "/UsrConfDb.db"
-	logger.Info(fmt.Sprintln("Opening Config DB: ", dbName))
-	dbHdl, err := sql.Open("sqlite3", dbName)
-	if err != nil {
-		fmt.Println("Failed to open connection to DB. ", err)
-		logger.Err("Exiting!!")
-		return
-	}
 
 	logger.Info(fmt.Sprintln("Starting BFD Server..."))
 	bfdServer := server.NewBFDServer(logger)

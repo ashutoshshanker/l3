@@ -28,5 +28,5 @@ func (h *BFDHandler) UpdateBfdSessionConfig(origConf *bfdd.BfdSessionConfig, new
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Update session config attrs:", newConf))
-	return h.SendBfdSessionConfig(newConf), nil
+	return true, nil
 }
