@@ -208,11 +208,11 @@ service RouteService
 
 	bool CreatePolicyCondition(1: PolicyConditionConfig config);
 //	bool UpdatePolicyCondition(1: PolicyConditionConfig origconfig, 2: PolicyConditionConfig newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyCondition(1: PolicyConditionConfig config);
+	bool DeletePolicyCondition(1: PolicyConditionConfig config);
 
 	bool CreatePolicyAction(1: PolicyActionConfig config);
 //	bool UpdatePolicyAction(1: PolicyActionConfig origconfig, 2: PolicyActionConfig newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyAction(1: PolicyActionConfig config);
+	bool DeletePolicyAction(1: PolicyActionConfig config);
 
 	bool CreatePolicyStatement(1: PolicyStmtConfig config);
 //	bool UpdatePolicyStatement(1: PolicyStmtConfig origconfig, 2: PolicyStmtConfig newconfig, 3: list<bool> attrset);

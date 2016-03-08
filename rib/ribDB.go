@@ -108,7 +108,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Printf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err)
 			return err
 		}
-	
+	    logger.Println("Scanning stmt ", stmt.Name)
        dbCmdCond := "select * from PolicyStmtConfigConditions"
 	   conditionrows, err := dbHdl.Query(dbCmdCond)
 	   if(err != nil) {
