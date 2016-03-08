@@ -65,26 +65,26 @@ type BfdSessionMgmt struct {
 }
 
 type BfdSession struct {
-	state             SessionState
-	rxInterval        int32
-	sessionTimer      *time.Timer
-	txInterval        int32
-	txTimer           *time.Timer
-	TxTimeoutCh       chan int32
-	SessionTimeoutCh  chan int32
-	bfdPacket         *BfdControlPacket
-	SessionDeleteCh   chan bool
-	pollSequence      bool
-	pollSequenceFinal bool
-	authEnabled       bool
-	authType          AuthenticationType
-	authSeqNum        uint32
-	authKeyId         uint32
-	authData          string
-	sendPcapHandle    *pcap.Handle
-	recvPcapHandle    *pcap.Handle
-	useDedicatedMac   bool
-	server            *BFDServer
+	state               SessionState
+	rxInterval          int32
+	sessionTimer        *time.Timer
+	txInterval          int32
+	txTimer             *time.Timer
+	TxTimeoutCh         chan int32
+	SessionTimeoutCh    chan int32
+	bfdPacket           *BfdControlPacket
+	SessionStopClientCh chan bool
+	pollSequence        bool
+	pollSequenceFinal   bool
+	authEnabled         bool
+	authType            AuthenticationType
+	authSeqNum          uint32
+	authKeyId           uint32
+	authData            string
+	sendPcapHandle      *pcap.Handle
+	recvPcapHandle      *pcap.Handle
+	useDedicatedMac     bool
+	server              *BFDServer
 }
 
 type BfdGlobal struct {
@@ -122,6 +122,7 @@ type BFDServer struct {
 	bfddPubSocket       *nanomsg.PubSocket
 	lagPropertyMap      map[int32]LagProperty
 	notificationCh      chan []byte
+	ServerUpCh          chan bool
 	bfdGlobal           BfdGlobal
 }
 
@@ -138,6 +139,7 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer.lagPropertyMap = make(map[int32]LagProperty)
 	bfdServer.SessionConfigCh = make(chan SessionConfig)
 	bfdServer.notificationCh = make(chan []byte)
+	bfdServer.ServerUpCh = make(chan bool)
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]*BfdInterface)
@@ -298,8 +300,8 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 		var desiredMinTxInterval int32
 		var requiredMinRxInterval int32
 		var requiredMinEchoRxInterval int32
-		var demandEnabled int
-		var authenticationEnabled int
+		var demandEnabled string
+		var authenticationEnabled string
 		var authenticationType string
 		var authenticationKeyId int32
 		var authenticationData string
@@ -314,8 +316,8 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 			DesiredMinTxInterval:      desiredMinTxInterval,
 			RequiredMinRxInterval:     requiredMinRxInterval,
 			RequiredMinEchoRxInterval: requiredMinEchoRxInterval,
-			DemandEnabled:             dbutils.ConvertIntToBool(demandEnabled),
-			AuthenticationEnabled:     dbutils.ConvertIntToBool(authenticationEnabled),
+			DemandEnabled:             dbutils.ConvertStringToBool(demandEnabled),
+			AuthenticationEnabled:     dbutils.ConvertStringToBool(authenticationEnabled),
 			AuthenticationType:        server.ConvertBfdAuthTypeStrToVal(authenticationType),
 			AuthenticationKeyId:       authenticationKeyId,
 			AuthenticationData:        authenticationData,
@@ -337,17 +339,16 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 
 	for rows.Next() {
 		var dstIp string
-		var perLink int
+		var perLink string
 		var owner string
-		var operation string
-		err = rows.Scan(&dstIp, &perLink, &owner, &operation)
+		err = rows.Scan(&dstIp, &perLink, &owner)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSessionConfig: ", err))
 			return err
 		}
 		sessionConf := SessionConfig{
 			DestIp:    dstIp,
-			PerLink:   dbutils.ConvertIntToBool(perLink),
+			PerLink:   dbutils.ConvertStringToBool(perLink),
 			Protocol:  bfddCommonDefs.USER,
 			Operation: bfddCommonDefs.CREATE,
 		}
@@ -418,14 +419,17 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	go server.SigHandler()
 	// Initialize BFD server from params file
 	server.InitServer(paramFile)
+	// Read BFD configurations already present in DB
+	go server.ReadConfigFromDB(dbHdl)
 	// Start subcriber for ASICd events
 	go server.CreateASICdSubscriber()
 	// Start session management handler
 	go server.StartSessionHandler()
 	// Initialize and run notification publisher
 	go server.PublishSessionNotifications()
-	// Read BFD configurations already present in DB
-	go server.ReadConfigFromDB(dbHdl)
+
+	// Server is up. Let rpc handler started now.
+	server.ServerUpCh <- true
 
 	// Now, wait on below channels to process
 	for {

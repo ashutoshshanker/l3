@@ -38,7 +38,7 @@ func (h *BFDHandler) SendBfdSessionConfig(bfdSessionConfig *bfdd.BfdSessionConfi
 		DestIp:    bfdSessionConfig.IpAddr,
 		PerLink:   bfdSessionConfig.PerLink,
 		Protocol:  bfddCommonDefs.ConvertBfdSessionOwnerStrToVal(bfdSessionConfig.Owner),
-		Operation: bfddCommonDefs.ConvertBfdSessionOperationStrToVal(bfdSessionConfig.Operation),
+		Operation: bfddCommonDefs.CREATE,
 	}
 	h.server.SessionConfigCh <- sessionConf
 	return true
