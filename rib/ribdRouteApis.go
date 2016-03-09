@@ -828,7 +828,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 		//delete in asicd
 		if asicdclnt.IsConnected {
 			logger.Println("Calling asicd to delete this route")
-			asicdclnt.ClientHdl.DeleteIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String())
+			asicdclnt.ClientHdl.DeleteIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String(), int32(routeInfoRecord.nextHopIfType))
 		}
 		delLinuxRoute(routeInfoRecord)
 		//update in the event log
