@@ -108,7 +108,7 @@ func updateConnectedRoutes(destNetIPAddr string, networkMaskAddr string, nextHop
 		if ConnectedRoutes[i].Ipaddr == destNetIPAddr && ConnectedRoutes[i].Mask == networkMaskAddr {
 			if op == del {
 				if len(ConnectedRoutes) <= i+1{
-					ConnectedRoutes = nil
+					ConnectedRoutes = ConnectedRoutes[:i]
 				} else {
 				    ConnectedRoutes = append(ConnectedRoutes[:i], ConnectedRoutes[i+1:]...)
 				}
