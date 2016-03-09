@@ -799,7 +799,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	  logger.Println("Found the route at index ", index)
 	  deleteNode := true
 	  if len(routeInfoList) <= index+1 {
-	     routeInfoList = nil	
+	     routeInfoList = routeInfoList[:index]	
 	  } else {
 	     routeInfoList = append(routeInfoList[:index], routeInfoList[index+1:]...)
 	  }

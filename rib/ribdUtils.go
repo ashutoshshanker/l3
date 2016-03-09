@@ -328,7 +328,7 @@ func deleteRoutePolicyState( ipPrefix patriciaDB.Prefix, policyName string) {
 	}
 	if len(routeInfoRecordList.policyList) <= idx+1 {
 		logger.Println("last element")
-		routeInfoRecordList.policyList = nil
+		routeInfoRecordList.policyList = routeInfoRecordList.policyList[:idx]
 	} else {
 	   routeInfoRecordList.policyList = append(routeInfoRecordList.policyList[:idx], routeInfoRecordList.policyList[idx+1:]...)
 	}
@@ -367,7 +367,7 @@ func UpdateRedistributeTargetMap( evt int, protocol string, route ribd.Routes) {
 			}
 			if found {
 				if len(redistributeMapInfo) <= i+1{
-					redistributeMapInfo = nil
+					redistributeMapInfo = redistributeMapInfo[:i]
 				} else {
 		            redistributeMapInfo = append(redistributeMapInfo[:i],redistributeMapInfo[i+1:]...)
 				}
