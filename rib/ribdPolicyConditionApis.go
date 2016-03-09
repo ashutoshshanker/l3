@@ -20,6 +20,12 @@ func (m RouteServiceHandler) CreatePolicyCondition(cfg *ribd.PolicyConditionConf
 	err = PolicyEngineDB.CreatePolicyCondition(newPolicy)
 	return val,err
 }
+func (m RouteServiceHandler) DeletePolicyCondition(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+	logger.Println("DeletePolicyCondition")
+	newPolicy := policy.PolicyConditionConfig { Name:cfg.Name}
+	err = PolicyEngineDB.DeletePolicyCondition(newPolicy)
+	return val,err
+}
 func (m RouteServiceHandler) GetBulkPolicyConditionState( fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyConditionStateGetInfo, err error){//(routes []*ribd.Routes, err error) {
 	logger.Println("GetBulkPolicyConditionState")
 	PolicyConditionsDB := PolicyEngineDB.PolicyConditionsDB
