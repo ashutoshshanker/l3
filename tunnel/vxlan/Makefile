@@ -18,6 +18,7 @@ guard:
 ifndef SR_CODE_BASE
 	 $(error SR_CODE_BASE is not set)
 endif
+install:
 
 clean:guard
 	 $(RM) $(DESTDIR)/$(COMP_NAME) 
