@@ -108,7 +108,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Printf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err)
 			return err
 		}
-	
+	    logger.Println("Scanning stmt ", stmt.Name)
        dbCmdCond := "select * from PolicyStmtConfigConditions"
 	   conditionrows, err := dbHdl.Query(dbCmdCond)
 	   if(err != nil) {
@@ -180,10 +180,10 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 		  return err
 	   }
 	   policy.PolicyDefinitionStatements = make([]*ribd.PolicyDefinitionStmtPrecedence,0)
-	   var stmt,policyName string
+	   var stmt,policyName, policyStmtName string
 	   var precedence int
 	   for conditionrows.Next() {
-		  if err = conditionrows.Scan(&policyName, &stmt, &precedence); err != nil {
+		  if err = conditionrows.Scan(&policyName, &policyStmtName, &stmt, &precedence); err != nil {
 			logger.Printf("DB Scan failed when iterating over PolicyDefinitionStmtPrecedence rows with error %s\n", err)
 			return err
 		  }

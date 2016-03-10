@@ -312,7 +312,7 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 
 			if !found {
 				// Add route
-				if !paths[0].IsLocal() {
+				if paths[0].IsAggregate() || !paths[0].IsLocal() {
 					d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.nlri.Prefix.String(),
 						constructNetmaskFromLen(int(d.nlri.Length), 32).String(), paths[0].NextHop))
 					protocol := "IBGP"
@@ -343,8 +343,9 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 			// Remove route
 			for path, route := range d.ecmpPaths {
 				route.setAction(RouteActionDelete)
-				if !path.IsLocal() {
-					d.logger.Info(fmt.Sprintf("Remove route for ip=%s", d.nlri.Prefix.String()))
+				if path.IsAggregate() || !path.IsLocal() {
+					d.logger.Info(fmt.Sprintf("Remove route for ip=%s nexthop=%s", d.nlri.Prefix.String(),
+						path.NextHop))
 					protocol := "IBGP"
 					if path.IsExternal() {
 						protocol = "EBGP"
@@ -363,7 +364,19 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 
 	for path, route := range d.ecmpPaths {
 		if route.action == RouteActionNone || route.action == RouteActionDelete {
-			d.logger.Info(fmt.Sprintln("Remove route from ECMP paths, route =", route, "next hop =", path.GetNextHop()))
+			if path.IsAggregate() || !path.IsLocal() {
+				d.logger.Info(fmt.Sprintln("Remove route from ECMP paths, route =", route, "ip =",
+					d.nlri.Prefix.String(), "next hop =", path.NextHop))
+				protocol := "IBGP"
+				if path.IsExternal() {
+					protocol = "EBGP"
+				}
+				ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
+					constructNetmaskFromLen(int(d.nlri.Length), 32).String(), protocol, path.NextHop)
+				if err != nil {
+					d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
+				}
+			}
 			deletedRoutes = append(deletedRoutes, route)
 			delete(d.ecmpPaths, path)
 		} else {

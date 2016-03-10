@@ -107,7 +107,11 @@ func updateConnectedRoutes(destNetIPAddr string, networkMaskAddr string, nextHop
 		//		if(!strings.EqualFold(ConnectedRoutes[i].Ipaddr,destNetIPAddr) && !strings.EqualFold(ConnectedRoutes[i].Mask,networkMaskAddr)){
 		if ConnectedRoutes[i].Ipaddr == destNetIPAddr && ConnectedRoutes[i].Mask == networkMaskAddr {
 			if op == del {
-				ConnectedRoutes = append(ConnectedRoutes[:i], ConnectedRoutes[i+1:]...)
+				if len(ConnectedRoutes) <= i+1{
+					ConnectedRoutes = ConnectedRoutes[:i]
+				} else {
+				    ConnectedRoutes = append(ConnectedRoutes[:i], ConnectedRoutes[i+1:]...)
+				}
 			} else if op == invalidate { //op is invalidate when a link on which the connectedroutes is configured goes down
 				ConnectedRoutes[i].IsValid = false
 			}
@@ -794,7 +798,11 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	  }
 	  logger.Println("Found the route at index ", index)
 	  deleteNode := true
-	  routeInfoList = append(routeInfoList[:index], routeInfoList[index+1:]...)
+	  if len(routeInfoList) <= index+1 {
+	     routeInfoList = routeInfoList[:index]	
+	  } else {
+	     routeInfoList = append(routeInfoList[:index], routeInfoList[index+1:]...)
+	  }
 	  routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]] = routeInfoList
       if len(routeInfoList) == 0{
         logger.Println("All routes for this destination from protocol ", ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)], " deleted")
@@ -828,7 +836,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 		//delete in asicd
 		if asicdclnt.IsConnected {
 			logger.Println("Calling asicd to delete this route")
-			asicdclnt.ClientHdl.DeleteIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String())
+			asicdclnt.ClientHdl.DeleteIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String(), int32(routeInfoRecord.nextHopIfType))
 		}
 		delLinuxRoute(routeInfoRecord)
 		//update in the event log
