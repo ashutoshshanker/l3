@@ -45,6 +45,7 @@ func BuildRouteProtocolTypeMapDB() {
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.EBGP] = "EBGP"
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.BGP] = "BGP"
 	ReverseRouteProtoTypeMapDB[ribdCommonDefs.STATIC] = "STATIC"
+	ReverseRouteProtoTypeMapDB[ribdCommonDefs.OSPF] = "OSPF"
 }
 func BuildProtocolAdminDistanceMapDB() {
 	ProtocolAdminDistanceMapDB["CONNECTED"] = RouteDistanceConfig{defaultDistance:0, configuredDistance:-1}
