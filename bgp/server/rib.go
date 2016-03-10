@@ -50,6 +50,14 @@ func isIpInList(ipPrefix []packet.IPPrefix, ip packet.IPPrefix) bool {
 	return false
 }
 
+func (adjRib *AdjRib) getDestFromIPAndLen(ip string, cidrLen uint32) *Destination {
+	if dest, ok := adjRib.destPathMap[ip]; ok {
+		return dest
+	}
+
+	return nil
+}
+
 func (adjRib *AdjRib) getDest(nlri packet.IPPrefix, createIfNotExist bool) (*Destination, bool) {
 	dest, ok := adjRib.destPathMap[nlri.Prefix.String()]
 	if !ok && createIfNotExist {
