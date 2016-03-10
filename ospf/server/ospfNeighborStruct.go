@@ -24,8 +24,8 @@ const (
 type LsaOp uint8
 
 const (
-	LSAFLOOD   = 0
-	LSAUNICASt = 1
+	LSAFLOOD    = 0 // flood when FULL state reached
+	LSASELFLOOD = 1 // flood for received LSA
 )
 
 type NeighborConfKey struct {
@@ -98,12 +98,13 @@ type ospfNeighborDBDMsg struct {
 	ospfNbrDBDData ospfDatabaseDescriptionData
 }
 
-type ospfLsdbToNbrMsg struct {
+type ospfFloodMsg struct {
 	key    uint32
 	areaId uint32
 	lsType uint8
 	linkid uint32
 	lsOp   uint8
+	pkt    []byte //LSA flood packet received from another neighbor
 }
 
 type ospfNbrMdata struct {
@@ -206,8 +207,8 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				nbrConf.NbrDeadTimer.Stop()
 				nbrConf.NbrDeadTimer.Reset(nbrMsg.ospfNbrEntry.OspfNbrDeadTimer)
-				server.logger.Info(fmt.Sprintln("UPDATE neighbor with nbr id - ",
-					nbrMsg.ospfNbrConfKey.OspfNbrRtrId))
+				/*server.logger.Info(fmt.Sprintln("UPDATE neighbor with nbr id - ",
+				nbrMsg.ospfNbrConfKey.OspfNbrRtrId)) */
 			}
 			if nbrMsg.nbrMsgType == NBRDEL {
 				server.neighborBulkSlice = append(server.neighborBulkSlice, INVALID_NEIGHBOR_CONF_KEY)
@@ -216,7 +217,7 @@ func (server *OSPFServer) UpdateNeighborConf() {
 					nbrMsg.ospfNbrConfKey.OspfNbrRtrId))
 			}
 
-			server.logger.Info(fmt.Sprintln("NBR UPDATE: Nbr , seq_no ", nbrMsg.ospfNbrConfKey.OspfNbrRtrId, nbrConf.ospfNbrSeqNum))
+			//server.logger.Info(fmt.Sprintln("NBR UPDATE: Nbr , seq_no ", nbrMsg.ospfNbrConfKey.OspfNbrRtrId, nbrConf.ospfNbrSeqNum))
 		case state := <-(server.neighborConfStopCh):
 			server.logger.Info("Exiting update neighbor config thread..")
 			if state == true {
@@ -294,7 +295,7 @@ func (server *OSPFServer) sendLsdbToNeighborEvent(key uint32, areaId uint32, lsT
 		server.logger.Info(fmt.Sprintln("Nbr-LSDB: Failed to get nbr instance key ", key))
 		return
 	}
-	msg := ospfLsdbToNbrMsg{
+	msg := ospfFloodMsg{
 		key:    key,
 		areaId: areaId,
 		lsType: lsType,

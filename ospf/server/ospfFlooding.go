@@ -67,10 +67,10 @@ func (server *OSPFServer) SendRouterLsa(areaId uint32, nbrConf OspfNeighborEntry
 		}
 	}
 
-	lsa_pkt_len := total_len + OSPA_NO_OF_LSA_FIELD
+	lsa_pkt_len := total_len + OSPF_NO_OF_LSA_FIELD
 	server.logger.Info(fmt.Sprintln("Flood: Total length ", lsa_pkt_len, "total lsas ", ospfLsaPkt.no_lsas))
 	//lsaEncPkt = make([]byte, lsa_pkt_len)
-	if lsa_pkt_len == OSPA_NO_OF_LSA_FIELD {
+	if lsa_pkt_len == OSPF_NO_OF_LSA_FIELD {
 		server.logger.Info(fmt.Sprintln("Flood: No LSA to send"))
 		return nil
 	}

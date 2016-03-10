@@ -154,10 +154,10 @@ func encodeLSAHeader(dd_data ospfDatabaseDescriptionData) []byte {
 	if headers == 0 {
 		return nil
 	}
-	fmt.Sprintln("no of headers ", headers)
+	//fmt.Sprintln("no of headers ", headers)
 	pkt := make([]byte, headers*OSPF_LSA_HEADER_SIZE)
 	for index := 0; index < headers; index++ {
-		fmt.Sprintln("Attached header ", index)
+		//	fmt.Sprintln("Attached header ", index)
 		lsa_header := dd_data.lsa_headers[index]
 		pkt_index := 20 * index
 		binary.BigEndian.PutUint16(pkt[pkt_index:pkt_index+2], lsa_header.ls_age)
@@ -219,7 +219,7 @@ func encodeDatabaseDescriptionData(dd_data ospfDatabaseDescriptionData) []byte {
 		imms = imms | 0x1
 	}
 	pkt[3] = byte(imms)
-	fmt.Println("data imms  ", pkt[3])
+	//fmt.Println("data imms  ", pkt[3])
 	binary.BigEndian.PutUint32(pkt[4:8], dd_data.dd_sequence_number)
 	lsa_pkt := encodeLSAHeader(dd_data)
 	if lsa_pkt != nil {

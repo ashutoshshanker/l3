@@ -589,7 +589,7 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 	nbrConf, exists := server.NeighborConfigMap[nbrConfKey.OspfNbrRtrId]
 
 	if !exists {
-		server.logger.Info(fmt.Sprintln("negotiation: db_list Nbr  doesnt exist. nbr ", nbrConfKey))
+		server.logger.Err(fmt.Sprintln("negotiation: db_list Nbr  doesnt exist. nbr ", nbrConfKey))
 		return
 	}
 	intf, _ := server.IntfConfMap[nbrConf.intfConfKey]
@@ -601,7 +601,7 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 	}
 	self_orig_lsa, exist := server.AreaSelfOrigLsa[lsdbKey]
 	if !exist {
-		server.logger.Info(fmt.Sprintln("negotiation: db_list self originated lsas dont exist. Nbr , lsdb_key ", nbrConfKey, lsdbKey))
+		server.logger.Err(fmt.Sprintln("negotiation: db_list self originated lsas dont exist. Nbr , lsdb_key ", nbrConfKey, lsdbKey))
 		return
 	}
 	ospfNeighborDBSummary_list[nbrConfKey.OspfNbrRtrId] = nil
@@ -636,7 +636,8 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 		}
 		/* add entry to the db summary list  */
 		db_list = append(db_list, db_summary)
-		server.logger.Info(fmt.Sprintln("negotiation: db_list appended with lsakey ", lsaKey, db_list))
+		lsid := convertUint32ToIPv4(lsaKey.LSId)
+		server.logger.Info(fmt.Sprintln("negotiation: db_list appended lsid  ", lsid))
 	} // end of for
 	nbrConf.db_summary_list_mutex.Lock()
 	ospfNeighborDBSummary_list[nbrConfKey.OspfNbrRtrId] = db_list
