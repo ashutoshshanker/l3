@@ -110,7 +110,7 @@ func updateConnectedRoutes(destNetIPAddr string, networkMaskAddr string, nextHop
 		if ConnectedRoutes[i].Ipaddr == destNetIPAddr && ConnectedRoutes[i].Mask == networkMaskAddr {
 			if op == del {
 				if len(ConnectedRoutes) <= i+1 {
-					ConnectedRoutes = nil
+					ConnectedRoutes = ConnectedRoutes[:i]
 				} else {
 					ConnectedRoutes = append(ConnectedRoutes[:i], ConnectedRoutes[i+1:]...)
 				}
@@ -803,7 +803,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 		logger.Println("Found the route at index ", index)
 		deleteNode := true
 		if len(routeInfoList) <= index+1 {
-			routeInfoList = nil
+			routeInfoList = routeInfoList[:index]
 		} else {
 			routeInfoList = append(routeInfoList[:index], routeInfoList[index+1:]...)
 		}
@@ -840,7 +840,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	//delete in asicd
 	if asicdclnt.IsConnected {
 		logger.Println("Calling asicd to delete this route")
-		asicdclnt.ClientHdl.DeleteIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String())
+		asicdclnt.ClientHdl.DeleteIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String(), int32(routeInfoRecord.nextHopIfType))
 	}
 	delLinuxRoute(routeInfoRecord)
 	//update in the event log
