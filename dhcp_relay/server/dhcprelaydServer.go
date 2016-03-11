@@ -244,12 +244,12 @@ func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
 	dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index] = VlanId
 }
 
-func StartServer(log *logging.Writer, handler *DhcpRelayServiceHandler, addr string) error {
+func StartServer(log *logging.Writer, handler *DhcpRelayServiceHandler, addr string, paramsDir string) error {
 	logger = log
 	// Allocate Memory for Global DS
 	DhcpRelayAgentAllocateMemory()
 	// Initialize DB
-	err := DhcpRelayAgentInitDB()
+	err := DhcpRelayAgentInitDB(paramsDir)
 	if err != nil {
 		logger.Err("DRA: Init of DB failed")
 	} else {

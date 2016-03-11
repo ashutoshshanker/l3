@@ -28,7 +28,7 @@ func main() {
 	}
 
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(fileName, "ribd", "RIB")
+	logger, err = logging.NewLogger(fileName, "ribd", "RIB")
 	if err != nil {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
