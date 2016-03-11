@@ -2,6 +2,7 @@
 package server
 
 import (
+	"asicdServices"
 	"asicd/asicdConstDefs"
 	"bfdd"
 	"bgpd"
@@ -71,6 +72,7 @@ type BGPServer struct {
 	logger           *syslog.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
 	ribdClient       *ribd.RouteServiceClient
+	AsicdClient      *asicdServices.ASICDServicesClient
 	bfddClient       *bfdd.BFDDServicesClient
 	BgpConfig        config.Bgp
 	GlobalConfigCh   chan config.GlobalConfig
@@ -97,12 +99,13 @@ type BGPServer struct {
 }
 
 func NewBGPServer(logger *syslog.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
-	bfddClient *bfdd.BFDDServicesClient) *BGPServer {
+	bfddClient *bfdd.BFDDServicesClient, asicdClient *asicdServices.ASICDServicesClient) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.bgpPE = policyEngine
 	bgpServer.ribdClient = ribdClient
 	bgpServer.bfddClient = bfddClient
+	bgpServer.AsicdClient = asicdClient
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
 	bgpServer.AddPeerCh = make(chan PeerUpdate)
 	bgpServer.RemPeerCh = make(chan string)
@@ -1037,6 +1040,7 @@ func (server *BGPServer) StartServer() {
 			}
 
 		case peerUpdate := <-server.AddPeerCh:
+		    server.logger.Info("message received on AddPeerCh")
 			oldPeer := peerUpdate.OldPeer
 			newPeer := peerUpdate.NewPeer
 			var peer *Peer

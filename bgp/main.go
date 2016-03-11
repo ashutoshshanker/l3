@@ -11,6 +11,7 @@ import (
 	"l3/bgp/utils"
 	"log/syslog"
 	"ribd"
+	"asicdServices"
 )
 
 const IP string = "localhost" //"10.0.2.15"
@@ -35,6 +36,18 @@ func main() {
 	fileName := *paramsDir
 	if fileName[len(fileName)-1] != '/' {
 		fileName = fileName + "/"
+	}
+	var asicdClient *asicdServices.ASICDServicesClient = nil
+	asicdClientChan := make(chan *asicdServices.ASICDServicesClient)
+
+	logger.Info("Connecting to ASICd")
+	go rpc.StartAsicdClient(logger, fileName, asicdClientChan)
+	asicdClient = <-asicdClientChan
+	if asicdClient == nil {
+		logger.Err("Failed to connect to ASICd")
+		return
+	} else {
+		logger.Info("Connected to ASICd")
 	}
 
 	var ribdClient *ribd.RouteServiceClient = nil
@@ -68,7 +81,7 @@ func main() {
 	go bgpPolicyEng.StartPolicyEngine()
 
 	logger.Info(fmt.Sprintln("Starting BGP Server..."))
-	bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient, bfddClient)
+	bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient, bfddClient, asicdClient)
 	go bgpServer.StartServer()
 
 	logger.Info(fmt.Sprintln("Starting config listener..."))
