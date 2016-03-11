@@ -114,7 +114,7 @@ func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
 		if err = rows.Scan(&nConf.PeerAS, &nConf.LocalAS, &nConf.AuthPassword, &nConf.Description, &neighborIP,
 			&nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable, &nConf.MultiHopTTL,
 			&nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime, &nConf.AddPathsRx, &nConf.AddPathsMaxTx,
-			&nConf.PeerGroupime, &nConf.PeerGr); err != nil {
+			&nConf.PeerGroup, &nConf.BfdEnable); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighborConfig rows with error %s", err))
 			return err
 		}
@@ -168,7 +168,7 @@ func (h *BGPHandler) handleBGPAggregate(dbHdl *sql.DB) error {
 	return nil
 }
 
-func convertModelToPolicyConditionConfig(cfg *models.BGPPolicyConditionConfig) *utilspolicy.PolicyConditionConfig {
+func convertModelToPolicyConditionConfig(cfg models.BGPPolicyConditionConfig) *utilspolicy.PolicyConditionConfig {
 	destIPMatch := utilspolicy.PolicyDstIpMatchPrefixSetCondition{
 		Prefix: utilspolicy.PolicyPrefix{
 			IpPrefix:        cfg.IpPrefix,
@@ -192,14 +192,14 @@ func (h *BGPHandler) handlePolicyConditions(dbHdl *sql.DB) error {
 	}
 
 	for idx := 0; idx < len(conditionList); idx++ {
-		policyCondCfg := convertModelToPolicyConditionConfig(conditionList[idx])
+		policyCondCfg := convertModelToPolicyConditionConfig(conditionList[idx].(models.BGPPolicyConditionConfig))
 		h.logger.Info(fmt.Sprintln("handlePolicyConditions - create policy condition", policyCondCfg.Name))
 		h.bgpPE.ConditionCfgCh <- *policyCondCfg
 	}
 	return nil
 }
 
-func convertModelToPolicyActionConfig(cfg *models.BGPPolicyActionConfig) *utilspolicy.PolicyActionConfig {
+func convertModelToPolicyActionConfig(cfg models.BGPPolicyActionConfig) *utilspolicy.PolicyActionConfig {
 	return &utilspolicy.PolicyActionConfig{
 		Name:            cfg.Name,
 		ActionType:      cfg.ActionType,
@@ -218,14 +218,14 @@ func (h *BGPHandler) handlePolicyActions(dbHdl *sql.DB) error {
 	}
 
 	for idx := 0; idx < len(actionList); idx++ {
-		policyActionCfg := convertModelToPolicyActionConfig(actionList[idx])
+		policyActionCfg := convertModelToPolicyActionConfig(actionList[idx].(models.BGPPolicyActionConfig))
 		h.logger.Info(fmt.Sprintln("handlePolicyActions - create policy action", policyActionCfg.Name))
 		h.bgpPE.ActionCfgCh <- *policyActionCfg
 	}
 	return nil
 }
 
-func convertModelToPolicyStmtConfig(cfg *models.BGPPolicyStmtConfig) *utilspolicy.PolicyStmtConfig {
+func convertModelToPolicyStmtConfig(cfg models.BGPPolicyStmtConfig) *utilspolicy.PolicyStmtConfig {
 	return &utilspolicy.PolicyStmtConfig{
 		Name:            cfg.Name,
 		MatchConditions: cfg.MatchConditions,
@@ -244,14 +244,14 @@ func (h *BGPHandler) handlePolicyStmts(dbHdl *sql.DB) error {
 	}
 
 	for idx := 0; idx < len(stmtList); idx++ {
-		policyStmtCfg := convertModelToPolicyStmtConfig(stmtList[idx])
+		policyStmtCfg := convertModelToPolicyStmtConfig(stmtList[idx].(models.BGPPolicyStmtConfig))
 		h.logger.Info(fmt.Sprintln("handlePolicyStmts - create policy statement", policyStmtCfg.Name))
 		h.bgpPE.StmtCfgCh <- *policyStmtCfg
 	}
 	return nil
 }
 
-func convertModelToPolicyDefinitionConfig(cfg *models.BGPPolicyDefinitionConfig) *utilspolicy.PolicyDefinitionConfig {
+func convertModelToPolicyDefinitionConfig(cfg models.BGPPolicyDefinitionConfig) *utilspolicy.PolicyDefinitionConfig {
 	stmtPrecedenceList := make([]utilspolicy.PolicyDefinitionStmtPrecedence, 0)
 	for i := 0; i < len(cfg.StatementList); i++ {
 		stmtPrecedence := utilspolicy.PolicyDefinitionStmtPrecedence{
@@ -279,7 +279,7 @@ func (h *BGPHandler) handlePolicyDefinitions(dbHdl *sql.DB) error {
 	}
 
 	for idx := 0; idx < len(definitionList); idx++ {
-		policyDefCfg := convertModelToPolicyDefinitionConfig(definitionList[idx])
+		policyDefCfg := convertModelToPolicyDefinitionConfig(definitionList[idx].(models.BGPPolicyDefinitionConfig))
 		h.logger.Info(fmt.Sprintln("handlePolicyDefinitions - create policy definition", policyDefCfg.Name))
 		h.bgpPE.DefinitionCfgCh <- *policyDefCfg
 	}

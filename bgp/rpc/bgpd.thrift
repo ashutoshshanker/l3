@@ -162,8 +162,9 @@ struct BGPNeighborConfig {
 	12: i32 KeepaliveTime,
 	13: bool AddPathsRx,
 	14: byte AddPathsMaxTx,
-	15: bool BfdEnable
+	15: bool BfdEnable,
 	16: string PeerGroup,
+}
 
 struct BGPNeighborState {
 	1: i32 PeerAS,
@@ -185,7 +186,7 @@ struct BGPNeighborState {
 	17: bool AddPathsRx,
 	18: byte AddPathsMaxTx,
 	19: string BfdNeighborState
-	20: string GroupName,
+	20: string PeerGroup,
 }
 
 struct BGPNeighborStateBulk {

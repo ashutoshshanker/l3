@@ -429,13 +429,13 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 		if route.action == RouteActionNone || route.action == RouteActionDelete {
 			if path.IsAggregate() || !path.IsLocal() {
 				d.logger.Info(fmt.Sprintln("Remove route from ECMP paths, route =", route, "ip =",
-					d.nlri.Prefix.String(), "next hop =", path.NextHop))
+					d.ipPrefix.Prefix.String(), "next hop =", path.NextHop))
 				protocol := "IBGP"
 				if path.IsExternal() {
 					protocol = "EBGP"
 				}
-				ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
-					constructNetmaskFromLen(int(d.nlri.Length), 32).String(), protocol, path.NextHop)
+				ret, err := d.server.ribdClient.DeleteV4Route(d.ipPrefix.Prefix.String(),
+					constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), protocol, path.NextHop)
 				if err != nil {
 					d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 				}
@@ -495,7 +495,7 @@ func (d *Destination) getRoutesWithSmallestAS(updatedPaths, removedPaths []*Path
 		if updatedPaths[i].peer != nil {
 			from = updatedPaths[i].peer.Neighbor.NeighborAddress.String()
 		}
-		d.logger.Info(fmt.Sprintln("Destination:getRoutesWithSmallestAS - Dest =", d.nlri.Prefix, "number of ASes =",
+		d.logger.Info(fmt.Sprintln("Destination:getRoutesWithSmallestAS - Dest =", d.ipPrefix.Prefix, "number of ASes =",
 			asNums, "from", from))
 		if asNums < minASNums {
 			removedPaths = append(removedPaths, updatedPaths[:idx]...)
