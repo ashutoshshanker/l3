@@ -7,14 +7,14 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
 	"l3/vrrp/server"
-	"log/syslog"
 	"strconv"
+	"utils/logging"
 	"vrrpd"
 )
 
 type VrrpHandler struct {
 	server *vrrpServer.VrrpServer
-	logger *syslog.Writer
+	logger *logging.Writer
 }
 type VrrpClientJson struct {
 	Name string `json:Name`
@@ -56,14 +56,14 @@ func (h *VrrpHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
 	return intfEntry, nil
 }
 
-func VrrpNewHandler(vrrpSvr *vrrpServer.VrrpServer, logger *syslog.Writer) *VrrpHandler {
+func VrrpNewHandler(vrrpSvr *vrrpServer.VrrpServer, logger *logging.Writer) *VrrpHandler {
 	hdl := new(VrrpHandler)
 	hdl.server = vrrpSvr
 	hdl.logger = logger
 	return hdl
 }
 
-func VrrpRpcGetClient(logger *syslog.Writer, fileName string, process string) (*VrrpClientJson, error) {
+func VrrpRpcGetClient(logger *logging.Writer, fileName string, process string) (*VrrpClientJson, error) {
 	var allClients []VrrpClientJson
 
 	data, err := ioutil.ReadFile(fileName)
@@ -84,7 +84,7 @@ func VrrpRpcGetClient(logger *syslog.Writer, fileName string, process string) (*
 
 }
 
-func StartServer(log *syslog.Writer, handler *VrrpHandler, paramsDir string) error {
+func StartServer(log *logging.Writer, handler *VrrpHandler, paramsDir string) error {
 	logger := log
 	fileName := paramsDir
 

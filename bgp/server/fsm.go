@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"net"
 	"sync/atomic"
 	"time"
+	"utils/logging"
 )
 
 type BGPFSMState int
@@ -113,7 +113,7 @@ type BaseStateIface interface {
 
 type BaseState struct {
 	fsm                 *FSM
-	logger              *syslog.Writer
+	logger              *logging.Writer
 	connectRetryCounter int
 	connectRetryTimer   int
 }
@@ -765,7 +765,7 @@ type PeerFSMConnState struct {
 }
 
 type FSM struct {
-	logger   *syslog.Writer
+	logger   *logging.Writer
 	peer     *Peer
 	gConf    *config.GlobalConfig
 	pConf    *config.NeighborConfig

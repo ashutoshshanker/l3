@@ -9,8 +9,8 @@ import (
 	"l3/bgp/config"
 	bgppolicy "l3/bgp/policy"
 	"l3/bgp/server"
-	"log/syslog"
 	"net"
+	"utils/logging"
 	utilspolicy "utils/policy"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -27,10 +27,10 @@ type BGPHandler struct {
 	PeerCommandCh chan PeerConfigCommands
 	server        *server.BGPServer
 	bgpPE         *bgppolicy.BGPPolicyEngine
-	logger        *syslog.Writer
+	logger        *logging.Writer
 }
 
-func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, logger *syslog.Writer, filePath string) *BGPHandler {
+func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, logger *logging.Writer, filePath string) *BGPHandler {
 	h := new(BGPHandler)
 	h.PeerCommandCh = make(chan PeerConfigCommands)
 	h.server = server

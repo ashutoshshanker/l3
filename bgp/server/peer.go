@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"net"
 	"sync/atomic"
 	"time"
+	"utils/logging"
 )
 
 type Peer struct {
 	Server     *BGPServer
-	logger     *syslog.Writer
+	logger     *logging.Writer
 	Global     *config.GlobalConfig
 	PeerGroup  *config.PeerGroupConfig
 	Neighbor   *config.Neighbor

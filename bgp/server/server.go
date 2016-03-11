@@ -13,13 +13,13 @@ import (
 	"l3/bgp/packet"
 	bgppolicy "l3/bgp/policy"
 	"l3/rib/ribdCommonDefs"
-	"log/syslog"
 	"net"
 	"ribd"
 	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"utils/logging"
 	utilspolicy "utils/policy"
 	"utils/policy/policyCommonDefs"
 
@@ -68,7 +68,7 @@ type PolicyParams struct {
 }
 
 type BGPServer struct {
-	logger           *syslog.Writer
+	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
 	ribdClient       *ribd.RouteServiceClient
 	bfddClient       *bfdd.BFDDServicesClient
@@ -96,7 +96,7 @@ type BGPServer struct {
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 }
 
-func NewBGPServer(logger *syslog.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
+func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
 	bfddClient *bfdd.BFDDServicesClient) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
@@ -256,12 +256,14 @@ func (server *BGPServer) handleBfdNotifications(rxBuf []byte) {
 	if peer, ok := server.PeerMap[bfd.DestIp]; ok {
 		if !bfd.State {
 			if peer.Neighbor.State.BfdNeighborState == "up" {
-				peer.StopFSM("Peer BFD Down")
+				//peer.StopFSM("Peer BFD Down")
+				peer.Command(int(BGPEventManualStop))
 				peer.Neighbor.State.BfdNeighborState = "Down"
 			}
 		} else {
 			if peer.Neighbor.State.BfdNeighborState == "down" {
 				peer.Neighbor.State.BfdNeighborState = "up"
+				peer.Command(int(BGPEventManualStart))
 			}
 		}
 	}

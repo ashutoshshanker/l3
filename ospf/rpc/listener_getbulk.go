@@ -6,7 +6,7 @@ import (
 	"l3/ospf/config"
 	"ospfd"
 	//    "l3/ospf/server"
-	//    "log/syslog"
+	//    "utils/logging"
 	//    "net"
 )
 
