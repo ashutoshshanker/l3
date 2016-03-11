@@ -51,6 +51,14 @@ func isIpInList(prefixes []packet.NLRI, ip packet.NLRI) bool {
 	return false
 }
 
+func (adjRib *AdjRib) getDestFromIPAndLen(ip string, cidrLen uint32) *Destination {
+	if dest, ok := adjRib.destPathMap[ip]; ok {
+		return dest
+	}
+
+	return nil
+}
+
 func (adjRib *AdjRib) getDest(nlri packet.NLRI, createIfNotExist bool) (*Destination, bool) {
 	dest, ok := adjRib.destPathMap[nlri.GetPrefix().Prefix.String()]
 	if !ok && createIfNotExist {
@@ -129,7 +137,7 @@ func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) (map[
 
 	remPath := NewPath(adjRib.server, peer, body.PathAttributes, true, false, RouteTypeEGP)
 	addPath := NewPath(adjRib.server, peer, body.PathAttributes, false, true, RouteTypeEGP)
-	addPath.GetReachabilityInfo()
+	//addPath.GetReachabilityInfo()
 	if !addPath.IsValid() {
 		adjRib.logger.Info(fmt.Sprintf("Received a update with our cluster id %d. Discarding the update.", addPath.peer.PeerConf.RouteReflectorClusterId))
 		return nil, nil, nil

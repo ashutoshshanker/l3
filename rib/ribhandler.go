@@ -425,6 +425,7 @@ func CreateRoutes(routeFile string){
 func processAsicdEvents(sub *nanomsg.SubSocket) {
 
 	logger.Println("in process Asicd events")
+	logger.Println(" asicdConstDefs.NOTIFY_IPV4INTF_CREATE = ", asicdConstDefs.NOTIFY_IPV4INTF_CREATE, "asicdConstDefs.asicdConstDefs.NOTIFY_IPV4INTF_DELETE: ", asicdConstDefs.NOTIFY_IPV4INTF_DELETE)
 	for {
 		logger.Println("In for loop")
 		rcvdMsg, err := sub.Recv(0)
@@ -498,6 +499,10 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				logger.Printf("Route create failed with err %s\n", err)
 				return
 			}
+			break
+		case asicdConstDefs.NOTIFY_IPV4INTF_DELETE:
+		   logger.Println("NOTIFY_IPV4INTF_DELETE  event")
+		   break
 		}
 	}
 }
@@ -563,10 +568,12 @@ func InitializePolicyDB() {
 	PolicyEngineDB.SetEntityUpdateFunc(UpdateRouteAndPolicyDB)
 	PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineRouteDispositionAction)
 	PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionRedistribute)
+    PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise,policyEngineActionNetworkStatementAdvertise)
 	PolicyEngineDB.SetActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionSetAdminDistance)
 	PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineUndoRouteDispositionAction)
 	PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionUndoRedistribute)
 	PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionUndoSetAdminDistance)
+    PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise,policyEngineActionUndoNetworkStatemenAdvertiseAction)
 	PolicyEngineDB.SetTraverseAndApplyPolicyFunc(policyEngineTraverseAndApply)
 	PolicyEngineDB.SetTraverseAndReversePolicyFunc(policyEngineTraverseAndReverse)
 	PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
@@ -585,6 +592,6 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	//CreateRoutes("RouteSetup.json")
 	InitializePolicyDB()
-	UpdateFromDB()//(paramsDir)
+	//UpdateFromDB()//(paramsDir)
 	return &RouteServiceHandler{}
 }

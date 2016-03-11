@@ -43,16 +43,19 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 
 	peer.SetPeerConf(peerGroup, &peer.PeerConf)
 	peer.Neighbor.State = config.NeighborState{
-		PeerAS:           peer.PeerConf.PeerAS,
-		LocalAS:          peer.PeerConf.LocalAS,
-		AuthPassword:     peer.PeerConf.AuthPassword,
-		Description:      peer.PeerConf.Description,
-		NeighborAddress:  peer.PeerConf.NeighborAddress,
-		MultiHopEnable:   peer.PeerConf.MultiHopEnable,
-		MultiHopTTL:      peer.PeerConf.MultiHopTTL,
-		ConnectRetryTime: peer.PeerConf.ConnectRetryTime,
-		HoldTime:         peer.PeerConf.HoldTime,
-		KeepaliveTime:    peer.PeerConf.KeepaliveTime,
+		PeerAS:                  peer.PeerConf.PeerAS,
+		LocalAS:                 peer.PeerConf.LocalAS,
+		AuthPassword:            peer.PeerConf.AuthPassword,
+		Description:             peer.PeerConf.Description,
+		NeighborAddress:         peer.PeerConf.NeighborAddress,
+		RouteReflectorClusterId: peer.PeerConf.RouteReflectorClusterId,
+		RouteReflectorClient:    peer.PeerConf.RouteReflectorClient,
+		MultiHopEnable:          peer.PeerConf.MultiHopEnable,
+		MultiHopTTL:             peer.PeerConf.MultiHopTTL,
+		ConnectRetryTime:        peer.PeerConf.ConnectRetryTime,
+		HoldTime:                peer.PeerConf.HoldTime,
+		KeepaliveTime:           peer.PeerConf.KeepaliveTime,
+		PeerGroup:               peer.PeerConf.PeerGroup,
 	}
 
 	if peerConf.LocalAS == peerConf.PeerAS {
@@ -286,13 +289,13 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 		return
 	}
 	p.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
-	p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
+	//p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
 }
 
 func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 	if p.Neighbor.Transport.Config.LocalAddress != nil {
 		p.Neighbor.Transport.Config.LocalAddress = nil
-		p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
+		//p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
 	}
 
 	p.Neighbor.State.ConnectRetryTime = p.PeerConf.ConnectRetryTime

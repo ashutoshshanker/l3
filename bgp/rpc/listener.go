@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"l3/bgp/config"
-	"l3/bgp/policy"
+	bgppolicy "l3/bgp/policy"
 	"l3/bgp/server"
 	"log/syslog"
+	"models"
 	"net"
+	utilspolicy "utils/policy"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -25,15 +27,15 @@ type PeerConfigCommands struct {
 type BGPHandler struct {
 	PeerCommandCh chan PeerConfigCommands
 	server        *server.BGPServer
-	policy        *policy.BGPPolicyEngine
+	bgpPE         *bgppolicy.BGPPolicyEngine
 	logger        *syslog.Writer
 }
 
-func NewBGPHandler(server *server.BGPServer, policy *policy.BGPPolicyEngine, logger *syslog.Writer, filePath string) *BGPHandler {
+func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, logger *syslog.Writer, filePath string) *BGPHandler {
 	h := new(BGPHandler)
 	h.PeerCommandCh = make(chan PeerConfigCommands)
 	h.server = server
-	h.policy = policy
+	h.bgpPE = policy
 	h.logger = logger
 	h.readConfigFromDB(filePath)
 	return h
@@ -112,7 +114,7 @@ func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
 		if err = rows.Scan(&nConf.PeerAS, &nConf.LocalAS, &nConf.AuthPassword, &nConf.Description, &neighborIP,
 			&nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable, &nConf.MultiHopTTL,
 			&nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime, &nConf.AddPathsRx, &nConf.AddPathsMaxTx,
-			&nConf.PeerGroup); err != nil {
+			&nConf.PeerGroupime, &nConf.PeerGr); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighborConfig rows with error %s", err))
 			return err
 		}
@@ -166,6 +168,124 @@ func (h *BGPHandler) handleBGPAggregate(dbHdl *sql.DB) error {
 	return nil
 }
 
+func convertModelToPolicyConditionConfig(cfg *models.BGPPolicyConditionConfig) *utilspolicy.PolicyConditionConfig {
+	destIPMatch := utilspolicy.PolicyDstIpMatchPrefixSetCondition{
+		Prefix: utilspolicy.PolicyPrefix{
+			IpPrefix:        cfg.IpPrefix,
+			MasklengthRange: cfg.MaskLengthRange,
+		},
+	}
+	return &utilspolicy.PolicyConditionConfig{
+		Name:                          cfg.Name,
+		ConditionType:                 cfg.ConditionType,
+		MatchDstIpPrefixConditionInfo: destIPMatch,
+	}
+}
+
+func (h *BGPHandler) handlePolicyConditions(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyConditions"))
+	conditionObj := new(models.BGPPolicyConditionConfig)
+	conditionList, err := conditionObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyConditions - Failed to create policy condition config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(conditionList); idx++ {
+		policyCondCfg := convertModelToPolicyConditionConfig(conditionList[idx])
+		h.logger.Info(fmt.Sprintln("handlePolicyConditions - create policy condition", policyCondCfg.Name))
+		h.bgpPE.ConditionCfgCh <- *policyCondCfg
+	}
+	return nil
+}
+
+func convertModelToPolicyActionConfig(cfg *models.BGPPolicyActionConfig) *utilspolicy.PolicyActionConfig {
+	return &utilspolicy.PolicyActionConfig{
+		Name:            cfg.Name,
+		ActionType:      cfg.ActionType,
+		GenerateASSet:   cfg.GenerateASSet,
+		SendSummaryOnly: cfg.SendSummaryOnly,
+	}
+}
+
+func (h *BGPHandler) handlePolicyActions(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyActions"))
+	actionObj := new(models.BGPPolicyActionConfig)
+	actionList, err := actionObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyActions - Failed to create policy action config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(actionList); idx++ {
+		policyActionCfg := convertModelToPolicyActionConfig(actionList[idx])
+		h.logger.Info(fmt.Sprintln("handlePolicyActions - create policy action", policyActionCfg.Name))
+		h.bgpPE.ActionCfgCh <- *policyActionCfg
+	}
+	return nil
+}
+
+func convertModelToPolicyStmtConfig(cfg *models.BGPPolicyStmtConfig) *utilspolicy.PolicyStmtConfig {
+	return &utilspolicy.PolicyStmtConfig{
+		Name:            cfg.Name,
+		MatchConditions: cfg.MatchConditions,
+		Conditions:      cfg.Conditions,
+		Actions:         cfg.Actions,
+	}
+}
+
+func (h *BGPHandler) handlePolicyStmts(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyStmts"))
+	stmtObj := new(models.BGPPolicyStmtConfig)
+	stmtList, err := stmtObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyStmts - Failed to create policy statement config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(stmtList); idx++ {
+		policyStmtCfg := convertModelToPolicyStmtConfig(stmtList[idx])
+		h.logger.Info(fmt.Sprintln("handlePolicyStmts - create policy statement", policyStmtCfg.Name))
+		h.bgpPE.StmtCfgCh <- *policyStmtCfg
+	}
+	return nil
+}
+
+func convertModelToPolicyDefinitionConfig(cfg *models.BGPPolicyDefinitionConfig) *utilspolicy.PolicyDefinitionConfig {
+	stmtPrecedenceList := make([]utilspolicy.PolicyDefinitionStmtPrecedence, 0)
+	for i := 0; i < len(cfg.StatementList); i++ {
+		stmtPrecedence := utilspolicy.PolicyDefinitionStmtPrecedence{
+			Precedence: cfg.StatementList[i].Precedence,
+			Statement:  cfg.StatementList[i].Statement,
+		}
+		stmtPrecedenceList = append(stmtPrecedenceList, stmtPrecedence)
+	}
+
+	return &utilspolicy.PolicyDefinitionConfig{
+		Name:                       cfg.Name,
+		Precedence:                 cfg.Precedence,
+		MatchType:                  cfg.MatchType,
+		PolicyDefinitionStatements: stmtPrecedenceList,
+	}
+}
+
+func (h *BGPHandler) handlePolicyDefinitions(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyDefinitions"))
+	defObj := new(models.BGPPolicyDefinitionConfig)
+	definitionList, err := defObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyDefinitions - Failed to create policy definition config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(definitionList); idx++ {
+		policyDefCfg := convertModelToPolicyDefinitionConfig(definitionList[idx])
+		h.logger.Info(fmt.Sprintln("handlePolicyDefinitions - create policy definition", policyDefCfg.Name))
+		h.bgpPE.DefinitionCfgCh <- *policyDefCfg
+	}
+	return nil
+}
+
 func (h *BGPHandler) readConfigFromDB(filePath string) error {
 	var dbPath string = filePath + DBName
 
@@ -176,6 +296,22 @@ func (h *BGPHandler) readConfigFromDB(filePath string) error {
 	}
 
 	defer dbHdl.Close()
+
+	if err = h.handlePolicyConditions(dbHdl); err != nil {
+		return err
+	}
+
+	if err = h.handlePolicyActions(dbHdl); err != nil {
+		return err
+	}
+
+	if err = h.handlePolicyStmts(dbHdl); err != nil {
+		return err
+	}
+
+	if err = h.handlePolicyDefinitions(dbHdl); err != nil {
+		return err
+	}
 
 	if err = h.handleGlobalConfig(dbHdl); err != nil {
 		return err
@@ -320,6 +456,7 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.HoldTime = int32(neighborState.HoldTime)
 	bgpNeighborResponse.KeepaliveTime = int32(neighborState.KeepaliveTime)
 	bgpNeighborResponse.BfdNeighborState = neighborState.BfdNeighborState
+	bgpNeighborResponse.PeerGroup = neighborState.PeerGroup
 	bgpNeighborResponse.AddPathsRx = neighborState.AddPathsRx
 	bgpNeighborResponse.AddPathsMaxTx = int8(neighborState.AddPathsMaxTx)
 
@@ -517,11 +654,26 @@ func (h *BGPHandler) DeleteBGPAggregate(name string) (bool, error) {
 	return true, nil
 }
 
+func convertThriftToPolicyConditionConfig(cfg *bgpd.BGPPolicyConditionConfig) *utilspolicy.PolicyConditionConfig {
+	destIPMatch := utilspolicy.PolicyDstIpMatchPrefixSetCondition{
+		Prefix: utilspolicy.PolicyPrefix{
+			IpPrefix:        cfg.MatchDstIpPrefixConditionInfo.Prefix.IpPrefix,
+			MasklengthRange: cfg.MatchDstIpPrefixConditionInfo.Prefix.MasklengthRange,
+		},
+	}
+	return &utilspolicy.PolicyConditionConfig{
+		Name:                          cfg.Name,
+		ConditionType:                 cfg.ConditionType,
+		MatchDstIpPrefixConditionInfo: destIPMatch,
+	}
+}
+
 func (h *BGPHandler) CreateBGPPolicyConditionConfig(cfg *bgpd.BGPPolicyConditionConfig) (val bool, err error) {
 	h.logger.Info(fmt.Sprintln("CreatePolicyConditioncfg"))
 	switch cfg.ConditionType {
 	case "MatchDstIpPrefix":
-		h.policy.ConditionCfgCh <- cfg
+		policyCfg := convertThriftToPolicyConditionConfig(cfg)
+		h.bgpPE.ConditionCfgCh <- *policyCfg
 		break
 	default:
 		h.logger.Info(fmt.Sprintln("Unknown condition type ", cfg.ConditionType))
@@ -531,14 +683,30 @@ func (h *BGPHandler) CreateBGPPolicyConditionConfig(cfg *bgpd.BGPPolicyCondition
 }
 
 func (h *BGPHandler) GetBulkBGPPolicyConditionState(fromIndex bgpd.Int, rcount bgpd.Int) (policyConditions *bgpd.BGPPolicyConditionStateGetInfo, err error) {
-	return policy.GetBulkBGPPolicyConditionState(fromIndex, rcount)
+	//return policy.GetBulkBGPPolicyConditionState(fromIndex, rcount)
+	return nil, nil
+}
+
+func (h *BGPHandler) DeleteBGPPolicyConditionConfig(name string) (val bool, err error) {
+	h.bgpPE.ConditionDelCh <- name
+	return val, err
+}
+
+func convertThriftToPolicyActionConfig(cfg *bgpd.BGPPolicyActionConfig) *utilspolicy.PolicyActionConfig {
+	return &utilspolicy.PolicyActionConfig{
+		Name:            cfg.Name,
+		ActionType:      cfg.ActionType,
+		GenerateASSet:   cfg.AggregateActionInfo.GenerateASSet,
+		SendSummaryOnly: cfg.AggregateActionInfo.SendSummaryOnly,
+	}
 }
 
 func (h *BGPHandler) CreateBGPPolicyActionConfig(cfg *bgpd.BGPPolicyActionConfig) (val bool, err error) {
 	h.logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	switch cfg.ActionType {
 	case "Aggregate":
-		h.policy.ActionCfgCh <- cfg
+		actionCfg := convertThriftToPolicyActionConfig(cfg)
+		h.bgpPE.ActionCfgCh <- *actionCfg
 		break
 	default:
 		h.logger.Info(fmt.Sprintln("Unknown action type ", cfg.ActionType))
@@ -548,33 +716,73 @@ func (h *BGPHandler) CreateBGPPolicyActionConfig(cfg *bgpd.BGPPolicyActionConfig
 }
 
 func (h *BGPHandler) GetBulkBGPPolicyActionState(fromIndex bgpd.Int, rcount bgpd.Int) (policyActions *bgpd.BGPPolicyActionStateGetInfo, err error) { //(routes []*bgpd.Routes, err error) {
-	return policy.GetBulkBGPPolicyActionState(fromIndex, rcount)
+	//return policy.GetBulkBGPPolicyActionState(fromIndex, rcount)
+	return nil, nil
+}
+
+func (h *BGPHandler) DeleteBGPPolicyActionConfig(name string) (val bool, err error) {
+	h.bgpPE.ActionDelCh <- name
+	return val, err
+}
+
+func convertThriftToPolicyStmtConfig(cfg *bgpd.BGPPolicyStmtConfig) *utilspolicy.PolicyStmtConfig {
+	return &utilspolicy.PolicyStmtConfig{
+		Name:            cfg.Name,
+		MatchConditions: cfg.MatchConditions,
+		Conditions:      cfg.Conditions,
+		Actions:         cfg.Actions,
+	}
 }
 
 func (h *BGPHandler) CreateBGPPolicyStmtConfig(cfg *bgpd.BGPPolicyStmtConfig) (val bool, err error) {
 	h.logger.Info(fmt.Sprintln("CreatePolicyStmt"))
-	h.policy.StmtCfgCh <- cfg
+	stmtCfg := convertThriftToPolicyStmtConfig(cfg)
+	h.bgpPE.StmtCfgCh <- *stmtCfg
 	return val, err
 }
 
 func (h *BGPHandler) GetBulkBGPPolicyStmtState(fromIndex bgpd.Int, rcount bgpd.Int) (policyStmts *bgpd.BGPPolicyStmtStateGetInfo, err error) {
-	return policy.GetBulkBGPPolicyStmtState(fromIndex, rcount)
+	//return policy.GetBulkBGPPolicyStmtState(fromIndex, rcount)
+	return nil, nil
 }
 
 func (h *BGPHandler) DeleteBGPPolicyStmtConfig(name string) (val bool, err error) {
-	return policy.DeleteBGPPolicyStmtConfig(name)
+	//return policy.DeleteBGPPolicyStmtConfig(name)
+	h.bgpPE.StmtDelCh <- name
+	return true, nil
+}
+
+func convertThriftToPolicyDefintionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) *utilspolicy.PolicyDefinitionConfig {
+	stmtPrecedenceList := make([]utilspolicy.PolicyDefinitionStmtPrecedence, 0)
+	for i := 0; i < len(cfg.PolicyDefinitionStatements); i++ {
+		stmtPrecedence := utilspolicy.PolicyDefinitionStmtPrecedence{
+			Precedence: int(cfg.PolicyDefinitionStatements[i].Precedence),
+			Statement:  cfg.PolicyDefinitionStatements[i].Statement,
+		}
+		stmtPrecedenceList = append(stmtPrecedenceList, stmtPrecedence)
+	}
+
+	return &utilspolicy.PolicyDefinitionConfig{
+		Name:                       cfg.Name,
+		Precedence:                 int(cfg.Precedence),
+		MatchType:                  cfg.MatchType,
+		PolicyDefinitionStatements: stmtPrecedenceList,
+	}
 }
 
 func (h *BGPHandler) CreateBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val bool, err error) {
 	h.logger.Info(fmt.Sprintln("CreatePolicyDefinition"))
-	h.policy.DefinitionCfgCh <- cfg
+	definitionCfg := convertThriftToPolicyDefintionConfig(cfg)
+	h.bgpPE.DefinitionCfgCh <- *definitionCfg
 	return val, err
 }
 
 func (h *BGPHandler) GetBulkBGPPolicyDefinitionState(fromIndex bgpd.Int, rcount bgpd.Int) (policyStmts *bgpd.BGPPolicyDefinitionStateGetInfo, err error) { //(routes []*bgpd.BGPRoute, err error) {
-	return policy.GetBulkBGPPolicyDefinitionState(fromIndex, rcount)
+	//return policy.GetBulkBGPPolicyDefinitionState(fromIndex, rcount)
+	return nil, nil
 }
 
 func (h *BGPHandler) DeleteBGPPolicyDefinitionConfig(name string) (val bool, err error) {
-	return policy.DeleteBGPPolicyDefinitionConfig(name)
+	h.bgpPE.DefinitionDelCh <- name
+	return val, err
 }

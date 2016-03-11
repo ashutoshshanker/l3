@@ -376,7 +376,7 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 				if newRoute == nil {
 					continue
 				}
-				if !paths[0].IsLocal() {
+				if paths[0].IsAggregate() || !paths[0].IsLocal() {
 					d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.ipPrefix.Prefix.String(),
 						constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), paths[0].NextHop))
 					protocol := "IBGP"
@@ -406,8 +406,9 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 			// Remove route
 			for path, route := range d.ecmpPaths {
 				route.setAction(RouteActionDelete)
-				if !path.IsLocal() {
-					d.logger.Info(fmt.Sprintf("Remove route for ip=%s", d.ipPrefix.Prefix.String()))
+				if path.IsAggregate() || !path.IsLocal() {
+					d.logger.Info(fmt.Sprintf("Remove route for ip=%s nexthop=%s", d.ipPrefix.Prefix.String(),
+						path.NextHop))
 					protocol := "IBGP"
 					if path.IsExternal() {
 						protocol = "EBGP"
@@ -426,7 +427,19 @@ func (d *Destination) SelectRouteForLocRib() (RouteAction, []*Route, []*Route, [
 
 	for path, route := range d.ecmpPaths {
 		if route.action == RouteActionNone || route.action == RouteActionDelete {
-			d.logger.Info(fmt.Sprintln("Remove route from ECMP paths, route =", route, "next hop =", path.GetNextHop()))
+			if path.IsAggregate() || !path.IsLocal() {
+				d.logger.Info(fmt.Sprintln("Remove route from ECMP paths, route =", route, "ip =",
+					d.nlri.Prefix.String(), "next hop =", path.NextHop))
+				protocol := "IBGP"
+				if path.IsExternal() {
+					protocol = "EBGP"
+				}
+				ret, err := d.server.ribdClient.DeleteV4Route(d.nlri.Prefix.String(),
+					constructNetmaskFromLen(int(d.nlri.Length), 32).String(), protocol, path.NextHop)
+				if err != nil {
+					d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
+				}
+			}
 			deletedRoutes = append(deletedRoutes, route)
 			delete(d.ecmpPaths, path)
 		} else {
@@ -476,7 +489,14 @@ func (d *Destination) getRoutesWithSmallestAS(updatedPaths, removedPaths []*Path
 	idx := 0
 
 	for i := 0; i < n; i++ {
+		d.logger.Info(fmt.Sprintln("Destination:getRoutesWithSmallestAS - get num ASes from path", updatedPaths[i]))
 		asNums := updatedPaths[i].GetNumASes()
+		from := ""
+		if updatedPaths[i].peer != nil {
+			from = updatedPaths[i].peer.Neighbor.NeighborAddress.String()
+		}
+		d.logger.Info(fmt.Sprintln("Destination:getRoutesWithSmallestAS - Dest =", d.nlri.Prefix, "number of ASes =",
+			asNums, "from", from))
 		if asNums < minASNums {
 			removedPaths = append(removedPaths, updatedPaths[:idx]...)
 			minASNums = asNums

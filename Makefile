@@ -4,7 +4,8 @@ COMPS=arp\
 		rib\
 		dhcp_relay\
 		bfd \
-		vrrp
+		vrrp\
+		tunnel/vxlan
 
 IPCS=arp\
 	  bgp\
@@ -12,7 +13,8 @@ IPCS=arp\
 	  rib\
 	  dhcp_relay\
 	  bfd\
-	  vrrp
+	  vrrp\
+	tunnel/vxlan
 
 all: ipc exe install
 

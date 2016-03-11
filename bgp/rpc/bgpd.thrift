@@ -164,7 +164,6 @@ struct BGPNeighborConfig {
 	14: byte AddPathsMaxTx,
 	15: bool BfdEnable
 	16: string PeerGroup,
-}
 
 struct BGPNeighborState {
 	1: i32 PeerAS,
@@ -220,7 +219,7 @@ struct BGPRoute {
 	3: string NextHop,
 	4: i32 Metric,
 	5: i32 LocalPref,
-	6: list<i32> Path,
+	6: list<list<i32>> Path,
 	7: string Updated,
 	8: list<string> PolicyList,
 	9: int PolicyHitCounter,

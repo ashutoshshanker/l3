@@ -26,6 +26,8 @@ struct Routes {
 	14: string RouteUpdated,
 	15: string RoutePrototypeString
 	16: string DestNetIp
+	17: bool NetworkStatement
+	18: string RouteOrigin
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -107,8 +109,6 @@ struct PolicyConditionConfig {
 	2: string ConditionType
 	3: string MatchProtocolConditionInfo           
     4: optional PolicyDstIpMatchPrefixSetCondition MatchDstIpPrefixConditionInfo        
-    5: optional PolicyMatchNeighborSetCondition MatchNeighborConditionInfo           
-	6: optional PolicyMatchTagSetCondition MatchTagConditionInfo                
 }
 struct PolicyConditionState{
 	1 : string 	Name
@@ -129,7 +129,8 @@ struct PolicyActionConfig {
 	4: bool Accept 
 	5: bool Reject 
 	6: string RedistributeAction
-	7: string RedistributeTargetProtocol    
+	7: string RedistributeTargetProtocol   
+	8: string NetworkStatementTargetProtocol 
 }
 
 struct PolicyActionState{
@@ -154,9 +155,6 @@ struct PolicyDefinitionConfig{
 	2: int Precedence
 	3: string MatchType
 	4: list<PolicyDefinitionStmtPrecedence> PolicyDefinitionStatements
-	6 : bool     Export
-	7 : bool     Import
-	8 : bool     Global
 }
 
 struct PolicyDefinitionState{
@@ -191,9 +189,10 @@ service RouteService
 	bool UpdateIPV4Route(1: Routes origconfig, 2: Routes newconfig, 3: list<bool> attrset);
     int deleteV4Route (1:string destNetIp, 2:string networkMask, 3:string routeType, 4:string nextHopIp);
     NextHopInfo getRouteReachabilityInfo(1: string desIPv4MasktNet);
-	list<Routes> getConnectedRoutesInfo();
+	//list<Routes> getConnectedRoutesInfo();
     void printV4Routes();
 	RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
+	RoutesGetInfo getBulkRoutesForProtocol(1: string srcProtocol, 2: int fromIndex ,3: int rcount)
 	IPV4EventStateGetInfo GetBulkIPV4EventState(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	void linkDown(1: int ifType, 2:int ifIndex);
@@ -209,11 +208,11 @@ service RouteService
 
 	bool CreatePolicyCondition(1: PolicyConditionConfig config);
 //	bool UpdatePolicyCondition(1: PolicyConditionConfig origconfig, 2: PolicyConditionConfig newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyCondition(1: PolicyConditionConfig config);
+	bool DeletePolicyCondition(1: PolicyConditionConfig config);
 
 	bool CreatePolicyAction(1: PolicyActionConfig config);
 //	bool UpdatePolicyAction(1: PolicyActionConfig origconfig, 2: PolicyActionConfig newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyAction(1: PolicyActionConfig config);
+	bool DeletePolicyAction(1: PolicyActionConfig config);
 
 	bool CreatePolicyStatement(1: PolicyStmtConfig config);
 //	bool UpdatePolicyStatement(1: PolicyStmtConfig origconfig, 2: PolicyStmtConfig newconfig, 3: list<bool> attrset);

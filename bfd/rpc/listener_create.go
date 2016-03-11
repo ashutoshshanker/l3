@@ -4,10 +4,8 @@ import (
 	"bfdd"
 	"errors"
 	"fmt"
-	"l3/bfd/server"
-	//"log/syslog"
-	//"net"
 	"l3/bfd/bfddCommonDefs"
+	"l3/bfd/server"
 )
 
 func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobalConfig) bool {
@@ -40,7 +38,7 @@ func (h *BFDHandler) SendBfdSessionConfig(bfdSessionConfig *bfdd.BfdSessionConfi
 		DestIp:    bfdSessionConfig.IpAddr,
 		PerLink:   bfdSessionConfig.PerLink,
 		Protocol:  bfddCommonDefs.ConvertBfdSessionOwnerStrToVal(bfdSessionConfig.Owner),
-		Operation: bfddCommonDefs.ConvertBfdSessionOperationStrToVal(bfdSessionConfig.Operation),
+		Operation: bfddCommonDefs.CREATE,
 	}
 	h.server.SessionConfigCh <- sessionConf
 	return true
