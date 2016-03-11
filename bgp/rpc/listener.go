@@ -166,7 +166,7 @@ func (h *BGPHandler) handleBGPAggregate(dbHdl *sql.DB) error {
 	return nil
 }
 
-func convertModelToPolicyConditionConfig(cfg *models.BGPPolicyConditionConfig) *utilspolicy.PolicyConditionConfig {
+func convertModelToPolicyConditionConfig(cfg models.BGPPolicyConditionConfig) *utilspolicy.PolicyConditionConfig {
 	destIPMatch := utilspolicy.PolicyDstIpMatchPrefixSetCondition{
 		Prefix: utilspolicy.PolicyPrefix{
 			IpPrefix:        cfg.IpPrefix,
@@ -182,7 +182,7 @@ func convertModelToPolicyConditionConfig(cfg *models.BGPPolicyConditionConfig) *
 
 func (h *BGPHandler) handlePolicyConditions(dbHdl *sql.DB) error {
 	h.logger.Info(fmt.Sprintln("handlePolicyConditions"))
-	conditionObj := new(models.BGPPolicyConditionConfig)
+	conditionObj := models.BGPPolicyConditionConfig{}
 	conditionList, err := conditionObj.GetAllObjFromDb(dbHdl)
 	if err != nil {
 		h.logger.Err(fmt.Sprintln("handlePolicyConditions - Failed to create policy condition config on restart with error", err))
@@ -190,14 +190,14 @@ func (h *BGPHandler) handlePolicyConditions(dbHdl *sql.DB) error {
 	}
 
 	for idx := 0; idx < len(conditionList); idx++ {
-		policyCondCfg := convertModelToPolicyConditionConfig(conditionList[idx])
+		policyCondCfg := convertModelToPolicyConditionConfig(conditionList[idx].(models.BGPPolicyConditionConfig))
 		h.logger.Info(fmt.Sprintln("handlePolicyConditions - create policy condition", policyCondCfg.Name))
 		h.bgpPE.ConditionCfgCh <- *policyCondCfg
 	}
 	return nil
 }
 
-func convertModelToPolicyActionConfig(cfg *models.BGPPolicyActionConfig) *utilspolicy.PolicyActionConfig {
+func convertModelToPolicyActionConfig(cfg models.BGPPolicyActionConfig) *utilspolicy.PolicyActionConfig {
 	return &utilspolicy.PolicyActionConfig{
 		Name:            cfg.Name,
 		ActionType:      cfg.ActionType,
@@ -208,7 +208,7 @@ func convertModelToPolicyActionConfig(cfg *models.BGPPolicyActionConfig) *utilsp
 
 func (h *BGPHandler) handlePolicyActions(dbHdl *sql.DB) error {
 	h.logger.Info(fmt.Sprintln("handlePolicyActions"))
-	actionObj := new(models.BGPPolicyActionConfig)
+	actionObj := models.BGPPolicyActionConfig{}
 	actionList, err := actionObj.GetAllObjFromDb(dbHdl)
 	if err != nil {
 		h.logger.Err(fmt.Sprintln("handlePolicyActions - Failed to create policy action config on restart with error", err))
@@ -216,14 +216,14 @@ func (h *BGPHandler) handlePolicyActions(dbHdl *sql.DB) error {
 	}
 
 	for idx := 0; idx < len(actionList); idx++ {
-		policyActionCfg := convertModelToPolicyActionConfig(actionList[idx])
+		policyActionCfg := convertModelToPolicyActionConfig(actionList[idx].(models.BGPPolicyActionConfig))
 		h.logger.Info(fmt.Sprintln("handlePolicyActions - create policy action", policyActionCfg.Name))
 		h.bgpPE.ActionCfgCh <- *policyActionCfg
 	}
 	return nil
 }
 
-func convertModelToPolicyStmtConfig(cfg *models.BGPPolicyStmtConfig) *utilspolicy.PolicyStmtConfig {
+func convertModelToPolicyStmtConfig(cfg models.BGPPolicyStmtConfig) *utilspolicy.PolicyStmtConfig {
 	return &utilspolicy.PolicyStmtConfig{
 		Name:            cfg.Name,
 		MatchConditions: cfg.MatchConditions,
@@ -234,7 +234,7 @@ func convertModelToPolicyStmtConfig(cfg *models.BGPPolicyStmtConfig) *utilspolic
 
 func (h *BGPHandler) handlePolicyStmts(dbHdl *sql.DB) error {
 	h.logger.Info(fmt.Sprintln("handlePolicyStmts"))
-	stmtObj := new(models.BGPPolicyStmtConfig)
+	stmtObj := models.BGPPolicyStmtConfig{}
 	stmtList, err := stmtObj.GetAllObjFromDb(dbHdl)
 	if err != nil {
 		h.logger.Err(fmt.Sprintln("handlePolicyStmts - Failed to create policy statement config on restart with error", err))
@@ -242,14 +242,14 @@ func (h *BGPHandler) handlePolicyStmts(dbHdl *sql.DB) error {
 	}
 
 	for idx := 0; idx < len(stmtList); idx++ {
-		policyStmtCfg := convertModelToPolicyStmtConfig(stmtList[idx])
+		policyStmtCfg := convertModelToPolicyStmtConfig(stmtList[idx].(models.BGPPolicyStmtConfig))
 		h.logger.Info(fmt.Sprintln("handlePolicyStmts - create policy statement", policyStmtCfg.Name))
 		h.bgpPE.StmtCfgCh <- *policyStmtCfg
 	}
 	return nil
 }
 
-func convertModelToPolicyDefinitionConfig(cfg *models.BGPPolicyDefinitionConfig) *utilspolicy.PolicyDefinitionConfig {
+func convertModelToPolicyDefinitionConfig(cfg models.BGPPolicyDefinitionConfig) *utilspolicy.PolicyDefinitionConfig {
 	stmtPrecedenceList := make([]utilspolicy.PolicyDefinitionStmtPrecedence, 0)
 	for i := 0; i < len(cfg.StatementList); i++ {
 		stmtPrecedence := utilspolicy.PolicyDefinitionStmtPrecedence{
@@ -269,7 +269,7 @@ func convertModelToPolicyDefinitionConfig(cfg *models.BGPPolicyDefinitionConfig)
 
 func (h *BGPHandler) handlePolicyDefinitions(dbHdl *sql.DB) error {
 	h.logger.Info(fmt.Sprintln("handlePolicyDefinitions"))
-	defObj := new(models.BGPPolicyDefinitionConfig)
+	defObj := models.BGPPolicyDefinitionConfig{}
 	definitionList, err := defObj.GetAllObjFromDb(dbHdl)
 	if err != nil {
 		h.logger.Err(fmt.Sprintln("handlePolicyDefinitions - Failed to create policy definition config on restart with error", err))
@@ -277,7 +277,7 @@ func (h *BGPHandler) handlePolicyDefinitions(dbHdl *sql.DB) error {
 	}
 
 	for idx := 0; idx < len(definitionList); idx++ {
-		policyDefCfg := convertModelToPolicyDefinitionConfig(definitionList[idx])
+		policyDefCfg := convertModelToPolicyDefinitionConfig(definitionList[idx].(models.BGPPolicyDefinitionConfig))
 		h.logger.Info(fmt.Sprintln("handlePolicyDefinitions - create policy definition", policyDefCfg.Name))
 		h.bgpPE.DefinitionCfgCh <- *policyDefCfg
 	}
