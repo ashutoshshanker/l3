@@ -9,10 +9,10 @@ import (
 	"l3/bgp/config"
 	bgppolicy "l3/bgp/policy"
 	"l3/bgp/server"
-	"log/syslog"
 	"models"
 	"net"
 	"strconv"
+	"utils/logging"
 	utilspolicy "utils/policy"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -29,10 +29,10 @@ type BGPHandler struct {
 	PeerCommandCh chan PeerConfigCommands
 	server        *server.BGPServer
 	bgpPE         *bgppolicy.BGPPolicyEngine
-	logger        *syslog.Writer
+	logger        *logging.Writer
 }
 
-func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, logger *syslog.Writer, filePath string) *BGPHandler {
+func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, logger *logging.Writer, filePath string) *BGPHandler {
 	h := new(BGPHandler)
 	h.PeerCommandCh = make(chan PeerConfigCommands)
 	h.server = server
@@ -391,20 +391,20 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 	ip := net.ParseIP(bgpNeighbor.NeighborAddress)
 	if ip == nil {
 		h.logger.Info(fmt.Sprintf("ValidateBGPNeighbor: Address %s is not valid", bgpNeighbor.NeighborAddress))
-        //neighbor address is a ifIndex
-		ifIndex,err := strconv.Atoi(bgpNeighbor.NeighborAddress)
+		//neighbor address is a ifIndex
+		ifIndex, err := strconv.Atoi(bgpNeighbor.NeighborAddress)
 		if err != nil {
 			h.logger.Err("Error getting ifIndex")
-		    //return config.NeighborConfig{}, false
+			//return config.NeighborConfig{}, false
 			ip = net.IPv4bcast
 		}
-		ipv4Intf,_ := h.server.AsicdClient.GetIPv4Intf(int32(ifIndex))
+		ipv4Intf, _ := h.server.AsicdClient.GetIPv4Intf(int32(ifIndex))
 		if ipv4Intf != nil {
 			h.logger.Info(fmt.Sprintln("Call ASICd to get ip address for interface with ifIndex: ", ifIndex))
 			ifIp, _, err := net.ParseCIDR(ipv4Intf.IpAddr)
 			if err != nil {
 				h.logger.Err(fmt.Sprintln("IpAddr: ", ipv4Intf.IpAddr, " derived for ifIndex ", ifIndex))
-		        return config.NeighborConfig{}, false
+				return config.NeighborConfig{}, false
 			}
 			h.logger.Info(fmt.Sprintln("Derived ip address as ", ipv4Intf.IpAddr, "ip: ", ifIp))
 			ifIpBytes := ifIp.To4()
@@ -413,9 +413,9 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 				return config.NeighborConfig{}, false
 			}
 			h.logger.Info(fmt.Sprintln("last byte = ", ifIpBytes[3]))
-			if ifIpBytes[3] % 2 == 1{
+			if ifIpBytes[3]%2 == 1 {
 				//odd number
-				ifIpBytes[3] = ifIpBytes[3] -1
+				ifIpBytes[3] = ifIpBytes[3] - 1
 			} else {
 				ifIpBytes[3] = ifIpBytes[3] + 1
 			}
@@ -425,9 +425,9 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 			h.logger.Info(fmt.Sprintln("IP: ", ip.String()))
 		} else {
 			h.logger.Err(fmt.Sprintln("ipv4Intf not configured for the ifIndex ", ifIndex))
-            //TBD: do not return but add it anyways and track interface events
+			//TBD: do not return but add it anyways and track interface events
 			ip = net.IPv4bcast
-		   // return config.NeighborConfig{}, false
+			// return config.NeighborConfig{}, false
 		}
 	}
 

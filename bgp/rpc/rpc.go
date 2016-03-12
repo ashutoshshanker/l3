@@ -2,17 +2,17 @@
 package rpc
 
 import (
-	"bfdd"
 	"asicdServices"
+	"bfdd"
 	"bgpd"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log/syslog"
 	"ribd"
 	"strconv"
 	"time"
 	"utils/ipcutils"
+	"utils/logging"
 
 	"git.apache.org/thrift.git/lib/go/thrift"
 )
@@ -24,7 +24,7 @@ type ClientJson struct {
 	Port int    `json:Port`
 }
 
-func getClient(logger *syslog.Writer, fileName string, process string) (*ClientJson, error) {
+func getClient(logger *logging.Writer, fileName string, process string) (*ClientJson, error) {
 	var allClients []ClientJson
 
 	data, err := ioutil.ReadFile(fileName)
@@ -44,7 +44,7 @@ func getClient(logger *syslog.Writer, fileName string, process string) (*ClientJ
 	return nil, nil
 }
 
-func StartServer(logger *syslog.Writer, handler *BGPHandler, filePath string) {
+func StartServer(logger *logging.Writer, handler *BGPHandler, filePath string) {
 	fileName := filePath + ClientsFileName
 	clientJson, err := getClient(logger, fileName, "bgpd")
 	if err != nil || clientJson == nil {
@@ -68,7 +68,7 @@ func StartServer(logger *syslog.Writer, handler *BGPHandler, filePath string) {
 	return
 }
 
-/*func createClientIPCHandles(logger *syslog.Writer, port string) (thrift.TTransport, thrift.TProtocolFactory, error) {
+/*func createClientIPCHandles(logger *logging.Writer, port string) (thrift.TTransport, thrift.TProtocolFactory, error) {
 	var clientTransport thrift.TTransport
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
@@ -84,10 +84,10 @@ func StartServer(logger *syslog.Writer, handler *BGPHandler, filePath string) {
 	return clientTransport, protocolFactory, err
 }*/
 
-func connectToClient(logger *syslog.Writer, clientTransport thrift.TTransport) error {
+func connectToClient(logger *logging.Writer, clientTransport thrift.TTransport) error {
 	return clientTransport.Open()
 }
-func StartAsicdClient(logger *syslog.Writer, filePath string, asicdClient chan *asicdServices.ASICDServicesClient) {
+func StartAsicdClient(logger *logging.Writer, filePath string, asicdClient chan *asicdServices.ASICDServicesClient) {
 	fileName := filePath + ClientsFileName
 	clientJson, err := getClient(logger, fileName, "asicd")
 	if err != nil || clientJson == nil {
@@ -117,7 +117,7 @@ func StartAsicdClient(logger *syslog.Writer, filePath string, asicdClient chan *
 	asicdClient <- client
 }
 
-func StartRibdClient(logger *syslog.Writer, filePath string, ribdClient chan *ribd.RouteServiceClient) {
+func StartRibdClient(logger *logging.Writer, filePath string, ribdClient chan *ribd.RouteServiceClient) {
 	fileName := filePath + ClientsFileName
 	clientJson, err := getClient(logger, fileName, "ribd")
 	if err != nil || clientJson == nil {
@@ -147,7 +147,7 @@ func StartRibdClient(logger *syslog.Writer, filePath string, ribdClient chan *ri
 	ribdClient <- client
 }
 
-func StartBfddClient(logger *syslog.Writer, filePath string, bfddClient chan *bfdd.BFDDServicesClient) {
+func StartBfddClient(logger *logging.Writer, filePath string, bfddClient chan *bfdd.BFDDServicesClient) {
 	fileName := filePath + ClientsFileName
 	clientJson, err := getClient(logger, fileName, "bfdd")
 	if err != nil || clientJson == nil {

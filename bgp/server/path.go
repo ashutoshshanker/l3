@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"l3/bgp/packet"
-	"log/syslog"
 	"net"
 	"ribd"
+	"utils/logging"
 )
 
 const (
@@ -43,7 +43,7 @@ func getRouteSource(routeType uint8) uint8 {
 
 type Path struct {
 	server          *BGPServer
-	logger          *syslog.Writer
+	logger          *logging.Writer
 	peer            *Peer
 	pathAttrs       []packet.BGPPathAttr
 	withdrawn       bool

@@ -2,8 +2,8 @@
 package server
 
 import (
-	"asicdServices"
 	"asicd/asicdConstDefs"
+	"asicdServices"
 	"bfdd"
 	"bgpd"
 	"bytes"
@@ -14,13 +14,13 @@ import (
 	"l3/bgp/packet"
 	bgppolicy "l3/bgp/policy"
 	"l3/rib/ribdCommonDefs"
-	"log/syslog"
 	"net"
 	"ribd"
 	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"utils/logging"
 	utilspolicy "utils/policy"
 	"utils/policy/policyCommonDefs"
 
@@ -70,7 +70,7 @@ type PolicyParams struct {
 }
 
 type BGPServer struct {
-	logger           *syslog.Writer
+	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
 	ribdClient       *ribd.RouteServiceClient
 	AsicdClient      *asicdServices.ASICDServicesClient
@@ -99,7 +99,7 @@ type BGPServer struct {
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 }
 
-func NewBGPServer(logger *syslog.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
+func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
 	bfddClient *bfdd.BFDDServicesClient, asicdClient *asicdServices.ASICDServicesClient) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
@@ -256,18 +256,17 @@ func (server *BGPServer) handleBfdNotifications(rxBuf []byte) {
 	if err != nil {
 		server.logger.Err(fmt.Sprintf("Unmarshal BFD notification failed with err %s", err))
 	}
-
 	if peer, ok := server.PeerMap[bfd.DestIp]; ok {
-		if !bfd.State {
-			if peer.Neighbor.State.BfdNeighborState == "up" {
-				peer.StopFSM("Peer BFD Down")
-				peer.Neighbor.State.BfdNeighborState = "Down"
-			}
-		} else {
-			if peer.Neighbor.State.BfdNeighborState == "down" {
-				peer.Neighbor.State.BfdNeighborState = "up"
-			}
+		if !bfd.State && peer.Neighbor.State.BfdNeighborState == "up" {
+			//peer.StopFSM("Peer BFD Down")
+			peer.Command(int(BGPEventManualStop))
+			peer.Neighbor.State.BfdNeighborState = "down"
 		}
+		if bfd.State && peer.Neighbor.State.BfdNeighborState == "down" {
+			peer.Neighbor.State.BfdNeighborState = "up"
+			peer.Command(int(BGPEventManualStart))
+		}
+		server.logger.Info(fmt.Sprintln("Bfd state of peer ", peer.Neighbor.NeighborAddress, " is ", peer.Neighbor.State.BfdNeighborState))
 	}
 }
 
@@ -299,7 +298,7 @@ func (server *BGPServer) listenForAsicdEvents(socket *nanomsg.SubSocket, ifState
 
 			server.logger.Info(fmt.Sprintf("Asicd L3INTF event idx %d ip %s state %d\n", msg.IfIndex, msg.IpAddr,
 				msg.IfState))
-			ifStateCh <- IfState{msg.IfIndex, msg.IpAddr,msg.IfState}
+			ifStateCh <- IfState{msg.IfIndex, msg.IpAddr, msg.IfState}
 		}
 	}
 }
@@ -1043,7 +1042,7 @@ func (server *BGPServer) StartServer() {
 			}
 
 		case peerUpdate := <-server.AddPeerCh:
-		    server.logger.Info("message received on AddPeerCh")
+			server.logger.Info("message received on AddPeerCh")
 			oldPeer := peerUpdate.OldPeer
 			newPeer := peerUpdate.NewPeer
 			var peer *Peer
@@ -1241,13 +1240,13 @@ func (server *BGPServer) StartServer() {
 			server.logger.Info(fmt.Sprintf("Server: Received update on Asicd sub socket %+v, ifacePeerMap %+v",
 				ifState, server.ifacePeerMap))
 			if ifState.state == asicdConstDefs.INTF_STATE_UP {
-               if peer, ok := server.PeerMap[strconv.Itoa(int(ifState.idx))]; ok {
-				   ip,_,err := net.ParseCIDR(ifState.ipaddr)
-				   if err == nil {
-					   server.logger.Info(fmt.Sprintln("Updating neighbor address with peer idx ", ifState.idx," to ", ip.String()))
-			           peer.Neighbor.NeighborAddress = ip
-				   }
-			   }
+				if peer, ok := server.PeerMap[strconv.Itoa(int(ifState.idx))]; ok {
+					ip, _, err := net.ParseCIDR(ifState.ipaddr)
+					if err == nil {
+						server.logger.Info(fmt.Sprintln("Updating neighbor address with peer idx ", ifState.idx, " to ", ip.String()))
+						peer.Neighbor.NeighborAddress = ip
+					}
+				}
 			}
 			if peerList, ok := server.ifacePeerMap[ifState.idx]; ok && ifState.state == asicdConstDefs.INTF_STATE_DOWN {
 				for _, peerIP := range peerList {

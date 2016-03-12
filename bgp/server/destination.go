@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"math"
 	"net"
+	"utils/logging"
 )
 
 const BGP_INTERNAL_PREF = 100
@@ -16,7 +16,7 @@ const BGP_EXTERNAL_PREF = 50
 
 type Destination struct {
 	server            *BGPServer
-	logger            *syslog.Writer
+	logger            *logging.Writer
 	nlri              packet.IPPrefix
 	peerPathMap       map[string]*Path
 	locRibPath        *Path

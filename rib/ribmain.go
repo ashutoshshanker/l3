@@ -2,15 +2,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	"log"
-	"log/syslog"
-	"os"
 	"ribd"
+	"utils/logging"
 	"utils/policy"
 )
 
-var logger *log.Logger
+var logger *logging.Writer
 var routeServiceHandler *RouteServiceHandler
 var PARAMSDIR string
 var PolicyEngineDB *policy.PolicyEngineDB
@@ -20,29 +19,34 @@ func main() {
 	var err error
 	var addr = "localhost:5000"
 
-	logger = log.New(os.Stdout, "RIBD :", log.Ldate|log.Ltime|log.Lshortfile)
-
-	syslogger, err := syslog.New(syslog.LOG_NOTICE|syslog.LOG_INFO|syslog.LOG_DAEMON, "RIBD")
-	if err == nil {
-		syslogger.Info("### RIB Daemon started")
-		logger.SetOutput(syslogger)
+	fmt.Println("Starting rib daemon")
+	paramsDir := flag.String("params", "./params", "Params directory")
+	flag.Parse()
+	fileName := *paramsDir
+	if fileName[len(fileName)-1] != '/' {
+		fileName = fileName + "/"
 	}
 
-	paramsDir := flag.String("params", "", "Directory Location for config files")
-	logger.Println("### Params Dir ", paramsDir)
-	flag.Parse()
+	fmt.Println("Start logger")
+	logger, err = logging.NewLogger(fileName, "ribd", "RIB")
+	if err != nil {
+		fmt.Println("Failed to start the logger. Exiting!!")
+		return
+	}
+	go logger.ListenForSysdNotifications()
+	logger.Info("Started the logger successfully.")
 
 	transport, err = thrift.NewTServerSocket(addr)
 	if err != nil {
-		logger.Println("Failed to create Socket with:", addr)
+		logger.Info(fmt.Sprintln("Failed to create Socket with:", addr))
 	}
 	handler := NewRouteServiceHandler(*paramsDir)
 	if handler == nil {
 		logger.Println("handler nill")
 		return
-	} 
+	}
 	routeServiceHandler = handler
-	UpdateFromDB()//(paramsDir)
+	UpdateFromDB() //(paramsDir)
 	processor := ribd.NewRouteServiceProcessor(handler)
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()

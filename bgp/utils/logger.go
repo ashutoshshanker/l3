@@ -2,11 +2,11 @@
 package utils
 
 import (
-	"log/syslog"
+	"utils/logging"
 )
 
-var Logger *syslog.Writer
+var Logger *logging.Writer
 
-func SetLogger(logger *syslog.Writer) {
+func SetLogger(logger *logging.Writer) {
 	Logger = logger
 }

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"net"
 	"bytes"
 	"sync/atomic"
 	"time"
+	"utils/logging"
 )
 
 type BGPFSMState int
@@ -114,7 +114,7 @@ type BaseStateIface interface {
 
 type BaseState struct {
 	fsm                 *FSM
-	logger              *syslog.Writer
+	logger              *logging.Writer
 	connectRetryCounter int
 	connectRetryTimer   int
 }
@@ -157,6 +157,11 @@ func NewIdleState(fsm *FSM) *IdleState {
 }
 
 func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
+	if st.fsm.peer.Neighbor.State.BfdNeighborState == "down" {
+		st.logger.Info(fmt.Sprintln("Bfd is down for neighbor: ", st.fsm.pConf.NeighborAddress,
+			" do not process event: ", BGPEventTypeToStr[event]))
+		return
+	}
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "FSM:", st.fsm.id,
 		"State: Idle Event:", BGPEventTypeToStr[event]))
 	switch event {
@@ -766,7 +771,7 @@ type PeerFSMConnState struct {
 }
 
 type FSM struct {
-	logger   *syslog.Writer
+	logger   *logging.Writer
 	peer     *Peer
 	gConf    *config.GlobalConfig
 	pConf    *config.NeighborConfig
