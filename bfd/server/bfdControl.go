@@ -38,12 +38,13 @@ func (server *BFDServer) ConvertBfdSessionStateValToStr(state BfdSessionState) s
 type BfdSessionEvent int
 
 const (
-	REMOTE_DOWN BfdSessionEvent = 1
-	REMOTE_INIT BfdSessionEvent = 2
-	REMOTE_UP   BfdSessionEvent = 3
-	TIMEOUT     BfdSessionEvent = 4
-	ADMIN_DOWN  BfdSessionEvent = 5
-	ADMIN_UP    BfdSessionEvent = 6
+	REMOTE_DOWN       BfdSessionEvent = 1
+	REMOTE_INIT       BfdSessionEvent = 2
+	REMOTE_UP         BfdSessionEvent = 3
+	TIMEOUT           BfdSessionEvent = 4
+	ADMIN_DOWN        BfdSessionEvent = 5
+	ADMIN_UP          BfdSessionEvent = 6
+	REMOTE_ADMIN_DOWN BfdSessionEvent = 7
 )
 
 type BfdDiagnostic int

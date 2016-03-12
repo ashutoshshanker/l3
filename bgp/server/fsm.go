@@ -156,6 +156,11 @@ func NewIdleState(fsm *FSM) *IdleState {
 }
 
 func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
+	if st.fsm.peer.Neighbor.State.BfdNeighborState == "down" {
+		st.logger.Info(fmt.Sprintln("Bfd is down for neighbor: ", st.fsm.pConf.NeighborAddress,
+			" do not process event: ", BGPEventTypeToStr[event]))
+		return
+	}
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "FSM:", st.fsm.id,
 		"State: Idle Event:", BGPEventTypeToStr[event]))
 	switch event {

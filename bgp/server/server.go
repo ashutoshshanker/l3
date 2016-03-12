@@ -252,20 +252,17 @@ func (server *BGPServer) handleBfdNotifications(rxBuf []byte) {
 	if err != nil {
 		server.logger.Err(fmt.Sprintf("Unmarshal BFD notification failed with err %s", err))
 	}
-
 	if peer, ok := server.PeerMap[bfd.DestIp]; ok {
-		if !bfd.State {
-			if peer.Neighbor.State.BfdNeighborState == "up" {
-				//peer.StopFSM("Peer BFD Down")
-				peer.Command(int(BGPEventManualStop))
-				peer.Neighbor.State.BfdNeighborState = "Down"
-			}
-		} else {
-			if peer.Neighbor.State.BfdNeighborState == "down" {
-				peer.Neighbor.State.BfdNeighborState = "up"
-				peer.Command(int(BGPEventManualStart))
-			}
+		if !bfd.State && peer.Neighbor.State.BfdNeighborState == "up" {
+			//peer.StopFSM("Peer BFD Down")
+			peer.Command(int(BGPEventManualStop))
+			peer.Neighbor.State.BfdNeighborState = "down"
 		}
+		if bfd.State && peer.Neighbor.State.BfdNeighborState == "down" {
+			peer.Neighbor.State.BfdNeighborState = "up"
+			peer.Command(int(BGPEventManualStart))
+		}
+		server.logger.Info(fmt.Sprintln("Bfd state of peer ", peer.Neighbor.NeighborAddress, " is ", peer.Neighbor.State.BfdNeighborState))
 	}
 }
 
