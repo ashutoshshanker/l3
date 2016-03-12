@@ -2,6 +2,7 @@
 package main
 
 import (
+	"asicdServices"
 	"bfdd"
 	"flag"
 	"fmt"
@@ -26,6 +27,18 @@ func main() {
 	fileName := *paramsDir
 	if fileName[len(fileName)-1] != '/' {
 		fileName = fileName + "/"
+	}
+	var asicdClient *asicdServices.ASICDServicesClient = nil
+	asicdClientChan := make(chan *asicdServices.ASICDServicesClient)
+
+	logger.Info("Connecting to ASICd")
+	go rpc.StartAsicdClient(logger, fileName, asicdClientChan)
+	asicdClient = <-asicdClientChan
+	if asicdClient == nil {
+		logger.Err("Failed to connect to ASICd")
+		return
+	} else {
+		logger.Info("Connected to ASICd")
 	}
 
 	fmt.Println("Start logger")
@@ -70,7 +83,7 @@ func main() {
 	go bgpPolicyEng.StartPolicyEngine()
 
 	logger.Info(fmt.Sprintln("Starting BGP Server..."))
-	bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient, bfddClient)
+	bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient, bfddClient, asicdClient)
 	go bgpServer.StartServer()
 
 	logger.Info(fmt.Sprintln("Starting config listener..."))

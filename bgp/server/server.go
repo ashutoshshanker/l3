@@ -3,6 +3,7 @@ package server
 
 import (
 	"asicd/asicdConstDefs"
+	"asicdServices"
 	"bfdd"
 	"bgpd"
 	"bytes"
@@ -48,8 +49,9 @@ type AggUpdate struct {
 }
 
 type IfState struct {
-	idx   int32
-	state uint8
+	idx    int32
+	ipaddr string
+	state  uint8
 }
 
 type PeerFSMConn struct {
@@ -71,6 +73,7 @@ type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
 	ribdClient       *ribd.RouteServiceClient
+	AsicdClient      *asicdServices.ASICDServicesClient
 	bfddClient       *bfdd.BFDDServicesClient
 	BgpConfig        config.Bgp
 	GlobalConfigCh   chan config.GlobalConfig
@@ -96,13 +99,14 @@ type BGPServer struct {
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 }
 
-func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
-	bfddClient *bfdd.BFDDServicesClient) *BGPServer {
+func NewBGPServer(logger *syslog.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
+	bfddClient *bfdd.BFDDServicesClient, asicdClient *asicdServices.ASICDServicesClient) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.bgpPE = policyEngine
 	bgpServer.ribdClient = ribdClient
 	bgpServer.bfddClient = bfddClient
+	bgpServer.AsicdClient = asicdClient
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
 	bgpServer.AddPeerCh = make(chan PeerUpdate)
 	bgpServer.RemPeerCh = make(chan string)
@@ -294,7 +298,7 @@ func (server *BGPServer) listenForAsicdEvents(socket *nanomsg.SubSocket, ifState
 
 			server.logger.Info(fmt.Sprintf("Asicd L3INTF event idx %d ip %s state %d\n", msg.IfIndex, msg.IpAddr,
 				msg.IfState))
-			ifStateCh <- IfState{msg.IfIndex, msg.IfState}
+			ifStateCh <- IfState{msg.IfIndex, msg.IpAddr, msg.IfState}
 		}
 	}
 }
@@ -951,7 +955,9 @@ func (server *BGPServer) getIfaceIP(ip string) {
 }
 
 func (server *BGPServer) setInterfaceMapForPeer(peerIP string, peer *Peer) {
+	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer, "calling GetRouteReachabilityInfo"))
 	reachInfo, err := server.ribdClient.GetRouteReachabilityInfo(peerIP)
+	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer, "GetRouteReachabilityInfo returned", *reachInfo))
 	if err != nil {
 		server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
 	} else {
@@ -1036,6 +1042,7 @@ func (server *BGPServer) StartServer() {
 			}
 
 		case peerUpdate := <-server.AddPeerCh:
+			server.logger.Info("message received on AddPeerCh")
 			oldPeer := peerUpdate.OldPeer
 			newPeer := peerUpdate.NewPeer
 			var peer *Peer
@@ -1232,6 +1239,15 @@ func (server *BGPServer) StartServer() {
 		case ifState := <-asicdL3IntfStateCh:
 			server.logger.Info(fmt.Sprintf("Server: Received update on Asicd sub socket %+v, ifacePeerMap %+v",
 				ifState, server.ifacePeerMap))
+			if ifState.state == asicdConstDefs.INTF_STATE_UP {
+				if peer, ok := server.PeerMap[strconv.Itoa(int(ifState.idx))]; ok {
+					ip, _, err := net.ParseCIDR(ifState.ipaddr)
+					if err == nil {
+						server.logger.Info(fmt.Sprintln("Updating neighbor address with peer idx ", ifState.idx, " to ", ip.String()))
+						peer.Neighbor.NeighborAddress = ip
+					}
+				}
+			}
 			if peerList, ok := server.ifacePeerMap[ifState.idx]; ok && ifState.state == asicdConstDefs.INTF_STATE_DOWN {
 				for _, peerIP := range peerList {
 					if peer, ok := server.PeerMap[peerIP]; ok {
