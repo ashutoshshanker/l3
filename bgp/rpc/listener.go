@@ -12,6 +12,7 @@ import (
 	"log/syslog"
 	"models"
 	"net"
+	"strconv"
 	utilspolicy "utils/policy"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -387,11 +388,47 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 	if bgpNeighbor == nil {
 		return config.NeighborConfig{}, true
 	}
-
 	ip := net.ParseIP(bgpNeighbor.NeighborAddress)
 	if ip == nil {
 		h.logger.Info(fmt.Sprintf("ValidateBGPNeighbor: Address %s is not valid", bgpNeighbor.NeighborAddress))
-		return config.NeighborConfig{}, false
+        //neighbor address is a ifIndex
+		ifIndex,err := strconv.Atoi(bgpNeighbor.NeighborAddress)
+		if err != nil {
+			h.logger.Err("Error getting ifIndex")
+		    //return config.NeighborConfig{}, false
+			ip = net.IPv4bcast
+		}
+		ipv4Intf,_ := h.server.AsicdClient.GetIPv4Intf(int32(ifIndex))
+		if ipv4Intf != nil {
+			h.logger.Info(fmt.Sprintln("Call ASICd to get ip address for interface with ifIndex: ", ifIndex))
+			ifIp, _, err := net.ParseCIDR(ipv4Intf.IpAddr)
+			if err != nil {
+				h.logger.Err(fmt.Sprintln("IpAddr: ", ipv4Intf.IpAddr, " derived for ifIndex ", ifIndex))
+		        return config.NeighborConfig{}, false
+			}
+			h.logger.Info(fmt.Sprintln("Derived ip address as ", ipv4Intf.IpAddr, "ip: ", ifIp))
+			ifIpBytes := ifIp.To4()
+			if ifIpBytes == nil {
+				h.logger.Err("Invalid ip address")
+				return config.NeighborConfig{}, false
+			}
+			h.logger.Info(fmt.Sprintln("last byte = ", ifIpBytes[3]))
+			if ifIpBytes[3] % 2 == 1{
+				//odd number
+				ifIpBytes[3] = ifIpBytes[3] -1
+			} else {
+				ifIpBytes[3] = ifIpBytes[3] + 1
+			}
+			//ifIpBytes[3][0] =  ifIpBytes[3][0] ^ 1 //toggle the last bit
+			h.logger.Info(fmt.Sprintln("last byte new ", ifIpBytes[3]))
+			ip = net.IP(ifIpBytes)
+			h.logger.Info(fmt.Sprintln("IP: ", ip.String()))
+		} else {
+			h.logger.Err(fmt.Sprintln("ipv4Intf not configured for the ifIndex ", ifIndex))
+            //TBD: do not return but add it anyways and track interface events
+			ip = net.IPv4bcast
+		   // return config.NeighborConfig{}, false
+		}
 	}
 
 	pConf := config.NeighborConfig{

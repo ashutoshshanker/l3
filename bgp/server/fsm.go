@@ -7,6 +7,7 @@ import (
 	"l3/bgp/packet"
 	"log/syslog"
 	"net"
+	"bytes"
 	"sync/atomic"
 	"time"
 )
@@ -1245,6 +1246,10 @@ func (fsm *FSM) RejectPeerConn() {
 
 func (fsm *FSM) InitiateConnToPeer() {
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "InitiateConnToPeer called"))
+    if bytes.Equal(fsm.pConf.NeighborAddress,net.IPv4bcast) {
+		fsm.logger.Info("Unknown neighbor address")
+		return
+	}
 	addr := net.JoinHostPort(fsm.pConf.NeighborAddress.String(), BGPPort)
 	if fsm.outTCPConn == nil {
 		fsm.outTCPConn = NewOutTCPConn(fsm, fsm.outConnCh, fsm.outConnErrCh)
