@@ -99,7 +99,7 @@ type BGPServer struct {
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 }
 
-func NewBGPServer(logger *syslog.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
+func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
 	bfddClient *bfdd.BFDDServicesClient, asicdClient *asicdServices.ASICDServicesClient) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger

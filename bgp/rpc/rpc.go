@@ -2,8 +2,8 @@
 package rpc
 
 import (
-	"bfdd"
 	"asicdServices"
+	"bfdd"
 	"bgpd"
 	"encoding/json"
 	"fmt"
@@ -87,7 +87,7 @@ func StartServer(logger *logging.Writer, handler *BGPHandler, filePath string) {
 func connectToClient(logger *logging.Writer, clientTransport thrift.TTransport) error {
 	return clientTransport.Open()
 }
-func StartAsicdClient(logger *syslog.Writer, filePath string, asicdClient chan *asicdServices.ASICDServicesClient) {
+func StartAsicdClient(logger *logging.Writer, filePath string, asicdClient chan *asicdServices.ASICDServicesClient) {
 	fileName := filePath + ClientsFileName
 	clientJson, err := getClient(logger, fileName, "asicd")
 	if err != nil || clientJson == nil {
