@@ -443,13 +443,13 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 		lsid := convertUint32ToIPv4(lsa_header.LinkId)
 		router_id := convertUint32ToIPv4(lsa_header.Adv_router)
 
-		server.logger.Info(fmt.Sprintln("LSAUPD: lsid ", lsid, " router_id ", router_id))
 		if !discard && op == FloodLsa {
+			server.logger.Info(fmt.Sprintln("LSAUPD: add to lsdb lsid ", lsid, " router_id ", router_id, " lstype ", lsa_header.LSType))
 			lsdb_msg.MsgType = LsdbAdd
+			server.LsdbUpdateCh <- *lsdb_msg
 
 		}
 
-		server.LsdbUpdateCh <- *lsdb_msg
 		flood_pkt := ospfFloodMsg{
 			key:    msg.nbrKey,
 			areaId: msg.areaId,
@@ -1021,7 +1021,10 @@ func (server *OSPFServer) processTxLsaUpdate(lsa_data ospfFloodMsg) {
 			dstIp)
 		if lsa_upd_pkt != nil {
 			//server.logger.Info(fmt.Sprintln(" LSA UPD SEND: link id  ", lsa_data.linkid))
-			server.SendOspfPkt(nbrConf.intfConfKey, lsa_upd_pkt)
+//			for key, intf := range server.IntfConfMap {
+				server.SendOspfPkt(nbrConf.intfConfKey, lsa_upd_pkt)
+				server.logger.Info(fmt.Sprintln("FLOOD: Nbr FULL ", nbrConf.OspfNbrIPAddr, " out interface ", intConf.IfIpAddr))
+//			}
 		}
 
 	case LSASELFLOOD: //Flood received LSA on selective interfaces.
@@ -1029,9 +1032,11 @@ func (server *OSPFServer) processTxLsaUpdate(lsa_data ospfFloodMsg) {
 		var lsaEncPkt []byte
 		/* TODO - Currently it sends the LSA to all interfaces. Add check */
 		for key, intf := range server.IntfConfMap {
+			if intf.IfIpAddr.Equal(intConf.IfIpAddr) {
+				continue // dont flood the LSA on the interface it is received.
+			}
 			send := server.interfaceFloodCheck(key, intf)
 			if send {
-
 				if lsa_data.pkt != nil {
 					server.logger.Info(fmt.Sprintln("FLOOD: Flood LSA interface ", intf.IfIpAddr, " lsid ", lsid, " lstype ", lsa_data.lsType))
 					lsas_enc := make([]byte, 4)

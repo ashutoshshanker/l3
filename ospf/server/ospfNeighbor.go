@@ -30,6 +30,10 @@ func (server *OSPFServer) exchangePacketDiscardCheck(nbrConf OspfNeighborEntry, 
 
 	if nbrConf.isMaster {
 		if nbrDbPkt.dd_sequence_number != nbrConf.ospfNbrSeqNum {
+			if nbrDbPkt.dd_sequence_number+1 == nbrConf.ospfNbrSeqNum {
+				server.logger.Info(fmt.Sprintln("Duplicate: This is db duplicate packet. Ignore."))
+				return false
+			}
 			server.logger.Info(fmt.Sprintln("NBREVENT:SeqNumberMismatch : Nbr is master but dbd packet seq no doesnt match. dbd seq ",
 				nbrDbPkt.dd_sequence_number, "nbr seq ", nbrConf.ospfNbrSeqNum))
 			return true
@@ -145,7 +149,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				if nbrConf.isMaster &&
 					nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
 					dbd_mdata.dd_sequence_number = nbrDbPkt.dd_sequence_number
-					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, true, true, false,
+					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, true, true, true,
 						nbrDbPkt.options, nbrDbPkt.dd_sequence_number, false, false)
 					dbd_mdata.dd_sequence_number++
 				} else {
@@ -189,26 +193,6 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				//invalidate all lists.
 				newDbdMsg(nbrKey.OspfNbrRtrId, OspfNeighborLastDbd[nbrKey])
 			} else { // process exchange state
-				/* 1) get lsa headers update in req_list */
-				headers_len := len(nbrDbPkt.lsa_headers)
-				server.logger.Info(fmt.Sprintln("DBD: (Exchange) Received . nbr,total_lsa ", nbrKey.OspfNbrRtrId, headers_len))
-				req_list := ospfNeighborRequest_list[nbrKey.OspfNbrRtrId]
-				for i := 0; i < headers_len; i++ {
-					var lsaheader ospfLSAHeader
-					lsaheader = nbrDbPkt.lsa_headers[i]
-					result := server.lsaAddCheck(lsaheader, nbrConf) // check lsdb
-					if result {
-						req := newospfNeighborReq()
-						req.lsa_headers = lsaheader
-						req.valid = true
-						nbrConf.req_list_mutex.Lock()
-						req_list = append(req_list, req)
-						nbrConf.req_list_mutex.Unlock()
-					}
-				}
-				ospfNeighborRequest_list[nbrKey.OspfNbrRtrId] = req_list
-				server.logger.Info(fmt.Sprintln("DBD:(Exchange) Total elements in req_list ", len(ospfNeighborRequest_list[nbrKey.OspfNbrRtrId])))
-
 				/* 2) Add lsa_headers to db packet from db_summary list */
 
 				if nbrConf.isMaster != true { // i am master
@@ -231,6 +215,27 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 						data := newDbdMsg(nbrKey.OspfNbrRtrId, OspfNeighborLastDbd[nbrKey])
 						server.ospfNbrDBDSendCh <- data
 					}*/
+
+					/* 1) get lsa headers update in req_list */
+					headers_len := len(nbrDbPkt.lsa_headers)
+					server.logger.Info(fmt.Sprintln("DBD: (Exchange) Received . nbr,total_lsa ", nbrKey.OspfNbrRtrId, headers_len))
+					req_list := ospfNeighborRequest_list[nbrKey.OspfNbrRtrId]
+					for i := 0; i < headers_len; i++ {
+						var lsaheader ospfLSAHeader
+						lsaheader = nbrDbPkt.lsa_headers[i]
+						result := server.lsaAddCheck(lsaheader, nbrConf) // check lsdb
+						if result {
+							req := newospfNeighborReq()
+							req.lsa_headers = lsaheader
+							req.valid = true
+							nbrConf.req_list_mutex.Lock()
+							req_list = append(req_list, req)
+							nbrConf.req_list_mutex.Unlock()
+						}
+					}
+					ospfNeighborRequest_list[nbrKey.OspfNbrRtrId] = req_list
+					server.logger.Info(fmt.Sprintln("DBD:(Exchange) Total elements in req_list ", len(ospfNeighborRequest_list[nbrKey.OspfNbrRtrId])))
+
 				} else { // i am slave
 					/* send acknowledgement DBD with I and MS bit false and mbit same as
 					rx packet
@@ -599,46 +604,58 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
-	self_orig_lsa, exist := server.AreaSelfOrigLsa[lsdbKey]
+	area_lsa, exist := server.AreaLsdb[lsdbKey]
 	if !exist {
 		server.logger.Err(fmt.Sprintln("negotiation: db_list self originated lsas dont exist. Nbr , lsdb_key ", nbrConfKey, lsdbKey))
 		return
 	}
+	router_lsdb := area_lsa.RouterLsaMap
+	network_lsa := area_lsa.NetworkLsaMap
+
 	ospfNeighborDBSummary_list[nbrConfKey.OspfNbrRtrId] = nil
 	db_list := []*ospfNeighborDBSummary{}
-	for lsaKey, _ := range self_orig_lsa {
-
+	for lsaKey, _ := range router_lsdb {
 		// check if lsa instance is marked true
 		db_summary := newospfNeighborDBSummary()
-		switch lsaKey.LSType {
-		case RouterLSA:
-			drlsa, ret := server.getRouterLsaFromLsdb(areaId, lsaKey)
-			if ret == LsdbEntryNotFound {
-				continue
-			}
-			db_summary.lsa_headers = getLsaHeaderFromLsa(drlsa.LsaMd.LSAge, drlsa.LsaMd.Options,
-				RouterLSA, lsaKey.LSId, lsaKey.AdvRouter,
-				uint32(drlsa.LsaMd.LSSequenceNum), drlsa.LsaMd.LSChecksum,
-				drlsa.LsaMd.LSLen)
-			db_summary.valid = true
-		case NetworkLSA:
-			if nbrMdata.isDR {
-				dnlsa, ret := server.getNetworkLsaFromLsdb(areaId, lsaKey)
-				if ret == LsdbEntryNotFound {
-					continue
-				}
-				db_summary.lsa_headers = getLsaHeaderFromLsa(dnlsa.LsaMd.LSAge, dnlsa.LsaMd.Options,
-					NetworkLSA, lsaKey.LSId, intf.IfDRtrId,
-					uint32(dnlsa.LsaMd.LSSequenceNum), dnlsa.LsaMd.LSChecksum,
-					dnlsa.LsaMd.LSLen)
-				db_summary.valid = true
-			}
+		drlsa, ret := server.getRouterLsaFromLsdb(areaId, lsaKey)
+		if ret == LsdbEntryNotFound {
+			continue
 		}
+		db_summary.lsa_headers = getLsaHeaderFromLsa(drlsa.LsaMd.LSAge, drlsa.LsaMd.Options,
+			RouterLSA, lsaKey.LSId, lsaKey.AdvRouter,
+			uint32(drlsa.LsaMd.LSSequenceNum), drlsa.LsaMd.LSChecksum,
+			drlsa.LsaMd.LSLen)
+		db_summary.valid = true
 		/* add entry to the db summary list  */
 		db_list = append(db_list, db_summary)
 		lsid := convertUint32ToIPv4(lsaKey.LSId)
-		server.logger.Info(fmt.Sprintln("negotiation: db_list appended lsid  ", lsid))
+		server.logger.Info(fmt.Sprintln("negotiation: db_list append router lsid  ", lsid))
 	} // end of for
+
+	for networkKey, _ := range network_lsa {
+		// check if lsa instance is marked true
+		db_summary := newospfNeighborDBSummary()
+		if nbrMdata.isDR {
+			dnlsa, ret := server.getNetworkLsaFromLsdb(areaId, networkKey)
+			if ret == LsdbEntryNotFound {
+				continue
+			}
+			db_summary.lsa_headers = getLsaHeaderFromLsa(dnlsa.LsaMd.LSAge, dnlsa.LsaMd.Options,
+				NetworkLSA, networkKey.LSId, intf.IfDRtrId,
+				uint32(dnlsa.LsaMd.LSSequenceNum), dnlsa.LsaMd.LSChecksum,
+				dnlsa.LsaMd.LSLen)
+			db_summary.valid = true
+			/* add entry to the db summary list  */
+			db_list = append(db_list, db_summary)
+			lsid := convertUint32ToIPv4(networkKey.LSId)
+			server.logger.Info(fmt.Sprintln("negotiation: db_list append network lsid  ", lsid))
+		} // end of for
+	}
+
+	for lsa := range db_list {
+		rtr_id := convertUint32ToIPv4(db_list[lsa].lsa_headers.adv_router_id)
+		server.logger.Info(fmt.Sprintln(lsa, ": ", rtr_id, " lsatype ", db_list[lsa].lsa_headers.ls_type))
+	}
 	nbrConf.db_summary_list_mutex.Lock()
 	ospfNeighborDBSummary_list[nbrConfKey.OspfNbrRtrId] = db_list
 	nbrConf.db_summary_list_mutex.Unlock()
