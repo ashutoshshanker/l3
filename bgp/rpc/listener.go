@@ -395,7 +395,8 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 		ifIndex,err := strconv.Atoi(bgpNeighbor.NeighborAddress)
 		if err != nil {
 			h.logger.Err("Error getting ifIndex")
-		    return config.NeighborConfig{}, false
+		    //return config.NeighborConfig{}, false
+			ip = net.IPv4bcast
 		}
 		ipv4Intf,_ := h.server.AsicdClient.GetIPv4Intf(int32(ifIndex))
 		if ipv4Intf != nil {
@@ -425,7 +426,8 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 		} else {
 			h.logger.Err(fmt.Sprintln("ipv4Intf not configured for the ifIndex ", ifIndex))
             //TBD: do not return but add it anyways and track interface events
-		    return config.NeighborConfig{}, false
+			ip = net.IPv4bcast
+		   // return config.NeighborConfig{}, false
 		}
 	}
 
