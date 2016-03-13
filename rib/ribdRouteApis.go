@@ -1,7 +1,7 @@
 package main
 
 import (
-	"arpd"
+	"arpdInt"
 	"asicdServices"
 	"fmt"
 	//	"encoding/json"
@@ -758,7 +758,7 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 			//call arpd to resolve the ip
 			logger.Info(fmt.Sprintln("### Sending ARP Resolve for ", routeInfoRecord.nextHopIp.String(), routeInfoRecord.nextHopIfType))
-			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.nextHopIp.String(), arpd.Int(routeInfoRecord.nextHopIfType), arpd.Int(routeInfoRecord.nextHopIfIndex))
+			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.nextHopIp.String(), arpdInt.Int(routeInfoRecord.nextHopIfType), arpdInt.Int(routeInfoRecord.nextHopIfIndex))
 		}
 		addLinuxRoute(routeInfoRecord)
 		//update in the event log
@@ -1302,7 +1302,7 @@ func createV4Route(destNetIp string,
 
 		if arpdclnt.IsConnected && routeType != ribdCommonDefs.CONNECTED {
 			logger.Info(fmt.Sprintln("### 22 Sending ARP Resolve for ", routeInfoRecord.nextHopIp.String(), routeInfoRecord.nextHopIfType))
-			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.nextHopIp.String(), arpd.Int(routeInfoRecord.nextHopIfType), arpd.Int(routeInfoRecord.nextHopIfIndex))
+			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.nextHopIp.String(), arpdInt.Int(routeInfoRecord.nextHopIfType), arpdInt.Int(routeInfoRecord.nextHopIfIndex))
 		}
 		addLinuxRoute(routeInfoRecord)
 		//update in the event log
