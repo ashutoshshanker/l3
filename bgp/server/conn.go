@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"math/rand"
 	"net"
 	"time"
+	"utils/logging"
 
 	"golang.org/x/net/ipv4"
 )
 
 type OutTCPConn struct {
 	fsm          *FSM
-	logger       *syslog.Writer
+	logger       *logging.Writer
 	fsmConnCh    chan net.Conn
 	fsmConnErrCh chan error
 	StopConnCh   chan bool
@@ -131,7 +131,7 @@ func (o *OutTCPConn) ConnectToPeer(seconds uint32, addr string) {
 
 type PeerConn struct {
 	fsm       *FSM
-	logger    *syslog.Writer
+	logger    *logging.Writer
 	dir       config.ConnDir
 	conn      *net.Conn
 	peerAttrs packet.BGPPeerAttrs
@@ -215,9 +215,15 @@ func (p *PeerConn) readPartialPkt(length uint32) ([]byte, error) {
 func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool) {
 	p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id, "conn:ReadPkt called"))
 	var t time.Time
+	var msg *packet.BGPMessage
+	var msgErr *packet.BGPMessageError
+	var header *packet.BGPHeader
 	for {
 		select {
 		case <-p.readCh:
+			msg = nil
+			msgErr = nil
+			header = nil
 			(*p.conn).SetReadDeadline(time.Now().Add(time.Duration(3) * time.Second))
 			buf, err := p.readPartialPkt(packet.BGPMsgHeaderLen)
 			if err != nil {
@@ -233,13 +239,13 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool)
 				}
 			}
 
-			header := packet.BGPHeader{}
+			header = packet.NewBGPHeader()
 			err = header.Decode(buf)
 			if err != nil {
 				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
 					"BGP packet header decode failed"))
-				bgpPktInfo := packet.NewBGPPktInfo(nil, err.(*packet.BGPMessageError))
-				p.fsm.pktRxCh <- bgpPktInfo
+				//bgpPktInfo := packet.NewBGPPktInfo(nil, err.(*packet.BGPMessageError))
+				p.fsm.pktRxCh <- packet.NewBGPPktInfo(nil, err.(*packet.BGPMessageError))
 				doneCh <- false
 				continue
 			}
@@ -266,9 +272,9 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool)
 					p.fsm.id, buf))
 			}
 
-			msg := &packet.BGPMessage{}
-			err = msg.Decode(&header, buf, p.peerAttrs)
-			bgpPktInfo := packet.NewBGPPktInfo(msg, nil)
+			msg = packet.NewBGPMessage()
+			err = msg.Decode(header, buf, p.peerAttrs)
+			//bgpPktInfo := packet.NewBGPPktInfo(msg, nil)
 			msgOk := true
 			if header.Type == packet.BGPMsgTypeNotification {
 				msgOk = false
@@ -277,13 +283,14 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool)
 			if err != nil {
 				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
 					"BGP packet body decode failed, err:", err))
-				bgpPktInfo = packet.NewBGPPktInfo(msg, err.(*packet.BGPMessageError))
+				//bgpPktInfo = packet.NewBGPPktInfo(msg, err.(*packet.BGPMessageError))
+				msgErr = err.(*packet.BGPMessageError)
 				msgOk = false
 			} else if header.Type == packet.BGPMsgTypeOpen {
 				p.peerAttrs.ASSize = packet.GetASSize(msg.Body.(*packet.BGPOpen))
 				p.peerAttrs.AddPathFamily = packet.GetAddPathFamily(msg.Body.(*packet.BGPOpen))
 			}
-			p.fsm.pktRxCh <- bgpPktInfo
+			p.fsm.pktRxCh <- packet.NewBGPPktInfo(msg, msgErr)
 			doneCh <- msgOk
 
 		case <-stopCh:

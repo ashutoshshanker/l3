@@ -38,12 +38,13 @@ func (server *BFDServer) ConvertBfdSessionStateValToStr(state BfdSessionState) s
 type BfdSessionEvent int
 
 const (
-	REMOTE_DOWN BfdSessionEvent = 1
-	REMOTE_INIT BfdSessionEvent = 2
-	REMOTE_UP   BfdSessionEvent = 3
-	TIMEOUT     BfdSessionEvent = 4
-	ADMIN_DOWN  BfdSessionEvent = 5
-	ADMIN_UP    BfdSessionEvent = 6
+	REMOTE_DOWN       BfdSessionEvent = 1
+	REMOTE_INIT       BfdSessionEvent = 2
+	REMOTE_UP         BfdSessionEvent = 3
+	TIMEOUT           BfdSessionEvent = 4
+	ADMIN_DOWN        BfdSessionEvent = 5
+	ADMIN_UP          BfdSessionEvent = 6
+	REMOTE_ADMIN_DOWN BfdSessionEvent = 7
 )
 
 type BfdDiagnostic int
@@ -117,6 +118,8 @@ const (
 	SRC_PORT                              = 49152
 	DEST_PORT_LAG                         = 6784
 	SRC_PORT_LAG                          = 49153
+	STARTUP_TX_INTERVAL                   = 2000000
+	STARTUP_RX_INTERVAL                   = 2000000
 	//DEDICATED_MAC                         = net.HardwareAddr{0x01, 0x00, 0x5E, 0x90, 0x00, 0x01}
 )
 

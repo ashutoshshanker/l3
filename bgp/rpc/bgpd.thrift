@@ -181,7 +181,7 @@ struct BGPNeighborState {
 	14: i32 ConnectRetryTime,
 	15: i32 HoldTime,
 	16: i32 KeepaliveTime,
-	17: string GroupName,
+	17: string PeerGroup,
 	18: string BfdNeighborState
 }
 
@@ -214,7 +214,7 @@ struct BGPRoute {
 	3: string NextHop
 	4: i32 Metric
 	5: i32 LocalPref
-	6: list<i32> Path
+	6: list<list<i32>> Path
 	7: string Updated
 	8: list<string> PolicyList
 	9: int PolicyHitCounter,

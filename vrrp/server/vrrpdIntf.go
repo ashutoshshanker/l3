@@ -8,31 +8,31 @@ import (
 	nanomsg "github.com/op/go-nanomsg"
 )
 
-func VrrpCreateIfIndexEntry(IfIndex int32, IpAddr string) {
-	entry := vrrpIfIndexIpAddr[IfIndex]
+func (svr *VrrpServer) VrrpCreateIfIndexEntry(IfIndex int32, IpAddr string) {
+	entry := svr.vrrpIfIndexIpAddr[IfIndex]
 	entry = IpAddr
-	vrrpIfIndexIpAddr[IfIndex] = entry
-	logger.Info(fmt.Sprintln("VRRP: ip address for ifindex ", IfIndex,
+	svr.vrrpIfIndexIpAddr[IfIndex] = entry
+	svr.logger.Info(fmt.Sprintln("VRRP: ip address for ifindex ", IfIndex,
 		"is", entry))
 }
 
-func VrrpCreateVlanEntry(vlanId int, vlanName string) {
-	entry := vrrpVlanId2Name[vlanId]
+func (svr *VrrpServer) VrrpCreateVlanEntry(vlanId int, vlanName string) {
+	entry := svr.vrrpVlanId2Name[vlanId]
 	entry = vlanName
-	vrrpVlanId2Name[vlanId] = entry
+	svr.vrrpVlanId2Name[vlanId] = entry
 }
 
-func VrrpGetPortList() {
-	logger.Info("VRRP: Get Port List")
+func (svr *VrrpServer) VrrpGetPortList() {
+	svr.logger.Info("VRRP: Get Port List")
 	currMarker := int64(asicdConstDefs.MIN_SYS_PORTS)
 	more := false
 	objCount := 0
 	count := 10
 	for {
-		bulkInfo, err := asicdClient.ClientHdl.GetBulkPortState(
+		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkPortState(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
-			logger.Err(fmt.Sprintln("VRRP: getting bulk port config"+
+			svr.logger.Err(fmt.Sprintln("VRRP: getting bulk port config"+
 				" from asicd failed with reason", err))
 			return
 		}
@@ -45,7 +45,7 @@ func VrrpGetPortList() {
 				var portNum int32
 				portNum = bulkInfo.PortStateList[i].IfIndex
 				ifName = bulkInfo.PortStateList[i].Name
-				//logger.Info("VRRP: interface global init for " + ifName)
+				//svr.logger.Info("VRRP: interface global init for " + ifName)
 				//VrrpInitGblInfo(portNum, ifName, "")
 			*/
 		}
@@ -55,17 +55,17 @@ func VrrpGetPortList() {
 	}
 }
 
-func VrrpGetIPv4IntfList() {
-	logger.Info("VRRP: Get IPv4 Interface List")
+func (svr *VrrpServer) VrrpGetIPv4IntfList() {
+	svr.logger.Info("VRRP: Get IPv4 Interface List")
 	objCount := 0
 	var currMarker int64
 	more := false
 	count := 10
 	for {
-		bulkInfo, err := asicdClient.ClientHdl.GetBulkIPv4Intf(
+		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkIPv4Intf(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: getting bulk ipv4 intf config",
+			svr.logger.Err(fmt.Sprintln("DRA: getting bulk ipv4 intf config",
 				"from asicd failed with reason", err))
 			return
 		}
@@ -73,7 +73,7 @@ func VrrpGetIPv4IntfList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			VrrpCreateIfIndexEntry(bulkInfo.IPv4IntfList[i].IfIndex,
+			svr.VrrpCreateIfIndexEntry(bulkInfo.IPv4IntfList[i].IfIndex,
 				bulkInfo.IPv4IntfList[i].IpAddr)
 		}
 		if more == false {
@@ -82,17 +82,17 @@ func VrrpGetIPv4IntfList() {
 	}
 }
 
-func VrrpGetVlanList() {
-	logger.Info("VRRP: Get Vlans")
+func (svr *VrrpServer) VrrpGetVlanList() {
+	svr.logger.Info("VRRP: Get Vlans")
 	objCount := 0
 	var currMarker int64
 	more := false
 	count := 10
 	for {
-		bulkInfo, err := asicdClient.ClientHdl.GetBulkVlan(
+		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkVlan(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
-			logger.Err(fmt.Sprintln("DRA: getting bulk vlan config",
+			svr.logger.Err(fmt.Sprintln("DRA: getting bulk vlan config",
 				"from asicd failed with reason", err))
 			return
 		}
@@ -100,7 +100,7 @@ func VrrpGetVlanList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			VrrpCreateVlanEntry(int(bulkInfo.VlanList[i].VlanId),
+			svr.VrrpCreateVlanEntry(int(bulkInfo.VlanList[i].VlanId),
 				bulkInfo.VlanList[i].VlanName)
 		}
 		if more == false {
@@ -109,48 +109,48 @@ func VrrpGetVlanList() {
 	}
 }
 
-func VrrpUpdateVlanGblInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
-	logger.Info(fmt.Sprintln("Vlan Update msg for", vlanNotifyMsg))
+func (svr *VrrpServer) VrrpUpdateVlanGblInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
+	svr.logger.Info(fmt.Sprintln("Vlan Update msg for", vlanNotifyMsg))
 	switch msgType {
 	case asicdConstDefs.NOTIFY_VLAN_CREATE:
-		VrrpCreateVlanEntry(int(vlanNotifyMsg.VlanId), vlanNotifyMsg.VlanName)
+		svr.VrrpCreateVlanEntry(int(vlanNotifyMsg.VlanId), vlanNotifyMsg.VlanName)
 	case asicdConstDefs.NOTIFY_VLAN_DELETE:
-		delete(vrrpVlanId2Name, int(vlanNotifyMsg.VlanId))
+		delete(svr.vrrpVlanId2Name, int(vlanNotifyMsg.VlanId))
 	}
 }
 
-func VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
+func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
 	switch msgType {
 	case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
-		VrrpCreateIfIndexEntry(msg.IfIndex, msg.IpAddr)
-		go VrrpMapIfIndexToLinuxIfIndex(msg.IfIndex)
+		svr.VrrpCreateIfIndexEntry(msg.IfIndex, msg.IpAddr)
+		go svr.VrrpMapIfIndexToLinuxIfIndex(msg.IfIndex)
 	case asicdConstDefs.NOTIFY_IPV4INTF_DELETE:
-		delete(vrrpIfIndexIpAddr, msg.IfIndex)
+		delete(svr.vrrpIfIndexIpAddr, msg.IfIndex)
 	}
 }
 
-func VrrpUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
+func (svr *VrrpServer) VrrpUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
 	switch msg.IfState {
 	case asicdConstDefs.INTF_STATE_UP:
-		logger.Info("VRRP: Got Interface state up notification")
+		svr.logger.Info("VRRP: Got Interface state up notification")
 	case asicdConstDefs.INTF_STATE_DOWN:
-		logger.Info("VRRP: Got Interface state down notification")
+		svr.logger.Info("VRRP: Got Interface state down notification")
 	}
 }
 
-func VrrpAsicdSubscriber() {
+func (svr *VrrpServer) VrrpAsicdSubscriber() {
 	for {
-		logger.Info("VRRP: Read on Asic Subscriber socket....")
-		rxBuf, err := asicdSubSocket.Recv(0)
+		svr.logger.Info("VRRP: Read on Asic Subscriber socket....")
+		rxBuf, err := svr.asicdSubSocket.Recv(0)
 		if err != nil {
-			logger.Err(fmt.Sprintln("VRRP: Recv on asicd Subscriber",
+			svr.logger.Err(fmt.Sprintln("VRRP: Recv on asicd Subscriber",
 				"socket failed with error:", err))
 			continue
 		}
 		var msg asicdConstDefs.AsicdNotification
 		err = json.Unmarshal(rxBuf, &msg)
 		if err != nil {
-			logger.Err(fmt.Sprintln("VRRP: Unable to Unmarshal",
+			svr.logger.Err(fmt.Sprintln("VRRP: Unable to Unmarshal",
 				"asicd msg:", msg.Msg))
 			continue
 		}
@@ -160,79 +160,79 @@ func VrrpAsicdSubscriber() {
 			var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
 			err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
 			if err != nil {
-				logger.Err(fmt.Sprintln("VRRP: Unable to",
+				svr.logger.Err(fmt.Sprintln("VRRP: Unable to",
 					"unmashal vlanNotifyMsg:", msg.Msg))
 				return
 			}
-			VrrpUpdateVlanGblInfo(vlanNotifyMsg, msg.MsgType)
+			svr.VrrpUpdateVlanGblInfo(vlanNotifyMsg, msg.MsgType)
 		} else if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE ||
 			msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_DELETE {
 			var ipv4IntfNotifyMsg asicdConstDefs.IPv4IntfNotifyMsg
 			err = json.Unmarshal(msg.Msg, &ipv4IntfNotifyMsg)
 			if err != nil {
-				logger.Err(fmt.Sprintln("VRRP: Unable to Unmarshal",
+				svr.logger.Err(fmt.Sprintln("VRRP: Unable to Unmarshal",
 					"ipv4IntfNotifyMsg:", msg.Msg))
 				continue
 			}
-			VrrpUpdateIPv4GblInfo(ipv4IntfNotifyMsg, msg.MsgType)
+			svr.VrrpUpdateIPv4GblInfo(ipv4IntfNotifyMsg, msg.MsgType)
 		} else if msg.MsgType == asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE {
 			//INTF_STATE_CHANGE
 			var l3IntfStateNotifyMsg asicdConstDefs.L3IntfStateNotifyMsg
 			err = json.Unmarshal(msg.Msg, &l3IntfStateNotifyMsg)
 			if err != nil {
-				logger.Err(fmt.Sprintln("VRRP: unable to Unmarshal l3 intf",
+				svr.logger.Err(fmt.Sprintln("VRRP: unable to Unmarshal l3 intf",
 					"state change:", msg.Msg))
 				continue
 			}
-			VrrpUpdateL3IntfStateChange(l3IntfStateNotifyMsg)
+			svr.VrrpUpdateL3IntfStateChange(l3IntfStateNotifyMsg)
 		}
 	}
 }
 
-func VrrpRegisterWithAsicdUpdates(address string) error {
+func (svr *VrrpServer) VrrpRegisterWithAsicdUpdates(address string) error {
 	var err error
-	logger.Info("setting up asicd update listener")
-	if asicdSubSocket, err = nanomsg.NewSubSocket(); err != nil {
-		logger.Err(fmt.Sprintln("Failed to create ASIC subscribe",
+	svr.logger.Info("setting up asicd update listener")
+	if svr.asicdSubSocket, err = nanomsg.NewSubSocket(); err != nil {
+		svr.logger.Err(fmt.Sprintln("Failed to create ASIC subscribe",
 			"socket, error:", err))
 		return err
 	}
 
-	if err = asicdSubSocket.Subscribe(""); err != nil {
-		logger.Err(fmt.Sprintln("Failed to subscribe to \"\" on",
+	if err = svr.asicdSubSocket.Subscribe(""); err != nil {
+		svr.logger.Err(fmt.Sprintln("Failed to subscribe to \"\" on",
 			"ASIC subscribe socket, error:",
 			err))
 		return err
 	}
 
-	if _, err = asicdSubSocket.Connect(address); err != nil {
-		logger.Err(fmt.Sprintln("Failed to connect to ASIC",
+	if _, err = svr.asicdSubSocket.Connect(address); err != nil {
+		svr.logger.Err(fmt.Sprintln("Failed to connect to ASIC",
 			"publisher socket, address:", address, "error:", err))
 		return err
 	}
 
-	if err = asicdSubSocket.SetRecvBuffer(1024 * 1024); err != nil {
-		logger.Err(fmt.Sprintln("Failed to set the buffer size for ",
+	if err = svr.asicdSubSocket.SetRecvBuffer(1024 * 1024); err != nil {
+		svr.logger.Err(fmt.Sprintln("Failed to set the buffer size for ",
 			"ASIC publisher socket, error:", err))
 		return err
 	}
-	logger.Info("asicd update listener is set")
+	svr.logger.Info("asicd update listener is set")
 	return nil
 }
 
-func VrrpGetInfoFromAsicd() error {
-	logger.Info("VRRP: Calling Asicd to initialize port properties")
-	err := VrrpRegisterWithAsicdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
+func (svr *VrrpServer) VrrpGetInfoFromAsicd() error {
+	svr.logger.Info("VRRP: Calling Asicd to initialize port properties")
+	err := svr.VrrpRegisterWithAsicdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
 	if err == nil {
 		// Asicd subscriber thread
-		go VrrpAsicdSubscriber()
+		go svr.VrrpAsicdSubscriber()
 	}
 	// Get Port List Most Likely Not needed...as we are only interested
 	// in Ipv4Intf...
 	//VrrpGetPortList()
 	// Get Vlan List
-	VrrpGetVlanList()
+	svr.VrrpGetVlanList()
 	// Get IPv4 Interface List
-	VrrpGetIPv4IntfList()
+	svr.VrrpGetIPv4IntfList()
 	return nil
 }

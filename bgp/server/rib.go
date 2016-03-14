@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"net"
 	"sync"
 	"time"
+	"utils/logging"
 )
 
 const ResetTime int = 120
 
 type AdjRib struct {
 	server         *BGPServer
-	logger         *syslog.Writer
+	logger         *logging.Writer
 	destPathMap    map[string]*Destination
 	routeList      []*Route
 	routeMutex     sync.RWMutex
@@ -48,6 +48,14 @@ func isIpInList(ipPrefix []packet.IPPrefix, ip packet.IPPrefix) bool {
 		}
 	}
 	return false
+}
+
+func (adjRib *AdjRib) getDestFromIPAndLen(ip string, cidrLen uint32) *Destination {
+	if dest, ok := adjRib.destPathMap[ip]; ok {
+		return dest
+	}
+
+	return nil
 }
 
 func (adjRib *AdjRib) getDest(nlri packet.IPPrefix, createIfNotExist bool) (*Destination, bool) {
@@ -127,7 +135,7 @@ func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc) (map[
 
 	remPath := NewPath(adjRib.server, peer, body.PathAttributes, true, false, RouteTypeEGP)
 	addPath := NewPath(adjRib.server, peer, body.PathAttributes, false, true, RouteTypeEGP)
-	addPath.GetReachabilityInfo()
+	//addPath.GetReachabilityInfo()
 	if !addPath.IsValid() {
 		adjRib.logger.Info(fmt.Sprintf("Received a update with our cluster id %d. Discarding the update.", addPath.peer.PeerConf.RouteReflectorClusterId))
 		return nil, nil, nil
