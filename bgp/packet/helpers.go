@@ -483,18 +483,33 @@ func ConvertIPBytesToUint(bytes []byte) uint32 {
 	return uint32(bytes[0])<<24 | uint32(bytes[1]<<16) | uint32(bytes[2]<<8) | uint32(bytes[3])
 }
 
-func ConstructOptParams(as uint32, afiSAfiMap map[uint32]bool) []BGPOptParam {
+func ConstructOptParams(as uint32, afiSAfiMap map[uint32]bool, addPathsRx bool, addPathsMaxTx uint8) []BGPOptParam {
 	optParams := make([]BGPOptParam, 0)
 	capParams := make([]BGPCapability, 0)
 
 	cap4ByteASPath := NewBGPCap4ByteASPath(as)
 	capParams = append(capParams, cap4ByteASPath)
+	capAddPaths := NewBGPCapAddPath()
+	addPathFlags := uint8(0)
+	if addPathsRx {
+		addPathFlags &= BGPCapAddPathRx
+	}
+	if addPathsMaxTx > 0 {
+		addPathFlags &= BGPCapAddPathTx
+	}
 
 	for protoFamily, _ := range afiSAfiMap {
 		afi, safi := GetAfiSafi(protoFamily)
 		utils.Logger.Info(fmt.Sprintf("Advertising capability for afi %d safi %d", afi, safi))
 		capAfiSafi := NewBGPCapMPExt(afi, safi)
 		capParams = append(capParams, capAfiSafi)
+
+		addPathAfiSafi := NewAddPathAFISAFI(afi, safi, addPathFlags)
+		capAddPaths.AddAddPathAFISAFI(addPathAfiSafi)
+	}
+
+	if addPathFlags != 0 {
+		capParams = append(capParams, capAddPaths)
 	}
 
 	optCapability := NewBGPOptParamCapability(capParams)

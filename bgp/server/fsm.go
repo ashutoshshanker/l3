@@ -1146,7 +1146,8 @@ func (fsm *FSM) sendUpdateMessage(bgpMsg *packet.BGPMessage) {
 func (fsm *FSM) sendOpenMessage() {
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
 		"sendOpenMessage: send address family", fsm.peer.afiSafiMap))
-	optParams := packet.ConstructOptParams(uint32(fsm.pConf.LocalAS), fsm.peer.afiSafiMap)
+	optParams := packet.ConstructOptParams(uint32(fsm.pConf.LocalAS), fsm.peer.afiSafiMap, fsm.peer.PeerConf.AddPathsRx,
+		fsm.peer.PeerConf.AddPathsMaxTx)
 	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.LocalAS, uint16(fsm.holdTime), fsm.gConf.RouterId.To4().String(), optParams)
 	packet, _ := bgpOpenMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)

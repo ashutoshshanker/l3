@@ -65,6 +65,8 @@ type BaseConfig struct {
 	HoldTime                uint32
 	KeepaliveTime           uint32
 	BfdEnable               bool
+	AddPathsRx              bool
+	AddPathsMaxTx           uint8
 }
 
 type NeighborConfig struct {
@@ -92,6 +94,8 @@ type NeighborState struct {
 	KeepaliveTime           uint32
 	BfdNeighborState        string
 	PeerGroup               string
+	AddPathsRx              bool
+	AddPathsMaxTx           uint8
 }
 
 type TransportConfig struct {
