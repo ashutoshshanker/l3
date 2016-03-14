@@ -4,7 +4,7 @@ package policy
 import (
 	"bgpd"
 	"fmt"
-	"log/syslog"
+	"utils/logging"
 	utilspolicy "utils/policy"
 )
 
@@ -22,7 +22,7 @@ type PolicyExtensions struct {
 }
 
 type BGPPolicyEngine struct {
-	logger          *syslog.Writer
+	logger          *logging.Writer
 	PolicyEngine    *utilspolicy.PolicyEngineDB
 	ConditionCfgCh  chan utilspolicy.PolicyConditionConfig
 	ActionCfgCh     chan utilspolicy.PolicyActionConfig
@@ -34,7 +34,7 @@ type BGPPolicyEngine struct {
 	DefinitionDelCh chan string
 }
 
-func NewBGPPolicyEngine(logger *syslog.Writer) *BGPPolicyEngine {
+func NewBGPPolicyEngine(logger *logging.Writer) *BGPPolicyEngine {
 	if PolicyEngine == nil {
 		bgpPE := &BGPPolicyEngine{}
 		bgpPE.logger = logger

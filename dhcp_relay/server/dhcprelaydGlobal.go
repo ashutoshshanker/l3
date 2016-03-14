@@ -7,10 +7,10 @@ import (
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"golang.org/x/net/ipv4"
-	"log/syslog"
 	"net"
 	"sync"
 	"time"
+	"utils/logging"
 )
 
 // type is similar to typedef in c
@@ -73,7 +73,7 @@ var (
 	dhcprelayEnable                   bool
 	dhcprelayClientConn               *ipv4.PacketConn
 	dhcprelayServerConn               *ipv4.PacketConn
-	logger                            *syslog.Writer
+	logger                            *logging.Writer
 	dhcprelayDbHdl                    *sql.DB
 	paramsDir                         string
 	dhcprelayEnabledIntfRefCount      int

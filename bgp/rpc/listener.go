@@ -9,8 +9,10 @@ import (
 	"l3/bgp/config"
 	bgppolicy "l3/bgp/policy"
 	"l3/bgp/server"
-	"log/syslog"
+	"models"
 	"net"
+	"strconv"
+	"utils/logging"
 	utilspolicy "utils/policy"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -27,10 +29,10 @@ type BGPHandler struct {
 	PeerCommandCh chan PeerConfigCommands
 	server        *server.BGPServer
 	bgpPE         *bgppolicy.BGPPolicyEngine
-	logger        *syslog.Writer
+	logger        *logging.Writer
 }
 
-func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, logger *syslog.Writer, filePath string) *BGPHandler {
+func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, logger *logging.Writer, filePath string) *BGPHandler {
 	h := new(BGPHandler)
 	h.PeerCommandCh = make(chan PeerConfigCommands)
 	h.server = server
@@ -165,6 +167,124 @@ func (h *BGPHandler) handleBGPAggregate(dbHdl *sql.DB) error {
 	return nil
 }
 
+func convertModelToPolicyConditionConfig(cfg models.BGPPolicyConditionConfig) *utilspolicy.PolicyConditionConfig {
+	destIPMatch := utilspolicy.PolicyDstIpMatchPrefixSetCondition{
+		Prefix: utilspolicy.PolicyPrefix{
+			IpPrefix:        cfg.IpPrefix,
+			MasklengthRange: cfg.MaskLengthRange,
+		},
+	}
+	return &utilspolicy.PolicyConditionConfig{
+		Name:                          cfg.Name,
+		ConditionType:                 cfg.ConditionType,
+		MatchDstIpPrefixConditionInfo: destIPMatch,
+	}
+}
+
+func (h *BGPHandler) handlePolicyConditions(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyConditions"))
+	conditionObj := models.BGPPolicyConditionConfig{}
+	conditionList, err := conditionObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyConditions - Failed to create policy condition config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(conditionList); idx++ {
+		policyCondCfg := convertModelToPolicyConditionConfig(conditionList[idx].(models.BGPPolicyConditionConfig))
+		h.logger.Info(fmt.Sprintln("handlePolicyConditions - create policy condition", policyCondCfg.Name))
+		h.bgpPE.ConditionCfgCh <- *policyCondCfg
+	}
+	return nil
+}
+
+func convertModelToPolicyActionConfig(cfg models.BGPPolicyActionConfig) *utilspolicy.PolicyActionConfig {
+	return &utilspolicy.PolicyActionConfig{
+		Name:            cfg.Name,
+		ActionType:      cfg.ActionType,
+		GenerateASSet:   cfg.GenerateASSet,
+		SendSummaryOnly: cfg.SendSummaryOnly,
+	}
+}
+
+func (h *BGPHandler) handlePolicyActions(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyActions"))
+	actionObj := models.BGPPolicyActionConfig{}
+	actionList, err := actionObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyActions - Failed to create policy action config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(actionList); idx++ {
+		policyActionCfg := convertModelToPolicyActionConfig(actionList[idx].(models.BGPPolicyActionConfig))
+		h.logger.Info(fmt.Sprintln("handlePolicyActions - create policy action", policyActionCfg.Name))
+		h.bgpPE.ActionCfgCh <- *policyActionCfg
+	}
+	return nil
+}
+
+func convertModelToPolicyStmtConfig(cfg models.BGPPolicyStmtConfig) *utilspolicy.PolicyStmtConfig {
+	return &utilspolicy.PolicyStmtConfig{
+		Name:            cfg.Name,
+		MatchConditions: cfg.MatchConditions,
+		Conditions:      cfg.Conditions,
+		Actions:         cfg.Actions,
+	}
+}
+
+func (h *BGPHandler) handlePolicyStmts(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyStmts"))
+	stmtObj := models.BGPPolicyStmtConfig{}
+	stmtList, err := stmtObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyStmts - Failed to create policy statement config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(stmtList); idx++ {
+		policyStmtCfg := convertModelToPolicyStmtConfig(stmtList[idx].(models.BGPPolicyStmtConfig))
+		h.logger.Info(fmt.Sprintln("handlePolicyStmts - create policy statement", policyStmtCfg.Name))
+		h.bgpPE.StmtCfgCh <- *policyStmtCfg
+	}
+	return nil
+}
+
+func convertModelToPolicyDefinitionConfig(cfg models.BGPPolicyDefinitionConfig) *utilspolicy.PolicyDefinitionConfig {
+	stmtPrecedenceList := make([]utilspolicy.PolicyDefinitionStmtPrecedence, 0)
+	for i := 0; i < len(cfg.StatementList); i++ {
+		stmtPrecedence := utilspolicy.PolicyDefinitionStmtPrecedence{
+			Precedence: cfg.StatementList[i].Precedence,
+			Statement:  cfg.StatementList[i].Statement,
+		}
+		stmtPrecedenceList = append(stmtPrecedenceList, stmtPrecedence)
+	}
+
+	return &utilspolicy.PolicyDefinitionConfig{
+		Name:                       cfg.Name,
+		Precedence:                 cfg.Precedence,
+		MatchType:                  cfg.MatchType,
+		PolicyDefinitionStatements: stmtPrecedenceList,
+	}
+}
+
+func (h *BGPHandler) handlePolicyDefinitions(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyDefinitions"))
+	defObj := models.BGPPolicyDefinitionConfig{}
+	definitionList, err := defObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyDefinitions - Failed to create policy definition config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(definitionList); idx++ {
+		policyDefCfg := convertModelToPolicyDefinitionConfig(definitionList[idx].(models.BGPPolicyDefinitionConfig))
+		h.logger.Info(fmt.Sprintln("handlePolicyDefinitions - create policy definition", policyDefCfg.Name))
+		h.bgpPE.DefinitionCfgCh <- *policyDefCfg
+	}
+	return nil
+}
+
 func (h *BGPHandler) readConfigFromDB(filePath string) error {
 	var dbPath string = filePath + DBName
 
@@ -175,6 +295,22 @@ func (h *BGPHandler) readConfigFromDB(filePath string) error {
 	}
 
 	defer dbHdl.Close()
+
+	if err = h.handlePolicyConditions(dbHdl); err != nil {
+		return err
+	}
+
+	if err = h.handlePolicyActions(dbHdl); err != nil {
+		return err
+	}
+
+	if err = h.handlePolicyStmts(dbHdl); err != nil {
+		return err
+	}
+
+	if err = h.handlePolicyDefinitions(dbHdl); err != nil {
+		return err
+	}
 
 	if err = h.handleGlobalConfig(dbHdl); err != nil {
 		return err
@@ -252,11 +388,47 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 	if bgpNeighbor == nil {
 		return config.NeighborConfig{}, true
 	}
-
 	ip := net.ParseIP(bgpNeighbor.NeighborAddress)
 	if ip == nil {
 		h.logger.Info(fmt.Sprintf("ValidateBGPNeighbor: Address %s is not valid", bgpNeighbor.NeighborAddress))
-		return config.NeighborConfig{}, false
+		//neighbor address is a ifIndex
+		ifIndex, err := strconv.Atoi(bgpNeighbor.NeighborAddress)
+		if err != nil {
+			h.logger.Err("Error getting ifIndex")
+			//return config.NeighborConfig{}, false
+			ip = net.IPv4bcast
+		}
+		ipv4Intf, _ := h.server.AsicdClient.GetIPv4Intf(int32(ifIndex))
+		if ipv4Intf != nil {
+			h.logger.Info(fmt.Sprintln("Call ASICd to get ip address for interface with ifIndex: ", ifIndex))
+			ifIp, _, err := net.ParseCIDR(ipv4Intf.IpAddr)
+			if err != nil {
+				h.logger.Err(fmt.Sprintln("IpAddr: ", ipv4Intf.IpAddr, " derived for ifIndex ", ifIndex))
+				return config.NeighborConfig{}, false
+			}
+			h.logger.Info(fmt.Sprintln("Derived ip address as ", ipv4Intf.IpAddr, "ip: ", ifIp))
+			ifIpBytes := ifIp.To4()
+			if ifIpBytes == nil {
+				h.logger.Err("Invalid ip address")
+				return config.NeighborConfig{}, false
+			}
+			h.logger.Info(fmt.Sprintln("last byte = ", ifIpBytes[3]))
+			if ifIpBytes[3]%2 == 1 {
+				//odd number
+				ifIpBytes[3] = ifIpBytes[3] - 1
+			} else {
+				ifIpBytes[3] = ifIpBytes[3] + 1
+			}
+			//ifIpBytes[3][0] =  ifIpBytes[3][0] ^ 1 //toggle the last bit
+			h.logger.Info(fmt.Sprintln("last byte new ", ifIpBytes[3]))
+			ip = net.IP(ifIpBytes)
+			h.logger.Info(fmt.Sprintln("IP: ", ip.String()))
+		} else {
+			h.logger.Err(fmt.Sprintln("ipv4Intf not configured for the ifIndex ", ifIndex))
+			//TBD: do not return but add it anyways and track interface events
+			ip = net.IPv4bcast
+			// return config.NeighborConfig{}, false
+		}
 	}
 
 	pConf := config.NeighborConfig{

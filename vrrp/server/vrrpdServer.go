@@ -8,7 +8,6 @@ import (
 	"fmt"
 	_ "github.com/google/gopacket"
 	"io/ioutil"
-	"log/syslog"
 	"net"
 	"os"
 	"os/signal"
@@ -16,6 +15,7 @@ import (
 	"syscall"
 	"time"
 	"utils/ipcutils"
+	"utils/logging"
 	"vrrpd"
 )
 
@@ -330,7 +330,7 @@ func (svr *VrrpServer) StartServer(paramsDir string) {
 
 }
 
-func VrrpNewServer(log *syslog.Writer) *VrrpServer {
+func VrrpNewServer(log *logging.Writer) *VrrpServer {
 	vrrpServerInfo := &VrrpServer{}
 	vrrpServerInfo.logger = log
 	return vrrpServerInfo

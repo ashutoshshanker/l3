@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"net"
 	"sync/atomic"
 	"time"
+	"utils/logging"
 )
 
 type Peer struct {
 	Server     *BGPServer
-	logger     *syslog.Writer
+	logger     *logging.Writer
 	Global     *config.GlobalConfig
 	PeerGroup  *config.PeerGroupConfig
 	Neighbor   *config.Neighbor
@@ -64,9 +64,9 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 		peer.Neighbor.State.PeerType = config.PeerTypeExternal
 	}
 	if peer.PeerConf.BfdEnable {
-		peer.Neighbor.State.BfdNeighborState = "Up"
+		peer.Neighbor.State.BfdNeighborState = "up"
 	} else {
-		peer.Neighbor.State.BfdNeighborState = "Down"
+		peer.Neighbor.State.BfdNeighborState = "down"
 	}
 
 	peer.afiSafiMap, _ = packet.GetProtocolFromConfig(&peer.Neighbor.AfiSafis)
@@ -75,6 +75,10 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 }
 
 func (p *Peer) Init() {
+	if p.Neighbor.State.BfdNeighborState == "down" {
+		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s", p.Neighbor.NeighborAddress))
+		return
+	}
 	if p.fsmManager == nil {
 		p.logger.Info(fmt.Sprintf("Instantiating new FSM Manager for neighbor %s", p.Neighbor.NeighborAddress))
 		p.fsmManager = NewFSMManager(p, &p.Server.BgpConfig.Global.Config, &p.PeerConf)
@@ -188,6 +192,10 @@ func (p *Peer) getIfIdx() int32 {
 }
 
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
+	if p.Neighbor.State.BfdNeighborState == "down" {
+		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s", p.Neighbor.NeighborAddress))
+		return
+	}
 	if p.fsmManager == nil {
 		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s", p.Neighbor.NeighborAddress))
 		return
