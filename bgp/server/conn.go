@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"math/rand"
 	"net"
 	"time"
+	"utils/logging"
 
 	"golang.org/x/net/ipv4"
 )
 
 type OutTCPConn struct {
 	fsm          *FSM
-	logger       *syslog.Writer
+	logger       *logging.Writer
 	fsmConnCh    chan net.Conn
 	fsmConnErrCh chan error
 	StopConnCh   chan bool
@@ -131,7 +131,7 @@ func (o *OutTCPConn) ConnectToPeer(seconds uint32, addr string) {
 
 type PeerConn struct {
 	fsm       *FSM
-	logger    *syslog.Writer
+	logger    *logging.Writer
 	dir       config.ConnDir
 	conn      *net.Conn
 	peerAttrs packet.BGPPeerAttrs

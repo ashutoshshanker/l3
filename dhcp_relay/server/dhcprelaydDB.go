@@ -2,17 +2,13 @@ package relayServer
 
 import (
 	"database/sql"
-	"flag"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func DhcpRelayAgentInitDB() error {
+func DhcpRelayAgentInitDB(paramsDir string) error {
 	logger.Info("DRA: initializing SQL DB")
 	var err error
-	params_dir := flag.String("params", "", "Directory Location for config files")
-	flag.Parse()
-	paramsDir = *params_dir
 	dbName := paramsDir + USR_CONF_DB
 	logger.Info("DRA: location of DB is " + dbName)
 	dhcprelayDbHdl, err = sql.Open("sqlite3", dbName)

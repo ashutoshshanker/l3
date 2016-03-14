@@ -570,6 +570,8 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 		if session.state.SessionState == STATE_UP {
 			session.txInterval = session.state.DesiredMinTxInterval / 1000
 		}
+	case STATE_ADMIN_DOWN:
+		event = REMOTE_ADMIN_DOWN
 	}
 	session.EventHandler(event)
 	session.RemoteChangedDemandMode(bfdPacket)
@@ -705,7 +707,7 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 			session.MoveToUpState()
 		case ADMIN_UP:
 			session.MoveToDownState()
-		case ADMIN_DOWN, TIMEOUT, REMOTE_UP:
+		case ADMIN_DOWN, TIMEOUT, REMOTE_UP, REMOTE_ADMIN_DOWN:
 		}
 	case STATE_INIT:
 		switch event {
@@ -713,15 +715,27 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 			session.MoveToUpState()
 		case ADMIN_DOWN, TIMEOUT:
 			session.MoveToDownState()
-		case REMOTE_DOWN, ADMIN_UP:
+		case REMOTE_DOWN, ADMIN_UP, REMOTE_ADMIN_DOWN:
 		}
 	case STATE_UP:
 		switch event {
 		case REMOTE_DOWN, ADMIN_DOWN, TIMEOUT:
 			session.MoveToDownState()
 		case REMOTE_INIT, REMOTE_UP, ADMIN_UP:
+		case REMOTE_ADMIN_DOWN:
+			session.RemoteAdminDown()
 		}
 	}
+	return nil
+}
+
+func (session *BfdSession) RemoteAdminDown() error {
+	session.state.RemoteSessionState = STATE_ADMIN_DOWN
+	session.state.SessionState = STATE_DOWN
+	session.state.LocalDiagType = DIAG_NEIGHBOR_SIGNAL_DOWN
+	session.txInterval = STARTUP_TX_INTERVAL / 1000
+	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
+	session.txTimer.Reset(0)
 	return nil
 }
 

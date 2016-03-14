@@ -420,7 +420,7 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	// Initialize BFD server from params file
 	server.InitServer(paramFile)
 	// Read BFD configurations already present in DB
-	go server.ReadConfigFromDB(dbHdl)
+	server.ReadConfigFromDB(dbHdl)
 	// Start subcriber for ASICd events
 	go server.CreateASICdSubscriber()
 	// Start session management handler

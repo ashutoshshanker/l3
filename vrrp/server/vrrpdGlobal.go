@@ -7,9 +7,9 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
-	"log/syslog"
 	"net"
 	"time"
+	"utils/logging"
 	"vrrpd"
 )
 
@@ -103,7 +103,7 @@ var (
 */
 
 type VrrpServer struct {
-	logger                        *syslog.Writer
+	logger                        *logging.Writer
 	vrrpDbHdl                     *sql.DB
 	paramsDir                     string
 	asicdClient                   VrrpAsicdClient

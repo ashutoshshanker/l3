@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"net"
 	"sync"
 	"time"
+	"utils/logging"
 )
 
 const ResetTime int = 120
@@ -17,7 +17,7 @@ const AggregatePathId uint32 = 0
 
 type AdjRib struct {
 	server         *BGPServer
-	logger         *syslog.Writer
+	logger         *logging.Writer
 	destPathMap    map[string]*Destination
 	routeList      []*Route
 	routeMutex     sync.RWMutex
