@@ -119,6 +119,11 @@ var BGPCapTypeToStruct = map[BGPCapabilityType]BGPCapability{
 	BGPCapTypeAddPath: &BGPCapAddPath{},
 }
 
+const (
+	BGPCapAddPathRx uint8 = 1 << iota
+	BGPCapAddPathTx
+)
+
 type BGPPathAttrFlag uint8
 
 const (
@@ -276,6 +281,7 @@ type BGPCapability interface {
 	Decode(pkt []byte) error
 	TotalLen() uint8
 	GetCode() BGPCapabilityType
+	New() BGPCapability
 }
 
 type BGPCapabilityBase struct {
@@ -319,6 +325,10 @@ type BGPCapMPExt struct {
 	SAFI     SAFI
 }
 
+func (mp *BGPCapMPExt) New() BGPCapability {
+	return &BGPCapMPExt{}
+}
+
 func (mp *BGPCapMPExt) Encode() ([]byte, error) {
 	pkt, err := mp.BGPCapabilityBase.Encode()
 	if err != nil {
@@ -358,6 +368,10 @@ func NewBGPCapMPExt(afi AFI, safi SAFI) *BGPCapMPExt {
 type BGPCapAS4Path struct {
 	BGPCapabilityBase
 	Value uint32
+}
+
+func (msg *BGPCapAS4Path) New() BGPCapability {
+	return &BGPCapAS4Path{}
 }
 
 func (msg *BGPCapAS4Path) Encode() ([]byte, error) {
@@ -431,6 +445,10 @@ type BGPCapAddPath struct {
 	Value []AddPathAFISAFI
 }
 
+func (msg *BGPCapAddPath) New() BGPCapability {
+	return &BGPCapAddPath{}
+}
+
 func (msg *BGPCapAddPath) Encode() ([]byte, error) {
 	pkt, err := msg.BGPCapabilityBase.Encode()
 	if err != nil {
@@ -469,7 +487,7 @@ func (msg *BGPCapAddPath) AddAddPathAFISAFI(apAFISAFI *AddPathAFISAFI) {
 	msg.Len += apAFISAFI.Len()
 }
 
-func NewBGPCapAddPath(as uint32) *BGPCapAddPath {
+func NewBGPCapAddPath() *BGPCapAddPath {
 	return &BGPCapAddPath{
 		BGPCapabilityBase: BGPCapabilityBase{
 			Type: BGPCapTypeAddPath,
@@ -482,6 +500,10 @@ func NewBGPCapAddPath(as uint32) *BGPCapAddPath {
 type BGPCapUnknown struct {
 	BGPCapabilityBase
 	Value []byte
+}
+
+func (msg *BGPCapUnknown) New() BGPCapability {
+	return &BGPCapUnknown{}
 }
 
 func (msg *BGPCapUnknown) Encode() ([]byte, error) {
@@ -509,6 +531,7 @@ type BGPOptParam interface {
 	Decode(pkt []byte) error
 	TotalLen() uint8
 	GetCode() BGPOptParamType
+	New() BGPOptParam
 }
 
 type BGPOptParamBase struct {
@@ -550,6 +573,9 @@ type BGPOptParamCapability struct {
 	Value []BGPCapability
 }
 
+func (msg *BGPOptParamCapability) New() BGPOptParam {
+	return &BGPOptParamCapability{}
+}
 func (msg *BGPOptParamCapability) Encode() ([]byte, error) {
 	pkt, err := msg.BGPOptParamBase.Encode()
 	if err != nil {
@@ -570,7 +596,7 @@ func (msg *BGPOptParamCapability) Encode() ([]byte, error) {
 func (msg *BGPOptParamCapability) GetCapParam(pkt []byte) BGPCapability {
 	capParamType := BGPCapabilityType(pkt[0])
 	if capParam, ok := BGPCapTypeToStruct[capParamType]; ok {
-		return capParam
+		return capParam.New()
 	} else {
 		return &BGPCapUnknown{}
 	}
@@ -620,6 +646,10 @@ func NewBGPOptParamCapability(capabilities []BGPCapability) *BGPOptParamCapabili
 type BGPOptParamUnknown struct {
 	BGPOptParamBase
 	Value []byte
+}
+
+func (msg *BGPOptParamUnknown) New() BGPOptParam {
+	return &BGPOptParamUnknown{}
 }
 
 func (msg *BGPOptParamUnknown) Encode() ([]byte, error) {
@@ -682,7 +712,7 @@ func (msg *BGPOpen) Encode() ([]byte, error) {
 func (msg *BGPOpen) GetOptParam(pkt []byte) (BGPOptParam, error) {
 	optParamType := BGPOptParamType(pkt[0])
 	if optParam, ok := BGPOptParamTypeToStruct[optParamType]; ok {
-		return optParam, nil
+		return optParam.New(), nil
 	} else {
 		return &BGPOptParamUnknown{}, BGPMessageError{BGPOpenMsgError, BGPUnsupportedOptionalParam, nil,
 			fmt.Sprintf("Unknown optional parameter %d", optParamType)}

@@ -23,6 +23,7 @@ type Peer struct {
 	afiSafiMap map[uint32]bool
 	PeerConf   config.NeighborConfig
 	ifIdx      int32
+	ribOut     map[string]map[uint32]*Path
 }
 
 func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *config.PeerGroupConfig, peerConf config.NeighborConfig) *Peer {
@@ -39,6 +40,7 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 		afiSafiMap: make(map[uint32]bool),
 		PeerConf:   config.NeighborConfig{},
 		ifIdx:      -1,
+		ribOut:     make(map[string]map[uint32]*Path),
 	}
 
 	peer.SetPeerConf(peerGroup, &peer.PeerConf)
@@ -56,6 +58,8 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 		HoldTime:                peer.PeerConf.HoldTime,
 		KeepaliveTime:           peer.PeerConf.KeepaliveTime,
 		PeerGroup:               peer.PeerConf.PeerGroup,
+		AddPathsRx:              false,
+		AddPathsMaxTx:           0,
 	}
 
 	if peerConf.LocalAS == peerConf.PeerAS {
@@ -174,9 +178,21 @@ func (p *Peer) GetConfFromNeighbor(inConf *config.NeighborConfig, outConf *confi
 	if inConf.KeepaliveTime != 0 {
 		outConf.KeepaliveTime = inConf.KeepaliveTime
 	}
+
+	if inConf.AddPathsRx != false {
+		outConf.AddPathsRx = inConf.AddPathsRx
+	}
+
+	if inConf.AddPathsMaxTx != 0 {
+		outConf.AddPathsMaxTx = inConf.AddPathsMaxTx
+	}
+
+	if inConf.BfdEnable != false {
+		outConf.BfdEnable = inConf.BfdEnable
+	}
+
 	outConf.NeighborAddress = inConf.NeighborAddress
 	outConf.PeerGroup = inConf.PeerGroup
-	outConf.BfdEnable = inConf.BfdEnable
 }
 
 func (p *Peer) setIfIdx(ifIdx int32) {
@@ -234,11 +250,28 @@ func (p *Peer) SendKeepAlives(conn *net.TCPConn) {
 	}
 }
 
-func (p *Peer) SetPeerAttrs(bgpId net.IP, asSize uint8, holdTime uint32, keepaliveTime uint32) {
+func (p *Peer) SetPeerAttrs(bgpId net.IP, asSize uint8, holdTime uint32, keepaliveTime uint32,
+	addPathFamily map[packet.AFI]map[packet.SAFI]uint8) {
 	p.BGPId = bgpId
 	p.ASSize = asSize
 	p.Neighbor.State.HoldTime = holdTime
 	p.Neighbor.State.KeepaliveTime = keepaliveTime
+	for afi, safiMap := range addPathFamily {
+		if afi == packet.AfiIP {
+			for _, val := range safiMap {
+				if (val & packet.BGPCapAddPathRx) != 0 {
+					p.Neighbor.State.AddPathsMaxTx = p.PeerConf.AddPathsMaxTx
+				}
+				if (val & packet.BGPCapAddPathTx) != 0 {
+					p.Neighbor.State.AddPathsRx = true
+				}
+			}
+		}
+	}
+}
+
+func (p *Peer) getAddPathsMaxTx() int {
+	return int(p.Neighbor.State.AddPathsMaxTx)
 }
 
 func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
@@ -301,6 +334,8 @@ func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 	p.Neighbor.State.ConnectRetryTime = p.PeerConf.ConnectRetryTime
 	p.Neighbor.State.HoldTime = p.PeerConf.HoldTime
 	p.Neighbor.State.KeepaliveTime = p.PeerConf.KeepaliveTime
+	p.Neighbor.State.AddPathsRx = false
+	p.Neighbor.State.AddPathsMaxTx = 0
 
 }
 
@@ -309,11 +344,153 @@ func (p *Peer) FSMStateChange(state BGPFSMState) {
 	p.Neighbor.State.SessionState = uint32(state)
 }
 
-func (p *Peer) SendUpdate(bgpMsg packet.BGPMessage, path *Path) {
-	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%v, withdraw routes:%v", p.Neighbor.NeighborAddress, bgpMsg.Body.(*packet.BGPUpdate).NLRI, bgpMsg.Body.(*packet.BGPUpdate).WithdrawnRoutes))
-	bgpMsgRef := &bgpMsg
-	if p.updatePathAttrs(bgpMsgRef, path) {
+func (p *Peer) sendUpdateMsg(msg *packet.BGPMessage, path *Path) {
+	if path != nil && path.peer != nil {
+		if path.peer.IsInternal() {
+
+			if p.IsInternal() && !path.peer.IsRouteReflectorClient() && !p.IsRouteReflectorClient() {
+				return
+			}
+		}
+
+		// Don't send the update to the peer that sent the update.
+		if p.PeerConf.NeighborAddress.String() == path.peer.PeerConf.NeighborAddress.String() {
+			return
+		}
+	}
+
+	if p.updatePathAttrs(msg, path) {
 		atomic.AddUint32(&p.Neighbor.State.Queues.Output, 1)
-		p.fsmManager.SendUpdateMsg(bgpMsgRef)
+		p.fsmManager.SendUpdateMsg(msg)
+	}
+
+}
+
+func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destination, withdrawPath *Path) {
+	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%v, withdraw routes:%v",
+		p.Neighbor.NeighborAddress, updated, withdrawn))
+	if p.Neighbor.Transport.Config.LocalAddress == nil {
+		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message, FSM is not in Established state",
+			p.Neighbor.NeighborAddress))
+		return
+	}
+
+	addPathsTx := p.getAddPathsMaxTx()
+	withdrawList := make([]packet.NLRI, 0)
+	newUpdated := make(map[*Path][]packet.NLRI)
+	if len(withdrawn) > 0 {
+		for _, dest := range withdrawn {
+			if addPathsTx > 0 {
+				ip := dest.ipPrefix.Prefix.String()
+				pathIdMap, ok := p.ribOut[ip]
+				if !ok {
+					p.logger.Err(fmt.Sprintf("Neighbor %s: SendUpdate - processing withdraes, dest %s not found in rib out",
+						p.Neighbor.NeighborAddress, ip))
+					continue
+				}
+				for pathId, _ := range pathIdMap {
+					nlri := packet.NewExtNLRI(pathId, *dest.ipPrefix)
+					withdrawList = append(withdrawList, nlri)
+				}
+			} else {
+				withdrawList = append(withdrawList, dest.ipPrefix)
+			}
+		}
+	}
+
+	for path, destinations := range updated {
+		for _, dest := range destinations {
+			pathIdMap := make(map[uint32]*Path)
+			ip := dest.ipPrefix.Prefix.String()
+			if addPathsTx > 0 {
+				route := dest.locRibPathRoute
+				pathId := route.outPathId
+				nlri := packet.NewExtNLRI(pathId, *dest.ipPrefix)
+				if _, ok := newUpdated[path]; !ok {
+					newUpdated[path] = make([]packet.NLRI, 0)
+				}
+				newUpdated[path] = append(newUpdated[path], nlri)
+				pathIdMap[pathId] = path
+
+				for i := 0; i < len(dest.addPaths) && i < addPathsTx; i++ {
+					if len(pathIdMap) == addPathsTx {
+						break
+					}
+					route = dest.GetPathRoute(dest.addPaths[i])
+					if route == nil {
+						continue
+					}
+					nlri = packet.NewExtNLRI(route.outPathId, *dest.ipPrefix)
+					if _, ok := newUpdated[dest.addPaths[i]]; !ok {
+						newUpdated[dest.addPaths[i]] = make([]packet.NLRI, 0)
+					}
+					pathIdMap[route.outPathId] = path
+					newUpdated[dest.addPaths[i]] = append(newUpdated[dest.addPaths[i]], nlri)
+				}
+
+				if _, ok := p.ribOut[ip]; !ok {
+					p.logger.Info(fmt.Sprintf("Neighbor %s: SendUpdate - processing updates, dest %s not found in rib out",
+						p.Neighbor.NeighborAddress, ip))
+					p.ribOut[ip] = make(map[uint32]*Path)
+				}
+				ribPathMap, _ := p.ribOut[ip]
+				for ribPathId, ribPath := range ribPathMap {
+					if path, ok := pathIdMap[ribPathId]; !ok {
+						nlri = packet.NewExtNLRI(ribPathId, *dest.ipPrefix)
+						withdrawList = append(withdrawList, nlri)
+						delete(p.ribOut[ip], ribPathId)
+					} else if ribPath == path {
+						delete(pathIdMap, ribPathId)
+					} else if ribPath != path {
+						nlri = packet.NewExtNLRI(ribPathId, *dest.ipPrefix)
+						if _, ok := newUpdated[path]; !ok {
+							newUpdated[path] = make([]packet.NLRI, 0)
+						}
+						newUpdated[path] = append(newUpdated[path], nlri)
+						p.ribOut[ip][ribPathId] = path
+						delete(pathIdMap, ribPathId)
+					}
+				}
+
+				for pathId, path := range pathIdMap {
+					nlri = packet.NewExtNLRI(pathId, *dest.ipPrefix)
+					if _, ok := newUpdated[path]; !ok {
+						newUpdated[path] = make([]packet.NLRI, 0)
+					}
+					newUpdated[path] = append(newUpdated[path], nlri)
+					p.ribOut[ip][pathId] = path
+					delete(pathIdMap, pathId)
+				}
+			} else {
+				route := dest.locRibPathRoute
+				pathId := route.outPathId
+				if _, ok := p.ribOut[ip]; !ok {
+					p.ribOut[ip] = make(map[uint32]*Path)
+				}
+				for ribPathId, _ := range p.ribOut[ip] {
+					if pathId != ribPathId {
+						delete(p.ribOut[ip], ribPathId)
+					}
+				}
+				if ribPath, ok := p.ribOut[ip][pathId]; !ok || ribPath != path {
+					if _, ok := newUpdated[path]; !ok {
+						newUpdated[path] = make([]packet.NLRI, 0)
+					}
+					newUpdated[path] = append(newUpdated[path], dest.ipPrefix)
+				}
+				p.ribOut[ip][pathId] = path
+			}
+		}
+	}
+
+	if len(withdrawList) > 0 {
+		updateMsg := packet.NewBGPUpdateMessage(withdrawList, nil, nil)
+		p.sendUpdateMsg(updateMsg.Clone(), withdrawPath)
+		withdrawList = withdrawList[:0]
+	}
+
+	for path, nlriList := range newUpdated {
+		updateMsg := packet.NewBGPUpdateMessage(make([]packet.NLRI, 0), path.pathAttrs, nlriList)
+		p.sendUpdateMsg(updateMsg.Clone(), path)
 	}
 }
