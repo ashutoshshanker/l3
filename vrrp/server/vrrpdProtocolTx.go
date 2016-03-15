@@ -118,11 +118,11 @@ func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []by
 	return buffer.Bytes()
 }
 
-func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan VrrpPktChannelInfo) {
+func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan string /*VrrpPktChannelInfo*/) {
 	svr.logger.Info("started send packet routine")
 	for {
-		pktChannel := <-rcvdCh
-		key := pktChannel.key
+		//pktChannel := <-rcvdCh
+		key := <-rcvdCh //pktChannel.key
 		gblInfo, found := svr.vrrpGblInfo[key]
 		if !found {
 			svr.logger.Err("No Entry for " + key)
@@ -140,4 +140,40 @@ func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan VrrpPktChannelInfo) {
 			svr.logger.Info(fmt.Sprintln("Sending Packet failed", err))
 		}
 	}
+}
+
+func (svr *VrrpServer) VrrpSendGratuitousArp(gblInfo *VrrpGlobalInfo) {
+	/*
+		// Set up all the layers' fields we can.
+		eth := layers.Ethernet{
+			SrcMAC:       iface.HardwareAddr,
+			DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+			EthernetType: layers.EthernetTypeARP,
+		}
+		arp := layers.ARP{
+			AddrType:          layers.LinkTypeEthernet,
+			Protocol:          layers.EthernetTypeIPv4,
+			HwAddressSize:     6,
+			ProtAddressSize:   4,
+			Operation:         layers.ARPRequest,
+			SourceHwAddress:   []byte(iface.HardwareAddr),
+			SourceProtAddress: []byte(addr.IP),
+			DstHwAddress:      []byte{0, 0, 0, 0, 0, 0},
+		}
+		// Set up buffer and options for serialization.
+		buf := gopacket.NewSerializeBuffer()
+		opts := gopacket.SerializeOptions{
+			FixLengths:       true,
+			ComputeChecksums: true,
+		}
+		// Send one packet for every address.
+		for _, ip := range ips(addr) {
+			arp.DstProtAddress = []byte(ip)
+			gopacket.SerializeLayers(buf, opts, &eth, &arp)
+			if err := handle.WritePacketData(buf.Bytes()); err != nil {
+				return err
+			}
+		}
+		return nil
+	*/
 }

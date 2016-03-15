@@ -121,7 +121,7 @@ type VrrpServer struct {
 	vrrpVlanId2Name               map[int]string
 	VrrpIntfConfigCh              chan vrrpd.VrrpIntfConfig //VrrpGlobalInfo
 	vrrpRxPktCh                   chan VrrpPktChannelInfo
-	vrrpTxPktCh                   chan VrrpPktChannelInfo
+	vrrpTxPktCh                   chan string //VrrpPktChannelInfo
 	vrrpFsmCh                     chan VrrpFsm
 	vrrpRxChStarted               bool
 	vrrpTxChStarted               bool
