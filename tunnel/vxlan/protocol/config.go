@@ -69,7 +69,7 @@ func (s *VXLANServer) ConvertVxlanInstanceToVxlanConfig(c *vxland.VxlanInstance)
 	return &VxlanConfig{
 		VNI:    uint32(c.VxlanId),
 		VlanId: uint16(c.VlanId),
-		Group:  net.ParseIP(c.Group),
+		Group:  net.ParseIP(c.McDestIp),
 		MTU:    uint32(c.Mtu),
 	}
 }
@@ -112,7 +112,7 @@ func (s *VXLANServer) updateThriftVxLAN(c *VxlanUpdate) {
 			if objName == "VxlanId" {
 				// TODO
 			}
-			if objName == "Group" {
+			if objName == "McDestIp" {
 				// TODO
 			}
 			if objName == "VlanId" {
