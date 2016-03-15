@@ -832,7 +832,7 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 			//call arpd to resolve the ip
 			logger.Info(fmt.Sprintln("### Sending ARP Resolve for ", routeInfoRecord.nextHopIp.String(), routeInfoRecord.nextHopIfType))
-			arpdclnt.ClientHdl.ResolveArpIPv4(routeInfoRecord.nextHopIp.String(), arpdInt.Int(routeInfoRecord.nextHopIfType), arpdInt.Int(routeInfoRecord.nextHopIfIndex))
+			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.nextHopIp.String(), arpdInt.Int(routeInfoRecord.nextHopIfType), arpdInt.Int(routeInfoRecord.nextHopIfIndex))
 		}
 		addLinuxRoute(routeInfoRecord)
 		//update in the event log
@@ -1376,7 +1376,7 @@ func createV4Route(destNetIp string,
 
 		if arpdclnt.IsConnected && routeType != ribdCommonDefs.CONNECTED {
 			logger.Info(fmt.Sprintln("### 22 Sending ARP Resolve for ", routeInfoRecord.nextHopIp.String(), routeInfoRecord.nextHopIfType))
-			arpdclnt.ClientHdl.ResolveArpIPv4(routeInfoRecord.nextHopIp.String(), arpdInt.Int(routeInfoRecord.nextHopIfType), arpdInt.Int(routeInfoRecord.nextHopIfIndex))
+			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.nextHopIp.String(), arpdInt.Int(routeInfoRecord.nextHopIfType), arpdInt.Int(routeInfoRecord.nextHopIfIndex))
 		}
 		addLinuxRoute(routeInfoRecord)
 		//update in the event log
@@ -1649,4 +1649,19 @@ func (m RIBDServicesHandler) PrintV4Routes() (err error) {
 	RouteInfoMap.Visit(printRoutesInfo)
 	logger.Info(fmt.Sprintf("total count = %d\n", count))
 	return nil
+}
+func (m RIBDServicesHandler) GetNextHopIfTypeStr(nextHopIfType ribdInt.Int) (nextHopIfTypeStr string, err error ) {
+	nextHopIfTypeStr = ""
+	switch nextHopIfType {
+	    case commonDefs.L2RefTypePort:
+			nextHopIfTypeStr = "PHY"
+			break
+		case commonDefs.L2RefTypeVlan:
+			nextHopIfTypeStr = "VLAN"
+			break
+		case commonDefs.IfTypeNull:
+			nextHopIfTypeStr = "NULL"
+			break
+		}
+    return nextHopIfTypeStr, err
 }

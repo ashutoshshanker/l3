@@ -261,7 +261,7 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 				}
 			}
 			server.logger.Info("Ospfd is connected to Ribd")
-			server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
+			server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
 			server.ribdClient.IsConnected = true
 			/*
 				if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {

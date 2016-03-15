@@ -143,6 +143,7 @@ struct PolicyDefinitionStateGetInfo {
 service RIBDINTServices 
 {
     NextHopInfo getRouteReachabilityInfo(1: string desIPv4MasktNet);
+	string GetNextHopIfTypeStr(1: int nextHopIfType);
 	//list<Routes> getConnectedRoutesInfo();
     void printV4Routes();
 	RoutesGetInfo getBulkRoutesForProtocol(1: string srcProtocol, 2: int fromIndex ,3: int rcount)

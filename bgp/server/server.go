@@ -16,6 +16,7 @@ import (
 	"l3/rib/ribdCommonDefs"
 	"net"
 	"ribd"
+	"ribdInt"
 	"runtime"
 	"strconv"
 	"sync"
@@ -72,7 +73,7 @@ type PolicyParams struct {
 type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
-	ribdClient       *ribd.RouteServiceClient
+	ribdClient       *ribd.RIBDServicesClient
 	AsicdClient      *asicdServices.ASICDServicesClient
 	bfddClient       *bfdd.BFDDServicesClient
 	BgpConfig        config.Bgp
@@ -100,7 +101,7 @@ type BGPServer struct {
 	addPathCount   int
 }
 
-func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RouteServiceClient,
+func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RIBDServicesClient,
 	bfddClient *bfdd.BFDDServicesClient, asicdClient *asicdServices.ASICDServicesClient) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
@@ -226,7 +227,7 @@ func (server *BGPServer) listenForBFDNotifications(socket *nanomsg.SubSocket, so
 
 func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 	var routeListInfo ribdCommonDefs.RoutelistInfo
-	routes := make([]*ribd.Routes, 0)
+	routes := make([]*ribdInt.Routes, 0)
 	reader := bytes.NewReader(rxBuf)
 	decoder := json.NewDecoder(reader)
 	msg := ribdCommonDefs.RibdNotifyMsg{}
@@ -241,9 +242,9 @@ func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 
 	if len(routes) > 0 {
 		if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
-			server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
+			server.ProcessConnectedRoutes(routes, make([]*ribdInt.Routes, 0))
 		} else if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-			server.ProcessConnectedRoutes(make([]*ribd.Routes, 0), routes)
+			server.ProcessConnectedRoutes(make([]*ribdInt.Routes, 0), routes)
 		} else {
 			server.logger.Err(fmt.Sprintf("**** Received RIB update with unknown type %d ****", msg.MsgType))
 		}
@@ -769,7 +770,7 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 
-func (server *BGPServer) convertDestIPToIPPrefix(routes []*ribd.Routes) []packet.NLRI {
+func (server *BGPServer) convertDestIPToIPPrefix(routes []*ribdInt.Routes) []packet.NLRI {
 	dest := make([]packet.NLRI, 0, len(routes))
 	for _, r := range routes {
 		server.logger.Info(fmt.Sprintln("Route NS : ", r.NetworkStatement, " Route Origin ", r.RouteOrigin))
@@ -779,7 +780,7 @@ func (server *BGPServer) convertDestIPToIPPrefix(routes []*ribd.Routes) []packet
 	return dest
 }
 
-func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribd.Routes, withdrawnRoutes []*ribd.Routes) {
+func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribdInt.Routes, withdrawnRoutes []*ribdInt.Routes) {
 	server.logger.Info(fmt.Sprintln("valid routes:", installedRoutes, "invalid routes:", withdrawnRoutes))
 	valid := server.convertDestIPToIPPrefix(installedRoutes)
 	invalid := server.convertDestIPToIPPrefix(withdrawnRoutes)
@@ -789,8 +790,8 @@ func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribd.Routes, 
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
 func (server *BGPServer) ProcessRoutesFromRIB() {
-	var currMarker ribd.Int
-	var count ribd.Int
+	var currMarker ribdInt.Int
+	var count ribdInt.Int
 	count = 100
 	for {
 		server.logger.Info(fmt.Sprintln("Getting ", count, " objects from currMarker", currMarker))
@@ -804,12 +805,12 @@ func (server *BGPServer) ProcessRoutesFromRIB() {
 			return
 		}
 		server.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ", len(getBulkInfo.RouteList), " num objects returned = ", getBulkInfo.Count))
-		server.ProcessConnectedRoutes(getBulkInfo.RouteList, make([]*ribd.Routes, 0))
+		server.ProcessConnectedRoutes(getBulkInfo.RouteList, make([]*ribdInt.Routes, 0))
 		if getBulkInfo.More == false {
 			server.logger.Info("more returned as false, so no more get bulks")
 			return
 		}
-		currMarker = ribd.Int(getBulkInfo.EndIdx)
+		currMarker = ribdInt.Int(getBulkInfo.EndIdx)
 	}
 }
 

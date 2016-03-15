@@ -252,7 +252,7 @@ func policyEngineUpdateRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, han
 	}
 	logger.Info(fmt.Sprintln("Selected route protocol = ", rmapInfoRecordList.selectedRouteProtocol))
 	selectedRouteInfoRecord := routeInfoList[rmapInfoRecordList.selectedRouteIdx]
-	route := ribdInt.Routes{Ipaddr:selectedRouteInfoRecord.destNetIp.String() , Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(selectedRouteInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(selectedRouteInfoRecord.metric), Prototype: ribdInt.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid: rmapInfoRecordList.isPolicyBasedStateValid}
+	//route := ribdInt.Routes{Ipaddr:selectedRouteInfoRecord.destNetIp.String() , Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(selectedRouteInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(selectedRouteInfoRecord.metric), Prototype: ribdInt.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid: rmapInfoRecordList.isPolicyBasedStateValid}
 	nextHopIfTypeStr := ""
 	switch selectedRouteInfoRecord.nextHopIfType {
 		case commonDefs.L2RefTypePort:

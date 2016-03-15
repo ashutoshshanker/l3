@@ -51,8 +51,8 @@ func main() {
 		logger.Info("Connected to ASICd")
 	}
 
-	var ribdClient *ribd.RouteServiceClient = nil
-	ribdClientChan := make(chan *ribd.RouteServiceClient)
+	var ribdClient *ribd.RIBDServicesClient = nil
+	ribdClientChan := make(chan *ribd.RIBDServicesClient)
 
 	logger.Info("Connecting to RIBd")
 	go rpc.StartRibdClient(logger, fileName, ribdClientChan)
