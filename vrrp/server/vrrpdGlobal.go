@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"net"
@@ -88,6 +89,8 @@ type VrrpGlobalInfo struct {
 	IfName string
 	// Pcap Handler for receiving packets
 	pHandle *pcap.Handle
+	// Pcap Handler lock to write data one routine at a time
+	PcapHdlLock *sync.RWMutex
 	// State Name
 	StateName string
 	// Lock to read current state of vrrp object
@@ -101,12 +104,16 @@ type VrrpPktChannelInfo struct {
 }
 
 /*
-var (
-	vrrpSnapshotLen int32         = 1024
-	vrrpPromiscuous bool          = false
-	vrrpTimeout     time.Duration = 10 * time.Microsecond
-)
-*/
+ *  VRRP TX INTERFACE
+ */
+type VrrpTxIntf interface {
+	VrrpSendPkt(chan string /*VrrpPktChannelInfo*/)
+	VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16)
+	VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16)
+	VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte, hdrLen uint16) []byte
+	VrrpSendGratuitousArp(gblInfo *VrrpGlobalInfo)
+	VrrpCreateWriteBuf(eth *layers.Ethernet, arp *layers.ARP, ipv4 *layers.IPv4, payload []byte) []byte
+}
 
 type VrrpServer struct {
 	logger                        *logging.Writer

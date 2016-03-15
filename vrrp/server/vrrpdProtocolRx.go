@@ -203,7 +203,9 @@ func (svr *VrrpServer) VrrpInitPacketListener(key string, IfIndex int32) {
 			"failed with", "err:", err))
 	}
 	gblInfo := svr.vrrpGblInfo[key]
+	gblInfo.PcapHdlLock.Lock()
 	gblInfo.pHandle = handle
+	gblInfo.PcapHdlLock.Unlock()
 	svr.vrrpGblInfo[key] = gblInfo
 	svr.logger.Info(fmt.Sprintln("VRRP listener running for", IfIndex))
 	if svr.vrrpRxChStarted == false {

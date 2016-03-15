@@ -84,6 +84,32 @@ func (svr *VrrpServer) VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uin
 	return vrrpEncHdr, hdrLen
 }
 
+func (svr *VrrpServer) VrrpWritePacket(gblInfo VrrpGlobalInfo, vrrpTxPkt []byte) {
+	gblInfo.PcapHdlLock.Lock()
+	err := gblInfo.pHandle.WritePacketData(vrrpTxPkt)
+	gblInfo.PcapHdlLock.Unlock()
+	if err != nil {
+		svr.logger.Info(fmt.Sprintln("Sending Packet failed: ", err))
+	}
+}
+
+func (svr *VrrpServer) VrrpCreateWriteBuf(eth *layers.Ethernet,
+	arp *layers.ARP, ipv4 *layers.IPv4, payload []byte) []byte {
+
+	buffer := gopacket.NewSerializeBuffer()
+	options := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	if ipv4 != nil {
+		gopacket.SerializeLayers(buffer, options, eth, ipv4,
+			gopacket.Payload(payload))
+	} else {
+		gopacket.SerializeLayers(buffer, options, eth, arp)
+	}
+	return buffer.Bytes()
+}
+
 func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte,
 	hdrLen uint16) []byte {
 	// Ethernet Layer
@@ -106,16 +132,7 @@ func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []by
 		SrcIP:    sip,
 		DstIP:    net.ParseIP(VRRP_GROUP_IP),
 	}
-
-	// Construct go Packet Buffer
-	buffer := gopacket.NewSerializeBuffer()
-	options := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
-	gopacket.SerializeLayers(buffer, options, eth, ipv4,
-		gopacket.Payload(vrrpEncHdr))
-	return buffer.Bytes()
+	return svr.VrrpCreateWriteBuf(eth, nil, ipv4, vrrpEncHdr)
 }
 
 func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan string /*VrrpPktChannelInfo*/) {
@@ -128,52 +145,41 @@ func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan string /*VrrpPktChannelInfo*/) 
 			svr.logger.Err("No Entry for " + key)
 			continue
 		}
+		gblInfo.PcapHdlLock.Lock()
 		if gblInfo.pHandle == nil {
 			svr.logger.Info("Invalid Pcap Handle")
+			gblInfo.PcapHdlLock.Unlock()
 			continue
 		}
+		gblInfo.PcapHdlLock.Unlock()
 		vrrpEncHdr, hdrLen := svr.VrrpCreateVrrpHeader(gblInfo)
-		vrrpTxPkt := svr.VrrpCreateSendPkt(gblInfo, vrrpEncHdr, hdrLen)
-		svr.logger.Info(fmt.Sprintln("send pkt", vrrpTxPkt))
-		err := gblInfo.pHandle.WritePacketData(vrrpTxPkt)
-		if err != nil {
-			svr.logger.Info(fmt.Sprintln("Sending Packet failed", err))
-		}
+		svr.VrrpWritePacket(gblInfo,
+			svr.VrrpCreateSendPkt(gblInfo, vrrpEncHdr, hdrLen))
 	}
 }
 
 func (svr *VrrpServer) VrrpSendGratuitousArp(gblInfo *VrrpGlobalInfo) {
-	/*
-		// Set up all the layers' fields we can.
-		eth := layers.Ethernet{
-			SrcMAC:       iface.HardwareAddr,
-			DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
-			EthernetType: layers.EthernetTypeARP,
-		}
-		arp := layers.ARP{
-			AddrType:          layers.LinkTypeEthernet,
-			Protocol:          layers.EthernetTypeIPv4,
-			HwAddressSize:     6,
-			ProtAddressSize:   4,
-			Operation:         layers.ARPRequest,
-			SourceHwAddress:   []byte(iface.HardwareAddr),
-			SourceProtAddress: []byte(addr.IP),
-			DstHwAddress:      []byte{0, 0, 0, 0, 0, 0},
-		}
-		// Set up buffer and options for serialization.
-		buf := gopacket.NewSerializeBuffer()
-		opts := gopacket.SerializeOptions{
-			FixLengths:       true,
-			ComputeChecksums: true,
-		}
-		// Send one packet for every address.
-		for _, ip := range ips(addr) {
-			arp.DstProtAddress = []byte(ip)
-			gopacket.SerializeLayers(buf, opts, &eth, &arp)
-			if err := handle.WritePacketData(buf.Bytes()); err != nil {
-				return err
-			}
-		}
-		return nil
-	*/
+	srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
+	// Ethernet Layer, SMAC == VMAC & DMAC == BCAST
+	eth := &layers.Ethernet{
+		SrcMAC:       srcMAC,
+		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		EthernetType: layers.EthernetTypeARP,
+	}
+	// @TODO: if we support more than 1 virtual ip address aka VIP then add a
+	// loop for all the ip address
+	// ARP Layer
+	arp := &layers.ARP{
+		AddrType:          layers.LinkTypeEthernet,
+		Protocol:          layers.EthernetTypeIPv4,
+		HwAddressSize:     6,
+		ProtAddressSize:   4,
+		Operation:         layers.ARPRequest,
+		SourceHwAddress:   []byte(srcMAC),
+		SourceProtAddress: []byte(net.ParseIP(gblInfo.IntfConfig.VirtualIPv4Addr)),
+		DstHwAddress:      []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		DstProtAddress:    []byte(net.ParseIP(gblInfo.IntfConfig.VirtualIPv4Addr)),
+	}
+	svr.VrrpWritePacket(*gblInfo, svr.VrrpCreateWriteBuf(eth, arp, nil, nil))
+	return
 }

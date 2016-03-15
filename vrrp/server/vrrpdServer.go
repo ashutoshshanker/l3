@@ -110,6 +110,8 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 		svr.VrrpUpdateIntfIpAddr(&gblInfo)
 	}
 
+	// Initialize Locks for accessing shared ds
+	gblInfo.PcapHdlLock = &sync.RWMutex{}
 	gblInfo.StateLock = &sync.RWMutex{}
 	// Set Initial state
 	gblInfo.StateLock.Lock()
@@ -118,6 +120,11 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 
 	svr.vrrpGblInfo[key] = gblInfo
 	svr.vrrpIntfStateSlice = append(svr.vrrpIntfStateSlice, key)
+
+	// Create Packet listener first so that pcap handler is created...
+	// We will not receive any vrrp packets as punt to CPU is not yet done
+	svr.VrrpInitPacketListener(key, config.IfIndex)
+
 	// Create fsm object and push that object to fsm channel
 	// fsmObj := svr.VrrpCreateFsmObject(gblInfo)
 	// Send the config global on the channel... We do not need to create a
@@ -127,11 +134,11 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 		vrrpInFo: &gblInfo,
 	}
 
-	// Create Packet listener
-	svr.VrrpInitPacketListener(key, config.IfIndex)
 	if !svr.vrrpMacConfigAdded {
 		go svr.VrrpAddMacEntry(true /*add vrrp protocol mac*/)
 	}
+	// @TODO: remove this call... this is just for debugging during initial stages
+	svr.VrrpDumpIntfInfo(gblInfo)
 }
 
 func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(fromIndex int, cnt int) (int,
