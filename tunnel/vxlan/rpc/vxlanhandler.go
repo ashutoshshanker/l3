@@ -3,72 +3,107 @@ package rpc
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"git.apache.org/thrift.git/lib/go/thrift"
 	_ "github.com/mattn/go-sqlite3"
+	vxlan "l3/tunnel/vxlan/protocol"
 	"vxland"
-	//"time"
-	//"errors"
 )
 
 const DBName string = "UsrConfDb.db"
 
 type VXLANDServiceHandler struct {
+	server *vxlan.VXLANServer
 }
 
-func NewVXLANDServiceHandler() *VXLANDServiceHandler {
+func NewVXLANDServiceHandler(server *vxlan.VXLANServer) *VXLANDServiceHandler {
 	//lacp.LacpStartTime = time.Now()
 	// link up/down events for now
 	//startEvtHandler()
-	return &VXLANDServiceHandler{}
+	handler := &VXLANDServiceHandler{
+		server: server,
+	}
+
+	// lets read the current config and re-play the config
+	handler.ReadConfigFromDB()
+
+	return handler
+}
+
+func (v *VXLANDServiceHandler) StartThriftServer() {
+
+	var transport thrift.TServerTransport
+	var err error
+
+	fileName := v.server.Paramspath + "clients.json"
+	port := vxlan.GetClientPort(fileName, "vxland")
+	if port != 0 {
+		addr := fmt.Sprintf("localhost:%d", port)
+		transport, err = thrift.NewTServerSocket(addr)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to create Socket with:", addr))
+		}
+
+		processor := vxland.NewVXLANDServicesProcessor(v)
+		transportFactory := thrift.NewTBufferedTransportFactory(8192)
+		protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
+		thriftserver := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)
+
+		err = thriftserver.Serve()
+		panic(err)
+	}
+	panic(errors.New("Unable to find vxland port"))
 }
 
 func (v *VXLANDServiceHandler) CreateVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
 	fmt.Println("CreateVxlanConfigInstance %#v", config)
+	v.server.Configchans.Vxlancreate <- *config
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) DeleteVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
 	fmt.Println("DeleteVxlanConfigInstance %#v", config)
+	v.server.Configchans.Vxlandelete <- *config
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInstance, newconfig *vxland.VxlanInstance, attrset []bool) (bool, error) {
 	fmt.Println("UpdateVxlanConfigInstance orig[%#v] new[%#v]", origconfig, newconfig)
+	update := vxlan.VxlanUpdate{
+		Oldconfig: *origconfig,
+		Newconfig: *newconfig,
+		Attr:      attrset,
+	}
+	v.server.Configchans.Vxlanupdate <- update
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) CreateVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
 	fmt.Println("CreateVxlanVtepInstances %#v", config)
+	v.server.Configchans.Vtepcreate <- *config
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) DeleteVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
 	fmt.Println("DeleteVxlanVtepInstances %#v", config)
+	v.server.Configchans.Vtepdelete <- *config
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) UpdateVxlanVtepInstances(origconfig *vxland.VxlanVtepInstances, newconfig *vxland.VxlanVtepInstances, attrset []bool) (bool, error) {
 	fmt.Println("UpdateVxlanVtepInstances orig[%#v] new[%#v]", origconfig, newconfig)
+	update := vxlan.VtepUpdate{
+		Oldconfig: *origconfig,
+		Newconfig: *newconfig,
+		Attr:      attrset,
+	}
+	v.server.Configchans.Vtepupdate <- update
 	return true, nil
 }
 
-func (v *VXLANDServiceHandler) CreateVxlanStaticVxlanTunnelAddressFamilyBindVxlanId(config *vxland.VxlanStaticVxlanTunnelAddressFamilyBindVxlanId) (bool, error) {
-	fmt.Println("CreateVxlanStaticVxlanTunnelAddressFamilyBindVxlanId %#v", config)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) DeleteVxlanStaticVxlanTunnelAddressFamilyBindVxlanId(config *vxland.VxlanStaticVxlanTunnelAddressFamilyBindVxlanId) (bool, error) {
-	fmt.Println("DeleteVxlanStaticVxlanTunnelAddressFamilyBindVxlanId %#v", config)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) UpdateVxlanStaticVxlanTunnelAddressFamilyBindVxlanId(origconfig *vxland.VxlanStaticVxlanTunnelAddressFamilyBindVxlanId, newconfig *vxland.VxlanStaticVxlanTunnelAddressFamilyBindVxlanId, attrset []bool) (bool, error) {
-	fmt.Println("UpdateVxlanVxlanStaticVxlanTunnelAddressFamilyBindVxlanId orig[%#v] new[%#v]", origconfig, newconfig)
-	return true, nil
-}
-
-func (s *VXLANDServiceHandler) ReadConfigFromDB(filePath string) error {
-	var dbPath string = filePath + DBName
+func (v *VXLANDServiceHandler) ReadConfigFromDB() error {
+	var dbPath string = v.server.Paramspath + DBName
 
 	dbHdl, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
