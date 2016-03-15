@@ -99,6 +99,7 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 		LinkAttrs: netlink.LinkAttrs{
 			Name: c.VtepName,
 			//MasterIndex: VxlanDB[c.VxlanId].Brg.Attrs().Index,
+			MTU: VxlanDB[c.VxlanId].Brg.Attrs().MTU,
 		},
 		VxlanId:      int(c.VxlanId),
 		VtepDevIndex: int(c.SrcIfIndex),
@@ -115,7 +116,6 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 		NoAge:        false,
 		GBP:          false,
 		Age:          300,
-		Limit:        256,
 		Port:         int(c.UDP),
 		PortLow:      int(c.UDP),
 		PortHigh:     int(c.UDP),
@@ -192,6 +192,10 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 	}
 	*/
 
+	if err := netlink.LinkSetMaster(link, vxlanDbEntry.Brg); err != nil {
+		panic(err)
+	}
+
 	vxlanDbEntry := VxlanDB[uint32(vtep.VxlanId)]
 	vxlanDbEntry.Links = append(vxlanDbEntry.Links, &link)
 	VxlanDB[uint32(vtep.VxlanId)] = vxlanDbEntry
@@ -200,11 +204,6 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 	if err := netlink.LinkSetUp(link); err != nil {
 		panic(err)
 	}
-
-	if err := netlink.LinkSetMaster(link, vxlanDbEntry.Brg); err != nil {
-		panic(err)
-	}
-
 }
 
 func (v *VxlanLinux) deleteVtep(c *VtepConfig) {
