@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"l3/rib/ribdCommonDefs"
 	"ribd"
+	"ribdInt"
 	"utils/patriciaDB"
 	"utils/policy"
 	"utils/policy/policyCommonDefs"
@@ -26,7 +27,7 @@ import (
 	"utils/ipcutils"
 )
 
-type RouteServiceHandler struct {
+type RIBDServicesHandler struct {
 }
 
 type RIBClientBase struct {
@@ -100,7 +101,7 @@ type IntfEntry struct {
 var asicdclnt AsicdClient
 var arpdclnt ArpdClient
 var count int
-var ConnectedRoutes []*ribd.Routes
+var ConnectedRoutes []*ribdInt.Routes
 var acceptConfig bool
 var AsicdSub *nanomsg.SubSocket
 var RIBD_PUB *nanomsg.PubSocket
@@ -181,8 +182,8 @@ func processL3IntfUpEvent(ipAddr string) {
 			logger.Info(fmt.Sprintln("Add this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask))
 
 			ConnectedRoutes[i].IsValid = true
-			policyRoute := ribd.Routes{Ipaddr: ConnectedRoutes[i].Ipaddr, Mask: ConnectedRoutes[i].Mask, NextHopIp: ConnectedRoutes[i].NextHopIp, NextHopIfType: ConnectedRoutes[i].NextHopIfType, IfIndex: ConnectedRoutes[i].IfIndex, Metric: ConnectedRoutes[i].Metric, Prototype: ConnectedRoutes[i].Prototype}
-			params := RouteParams{destNetIp: ConnectedRoutes[i].Ipaddr, networkMask: ConnectedRoutes[i].Mask, nextHopIp: ConnectedRoutes[i].NextHopIp, nextHopIfType: ConnectedRoutes[i].NextHopIfType, nextHopIfIndex: ConnectedRoutes[i].IfIndex, metric: ConnectedRoutes[i].Metric, routeType: ConnectedRoutes[i].Prototype, sliceIdx: ConnectedRoutes[i].SliceIdx, createType: FIBOnly, deleteType: Invalid}
+			policyRoute := ribdInt.Routes{Ipaddr: ConnectedRoutes[i].Ipaddr, Mask: ConnectedRoutes[i].Mask, NextHopIp: ConnectedRoutes[i].NextHopIp, NextHopIfType: ConnectedRoutes[i].NextHopIfType, IfIndex: ConnectedRoutes[i].IfIndex, Metric: ConnectedRoutes[i].Metric, Prototype: ConnectedRoutes[i].Prototype}
+			params := RouteParams{destNetIp: ConnectedRoutes[i].Ipaddr, networkMask: ConnectedRoutes[i].Mask, nextHopIp: ConnectedRoutes[i].NextHopIp, nextHopIfType: ribd.Int(ConnectedRoutes[i].NextHopIfType), nextHopIfIndex: ribd.Int(ConnectedRoutes[i].IfIndex), metric: ribd.Int(ConnectedRoutes[i].Metric), routeType: ribd.Int(ConnectedRoutes[i].Prototype), sliceIdx: ribd.Int(ConnectedRoutes[i].SliceIdx), createType: FIBOnly, deleteType: Invalid}
 			PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Import, params)
 			/*
 				//Send a event
@@ -206,7 +207,7 @@ func processL3IntfUpEvent(ipAddr string) {
 func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int) {
 	logger.Println("processLinkDownEvent")
 	for i := 0; i < len(ConnectedRoutes); i++ {
-		if ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex) {
+		if ConnectedRoutes[i].NextHopIfType == ribdInt.Int(ifType) && ConnectedRoutes[i].IfIndex == ribdInt.Int(ifIndex) {
 			logger.Info(fmt.Sprintln("Delete this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask))
 			//Send a event
 			msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: *ConnectedRoutes[i]}
@@ -229,7 +230,7 @@ func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int) {
 func processLinkUpEvent(ifType ribd.Int, ifIndex ribd.Int) {
 	logger.Println("processLinkUpEvent")
 	for i := 0; i < len(ConnectedRoutes); i++ {
-		if ConnectedRoutes[i].NextHopIfType == ribd.Int(ifType) && ConnectedRoutes[i].IfIndex == ribd.Int(ifIndex) && ConnectedRoutes[i].IsValid == false {
+		if ConnectedRoutes[i].NextHopIfType == ribdInt.Int(ifType) && ConnectedRoutes[i].IfIndex == ribdInt.Int(ifIndex) && ConnectedRoutes[i].IsValid == false {
 			logger.Info(fmt.Sprintln("Add this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask))
 
 			ConnectedRoutes[i].IsValid = true
@@ -246,30 +247,30 @@ func processLinkUpEvent(ifType ribd.Int, ifIndex ribd.Int) {
 			RIBD_PUB.Send(buf, nanomsg.DontWait)
 
 			//Add this route
-			createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ConnectedRoutes[i].Metric, ConnectedRoutes[i].NextHopIp, ConnectedRoutes[i].NextHopIfType, ConnectedRoutes[i].IfIndex, ConnectedRoutes[i].Prototype, FIBOnly, ribdCommonDefs.RoutePolicyStateChangeNoChange, ConnectedRoutes[i].SliceIdx)
+			createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ribd.Int(ConnectedRoutes[i].Metric), ConnectedRoutes[i].NextHopIp, ribd.Int(ConnectedRoutes[i].NextHopIfType), ribd.Int(ConnectedRoutes[i].IfIndex), ribd.Int(ConnectedRoutes[i].Prototype), FIBOnly, ribdCommonDefs.RoutePolicyStateChangeNoChange, ribd.Int(ConnectedRoutes[i].SliceIdx))
 		}
 	}
 }
 
-func (m RouteServiceHandler) LinkDown(ifType ribd.Int, ifIndex ribd.Int) (err error) {
+func (m RIBDServicesHandler) LinkDown(ifType ribdInt.Int, ifIndex ribdInt.Int) (err error) {
 	logger.Println("LinkDown")
-	processLinkDownEvent(ifType, ifIndex)
+	processLinkDownEvent(ribd.Int(ifType), ribd.Int(ifIndex))
 	return nil
 }
 
-func (m RouteServiceHandler) LinkUp(ifType ribd.Int, ifIndex ribd.Int) (err error) {
+func (m RIBDServicesHandler) LinkUp(ifType ribdInt.Int, ifIndex ribdInt.Int) (err error) {
 	logger.Println("LinkUp")
-	processLinkUpEvent(ifType, ifIndex)
+	processLinkUpEvent(ribd.Int(ifType), ribd.Int(ifIndex))
 	return nil
 }
 
-func (m RouteServiceHandler) IntfDown(ipAddr string) (err error) {
+func (m RIBDServicesHandler) IntfDown(ipAddr string) (err error) {
 	logger.Println("IntfDown")
 	processL3IntfDownEvent(ipAddr)
 	return nil
 }
 
-func (m RouteServiceHandler) IntfUp(ipAddr string) (err error) {
+func (m RIBDServicesHandler) IntfUp(ipAddr string) (err error) {
 	logger.Println("IntfUp")
 	processL3IntfUpEvent(ipAddr)
 	return nil
@@ -496,7 +497,20 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			ipAddrStr := ip.String()
 			ipMaskStr := net.IP(ipMask).String()
 			logger.Info(fmt.Sprintln("Calling createv4Route with ipaddr %s mask %s\n", ipAddrStr, ipMaskStr))
-			_, err = routeServiceHandler.CreateV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
+				nextHopIfTypeStr := ""
+				switch asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex) {
+					case commonDefs.L2RefTypePort:
+					    nextHopIfTypeStr = "PHY"
+						break
+					case commonDefs.L2RefTypeVlan:
+						nextHopIfTypeStr = "VLAN"
+						break
+					case commonDefs.IfTypeNull:
+						nextHopIfTypeStr = "NULL"
+						break
+				}
+            cfg := ribd.IPv4Route{nextHopIfTypeStr, "CONNECTED", strconv.Itoa(int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex))),ipAddrStr,0,ipMaskStr,"0.0.0.0"}
+			_, err = routeServiceHandler.CreateIPv4Route(&cfg)//ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
 			//_, err = createV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 			if err != nil {
 				logger.Info(fmt.Sprintln("Route create failed with err %s\n", err))
@@ -581,7 +595,7 @@ func InitializePolicyDB() {
 	PolicyEngineDB.SetTraverseAndReversePolicyFunc(policyEngineTraverseAndReverse)
 	PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
 }
-func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
+func NewRIBDServicesHandler(paramsDir string) *RIBDServicesHandler {
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
 	PARAMSDIR = paramsDir
 	localRouteEventsDB = make([]RouteEventInfo, 0)
@@ -596,5 +610,5 @@ func NewRouteServiceHandler(paramsDir string) *RouteServiceHandler {
 	//CreateRoutes("RouteSetup.json")
 	InitializePolicyDB()
 	//UpdateFromDB()//(paramsDir)
-	return &RouteServiceHandler{}
+	return &RIBDServicesHandler{}
 }

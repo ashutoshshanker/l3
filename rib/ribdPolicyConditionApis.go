@@ -4,39 +4,45 @@ package main
 import (
 	"fmt"
 	"ribd"
+	"ribdInt"
 	"utils/policy"
 )
 
-func (m RouteServiceHandler) CreatePolicyPrefixSet(cfg *ribd.PolicyPrefixSet) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyPrefixSet(cfg *ribdInt.PolicyPrefixSet) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyPrefixSet"))
 	return val, err
 }
 
-func (m RouteServiceHandler) CreatePolicyCondition(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyConditionConfig(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyConditioncfg"))
-	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.MatchProtocolConditionInfo}
-	if cfg.MatchDstIpPrefixConditionInfo != nil {
+	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.MatchProtocol}
+	matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.IpPrefix, MasklengthRange: cfg.MaskLengthRange}
+	newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{ Prefix: matchPrefix}
+/*	if cfg.MatchDstIpPrefixConditionInfo != nil {
 		matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.MatchDstIpPrefixConditionInfo.Prefix.IpPrefix, MasklengthRange: cfg.MatchDstIpPrefixConditionInfo.Prefix.MasklengthRange}
 		newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{PrefixSet: cfg.MatchDstIpPrefixConditionInfo.PrefixSet, Prefix: matchPrefix}
-	}
+	}*/
 	err = PolicyEngineDB.CreatePolicyCondition(newPolicy)
 	return val, err
 }
-func (m RouteServiceHandler) DeletePolicyCondition(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyConditionConfig(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeletePolicyCondition"))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyCondition(newPolicy)
 	return val, err
 }
-func (m RouteServiceHandler) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServicesHandler) UpdatePolicyConditionConfig(origconfig *ribd.PolicyConditionConfig , newconfig *ribd.PolicyConditionConfig , attrset []bool) (val bool, err error) {
+	return val,err
+}
+func (m RIBDServicesHandler) GetBulkPolicyConditionState(fromIndex ribdInt.Int, rcount ribdInt.Int) (policyConditions *ribdInt.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyConditionState"))
 	PolicyConditionsDB := PolicyEngineDB.PolicyConditionsDB
 	localPolicyConditionsDB := *PolicyEngineDB.LocalPolicyConditionsDB
-	var i, validCount, toIndex ribd.Int
-	var tempNode []ribd.PolicyConditionState = make([]ribd.PolicyConditionState, rcount)
-	var nextNode *ribd.PolicyConditionState
-	var returnNodes []*ribd.PolicyConditionState
-	var returnGetInfo ribd.PolicyConditionStateGetInfo
+	var i, validCount, toIndex ribdInt.Int
+	var tempNode []ribdInt.PolicyConditionState = make([]ribdInt.PolicyConditionState, rcount)
+	var nextNode *ribdInt.PolicyConditionState
+	var returnNodes []*ribdInt.PolicyConditionState
+	var returnGetInfo ribdInt.PolicyConditionStateGetInfo
 	i = 0
 	policyConditions = &returnGetInfo
 	more := true
@@ -46,7 +52,7 @@ func (m RouteServiceHandler) GetBulkPolicyConditionState(fromIndex ribd.Int, rco
 	}
 	for ; ; i++ {
 		logger.Info(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
-		if i+fromIndex >= ribd.Int(len(localPolicyConditionsDB)) {
+		if i+fromIndex >= ribdInt.Int(len(localPolicyConditionsDB)) {
 			logger.Info(fmt.Sprintln("All the policy conditions fetched"))
 			more = false
 			break
@@ -72,9 +78,9 @@ func (m RouteServiceHandler) GetBulkPolicyConditionState(fromIndex ribd.Int, rco
 			for idx := 0; idx < len(prefixNode.PolicyStmtList); idx++ {
 				nextNode.PolicyStmtList = append(nextNode.PolicyStmtList, prefixNode.PolicyStmtList[idx])
 			}
-			toIndex = ribd.Int(prefixNode.LocalDBSliceIdx)
+			toIndex = ribdInt.Int(prefixNode.LocalDBSliceIdx)
 			if len(returnNodes) == 0 {
-				returnNodes = make([]*ribd.PolicyConditionState, 0)
+				returnNodes = make([]*ribdInt.PolicyConditionState, 0)
 			}
 			returnNodes = append(returnNodes, nextNode)
 			validCount++

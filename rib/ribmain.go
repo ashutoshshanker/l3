@@ -10,7 +10,7 @@ import (
 )
 
 var logger *logging.Writer
-var routeServiceHandler *RouteServiceHandler
+var routeServiceHandler *RIBDServicesHandler
 var PARAMSDIR string
 var PolicyEngineDB *policy.PolicyEngineDB
 
@@ -40,14 +40,14 @@ func main() {
 	if err != nil {
 		logger.Info(fmt.Sprintln("Failed to create Socket with:", addr))
 	}
-	handler := NewRouteServiceHandler(*paramsDir)
+	handler := NewRIBDServicesHandler(*paramsDir)
 	if handler == nil {
 		logger.Println("handler nill")
 		return
 	}
 	routeServiceHandler = handler
 	UpdateFromDB() //(paramsDir)
-	processor := ribd.NewRouteServiceProcessor(handler)
+	processor := ribd.NewRIBDServicesProcessor((routeServiceHandler))
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
 	server := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)

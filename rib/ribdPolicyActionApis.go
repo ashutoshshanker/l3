@@ -4,32 +4,35 @@ package main
 import (
 	"fmt"
 	"ribd"
+	"ribdInt"
 	"utils/policy"
 )
 
-func (m RouteServiceHandler) CreatePolicyAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyActionConfig(cfg *ribd.PolicyActionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name, ActionType: cfg.ActionType, SetAdminDistanceValue: int(cfg.SetAdminDistanceValue), Accept: cfg.Accept, Reject: cfg.Reject, RedistributeAction: cfg.RedistributeAction, RedistributeTargetProtocol: cfg.RedistributeTargetProtocol, NetworkStatementTargetProtocol: cfg.NetworkStatementTargetProtocol}
 	err = PolicyEngineDB.CreatePolicyAction(newAction)
 	return val, err
 }
 
-func (m RouteServiceHandler) DeletePolicyAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyActionConfig(cfg *ribd.PolicyActionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyAction(newAction)
 	return val, err
 }
-
-func (m RouteServiceHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServicesHandler) UpdatePolicyActionConfig(origconfig *ribd.PolicyActionConfig , newconfig *ribd.PolicyActionConfig , attrset []bool) (val bool, err error) {
+	return val,err
+}
+func (m RIBDServicesHandler) GetBulkPolicyActionState(fromIndex ribdInt.Int, rcount ribdInt.Int) (policyActions *ribdInt.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyActionState"))
 	PolicyActionsDB := PolicyEngineDB.PolicyActionsDB
 	localPolicyActionsDB := *PolicyEngineDB.LocalPolicyActionsDB
-	var i, validCount, toIndex ribd.Int
-	var tempNode []ribd.PolicyActionState = make([]ribd.PolicyActionState, rcount)
-	var nextNode *ribd.PolicyActionState
-	var returnNodes []*ribd.PolicyActionState
-	var returnGetInfo ribd.PolicyActionStateGetInfo
+	var i, validCount, toIndex ribdInt.Int
+	var tempNode []ribdInt.PolicyActionState = make([]ribdInt.PolicyActionState, rcount)
+	var nextNode *ribdInt.PolicyActionState
+	var returnNodes []*ribdInt.PolicyActionState
+	var returnGetInfo ribdInt.PolicyActionStateGetInfo
 	i = 0
 	policyActions = &returnGetInfo
 	more := true
@@ -39,7 +42,7 @@ func (m RouteServiceHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount
 	}
 	for ; ; i++ {
 		logger.Info(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
-		if i+fromIndex >= ribd.Int(len(localPolicyActionsDB)) {
+		if i+fromIndex >= ribdInt.Int(len(localPolicyActionsDB)) {
 			logger.Info(fmt.Sprintln("All the policy Actions fetched"))
 			more = false
 			break
@@ -65,9 +68,9 @@ func (m RouteServiceHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount
 			for idx := 0; idx < len(prefixNode.PolicyStmtList); idx++ {
 				nextNode.PolicyStmtList = append(nextNode.PolicyStmtList, prefixNode.PolicyStmtList[idx])
 			}
-			toIndex = ribd.Int(prefixNode.LocalDBSliceIdx)
+			toIndex = ribdInt.Int(prefixNode.LocalDBSliceIdx)
 			if len(returnNodes) == 0 {
-				returnNodes = make([]*ribd.PolicyActionState, 0)
+				returnNodes = make([]*ribdInt.PolicyActionState, 0)
 			}
 			returnNodes = append(returnNodes, nextNode)
 			validCount++

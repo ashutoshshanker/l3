@@ -1,4 +1,4 @@
-namespace go ribd
+namespace go ribdInt
 typedef i32 int
 struct NextHopInfo {
 	1: int NextHopIfType,
@@ -66,19 +66,6 @@ struct PolicyDstIpMatchPrefixSetCondition{
 	1 : string 	PrefixSet
 	2 : PolicyPrefix Prefix
 }
-//Neighbor 
-//NeighborSet 
-struct PolicyMatchNeighborSetCondition{
-	1 : string 	NeighborSet
-	2 : i32 	MatchSetOptions
-}
-//Tag 
-//TagSet
-struct PolicyMatchTagSetCondition{
-	1 : string 	TagSet
-	2 : i32 	MatchSetOptions
-}
-
 struct PolicyStmtConfig{
 	1:  string  Name
 	2 : string 	AdminState
@@ -104,12 +91,6 @@ struct PolicyStmtStateGetInfo {
 	4: bool More
 	5: list<PolicyStmtState> PolicyStmtStateList
 }
-struct PolicyConditionConfig {
-	1: string Name
-	2: string ConditionType
-	3: string MatchProtocolConditionInfo           
-    4: optional PolicyDstIpMatchPrefixSetCondition MatchDstIpPrefixConditionInfo        
-}
 struct PolicyConditionState{
 	1 : string 	Name
 	2 : string 	ConditionInfo
@@ -122,17 +103,6 @@ struct PolicyConditionStateGetInfo {
 	4: bool More
 	5: list<PolicyConditionState> PolicyConditionStateList
 }
-struct PolicyActionConfig {
-	1: string Name
-	2: string ActionType
-	3: int SetAdminDistanceValue
-	4: bool Accept 
-	5: bool Reject 
-	6: string RedistributeAction
-	7: string RedistributeTargetProtocol   
-	8: string NetworkStatementTargetProtocol 
-}
-
 struct PolicyActionState{
 	1 : string 	Name
 	2 : string 	ActionInfo
@@ -170,50 +140,18 @@ struct PolicyDefinitionStateGetInfo {
 	5: list<PolicyDefinitionState> PolicyDefinitionStateList
 }
 
-struct RouteDistanceState{
-	1 : string 	Protocol
-	2 : int     Distance
-}
-struct RouteDistanceStateGetInfo {
-	1: int StartIdx
-	2: int EndIdx
-	3: int Count
-	4: bool More
-	5: list<RouteDistanceState> RouteDistanceStateList
-}
-//typedef RouteList  list<Routes>
-service RouteService 
+service RIBDINTServices 
 {
-    int createV4Route (1:string destNetIp, 2:string networkMask, 3:int metric, 4:string nextHopIp, 5: int nextHopIfType, 6:int nextHopIfIndex, 7:string routeType);
-    //void updateV4Route (1:string destNetIp, 2:string networkMask, 3:int routeType, 4:string nextHopIp, 5:int nextHopIfIndex, 6:int metric);
-	bool UpdateIPV4Route(1: Routes origconfig, 2: Routes newconfig, 3: list<bool> attrset);
-    int deleteV4Route (1:string destNetIp, 2:string networkMask, 3:string routeType, 4:string nextHopIp);
     NextHopInfo getRouteReachabilityInfo(1: string desIPv4MasktNet);
 	//list<Routes> getConnectedRoutesInfo();
     void printV4Routes();
-	RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
 	RoutesGetInfo getBulkRoutesForProtocol(1: string srcProtocol, 2: int fromIndex ,3: int rcount)
-	IPV4EventStateGetInfo GetBulkIPV4EventState(1: int fromIndex, 2: int count);
+	RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	void linkDown(1: int ifType, 2:int ifIndex);
 	void linkUp(1: int ifType, 2:int ifIndex);
 	void intfUp(1:string ipAddr);
 	void intfDown(1:string ipAddr);
-
-	RouteDistanceStateGetInfo GetBulkRouteDistanceState(1: int fromIndex, 2: int count);
-
-	bool CreatePolicyPrefixSet(1: PolicyPrefixSet config);
-//	bool UpdatePolicyPrefixSet(1: PolicyPrefixSet origconfig, 2: PolicyPrefixSet newconfig, 3: list<bool> attrset);
-//	bool DeletePolicyPrefixSet(1: PolicyPrefixSet config);
-
-	bool CreatePolicyCondition(1: PolicyConditionConfig config);
-//	bool UpdatePolicyCondition(1: PolicyConditionConfig origconfig, 2: PolicyConditionConfig newconfig, 3: list<bool> attrset);
-	bool DeletePolicyCondition(1: PolicyConditionConfig config);
-
-	bool CreatePolicyAction(1: PolicyActionConfig config);
-//	bool UpdatePolicyAction(1: PolicyActionConfig origconfig, 2: PolicyActionConfig newconfig, 3: list<bool> attrset);
-	bool DeletePolicyAction(1: PolicyActionConfig config);
-
 	bool CreatePolicyStatement(1: PolicyStmtConfig config);
 //	bool UpdatePolicyStatement(1: PolicyStmtConfig origconfig, 2: PolicyStmtConfig newconfig, 3: list<bool> attrset);
 	bool DeletePolicyStatement(1: PolicyStmtConfig config);

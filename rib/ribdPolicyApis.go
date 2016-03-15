@@ -3,23 +3,23 @@ package main
 
 import (
 	"fmt"
-	"ribd"
+	"ribdInt"
 	"utils/policy"
 )
 
 type PolicyExtensions struct {
 	hitCounter    int
 	routeList     []string
-	routeInfoList []ribd.Routes
+	routeInfoList []ribdInt.Routes
 }
 type Policy struct {
 	*policy.Policy
 	hitCounter    int
 	routeList     []string
-	routeInfoList []ribd.Routes
+	routeInfoList []ribdInt.Routes
 }
 
-func (m RouteServiceHandler) CreatePolicyStatement(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyStatement(cfg *ribdInt.PolicyStmtConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyStatement"))
 	newPolicyStmt := policy.PolicyStmtConfig{Name: cfg.Name, MatchConditions: cfg.MatchConditions}
 	newPolicyStmt.Conditions = make([]string, 0)
@@ -33,22 +33,22 @@ func (m RouteServiceHandler) CreatePolicyStatement(cfg *ribd.PolicyStmtConfig) (
 	return val, err
 }
 
-func (m RouteServiceHandler) DeletePolicyStatement(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyStatement(cfg *ribdInt.PolicyStmtConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeletePolicyStatement for name ", cfg.Name))
 	stmt := policy.PolicyStmtConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyStatement(stmt)
 	return val, err
 }
 
-func (m RouteServiceHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyStmtStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServicesHandler) GetBulkPolicyStmtState(fromIndex ribdInt.Int, rcount ribdInt.Int) (policyStmts *ribdInt.PolicyStmtStateGetInfo, err error) { //(routes []*ribdInt.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyStmtState"))
 	PolicyStmtDB := PolicyEngineDB.PolicyStmtDB
 	localPolicyStmtDB := *PolicyEngineDB.LocalPolicyStmtDB
-	var i, validCount, toIndex ribd.Int
-	var tempNode []ribd.PolicyStmtState = make([]ribd.PolicyStmtState, rcount)
-	var nextNode *ribd.PolicyStmtState
-	var returnNodes []*ribd.PolicyStmtState
-	var returnGetInfo ribd.PolicyStmtStateGetInfo
+	var i, validCount, toIndex ribdInt.Int
+	var tempNode []ribdInt.PolicyStmtState = make([]ribdInt.PolicyStmtState, rcount)
+	var nextNode *ribdInt.PolicyStmtState
+	var returnNodes []*ribdInt.PolicyStmtState
+	var returnGetInfo ribdInt.PolicyStmtStateGetInfo
 	i = 0
 	policyStmts = &returnGetInfo
 	more := true
@@ -58,7 +58,7 @@ func (m RouteServiceHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount r
 	}
 	for ; ; i++ {
 		logger.Info(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
-		if i+fromIndex >= ribd.Int(len(localPolicyStmtDB)) {
+		if i+fromIndex >= ribdInt.Int(len(localPolicyStmtDB)) {
 			logger.Info(fmt.Sprintln("All the policy statements fetched"))
 			more = false
 			break
@@ -85,9 +85,9 @@ func (m RouteServiceHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount r
 			for idx := 0; idx < len(prefixNode.PolicyList); idx++ {
 				nextNode.PolicyList = append(nextNode.PolicyList, prefixNode.PolicyList[idx])
 			}
-			toIndex = ribd.Int(prefixNode.LocalDBSliceIdx)
+			toIndex = ribdInt.Int(prefixNode.LocalDBSliceIdx)
 			if len(returnNodes) == 0 {
-				returnNodes = make([]*ribd.PolicyStmtState, 0)
+				returnNodes = make([]*ribdInt.PolicyStmtState, 0)
 			}
 			returnNodes = append(returnNodes, nextNode)
 			validCount++
@@ -102,7 +102,7 @@ func (m RouteServiceHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount r
 	return policyStmts, err
 }
 
-func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyDefinition(cfg *ribdInt.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyDefinition"))
 	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Precedence), MatchType: cfg.MatchType}
 	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence, 0)
@@ -117,22 +117,22 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
 	return val, err
 }
 
-func (m RouteServiceHandler) DeletePolicyDefinition(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyDefinition(cfg *ribdInt.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeletePolicyDefinition for name ", cfg.Name))
 	policy := policy.PolicyDefinitionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyDefinition(policy)
 	return val, err
 }
 
-func (m RouteServiceHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServicesHandler) GetBulkPolicyDefinitionState(fromIndex ribdInt.Int, rcount ribdInt.Int) (policyStmts *ribdInt.PolicyDefinitionStateGetInfo, err error) { //(routes []*ribdInt.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyDefinitionState"))
 	PolicyDB := PolicyEngineDB.PolicyDB
 	localPolicyDB := *PolicyEngineDB.LocalPolicyDB
-	var i, validCount, toIndex ribd.Int
-	var tempNode []ribd.PolicyDefinitionState = make([]ribd.PolicyDefinitionState, rcount)
-	var nextNode *ribd.PolicyDefinitionState
-	var returnNodes []*ribd.PolicyDefinitionState
-	var returnGetInfo ribd.PolicyDefinitionStateGetInfo
+	var i, validCount, toIndex ribdInt.Int
+	var tempNode []ribdInt.PolicyDefinitionState = make([]ribdInt.PolicyDefinitionState, rcount)
+	var nextNode *ribdInt.PolicyDefinitionState
+	var returnNodes []*ribdInt.PolicyDefinitionState
+	var returnGetInfo ribdInt.PolicyDefinitionStateGetInfo
 	i = 0
 	policyStmts = &returnGetInfo
 	more := true
@@ -142,7 +142,7 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rc
 	}
 	for ; ; i++ {
 		logger.Info(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
-		if i+fromIndex >= ribd.Int(len(localPolicyDB)) {
+		if i+fromIndex >= ribdInt.Int(len(localPolicyDB)) {
 			logger.Info(fmt.Sprintln("All the policies fetched"))
 			more = false
 			break
@@ -162,14 +162,14 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rc
 			nextNode = &tempNode[validCount]
 			nextNode.Name = prefixNode.Name
 			extensions := prefixNode.Extensions.(PolicyExtensions)
-			nextNode.HitCounter = ribd.Int(extensions.hitCounter)
+			nextNode.HitCounter = ribdInt.Int(extensions.hitCounter)
 			nextNode.IpPrefixList = make([]string, 0)
 			for k := 0; k < len(extensions.routeList); k++ {
 				nextNode.IpPrefixList = append(nextNode.IpPrefixList, extensions.routeList[k])
 			}
-			toIndex = ribd.Int(prefixNode.LocalDBSliceIdx)
+			toIndex = ribdInt.Int(prefixNode.LocalDBSliceIdx)
 			if len(returnNodes) == 0 {
-				returnNodes = make([]*ribd.PolicyDefinitionState, 0)
+				returnNodes = make([]*ribdInt.PolicyDefinitionState, 0)
 			}
 			returnNodes = append(returnNodes, nextNode)
 			validCount++

@@ -9,6 +9,7 @@ import (
 	"l3/rib/ribdCommonDefs"
 	"net"
 	"ribd"
+	"ribdInt"
 	"sort"
 	"strconv"
 	"time"
@@ -26,7 +27,7 @@ type RouteDistanceConfig struct {
 }
 type AdminDistanceSlice []ribd.RouteDistanceState
 type RedistributeRouteInfo struct {
-	route ribd.Routes
+	route ribdInt.Routes
 }
 
 var RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
@@ -79,7 +80,7 @@ func BuildProtocolAdminDistanceSlice() {
 		if v.configuredDistance != -1 {
 			distance = v.configuredDistance
 		}
-		routeDistance := ribd.RouteDistanceState{Protocol: protocol, Distance: ribd.Int(distance)}
+		routeDistance := ribd.RouteDistanceState{Protocol: protocol, Distance: int32(distance)}
 		ProtocolAdminDistanceSlice = append(ProtocolAdminDistanceSlice, routeDistance)
 	}
 	sort.Sort(ProtocolAdminDistanceSlice)
@@ -102,7 +103,7 @@ func BuildProtocolAdminDistanceSlice() {
    }
    return isBetter
 }*/
-func buildPolicyEntityFromRoute(route ribd.Routes, params interface{}) (entity policy.PolicyEngineFilterEntityParams) {
+func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entity policy.PolicyEngineFilterEntityParams) {
 	routeInfo := params.(RouteParams)
 	destNetIp, err := netUtils.GetCIDR(route.Ipaddr, route.Mask)
 	if err != nil {
@@ -145,7 +146,7 @@ func newNextHopIP(ip string, routeInfoList []RouteInfoRecord) (isNewNextHopIP bo
 	}
 	return isNewNextHopIP
 }
-func isSameRoute(selectedRoute ribd.Routes, route ribd.Routes) (same bool) {
+func isSameRoute(selectedRoute ribdInt.Routes, route ribdInt.Routes) (same bool) {
 	logger.Println("isSameRoute")
 	if selectedRoute.Ipaddr == route.Ipaddr && selectedRoute.Mask == route.Mask && selectedRoute.Prototype == route.Prototype {
 		same = true
@@ -188,7 +189,7 @@ func getPolicyRouteMapIndex(entity policy.PolicyEngineFilterEntityParams, policy
 	policyRouteIndex = PolicyRouteIndex{destNetIP: entity.DestNetIp, policy: policy}
 	return policyRouteIndex
 }
-func addPolicyRouteMap(route ribd.Routes, policyName string) {
+func addPolicyRouteMap(route ribdInt.Routes, policyName string) {
 	logger.Println("addPolicyRouteMap")
 	ipPrefix, err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
 	if err != nil {
@@ -242,7 +243,7 @@ func addPolicyRouteMap(route ribd.Routes, policyName string) {
 		}
 	}
 	if tempPolicy.routeInfoList == nil {
-		tempPolicy.routeInfoList = make([]ribd.Routes, 0)
+		tempPolicy.routeInfoList = make([]ribdInt.Routes, 0)
 	}
 	if found == false {
 		tempPolicy.routeInfoList = append(tempPolicy.routeInfoList, route)
@@ -250,10 +251,10 @@ func addPolicyRouteMap(route ribd.Routes, policyName string) {
 	tempPolicyInfo.Extensions = tempPolicy
 	PolicyEngineDB.PolicyDB.Set(patriciaDB.Prefix(policyName), tempPolicyInfo)
 }
-func deletePolicyRouteMap(route ribd.Routes, policyName string) {
+func deletePolicyRouteMap(route ribdInt.Routes, policyName string) {
 	logger.Println("deletePolicyRouteMap")
 }
-func updatePolicyRouteMap(route ribd.Routes, policy string, op int) {
+func updatePolicyRouteMap(route ribdInt.Routes, policy string, op int) {
 	logger.Println("updatePolicyRouteMap")
 	if op == add {
 		addPolicyRouteMap(route, policy)
@@ -263,7 +264,7 @@ func updatePolicyRouteMap(route ribd.Routes, policy string, op int) {
 
 }
 
-func deleteRoutePolicyStateAll(route ribd.Routes) {
+func deleteRoutePolicyStateAll(route ribdInt.Routes) {
 	logger.Println("deleteRoutePolicyStateAll")
 	destNet, err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
 	if err != nil {
@@ -276,12 +277,12 @@ func deleteRoutePolicyStateAll(route ribd.Routes) {
 		return
 	}
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
-	routeInfoRecordList.policyHitCounter = route.PolicyHitCounter
+	routeInfoRecordList.policyHitCounter = ribd.Int(route.PolicyHitCounter)
 	routeInfoRecordList.policyList = nil //append(routeInfoRecordList.policyList[:0])
 	RouteInfoMap.Set(destNet, routeInfoRecordList)
 	return
 }
-func addRoutePolicyState(route ribd.Routes, policy string, policyStmt string) {
+func addRoutePolicyState(route ribdInt.Routes, policy string, policyStmt string) {
 	logger.Println("addRoutePolicyState")
 	destNet, err := getNetowrkPrefixFromStrings(route.Ipaddr, route.Mask)
 	if err != nil {
@@ -295,7 +296,7 @@ func addRoutePolicyState(route ribd.Routes, policy string, policyStmt string) {
 	}
 	logger.Info(fmt.Sprintln("Adding policy ", policy, " to route %v", destNet))
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
-	routeInfoRecordList.policyHitCounter = route.PolicyHitCounter
+	routeInfoRecordList.policyHitCounter = ribd.Int(route.PolicyHitCounter)
 	if routeInfoRecordList.policyList == nil {
 		routeInfoRecordList.policyList = make([]string, 0)
 	}
@@ -341,7 +342,7 @@ func deleteRoutePolicyState(ipPrefix patriciaDB.Prefix, policyName string) {
 	RouteInfoMap.Set(ipPrefix, routeInfoRecordList)
 }
 
-func updateRoutePolicyState(route ribd.Routes, op int, policy string, policyStmt string) {
+func updateRoutePolicyState(route ribdInt.Routes, op int, policy string, policyStmt string) {
 	logger.Println("updateRoutePolicyState")
 	if op == delAll {
 		deleteRoutePolicyStateAll(route)
@@ -349,7 +350,7 @@ func updateRoutePolicyState(route ribd.Routes, op int, policy string, policyStmt
 		addRoutePolicyState(route, policy, policyStmt)
 	}
 }
-func UpdateRedistributeTargetMap(evt int, protocol string, route ribd.Routes) {
+func UpdateRedistributeTargetMap(evt int, protocol string, route ribdInt.Routes) {
 	logger.Println("UpdateRedistributeTargetMap")
 	if evt == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
 		redistributeMapInfo := RedistributeRouteMap[protocol]
@@ -382,7 +383,7 @@ func UpdateRedistributeTargetMap(evt int, protocol string, route ribd.Routes) {
 		}
 	}
 }
-func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribd.Routes, evt int) {
+func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes, evt int) {
 	logger.Println("RouteNotificationSend")
 	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: route}
 	msgbufbytes, err := json.Marshal(msgBuf)
