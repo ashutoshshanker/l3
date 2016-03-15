@@ -99,7 +99,14 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					nbrConf.isMaster = true
 					server.logger.Info("NBREVENT: Negotiation done..")
 					negotiationDone = true
-					//nbrConf.ospfNbrDBDTickerCh.Stop()
+					nbrConf.OspfNbrState = config.NbrExchange
+					nbrConf.nbrEvent = config.NbrNegotiationDone
+				}
+				if nbrDbPkt.msbit && nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
+					server.logger.Info(fmt.Sprintln("DBD: (ExStart/slave) SLAVE = self,  MASTER = ", nbrKey.OspfNbrRtrId))
+					nbrConf.isMaster = true
+					server.logger.Info("NBREVENT: Negotiation done..")
+					negotiationDone = true
 					nbrConf.OspfNbrState = config.NbrExchange
 					nbrConf.nbrEvent = config.NbrNegotiationDone
 				}
@@ -117,7 +124,6 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					server.logger.Info(fmt.Sprintln("DBD:(ExStart) SLAVE = ", nbrKey.OspfNbrRtrId, "MASTER = SELF"))
 					server.logger.Info("NBREVENT: Negotiation done..")
 					negotiationDone = true
-					//nbrConf.ospfNbrDBDTickerCh.Stop()
 					nbrConf.OspfNbrState = config.NbrExchange
 					nbrConf.nbrEvent = config.NbrNegotiationDone
 				}

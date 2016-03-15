@@ -1021,10 +1021,10 @@ func (server *OSPFServer) processTxLsaUpdate(lsa_data ospfFloodMsg) {
 			dstIp)
 		if lsa_upd_pkt != nil {
 			//server.logger.Info(fmt.Sprintln(" LSA UPD SEND: link id  ", lsa_data.linkid))
-//			for key, intf := range server.IntfConfMap {
-				server.SendOspfPkt(nbrConf.intfConfKey, lsa_upd_pkt)
-				server.logger.Info(fmt.Sprintln("FLOOD: Nbr FULL ", nbrConf.OspfNbrIPAddr, " out interface ", intConf.IfIpAddr))
-//			}
+			//			for key, intf := range server.IntfConfMap {
+			server.SendOspfPkt(nbrConf.intfConfKey, lsa_upd_pkt)
+			server.logger.Info(fmt.Sprintln("FLOOD: Nbr FULL ", nbrConf.OspfNbrIPAddr, " out interface ", intConf.IfIpAddr))
+			//			}
 		}
 
 	case LSASELFLOOD: //Flood received LSA on selective interfaces.
@@ -1038,7 +1038,7 @@ func (server *OSPFServer) processTxLsaUpdate(lsa_data ospfFloodMsg) {
 			send := server.interfaceFloodCheck(key, intf)
 			if send {
 				if lsa_data.pkt != nil {
-					server.logger.Info(fmt.Sprintln("FLOOD: Flood LSA interface ", intf.IfIpAddr, " lsid ", lsid, " lstype ", lsa_data.lsType))
+					server.logger.Info(fmt.Sprintln("FLOOD: Unicast LSA interface ", intf.IfIpAddr, " lsid ", lsid, " lstype ", lsa_data.lsType))
 					lsas_enc := make([]byte, 4)
 					var no_lsa uint32
 					no_lsa = 1
