@@ -292,7 +292,8 @@ func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, 
 	}
 	if closeConnDir == config.ConnDirInvalid || closeConnDir != connDir {
 		asSize := packet.GetASSize(openMsg)
-		mgr.Peer.SetPeerAttrs(openMsg.BGPId, asSize, mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime)
+		addPathFamily := packet.GetAddPathFamily(openMsg)
+		mgr.Peer.SetPeerAttrs(openMsg.BGPId, asSize, mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime, addPathFamily)
 	}
 
 	if closeConnDir == connDir {
