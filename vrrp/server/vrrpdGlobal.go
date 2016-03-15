@@ -1,11 +1,12 @@
 package vrrpServer
 
 import (
+	"arpd"
 	"asicdServices"
 	"database/sql"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
+	_ "github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"net"
@@ -75,6 +76,11 @@ type VrrpAsicdClient struct {
 	ClientHdl *asicdServices.ASICDServicesClient
 }
 
+type VrrpArpdClient struct {
+	VrrpClientBase
+	ClientHdl *arpd.ARPDServicesClient
+}
+
 type VrrpGlobalInfo struct {
 	IntfConfig vrrpd.VrrpIntfConfig
 	// The initial value is the same as Advertisement_Interval.
@@ -105,23 +111,12 @@ type VrrpPktChannelInfo struct {
 	IfIndex int32
 }
 
-/*
- *  VRRP TX INTERFACE
- */
-type VrrpTxIntf interface {
-	VrrpSendPkt(chan string /*VrrpPktChannelInfo*/)
-	VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16)
-	VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16)
-	VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte, hdrLen uint16) []byte
-	VrrpSendGratuitousArp(gblInfo *VrrpGlobalInfo)
-	VrrpCreateWriteBuf(eth *layers.Ethernet, arp *layers.ARP, ipv4 *layers.IPv4, payload []byte) []byte
-}
-
 type VrrpServer struct {
 	logger                        *logging.Writer
 	vrrpDbHdl                     *sql.DB
 	paramsDir                     string
 	asicdClient                   VrrpAsicdClient
+	arpdClient                    VrrpArpdClient
 	asicdSubSocket                *nanomsg.SubSocket
 	vrrpGblInfo                   map[string]VrrpGlobalInfo // IfIndex + VRID
 	vrrpIntfStateSlice            []string

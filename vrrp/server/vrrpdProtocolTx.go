@@ -10,6 +10,18 @@ import (
 )
 
 /*
+ *  VRRP TX INTERFACE
+ */
+type VrrpTxIntf interface {
+	VrrpSendPkt(chan string /*VrrpPktChannelInfo*/)
+	VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16)
+	VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16)
+	VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte, hdrLen uint16) []byte
+	VrrpSendGratuitousArp(gblInfo *VrrpGlobalInfo)
+	VrrpCreateWriteBuf(eth *layers.Ethernet, arp *layers.ARP, ipv4 *layers.IPv4, payload []byte) []byte
+}
+
+/*
 Octet Offset--> 0                   1                   2                   3
  |		0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  |		+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

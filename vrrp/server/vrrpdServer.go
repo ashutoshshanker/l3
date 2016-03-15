@@ -139,6 +139,10 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 	if !svr.vrrpMacConfigAdded {
 		go svr.VrrpAddMacEntry(true /*add vrrp protocol mac*/)
 	}
+
+	// Register Virtual Ip with Arp... so that it can do the necessary
+	svr.arpdClient.ClientHdl.RegisterVirtualIp(gblInfo.IntfConfig.VirtualIPv4Addr,
+		gblInfo.IntfConfig.IfIndex)
 	// @TODO: remove this call... this is just for debugging during initial stages
 	svr.VrrpDumpIntfInfo(gblInfo)
 }
@@ -208,10 +212,33 @@ func (svr *VrrpServer) VrrpConnectToAsicd(client VrrpClientJson) error {
 	return nil
 }
 
+func (svr *VrrpServer) VrrpConnectToArpd(client VrrpClientJson) error {
+	svr.logger.Info(fmt.Sprintln("Connecting to arpd"))
+	var err error
+	svr.arpdClient.Address = "localhost:" + strconv.Itoa(client.Port)
+	svr.arpdClient.Transport, svr.arpdClient.PtrProtocolFactory, err =
+		ipcutils.CreateIPCHandles(svr.arpdClient.Address)
+	if svr.arpdClient.Transport == nil ||
+		svr.arpdClient.PtrProtocolFactory == nil ||
+		err != nil {
+		svr.logger.Err(fmt.Sprintln("VRRP: Connecting to",
+			client.Name, "failed ", err))
+		return err
+	}
+	svr.arpdClient.ClientHdl =
+		arpdServices.NewARPDServicesClientFactory(
+			svr.arpdClient.Transport,
+			svr.arpdClient.PtrProtocolFactory)
+	svr.arpdClient.IsConnected = true
+	return nil
+}
+
 func (svr *VrrpServer) VrrpConnectToUnConnectedClient(client VrrpClientJson) error {
 	switch client.Name {
 	case "asicd":
 		return svr.VrrpConnectToAsicd(client)
+	case "arpd":
+		return svr.VrrpConnectToArpd(client)
 	default:
 		return errors.New(VRRP_CLIENT_CONNECTION_NOT_REQUIRED)
 	}

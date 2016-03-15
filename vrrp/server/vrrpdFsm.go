@@ -4,6 +4,14 @@ import (
 	"net"
 )
 
+type VrrpFsmIntf interface {
+	VrrpFsmStart(fsmObj VrrpFsm)
+	VrrpCreateObject(gblInfo VrrpGlobalInfo) (fsmObj VrrpFsm)
+	VrrpInitState(gblInfo *VrrpGlobalInfo, key string)
+	VrrpBackupState(gblInfo *VrrpGlobalInfo)
+	VrrpMasterState(gblInfo *VrrpGlobalInfo)
+}
+
 /*
 			   +---------------+
 		+--------->|               |<-------------+
@@ -20,7 +28,7 @@ import (
 
 */
 
-func (svr *VrrpServer) VrrpCreateFsmObject(gblInfo VrrpGlobalInfo) (fsmObj VrrpFsm) {
+func (svr *VrrpServer) VrrpCreateObject(gblInfo VrrpGlobalInfo) (fsmObj VrrpFsm) {
 	vrrpHeader := VrrpPktHeader{
 		Version:       VRRP_VERSION2,
 		Type:          VRRP_PKT_TYPE,
@@ -38,7 +46,7 @@ func (svr *VrrpServer) VrrpCreateFsmObject(gblInfo VrrpGlobalInfo) (fsmObj VrrpF
 	}
 }
 
-func (svr *VrrpServer) VrrpFsmInitState(gblInfo *VrrpGlobalInfo, key string) {
+func (svr *VrrpServer) VrrpInitState(gblInfo *VrrpGlobalInfo, key string) {
 	if gblInfo.IntfConfig.Priority == VRRP_MASTER_PRIORITY {
 		// (110) + Send an ADVERTISEMENT
 		svr.vrrpTxPktCh <- key
@@ -103,7 +111,7 @@ func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 
 	switch currentState {
 	case VRRP_INITIALIZE_STATE:
-		svr.VrrpFsmInitState(gblInfo, key)
+		svr.VrrpInitState(gblInfo, key)
 	case VRRP_BACKUP_STATE:
 
 	case VRRP_MASTER_STATE:
