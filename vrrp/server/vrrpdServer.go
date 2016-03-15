@@ -31,7 +31,8 @@ func (svr *VrrpServer) VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
 	svr.logger.Info(fmt.Sprintln("AdvertisementTime:", gblInfo.IntfConfig.AdvertisementInterval))
 	svr.logger.Info(fmt.Sprintln("MasterAdverInterval:", gblInfo.MasterAdverInterval))
 	svr.logger.Info(fmt.Sprintln("Skew Time:", gblInfo.SkewTime))
-	svr.logger.Info(fmt.Sprintln("Master Down Interval:", gblInfo.MasterDownInterval))
+	svr.logger.Info(fmt.Sprintln("Master Down Timer:", gblInfo.MasterDownTimer))
+	svr.logger.Info(fmt.Sprintln("Adver Timer:", gblInfo.AdverTimer))
 }
 
 func (svr *VrrpServer) VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
@@ -60,7 +61,8 @@ func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfSt
 	entry.PreemptMode = gblInfo.IntfConfig.PreemptMode
 	entry.VirtualRouterMACAddress = gblInfo.IntfConfig.VirtualRouterMACAddress
 	entry.SkewTime = gblInfo.SkewTime
-	entry.MasterDownInterval = gblInfo.MasterDownInterval
+	entry.MasterDownTimer = gblInfo.MasterDownTimer
+	entry.AdverTimer = gblInfo.AdverTimer
 }
 
 func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key string) {

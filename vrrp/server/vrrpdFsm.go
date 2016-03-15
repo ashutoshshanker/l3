@@ -40,10 +40,8 @@ func (svr *VrrpServer) VrrpCreateFsmObject(gblInfo VrrpGlobalInfo) (fsmObj VrrpF
 
 func (svr *VrrpServer) VrrpFsmInitState(gblInfo *VrrpGlobalInfo, key string) {
 	if gblInfo.IntfConfig.Priority == VRRP_MASTER_PRIORITY {
-		// Go directly into master state..
 		// (110) + Send an ADVERTISEMENT
-		svr.vrrpTxPktCh <- key // Sending vrrp packet with the information
-
+		svr.vrrpTxPktCh <- key
 		// (115) + If the protected IPvX address is an IPv4 address, then:
 		ip, _, _ := net.ParseCIDR(gblInfo.IpAddr)
 		if ip.To4() != nil { // If not nill then its ipv4
@@ -64,6 +62,12 @@ func (svr *VrrpServer) VrrpFsmInitState(gblInfo *VrrpGlobalInfo, key string) {
 			   address set to the virtual router MAC address.
 			*/
 		}
+		// (140) + Set the Adver_Timer to Advertisement_Interval
+		gblInfo.AdverTimer = gblInfo.IntfConfig.AdvertisementInterval
+		// (145) + Transition to the {Master} state
+		gblInfo.StateLock.Lock()
+		gblInfo.StateName = VRRP_MASTER_STATE
+		gblInfo.StateLock.Unlock()
 	} else {
 		/*
 			(150) - else // rtr does not own virt addr
@@ -80,7 +84,7 @@ func (svr *VrrpServer) VrrpFsmInitState(gblInfo *VrrpGlobalInfo, key string) {
 			gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
 				gblInfo.MasterAdverInterval) / 256
 		}
-		gblInfo.MasterDownInterval = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
+		gblInfo.MasterDownTimer = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
 		gblInfo.StateLock.Lock()
 		gblInfo.StateName = VRRP_BACKUP_STATE
 		gblInfo.StateLock.Unlock()

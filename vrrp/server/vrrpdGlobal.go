@@ -82,7 +82,9 @@ type VrrpGlobalInfo struct {
 	// (((256 - priority) * Master_Adver_Interval) / 256)
 	SkewTime int32
 	// (3 * Master_Adver_Interval) + Skew_time
-	MasterDownInterval int32
+	MasterDownTimer int32
+	// Advertisement Timer
+	AdverTimer int32
 	// IfIndex IpAddr which needs to be used if no Virtual Ip is specified
 	IpAddr string
 	// cached info for IfName is required in future
