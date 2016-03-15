@@ -16,7 +16,7 @@ type VxlanDbEntry struct {
 	Group  net.IP // multicast group IP
 	MTU    uint32 // MTU size for each VTEP
 	Brg    *netlink.Bridge
-	Links  []*netlink.Vxlan
+	Links  []*netlink.Link
 }
 
 type VxlanLinux struct {
@@ -46,7 +46,7 @@ func (v *VxlanLinux) createVxLAN(c *VxlanConfig) {
 			VlanId: c.VlanId,
 			Group:  c.Group,
 			MTU:    c.MTU,
-			Links:  make([]*netlink.Vxlan, 0),
+			Links:  make([]*netlink.Link, 0),
 		}
 		// lets create a bridge if it does not exists
 		// bridge should be based on the VLAN used by a
@@ -55,14 +55,21 @@ func (v *VxlanLinux) createVxLAN(c *VxlanConfig) {
 		bridge := &netlink.Bridge{
 			LinkAttrs: netlink.LinkAttrs{
 				Name: brname,
+				MTU:  int(c.MTU),
 			},
 		}
 
 		if err := netlink.LinkAdd(bridge); err != nil {
 			panic(err)
 		}
+
+		link, err := netlink.LinkByName(bridge.Attrs().Name)
+		if err != nil {
+			panic(err)
+		}
+
 		vxlanDbEntry := VxlanDB[c.VNI]
-		vxlanDbEntry.Brg = bridge
+		vxlanDbEntry.Brg = link.(*netlink.Bridge)
 		VxlanDB[c.VNI] = vxlanDbEntry
 		// lets set the vtep interface to up
 		if err := netlink.LinkSetUp(bridge); err != nil {
@@ -74,16 +81,12 @@ func (v *VxlanLinux) createVxLAN(c *VxlanConfig) {
 func (v *VxlanLinux) deleteVxLAN(c *VxlanConfig) {
 
 	if vxlan, ok := VxlanDB[c.VNI]; ok {
-		for _, vtep := range vxlan.Links {
-			link, err := netlink.LinkByName(vtep.Attrs().Name)
-			if err != nil {
-				panic(err)
-			}
+		for _, link := range vxlan.Links {
 			// lets set the vtep interface to up
-			if err := netlink.LinkSetDown(link); err != nil {
+			if err := netlink.LinkSetDown(*link); err != nil {
 				panic(err)
 			}
-			if err := netlink.LinkDel(link); err != nil {
+			if err := netlink.LinkDel(*link); err != nil {
 				panic(err)
 			}
 		}
@@ -94,7 +97,8 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 
 	vtep := &netlink.Vxlan{
 		LinkAttrs: netlink.LinkAttrs{
-			Name: c.VtepName,
+			Name:        c.VtepName,
+			MasterIndex: VxlanDB[c.VxlanId].Brg.Attrs().Index,
 		},
 		VxlanId:      int(c.VxlanId),
 		VtepDevIndex: int(c.SrcIfIndex),
@@ -188,17 +192,12 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 	}
 	*/
 
-	// lets add the vtep to the bridge
-	if err := netlink.LinkSetMaster(link, VxlanDB[uint32(vtep.VxlanId)].Brg); err != nil {
-		panic(err)
-	}
-
 	vxlanDbEntry := VxlanDB[uint32(vtep.VxlanId)]
-	vxlanDbEntry.Links = append(vxlanDbEntry.Links, vtep)
+	vxlanDbEntry.Links = append(vxlanDbEntry.Links, &link)
 	VxlanDB[uint32(vtep.VxlanId)] = vxlanDbEntry
 
 	// lets set the vtep interface to up
-	if err := netlink.LinkSetUp(vtep); err != nil {
+	if err := netlink.LinkSetUp(link); err != nil {
 		panic(err)
 	}
 
@@ -208,22 +207,22 @@ func (v *VxlanLinux) deleteVtep(c *VtepConfig) {
 
 	if vxlan, ok := VxlanDB[c.VxlanId]; ok {
 		for i, link := range vxlan.Links {
-			if link.Attrs().Name == c.VtepName {
+			if (*link).(*netlink.Vxlan).Attrs().Name == c.VtepName {
 				vxlan.Links = append(vxlan.Links[:i], vxlan.Links[i+1:]...)
 				break
 			}
 		}
 	}
 
-	vtep, err := netlink.LinkByName(c.VtepName)
+	link, err := netlink.LinkByName(c.VtepName)
 	if err != nil {
 		panic(err)
 	}
-	if err := netlink.LinkSetDown(vtep); err != nil {
+	if err := netlink.LinkSetDown(link); err != nil {
 		panic(err)
 	}
 
-	if err := netlink.LinkDel(vtep); err != nil {
+	if err := netlink.LinkDel(link); err != nil {
 		panic(err)
 	}
 }
