@@ -97,8 +97,8 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 
 	vtep := &netlink.Vxlan{
 		LinkAttrs: netlink.LinkAttrs{
-			Name:        c.VtepName,
-			MasterIndex: VxlanDB[c.VxlanId].Brg.Attrs().Index,
+			Name: c.VtepName,
+			//MasterIndex: VxlanDB[c.VxlanId].Brg.Attrs().Index,
 		},
 		VxlanId:      int(c.VxlanId),
 		VtepDevIndex: int(c.SrcIfIndex),
@@ -198,6 +198,10 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 
 	// lets set the vtep interface to up
 	if err := netlink.LinkSetUp(link); err != nil {
+		panic(err)
+	}
+
+	if err := netlink.LinkSetMaster(link, vxlanDbEntry.Brg); err != nil {
 		panic(err)
 	}
 
