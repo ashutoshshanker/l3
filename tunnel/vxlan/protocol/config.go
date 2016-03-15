@@ -198,7 +198,8 @@ func (s *VXLANServer) StartConfigListener() {
 		Vtepupdate:  make(chan VtepUpdate, 0),
 	}
 
-	softswitch := &VxlanLinux{}
+	softswitch := NewVxlanLinux()
+	softswitch.logger = s.logger
 
 	go func(cc *VxLanChannels, ss *VxlanLinux) {
 		for {
