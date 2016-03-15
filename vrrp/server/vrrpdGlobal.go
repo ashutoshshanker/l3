@@ -8,6 +8,7 @@ import (
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"net"
+	"sync"
 	"time"
 	"utils/logging"
 	"vrrpd"
@@ -51,7 +52,8 @@ type VrrpPktHeader struct {
 }
 
 type VrrpFsm struct {
-	vrrpPkt  *VrrpPktHeader
+	key      string
+	vrrpHdr  *VrrpPktHeader
 	vrrpInFo *VrrpGlobalInfo
 }
 
@@ -86,6 +88,10 @@ type VrrpGlobalInfo struct {
 	IfName string
 	// Pcap Handler for receiving packets
 	pHandle *pcap.Handle
+	// State Name
+	StateName string
+	// Lock to read current state of vrrp object
+	StateLock *sync.RWMutex
 }
 
 type VrrpPktChannelInfo struct {
@@ -116,6 +122,7 @@ type VrrpServer struct {
 	VrrpIntfConfigCh              chan vrrpd.VrrpIntfConfig //VrrpGlobalInfo
 	vrrpRxPktCh                   chan VrrpPktChannelInfo
 	vrrpTxPktCh                   chan VrrpPktChannelInfo
+	vrrpFsmCh                     chan VrrpFsm
 	vrrpRxChStarted               bool
 	vrrpTxChStarted               bool
 	vrrpMacConfigAdded            bool
@@ -151,6 +158,7 @@ const (
 	VRRP_INTF_IPADDR_MAPPING_DEFAULT_SIZE = 5
 	VRRP_RX_BUF_CHANNEL_SIZE              = 100
 	VRRP_TX_BUF_CHANNEL_SIZE              = 1
+	VRRP_FSM_CHANNEL_SIZE                 = 1
 	VRRP_INTF_CONFIG_CH_SIZE              = 1
 
 	// ip/vrrp header Check Defines
@@ -163,8 +171,14 @@ const (
 	VRRP_HEADER_SIZE_EXCLUDING_IPVX = 8 // 8 bytes...
 	VRRP_IPV4_HEADER_MIN_SIZE       = 20
 	VRRP_HEADER_MIN_SIZE            = 20
+	VRRP_MASTER_PRIORITY            = 255
 
 	// vrrp default configs
 	VRRP_DEFAULT_PRIORITY = 100
 	VRRP_IEEE_MAC_ADDR    = "00-00-5E-00-01-"
+
+	// vrrp state names
+	VRRP_INITIALIZE_STATE = "Initialize"
+	VRRP_BACKUP_STATE     = "Backup"
+	VRRP_MASTER_STATE     = "Master"
 )

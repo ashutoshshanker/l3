@@ -112,13 +112,20 @@ func (svr *VrrpServer) VrrpCheckHeader(hdr *VrrpPktHeader, layerContent []byte, 
 	return nil
 }
 
-func (svr *VrrpServer) VrrpCheckIpInfo(rcvdCh <-chan VrrpPktChannelInfo) {
+func (svr *VrrpServer) VrrpCheckRcvdPkt(rcvdCh <-chan VrrpPktChannelInfo) {
 	svr.logger.Info("started pre-fsm check")
 	for {
 		pktChannel := <-rcvdCh
 		packet := pktChannel.pkt
 		key := pktChannel.key
-		IfIndex := pktChannel.IfIndex
+		gblInfo := svr.vrrpGblInfo[key]
+		gblInfo.StateLock.Lock()
+		if gblInfo.StateName == VRRP_INITIALIZE_STATE {
+			gblInfo.StateLock.Unlock()
+			continue
+		}
+		gblInfo.StateLock.Unlock()
+		//IfIndex := pktChannel.IfIndex
 		// Get Entire IP layer Info
 		ipLayer := packet.Layer(layers.LayerTypeIPv4)
 		if ipLayer == nil {
@@ -147,12 +154,20 @@ func (svr *VrrpServer) VrrpCheckIpInfo(rcvdCh <-chan VrrpPktChannelInfo) {
 			continue
 		}
 
-		//svr.logger.Info("Vrrp Info Check Pass...Start FSM")
-		svr.vrrpTxPktCh <- VrrpPktChannelInfo{
-			pkt:     packet,
-			key:     key,
-			IfIndex: IfIndex,
-		}
+		// Start FSM for VRRP after all the checks are successful
+		/*
+			svr.vrrpFsmCh <- VrrpFsm{
+				VrrpPktHeader,
+				vrrpInFo,
+			}
+			/*
+				//svr.logger.Info("Vrrp Info Check Pass...Start FSM")
+				svr.vrrpTxPktCh <- VrrpPktChannelInfo{
+					pkt:     packet,
+					key:     key,
+					IfIndex: IfIndex,
+				}
+		*/
 	}
 }
 
@@ -192,7 +207,7 @@ func (svr *VrrpServer) VrrpInitPacketListener(key string, IfIndex int32) {
 	svr.vrrpGblInfo[key] = gblInfo
 	svr.logger.Info(fmt.Sprintln("VRRP listener running for", IfIndex))
 	if svr.vrrpRxChStarted == false {
-		go svr.VrrpCheckIpInfo(svr.vrrpRxPktCh)
+		go svr.VrrpCheckRcvdPkt(svr.vrrpRxPktCh)
 		svr.vrrpRxChStarted = true
 	}
 	if svr.vrrpTxChStarted == false {

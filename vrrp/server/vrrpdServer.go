@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 	"utils/ipcutils"
@@ -101,14 +102,6 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 				strconv.Itoa(int(gblInfo.IntfConfig.VRID))
 		}
 	}
-
-	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
-	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
-		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
-			gblInfo.MasterAdverInterval) / 256
-	}
-	gblInfo.MasterDownInterval = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
-
 	if ok := svr.VrrpUpdateIntfIpAddr(&gblInfo); ok == false {
 		// If we miss Asic Notification then do one time get bulk for Ipv4
 		// Interface... Once done then update Ip Addr again
@@ -116,13 +109,29 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 		svr.VrrpGetIPv4IntfList()
 		svr.VrrpUpdateIntfIpAddr(&gblInfo)
 	}
+
+	gblInfo.StateLock = &sync.RWMutex{}
+	// Set Initial state
+	gblInfo.StateLock.Lock()
+	gblInfo.StateName = VRRP_INITIALIZE_STATE
+	gblInfo.StateLock.Unlock()
+
 	svr.vrrpGblInfo[key] = gblInfo
 	svr.vrrpIntfStateSlice = append(svr.vrrpIntfStateSlice, key)
-	go svr.VrrpInitPacketListener(key, config.IfIndex)
+	// Create fsm object and push that object to fsm channel
+	// fsmObj := svr.VrrpCreateFsmObject(gblInfo)
+	// Send the config global on the channel... We do not need to create a
+	// vrrp header right now.. it will be created only if necessary
+	svr.vrrpFsmCh <- VrrpFsm{
+		key:      key,
+		vrrpInFo: &gblInfo,
+	}
+
+	// Create Packet listener
+	svr.VrrpInitPacketListener(key, config.IfIndex)
 	if !svr.vrrpMacConfigAdded {
 		go svr.VrrpAddMacEntry(true /*add vrrp protocol mac*/)
 	}
-	//VrrpDumpIntfInfo(gblInfo)
 }
 
 func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(fromIndex int, cnt int) (int,
@@ -289,6 +298,7 @@ func (vrrpServer *VrrpServer) VrrpInitGlobalDS() {
 		VRRP_INTF_CONFIG_CH_SIZE)
 	vrrpServer.vrrpRxPktCh = make(chan VrrpPktChannelInfo, VRRP_RX_BUF_CHANNEL_SIZE)
 	vrrpServer.vrrpTxPktCh = make(chan VrrpPktChannelInfo, VRRP_TX_BUF_CHANNEL_SIZE)
+	vrrpServer.vrrpFsmCh = make(chan VrrpFsm, VRRP_FSM_CHANNEL_SIZE)
 	vrrpServer.vrrpSnapshotLen = 1024
 	vrrpServer.vrrpPromiscuous = false
 	vrrpServer.vrrpTimeout = 10 * time.Microsecond
@@ -305,8 +315,6 @@ func (svr *VrrpServer) VrrpDeAllocateMemoryToGlobalDS() {
 }
 
 func (svr *VrrpServer) StartServer(paramsDir string) {
-	// Allocate memory to all the Data Structures
-	svr.VrrpInitGlobalDS()
 	svr.paramsDir = paramsDir
 	// Initialize DB
 	err := svr.VrrpInitDB()
@@ -323,6 +331,8 @@ func (svr *VrrpServer) StartServer(paramsDir string) {
 		select {
 		case intfConf := <-svr.VrrpIntfConfigCh:
 			svr.VrrpUpdateGblInfo(intfConf)
+		case fsmInfo := <-svr.vrrpFsmCh:
+			svr.VrrpFsmStart(fsmInfo)
 		}
 
 	}
@@ -333,5 +343,7 @@ func (svr *VrrpServer) StartServer(paramsDir string) {
 func VrrpNewServer(log *logging.Writer) *VrrpServer {
 	vrrpServerInfo := &VrrpServer{}
 	vrrpServerInfo.logger = log
+	// Allocate memory to all the Data Structures
+	vrrpServerInfo.VrrpInitGlobalDS()
 	return vrrpServerInfo
 }
