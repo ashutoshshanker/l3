@@ -192,13 +192,13 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 	}
 	*/
 
-	if err := netlink.LinkSetMaster(link, vxlanDbEntry.Brg); err != nil {
-		panic(err)
-	}
-
 	vxlanDbEntry := VxlanDB[uint32(vtep.VxlanId)]
 	vxlanDbEntry.Links = append(vxlanDbEntry.Links, &link)
 	VxlanDB[uint32(vtep.VxlanId)] = vxlanDbEntry
+
+	if err := netlink.LinkSetMaster(link, vxlanDbEntry.Brg); err != nil {
+		panic(err)
+	}
 
 	// lets set the vtep interface to up
 	if err := netlink.LinkSetUp(link); err != nil {
