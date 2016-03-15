@@ -3,6 +3,7 @@ package vxlan
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"utils/logging"
@@ -46,6 +47,7 @@ func SaveSwitchMac(asicdconffilename string) {
 
 func NewVXLANServer(logger *logging.Writer, paramspath string) *VXLANServer {
 
+	logger.Info(fmt.Sprintf("Params path: %s", paramspath))
 	server := &VXLANServer{
 		logger:     logger,
 		Paramspath: paramspath,
