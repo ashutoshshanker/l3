@@ -86,7 +86,7 @@ type VrrpGlobalInfo struct {
 	MasterDownValue int32
 	MasterDownTimer *time.Timer
 	// Advertisement Timer
-	AdverTimer int32
+	AdverTimer *time.Timer
 	// IfIndex IpAddr which needs to be used if no Virtual Ip is specified
 	IpAddr string
 	// cached info for IfName is required in future
@@ -107,6 +107,11 @@ type VrrpPktChannelInfo struct {
 	IfIndex int32
 }
 
+type VrrpTxChannelInfo struct {
+	key      string
+	priority uint16 // any value > 255 means ignore it
+}
+
 type VrrpServer struct {
 	logger                        *logging.Writer
 	vrrpDbHdl                     *sql.DB
@@ -120,7 +125,7 @@ type VrrpServer struct {
 	vrrpVlanId2Name               map[int]string
 	VrrpIntfConfigCh              chan vrrpd.VrrpIntfConfig //VrrpGlobalInfo
 	vrrpRxPktCh                   chan VrrpPktChannelInfo
-	vrrpTxPktCh                   chan string //VrrpPktChannelInfo
+	vrrpTxPktCh                   chan VrrpTxChannelInfo
 	vrrpFsmCh                     chan VrrpFsm
 	vrrpRxChStarted               bool
 	vrrpTxChStarted               bool
@@ -171,6 +176,8 @@ const (
 	VRRP_IPV4_HEADER_MIN_SIZE       = 20
 	VRRP_HEADER_MIN_SIZE            = 20
 	VRRP_MASTER_PRIORITY            = 255
+	VRRP_IGNORE_PRIORITY            = 65535
+	VRRP_MASTER_DOWN_PRIORITY       = 0
 
 	// vrrp default configs
 	VRRP_DEFAULT_PRIORITY = 100

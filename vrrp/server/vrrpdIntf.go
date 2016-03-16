@@ -134,7 +134,7 @@ func (svr *VrrpServer) VrrpUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStat
 	case asicdConstDefs.INTF_STATE_UP:
 		svr.logger.Info("VRRP: Got Interface state up notification")
 	case asicdConstDefs.INTF_STATE_DOWN:
-		svr.VrrpStopTimers(msg.IfIndex)
+		svr.VrrpHandleIntfShutdownEvent(msg.IfIndex)
 		svr.logger.Info("VRRP: Got Interface state down notification")
 	}
 }

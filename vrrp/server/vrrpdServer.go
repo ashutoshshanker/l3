@@ -32,7 +32,6 @@ func (svr *VrrpServer) VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
 	svr.logger.Info(fmt.Sprintln("MasterAdverInterval:", gblInfo.MasterAdverInterval))
 	svr.logger.Info(fmt.Sprintln("Skew Time:", gblInfo.SkewTime))
 	svr.logger.Info(fmt.Sprintln("Master Down Timer:", gblInfo.MasterDownValue))
-	svr.logger.Info(fmt.Sprintln("Adver Timer:", gblInfo.AdverTimer))
 }
 
 func (svr *VrrpServer) VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
@@ -62,7 +61,6 @@ func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfSt
 	entry.VirtualRouterMACAddress = gblInfo.IntfConfig.VirtualRouterMACAddress
 	entry.SkewTime = gblInfo.SkewTime
 	entry.MasterDownTimer = gblInfo.MasterDownValue
-	entry.AdverTimer = gblInfo.AdverTimer
 }
 
 func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key string) {
@@ -307,7 +305,7 @@ func (vrrpServer *VrrpServer) VrrpInitGlobalDS() {
 	vrrpServer.VrrpIntfConfigCh = make(chan vrrpd.VrrpIntfConfig, //VrrpGlobalInfo,
 		VRRP_INTF_CONFIG_CH_SIZE)
 	vrrpServer.vrrpRxPktCh = make(chan VrrpPktChannelInfo, VRRP_RX_BUF_CHANNEL_SIZE)
-	vrrpServer.vrrpTxPktCh = make(chan string /*VrrpPktChannelInfo*/, VRRP_TX_BUF_CHANNEL_SIZE)
+	vrrpServer.vrrpTxPktCh = make(chan VrrpTxChannelInfo, VRRP_TX_BUF_CHANNEL_SIZE)
 	vrrpServer.vrrpFsmCh = make(chan VrrpFsm, VRRP_FSM_CHANNEL_SIZE)
 	vrrpServer.vrrpSnapshotLen = 1024
 	vrrpServer.vrrpPromiscuous = false
@@ -321,7 +319,7 @@ func (svr *VrrpServer) VrrpDeAllocateMemoryToGlobalDS() {
 	svr.vrrpLinuxIfIndex2AsicdIfIndex = nil
 	svr.vrrpVlanId2Name = nil
 	svr.vrrpRxPktCh = nil
-	//svr.vrrpTxPktCh = nil
+	svr.vrrpTxPktCh = nil
 }
 
 func (svr *VrrpServer) StartServer(paramsDir string) {

@@ -15,11 +15,10 @@ type VrrpFsmIntf interface {
 	VrrpInitState(gblInfo *VrrpGlobalInfo, key string)
 	VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader,
 		gblInfo *VrrpGlobalInfo, key string)
-	VrrpMasterState(gblInfo *VrrpGlobalInfo)
-	VrrpUpdateSecIp(gblInfo *VrrpGlobalInfo, configure bool)
+	VrrpMasterState(gblInfo *VrrpGlobalInfo, key string)
 	VrrpTransitionToMaster(gblInfo *VrrpGlobalInfo, key string)
 	VrrpTransitionToBackup(gblInfo *VrrpGlobalInfo, key string)
-	VrrpStopTimers(IfIndex int32)
+	VrrpHandleIntfShutdownEvent(IfIndex int32)
 }
 
 /*
@@ -106,12 +105,35 @@ func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
 	}
 }
 
+func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
+	var timerCheck_func func()
+	timerCheck_func = func() {
+		// Send advertisment every time interval expiration
+		svr.vrrpTxPktCh <- VrrpTxChannelInfo{
+			key:      key,
+			priority: VRRP_IGNORE_PRIORITY,
+		}
+	}
+	gblInfo, exists := svr.vrrpGblInfo[key]
+	if exists {
+		// Set Timer expire func...
+		gblInfo.AdverTimer = time.AfterFunc(
+			time.Duration(gblInfo.IntfConfig.AdvertisementInterval),
+			timerCheck_func)
+	}
+}
+
 func (svr *VrrpServer) VrrpTransitionToMaster(gblInfo *VrrpGlobalInfo, key string) {
 	// (110) + Send an ADVERTISEMENT
-	svr.vrrpTxPktCh <- key
+	svr.vrrpTxPktCh <- VrrpTxChannelInfo{
+		key:      key,
+		priority: VRRP_IGNORE_PRIORITY,
+	}
+	// Configure secondary interface with VMAC and VIP
 	svr.VrrpUpdateSecIp(gblInfo, true /*configure or set*/)
 	// (140) + Set the Adver_Timer to Advertisement_Interval
-	gblInfo.AdverTimer = gblInfo.IntfConfig.AdvertisementInterval
+	// Start Advertisement Timer
+	svr.VrrpHandleMasterAdverTimer(key)
 	// (145) + Transition to the {Master} state
 	gblInfo.StateLock.Lock()
 	gblInfo.StateName = VRRP_MASTER_STATE
@@ -202,6 +224,9 @@ func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 	// end BACKUP STATE
 }
 
+func (svr *VrrpServer) VrrpMasterState(gblInfo *VrrpGlobalInfo, key string) {
+}
+
 func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 	gblInfo := fsmObj.vrrpInFo
 	key := fsmObj.key
@@ -218,6 +243,7 @@ func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 	case VRRP_BACKUP_STATE:
 		svr.VrrpBackupState(pktInfo, pktHdr, gblInfo, key)
 	case VRRP_MASTER_STATE:
+		svr.VrrpMasterState(gblInfo, key)
 	}
 }
 
@@ -244,10 +270,25 @@ func (svr *VrrpServer) VrrpStopTimers(IfIndex int32) {
 		svr.logger.Info("Stopping Master Down Timer for Ifindex:" +
 			splitString[0] + " VRID:" + splitString[1])
 		gblInfo.MasterDownTimer.Stop()
-		// Transition to Init State
+		svr.logger.Info("Stopping Master Advertisemen Timer for Ifindex:" +
+			splitString[0] + " VRID:" + splitString[1])
+		gblInfo.AdverTimer.Stop()
+		// If state is Master then we need to send an advertisement with
+		// priority as 0
 		gblInfo.StateLock.Lock()
+		if gblInfo.StateName == VRRP_MASTER_STATE {
+			svr.vrrpTxPktCh <- VrrpTxChannelInfo{
+				key:      key,
+				priority: VRRP_MASTER_DOWN_PRIORITY,
+			}
+		}
+		// Transition to Init State
 		gblInfo.StateName = VRRP_INITIALIZE_STATE
 		gblInfo.StateLock.Unlock()
 		svr.vrrpGblInfo[key] = gblInfo
 	}
+}
+
+func (svr *VrrpServer) VrrpHandleIntfShutdownEvent(IfIndex int32) {
+	svr.VrrpStopTimers(IfIndex)
 }

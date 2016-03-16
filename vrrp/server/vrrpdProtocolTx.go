@@ -147,11 +147,12 @@ func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []by
 	return svr.VrrpCreateWriteBuf(eth, nil, ipv4, vrrpEncHdr)
 }
 
-func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan string /*VrrpPktChannelInfo*/) {
+func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan VrrpTxChannelInfo) {
 	svr.logger.Info("started send packet routine")
 	for {
-		//pktChannel := <-rcvdCh
-		key := <-rcvdCh //pktChannel.key
+		txInfo := <-rcvdCh
+		key := txInfo.key
+		priority := txInfo.priority
 		gblInfo, found := svr.vrrpGblInfo[key]
 		if !found {
 			svr.logger.Err("No Entry for " + key)
@@ -162,6 +163,11 @@ func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan string /*VrrpPktChannelInfo*/) 
 			svr.logger.Info("Invalid Pcap Handle")
 			gblInfo.PcapHdlLock.Unlock()
 			continue
+		}
+		// Because we do not update the gblInfo back into the map...
+		// we can overwrite the priority value if Master is down..
+		if priority == VRRP_MASTER_DOWN_PRIORITY {
+			gblInfo.IntfConfig.Priority = int32(priority)
 		}
 		gblInfo.PcapHdlLock.Unlock()
 		vrrpEncHdr, hdrLen := svr.VrrpCreateVrrpHeader(gblInfo)
