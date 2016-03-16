@@ -20,13 +20,13 @@ type Policy struct {
 	routeInfoList []ribdInt.Routes
 }
 
-func (m RIBDServicesHandler) CreatePolicyStmtConfig(cfg *ribdInt.PolicyStmtConfig) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyStmtConfig(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyStatement"))
 	m.PolicyStmtCreateConfCh <- *cfg
 	return val, err
 }
 
-func (m RIBDServicesHandler) ProcessPolicyStmtConfigCreate(cfg ribdInt.PolicyStmtConfig) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyStmtConfigCreate(cfg ribd.PolicyStmtConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyStatementCreate:CreatePolicyStatement"))
 	newPolicyStmt := policy.PolicyStmtConfig{Name: cfg.Name, MatchConditions: cfg.MatchConditions}
 	newPolicyStmt.Conditions = make([]string, 0)
@@ -40,18 +40,20 @@ func (m RIBDServicesHandler) ProcessPolicyStmtConfigCreate(cfg ribdInt.PolicyStm
 	return val, err
 }
 
-func (m RIBDServicesHandler) DeletePolicyStmtConfig(cfg *ribdInt.PolicyStmtConfig) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyStmtConfig(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeletePolicyStatement for name ", cfg.Name))
 	m.PolicyStmtDeleteConfCh <- *cfg
 	return val, err
 }
-func (m RIBDServicesHandler) ProcessPolicyStmtConfigDelete(cfg ribdInt.PolicyStmtConfig) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyStmtConfigDelete(cfg ribd.PolicyStmtConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyStatementDelete:DeletePolicyStatement for name ", cfg.Name))
 	stmt := policy.PolicyStmtConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyStatement(stmt)
 	return val, err
 }
-
+func (m RIBDServicesHandler) UpdatePolicyStmtConfig(origconfig *ribd.PolicyStmtConfig , newconfig *ribd.PolicyStmtConfig , attrset []bool) (val bool, err error) {
+	return val,err
+}
 func (m RIBDServicesHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyStmtStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyStmtState"))
 	PolicyStmtDB := PolicyEngineDB.PolicyStmtDB
@@ -114,19 +116,19 @@ func (m RIBDServicesHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount r
 	return policyStmts, err
 }
 
-func (m RIBDServicesHandler) CreatePolicyDefinitionConfig(cfg *ribdInt.PolicyDefinitionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyDefinitionConfig(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyDefinition"))
 	m.PolicyDefinitionCreateConfCh <- *cfg
 	return val, err
 }
-func (m RIBDServicesHandler) ProcessPolicyDefinitionConfigCreate(cfg ribdInt.PolicyDefinitionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyDefinitionConfigCreate(cfg ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyDefinitionCreate:CreatePolicyDefinition"))
 	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Precedence), MatchType: cfg.MatchType}
 	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence, 0)
 	var policyDefinitionStatement policy.PolicyDefinitionStmtPrecedence
-	for i := 0; i < len(cfg.PolicyDefinitionStatements); i++ {
-		policyDefinitionStatement.Precedence = int(cfg.PolicyDefinitionStatements[i].Precedence)
-		policyDefinitionStatement.Statement = cfg.PolicyDefinitionStatements[i].Statement
+	for i := 0; i < len(cfg.StatementList); i++ {
+		policyDefinitionStatement.Precedence = int(cfg.StatementList[i].Precedence)
+		policyDefinitionStatement.Statement = cfg.StatementList[i].Statement
 		newPolicy.PolicyDefinitionStatements = append(newPolicy.PolicyDefinitionStatements, policyDefinitionStatement)
 	}
 	newPolicy.Extensions = PolicyExtensions{}
@@ -134,18 +136,20 @@ func (m RIBDServicesHandler) ProcessPolicyDefinitionConfigCreate(cfg ribdInt.Pol
 	return val, err
 }
 
-func (m RIBDServicesHandler) DeletePolicyDefinitionConfig(cfg *ribdInt.PolicyDefinitionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyDefinitionConfig(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeletePolicyDefinition for name ", cfg.Name))
 	m.PolicyDefinitionDeleteConfCh <- *cfg
 	return val, err
 }
-func (m RIBDServicesHandler) ProcessPolicyDefinitionConfigDelete(cfg ribdInt.PolicyDefinitionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyDefinitionConfigDelete(cfg ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyDefinitionDelete:DeletePolicyDefinition for name ", cfg.Name))
 	policy := policy.PolicyDefinitionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyDefinition(policy)
 	return val, err
 }
-
+func (m RIBDServicesHandler) UpdatePolicyDefinitionConfig(origconfig *ribd.PolicyDefinitionConfig , newconfig *ribd.PolicyDefinitionConfig , attrset []bool) (val bool, err error) {
+	return val,err
+}
 func (m RIBDServicesHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyDefinitionState"))
 	PolicyDB := PolicyEngineDB.PolicyDB

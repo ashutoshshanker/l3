@@ -4,7 +4,6 @@ package main
 import (
 	"fmt"
 	"ribd"
-	"ribdInt"
 	//"utils/commonDefs"
 	//    "utils/dbutils"
 	"database/sql"
@@ -106,7 +105,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 		logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmd, err))
 		return err
 	}
-	var stmt ribdInt.PolicyStmtConfig
+	var stmt ribd.PolicyStmtConfig
 	for rows.Next() {
 		if err = rows.Scan(&stmt.Name, &stmt.MatchConditions); err != nil {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
@@ -170,7 +169,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 		logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmd, err))
 		return err
 	}
-	var policy ribdInt.PolicyDefinitionConfig
+	var policy ribd.PolicyDefinitionConfig
 	for rows.Next() {
 		if err = rows.Scan(&policy.Name, &policy.Precedence, &policy.MatchType); err != nil {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionConfig rows with error %s\n", err))
@@ -183,7 +182,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmdPrecedence, err))
 			return err
 		}
-		policy.PolicyDefinitionStatements = make([]*ribdInt.PolicyDefinitionStmtPrecedence, 0)
+		policy.StatementList = make([]*ribd.PolicyDefinitionStmtPrecedence, 0)
 		var stmt, policyName, policyStmtName string
 		var precedence int
 		for conditionrows.Next() {
@@ -196,8 +195,8 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 				continue
 			}
 			logger.Info(fmt.Sprintln("Fetching stmt ", stmt))
-			policyStmtPrecedence := ribdInt.PolicyDefinitionStmtPrecedence{Precedence: ribdInt.Int(precedence), Statement: stmt}
-			policy.PolicyDefinitionStatements = append(policy.PolicyDefinitionStatements, &policyStmtPrecedence)
+			policyStmtPrecedence := ribd.PolicyDefinitionStmtPrecedence{Precedence: int32(precedence), Statement: stmt}
+			policy.StatementList = append(policy.StatementList, &policyStmtPrecedence)
 		}
 
 		_, err = routeServiceHandler.CreatePolicyDefinitionConfig(&policy)

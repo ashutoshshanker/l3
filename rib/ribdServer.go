@@ -41,12 +41,12 @@ type RIBDServicesHandler struct {
 	PolicyActionCreateConfCh       chan ribd.PolicyActionConfig
 	PolicyActionDeleteConfCh       chan ribd.PolicyActionConfig
 	PolicyActionUpdateConfCh        chan ribd.PolicyActionConfig
-	PolicyStmtCreateConfCh         chan ribdInt.PolicyStmtConfig
-	PolicyStmtDeleteConfCh         chan ribdInt.PolicyStmtConfig
-	PolicyStmtUpdateConfCh          chan ribdInt.PolicyStmtConfig
-	PolicyDefinitionCreateConfCh   chan ribdInt.PolicyDefinitionConfig
-	PolicyDefinitionDeleteConfCh   chan ribdInt.PolicyDefinitionConfig
-	PolicyDefinitionUpdateConfCh   chan ribdInt.PolicyDefinitionConfig
+	PolicyStmtCreateConfCh         chan ribd.PolicyStmtConfig
+	PolicyStmtDeleteConfCh         chan ribd.PolicyStmtConfig
+	PolicyStmtUpdateConfCh          chan ribd.PolicyStmtConfig
+	PolicyDefinitionCreateConfCh   chan ribd.PolicyDefinitionConfig
+	PolicyDefinitionDeleteConfCh   chan ribd.PolicyDefinitionConfig
+	PolicyDefinitionUpdateConfCh   chan ribd.PolicyDefinitionConfig
 	//RouteInstallCh                 chan RouteParams
 }
 
@@ -626,12 +626,12 @@ func NewRIBDServicesHandler() *RIBDServicesHandler {
 	ribdServicesHandler.PolicyActionCreateConfCh = make(chan ribd.PolicyActionConfig)
 	ribdServicesHandler.PolicyActionDeleteConfCh = make(chan ribd.PolicyActionConfig)
 	ribdServicesHandler.PolicyActionUpdateConfCh = make(chan ribd.PolicyActionConfig)
-	ribdServicesHandler.PolicyStmtCreateConfCh = make(chan ribdInt.PolicyStmtConfig)
-	ribdServicesHandler.PolicyStmtDeleteConfCh = make(chan ribdInt.PolicyStmtConfig)
-	ribdServicesHandler.PolicyStmtUpdateConfCh = make(chan ribdInt.PolicyStmtConfig)
-	ribdServicesHandler.PolicyDefinitionCreateConfCh = make(chan ribdInt.PolicyDefinitionConfig)
-	ribdServicesHandler.PolicyDefinitionDeleteConfCh = make(chan ribdInt.PolicyDefinitionConfig)
-	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan ribdInt.PolicyDefinitionConfig)
+	ribdServicesHandler.PolicyStmtCreateConfCh = make(chan ribd.PolicyStmtConfig)
+	ribdServicesHandler.PolicyStmtDeleteConfCh = make(chan ribd.PolicyStmtConfig)
+	ribdServicesHandler.PolicyStmtUpdateConfCh = make(chan ribd.PolicyStmtConfig)
+	ribdServicesHandler.PolicyDefinitionCreateConfCh = make(chan ribd.PolicyDefinitionConfig)
+	ribdServicesHandler.PolicyDefinitionDeleteConfCh = make(chan ribd.PolicyDefinitionConfig)
+	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan ribd.PolicyDefinitionConfig)
 	//ribdServicesHandler.RouteInstallCh = make(chan RouteParams)
 	return ribdServicesHandler
 }

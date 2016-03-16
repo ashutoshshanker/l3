@@ -55,27 +55,6 @@ struct PolicyDstIpMatchPrefixSetCondition{
 	1 : string 	PrefixSet
 	2 : PolicyPrefix Prefix
 }
-struct PolicyStmtConfig{
-	1:  string  Name
-	2 : string 	AdminState
-	3 : string 	MatchConditions
-	4 : list<string> 	Conditions
-	5 : list<string> 	Actions
-	//6 : bool     Export
-	//7 : bool     Import
-}
-
-struct PolicyDefinitionStmtPrecedence  {
-	1: int Precedence
-	2: string Statement
-}
-struct PolicyDefinitionConfig{
-	1: string Name
-	2: int Precedence
-	3: string MatchType
-	4: list<PolicyDefinitionStmtPrecedence> PolicyDefinitionStatements
-}
-
 
 service RIBDINTServices 
 {
@@ -90,12 +69,4 @@ service RIBDINTServices
 	void linkUp(1: int ifType, 2:int ifIndex);
 	void intfUp(1:string ipAddr);
 	void intfDown(1:string ipAddr);
-	bool CreatePolicyStmtConfig(1: PolicyStmtConfig config);
-//	bool UpdatePolicyStmtConfig(1: PolicyStmtConfig origconfig, 2: PolicyStmtConfig newconfig, 3: list<bool> attrset);
-	bool DeletePolicyStmtConfig(1: PolicyStmtConfig config);
-
-
-	bool CreatePolicyDefinitionConfig(1: PolicyDefinitionConfig config);
-//	bool UpdatePolicyDefinitionConfig(1: PolicyDefinitionConfig origconfig, 2: PolicyDefinitionConfig newconfig, 3: list<bool> attrset);
-	bool DeletePolicyDefinitionConfig(1: PolicyDefinitionConfig config);
 }
