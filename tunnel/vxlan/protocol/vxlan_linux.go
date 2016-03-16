@@ -208,7 +208,7 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 		panic(err)
 	}
 	*/
-	if err := exec.Command(fmt.Sprintf("ifconfig %s up", vtep.Name)).Run(); err != nil {
+	if err := exec.Command(fmt.Sprintf("/sbin/ifconfig %s up", vtep.Name)).Run(); err != nil {
 		panic(err)
 	}
 }
