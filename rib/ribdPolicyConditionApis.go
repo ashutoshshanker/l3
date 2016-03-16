@@ -4,17 +4,15 @@ package main
 import (
 	"fmt"
 	"ribd"
-	"ribdInt"
 	"utils/policy"
 )
-
-func (m RIBDServicesHandler) CreatePolicyPrefixSet(cfg *ribdInt.PolicyPrefixSet) (val bool, err error) {
-	logger.Info(fmt.Sprintln("CreatePolicyPrefixSet"))
-	return val, err
-}
-
 func (m RIBDServicesHandler) CreatePolicyConditionConfig(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyConditioncfg"))
+	m.PolicyConditionCreateConfCh <- *cfg
+	return true,err
+}
+func (m RIBDServicesHandler) ProcessPolicyConditionConfigCreate(cfg ribd.PolicyConditionConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg"))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.MatchProtocol}
 	matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.IpPrefix, MasklengthRange: cfg.MaskLengthRange}
 	newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{ Prefix: matchPrefix}
@@ -26,7 +24,12 @@ func (m RIBDServicesHandler) CreatePolicyConditionConfig(cfg *ribd.PolicyConditi
 	return val, err
 }
 func (m RIBDServicesHandler) DeletePolicyConditionConfig(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
-	logger.Info(fmt.Sprintln("DeletePolicyCondition"))
+	logger.Info(fmt.Sprintln("DeletePolicyConditionConfig"))
+	m.PolicyConditionDeleteConfCh <- *cfg
+	return true,err
+}
+func (m RIBDServicesHandler) ProcessPolicyConditionConfigDelete(cfg ribd.PolicyConditionConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition"))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyCondition(newPolicy)
 	return val, err
@@ -34,15 +37,15 @@ func (m RIBDServicesHandler) DeletePolicyConditionConfig(cfg *ribd.PolicyConditi
 func (m RIBDServicesHandler) UpdatePolicyConditionConfig(origconfig *ribd.PolicyConditionConfig , newconfig *ribd.PolicyConditionConfig , attrset []bool) (val bool, err error) {
 	return val,err
 }
-func (m RIBDServicesHandler) GetBulkPolicyConditionState(fromIndex ribdInt.Int, rcount ribdInt.Int) (policyConditions *ribdInt.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServicesHandler) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyConditionState"))
 	PolicyConditionsDB := PolicyEngineDB.PolicyConditionsDB
 	localPolicyConditionsDB := *PolicyEngineDB.LocalPolicyConditionsDB
-	var i, validCount, toIndex ribdInt.Int
-	var tempNode []ribdInt.PolicyConditionState = make([]ribdInt.PolicyConditionState, rcount)
-	var nextNode *ribdInt.PolicyConditionState
-	var returnNodes []*ribdInt.PolicyConditionState
-	var returnGetInfo ribdInt.PolicyConditionStateGetInfo
+	var i, validCount, toIndex ribd.Int
+	var tempNode []ribd.PolicyConditionState = make([]ribd.PolicyConditionState, rcount)
+	var nextNode *ribd.PolicyConditionState
+	var returnNodes []*ribd.PolicyConditionState
+	var returnGetInfo ribd.PolicyConditionStateGetInfo
 	i = 0
 	policyConditions = &returnGetInfo
 	more := true
@@ -52,7 +55,7 @@ func (m RIBDServicesHandler) GetBulkPolicyConditionState(fromIndex ribdInt.Int, 
 	}
 	for ; ; i++ {
 		logger.Info(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
-		if i+fromIndex >= ribdInt.Int(len(localPolicyConditionsDB)) {
+		if i+fromIndex >= ribd.Int(len(localPolicyConditionsDB)) {
 			logger.Info(fmt.Sprintln("All the policy conditions fetched"))
 			more = false
 			break
@@ -78,9 +81,9 @@ func (m RIBDServicesHandler) GetBulkPolicyConditionState(fromIndex ribdInt.Int, 
 			for idx := 0; idx < len(prefixNode.PolicyStmtList); idx++ {
 				nextNode.PolicyStmtList = append(nextNode.PolicyStmtList, prefixNode.PolicyStmtList[idx])
 			}
-			toIndex = ribdInt.Int(prefixNode.LocalDBSliceIdx)
+			toIndex = ribd.Int(prefixNode.LocalDBSliceIdx)
 			if len(returnNodes) == 0 {
-				returnNodes = make([]*ribdInt.PolicyConditionState, 0)
+				returnNodes = make([]*ribd.PolicyConditionState, 0)
 			}
 			returnNodes = append(returnNodes, nextNode)
 			validCount++

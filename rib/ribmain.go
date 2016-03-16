@@ -40,13 +40,14 @@ func main() {
 	if err != nil {
 		logger.Info(fmt.Sprintln("Failed to create Socket with:", addr))
 	}
-	handler := NewRIBDServicesHandler(*paramsDir)
+	handler := NewRIBDServicesHandler()
 	if handler == nil {
 		logger.Println("handler nill")
 		return
 	}
 	routeServiceHandler = handler
-	UpdateFromDB() //(paramsDir)
+	go routeServiceHandler.StartServer(*paramsDir)
+	//UpdateFromDB() //(paramsDir)
 	processor := ribd.NewRIBDServicesProcessor((routeServiceHandler))
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()

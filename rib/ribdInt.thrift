@@ -36,17 +36,6 @@ struct RoutesGetInfo {
 	4: bool More,
 	5: list<Routes> RouteList,
 }
-struct IPV4EventState{
-	1 : string 	TimeStamp
-	2 : string   EventInfo
-}
-struct IPV4EventStateGetInfo {
-	1: int StartIdx
-	2: int EndIdx
-	3: int Count
-	4: bool More
-	5: list<IPV4EventState> IPV4EventStateList
-}
 struct PolicyPrefix {
 	1 : string	IpPrefix,
 	2 : string 	MasklengthRange,
@@ -75,46 +64,6 @@ struct PolicyStmtConfig{
 	//6 : bool     Export
 	//7 : bool     Import
 }
-struct PolicyStmtState{
-	1 : string  Name
-	2 : string 	AdminState
-	3 : string 	OperState
-	4 : string 	MatchConditions
-	5 : list<string> 	Conditions
-	6 : list<string> 	Actions
-	7 : list<string> 	PolicyList
-}
-struct PolicyStmtStateGetInfo {
-	1: int StartIdx
-	2: int EndIdx
-	3: int Count
-	4: bool More
-	5: list<PolicyStmtState> PolicyStmtStateList
-}
-struct PolicyConditionState{
-	1 : string 	Name
-	2 : string 	ConditionInfo
-	3 : list<string> 	PolicyStmtList
-}
-struct PolicyConditionStateGetInfo {
-	1: int StartIdx
-	2: int EndIdx
-	3: int Count
-	4: bool More
-	5: list<PolicyConditionState> PolicyConditionStateList
-}
-struct PolicyActionState{
-	1 : string 	Name
-	2 : string 	ActionInfo
-	3 : list<string> 	PolicyStmtList
-}
-struct PolicyActionStateGetInfo {
-	1: int StartIdx
-	2: int EndIdx
-	3: int Count
-	4: bool More
-	5: list<PolicyActionState> PolicyActionStateList
-}
 
 struct PolicyDefinitionStmtPrecedence  {
 	1: int Precedence
@@ -127,18 +76,6 @@ struct PolicyDefinitionConfig{
 	4: list<PolicyDefinitionStmtPrecedence> PolicyDefinitionStatements
 }
 
-struct PolicyDefinitionState{
-	1 : string  Name
-	2 : int      HitCounter
-	3: list<string> IpPrefixList
-}
-struct PolicyDefinitionStateGetInfo {
-	1: int StartIdx
-	2: int EndIdx
-	3: int Count
-	4: bool More
-	5: list<PolicyDefinitionState> PolicyDefinitionStateList
-}
 
 service RIBDINTServices 
 {
@@ -147,22 +84,18 @@ service RIBDINTServices
 	//list<Routes> getConnectedRoutesInfo();
     void printV4Routes();
 	RoutesGetInfo getBulkRoutesForProtocol(1: string srcProtocol, 2: int fromIndex ,3: int rcount)
-	RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
+	//RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	void linkDown(1: int ifType, 2:int ifIndex);
 	void linkUp(1: int ifType, 2:int ifIndex);
 	void intfUp(1:string ipAddr);
 	void intfDown(1:string ipAddr);
-	bool CreatePolicyStatement(1: PolicyStmtConfig config);
-//	bool UpdatePolicyStatement(1: PolicyStmtConfig origconfig, 2: PolicyStmtConfig newconfig, 3: list<bool> attrset);
-	bool DeletePolicyStatement(1: PolicyStmtConfig config);
+	bool CreatePolicyStmtConfig(1: PolicyStmtConfig config);
+//	bool UpdatePolicyStmtConfig(1: PolicyStmtConfig origconfig, 2: PolicyStmtConfig newconfig, 3: list<bool> attrset);
+	bool DeletePolicyStmtConfig(1: PolicyStmtConfig config);
 
-	PolicyStmtStateGetInfo GetBulkPolicyStmtState(1: int fromIndex, 2: int count);
-	PolicyConditionStateGetInfo GetBulkPolicyConditionState(1: int fromIndex, 2: int count);
-	PolicyActionStateGetInfo GetBulkPolicyActionState(1: int fromIndex, 2: int count);
 
-	bool CreatePolicyDefinition(1: PolicyDefinitionConfig config);
-//	bool UpdatePolicyDefinition(1: PolicyDefinitionConfig origconfig, 2: PolicyDefinitionConfig newconfig, 3: list<bool> attrset);
-	bool DeletePolicyDefinition(1: PolicyDefinitionConfig config);
-	PolicyDefinitionStateGetInfo GetBulkPolicyDefinitionState(1: int fromIndex, 2: int count);
+	bool CreatePolicyDefinitionConfig(1: PolicyDefinitionConfig config);
+//	bool UpdatePolicyDefinitionConfig(1: PolicyDefinitionConfig origconfig, 2: PolicyDefinitionConfig newconfig, 3: list<bool> attrset);
+	bool DeletePolicyDefinitionConfig(1: PolicyDefinitionConfig config);
 }

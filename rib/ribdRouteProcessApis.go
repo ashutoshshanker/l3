@@ -405,6 +405,11 @@ func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ri
 			prefixNodeRoute = routeInfoList[sel] //prefixNodeRouteList.routeInfoList[prefixNodeRouteList.selectedRouteIdx]
 			nextRoute = &temproute[validCount]
 			nextRoute.DestinationNw = prefixNodeRoute.networkAddr
+			nextRoute.NextHopIp = prefixNodeRoute.nextHopIp.String()
+			nextHopIfTypeStr,_:= m.GetNextHopIfTypeStr(ribdInt.Int(prefixNodeRoute.nextHopIfType))
+			nextRoute.OutgoingIntfType = nextHopIfTypeStr
+			nextRoute.OutgoingInterface = strconv.Itoa(int(prefixNodeRoute.nextHopIfIndex))
+			nextRoute.Protocol = ReverseRouteProtoTypeMapDB[int(prefixNodeRoute.protocol)]
 			nextRoute.RouteCreatedTime = prefixNodeRouteList.routeCreatedTime
 			nextRoute.RouteCreatedTime = prefixNodeRouteList.routeUpdatedTime
 			nextRoute.PolicyList = make([]string, 0)
@@ -449,7 +454,7 @@ func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ri
 	routes.Count = validCount
 	return routes, err
 }
-func (m RIBDServicesHandler) GetBulkRoutes(fromIndex ribdInt.Int, rcount ribdInt.Int) (routes *ribdInt.RoutesGetInfo, err error) { //(routes []*ribdInt.Routes, err error) {
+/*func (m RIBDServicesHandler) GetBulkRoutes(fromIndex ribdInt.Int, rcount ribdInt.Int) (routes *ribdInt.RoutesGetInfo, err error) { //(routes []*ribdInt.Routes, err error) {
 	logger.Println("GetBulkRoutes")
 	var i, validCount, toIndex ribdInt.Int
 	var temproute []ribdInt.Routes = make([]ribdInt.Routes, rcount)
@@ -551,7 +556,7 @@ func (m RIBDServicesHandler) GetConnectedRoutesInfo() (routes []*ribdInt.Routes,
 	}
 	routes = returnRoutes
 	return routes, err
-}
+}*/
 func (m RIBDServicesHandler) GetRouteReachabilityInfo(destNet string) (nextHopIntf *ribdInt.NextHopInfo, err error) {
 	logger.Println("GetRouteReachabilityInfo")
 	t1 := time.Now()
@@ -1452,27 +1457,11 @@ func createV4Route(destNetIp string,
 	return 0, err
 
 }
-/*func (m RIBDServicesHandler) CreateV4Route(destNetIp string,
-	networkMask string,
-	metric ribd.Int,
-	nextHopIp string,
-	nextHopIfType ribd.Int,
-	nextHopIfIndex ribd.Int,
-	routeTypeString string) (rc ribd.Int, err error) {*/
-func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
+
+func (m RIBDServicesHandler) ProcessRouteCreateConfig (cfg ribd.IPv4Route) (val bool, err error) {
+	logger.Info(fmt.Sprintf("ProcessRouteCreate: Received create route request for ip %s mask %s\n", cfg.DestinationNw, cfg.NetworkMask))
 	var nextHopIfType ribd.Int
 	var nextHopIf int
-	logger.Info(fmt.Sprintf("Received create route request for ip %s mask %s\n", cfg.DestinationNw, cfg.NetworkMask))
-	if !acceptConfig {
-		logger.Println("Not ready to accept config")
-		//return 0, err
-	}
-	routeType, ok := RouteProtocolTypeMapDB[cfg.Protocol]
-	if !ok {
-		logger.Info(fmt.Sprintln("route type ", cfg.Protocol, " invalid"))
-		err = errors.New("Invalid route protocol type")
-		return false, err
-	}
 	if cfg.OutgoingIntfType == "VLAN" {
 		nextHopIfType = commonDefs.L2RefTypeVlan
 	} else if cfg.OutgoingIntfType == "PHY" {
@@ -1486,8 +1475,8 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 		nextHopIp = "255.255.255.255"
 	}
 	nextHopIf,_ = strconv.Atoi(cfg.OutgoingInterface)
-	policyRoute := ribdInt.Routes{Ipaddr: cfg.DestinationNw, Mask: cfg.NetworkMask, NextHopIp: nextHopIp, NextHopIfType: ribdInt.Int(nextHopIfType), IfIndex: ribdInt.Int(nextHopIf), Metric: ribdInt.Int(cfg.Cost), Prototype: ribdInt.Int(routeType)}
-	params := RouteParams{destNetIp: cfg.DestinationNw, networkMask: cfg.NetworkMask, nextHopIp: nextHopIp, nextHopIfType: nextHopIfType, nextHopIfIndex: ribd.Int(nextHopIf), metric: ribd.Int(cfg.Cost), routeType: ribd.Int(routeType), sliceIdx: ribd.Int(len(destNetSlice)), createType: FIBAndRIB, deleteType: Invalid}
+	policyRoute := ribdInt.Routes{Ipaddr: cfg.DestinationNw, Mask: cfg.NetworkMask, NextHopIp: nextHopIp, NextHopIfType: ribdInt.Int(nextHopIfType), IfIndex: ribdInt.Int(nextHopIf), Metric: ribdInt.Int(cfg.Cost), Prototype: ribdInt.Int(RouteProtocolTypeMapDB[cfg.Protocol])}
+	params := RouteParams{destNetIp: cfg.DestinationNw, networkMask: cfg.NetworkMask, nextHopIp: nextHopIp, nextHopIfType: nextHopIfType, nextHopIfIndex: ribd.Int(nextHopIf), metric: ribd.Int(cfg.Cost), routeType: ribd.Int(RouteProtocolTypeMapDB[cfg.Protocol]), sliceIdx: ribd.Int(len(destNetSlice)), createType: FIBAndRIB, deleteType: Invalid}
 	logger.Info(fmt.Sprintln("createType = ", params.createType, "deleteType = ", params.deleteType))
 	PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Import, params)
 
@@ -1591,8 +1580,8 @@ func deleteV4Route(destNetIp string,
 	networkMask string,
 	routeTypeString string,
 	nextHopIP string) (rc ribd.Int, err error) {*/
-func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err error){
-	logger.Info(fmt.Sprintln("Received Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHopIp, "Protocol ", cfg.Protocol))
+func (m RIBDServicesHandler) ProcessRouteDeleteConfig(cfg ribd.IPv4Route) (val bool, err error){
+	logger.Info(fmt.Sprintln("ProcessRouteDeleteConfig:Received Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHopIp, "Protocol ", cfg.Protocol))
 	if !acceptConfig {
 		logger.Println("Not ready to accept config")
 		//return 0,err
@@ -1600,8 +1589,8 @@ func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 	_, err = deleteV4Route(cfg.DestinationNw, cfg.NetworkMask, cfg.Protocol, cfg.NextHopIp, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoInValid)
 	return true, err
 }
-func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
-	logger.Println("Received update route request")
+func (m RIBDServicesHandler) ProcessRouteUpdateConfig(origconfig ribd.IPv4Route, newconfig ribd.IPv4Route, attrset []bool) (val bool, err error) {
+	logger.Println("ProcessRouteUpdateConfig:Received update route request")
 	if !acceptConfig {
 		logger.Println("Not ready to accept config")
 		//return err

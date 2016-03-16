@@ -154,7 +154,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintln("Fetching action ", Actions))
 			stmt.Actions = append(stmt.Actions, Actions)
 		}
-		_, err = routeServiceHandler.CreatePolicyStatement(&stmt)
+		_, err = routeServiceHandler.CreatePolicyStmtConfig(&stmt)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -200,7 +200,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 			policy.PolicyDefinitionStatements = append(policy.PolicyDefinitionStatements, &policyStmtPrecedence)
 		}
 
-		_, err = routeServiceHandler.CreatePolicyDefinition(&policy)
+		_, err = routeServiceHandler.CreatePolicyDefinitionConfig(&policy)
 		if err != nil {
 			logger.Info(fmt.Sprintf("policy create failed with err %s\n", err))
 			return err
