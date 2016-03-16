@@ -1,9 +1,11 @@
 package vrrpServer
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -15,9 +17,11 @@ type VrrpFsmIntf interface {
 	VrrpInitState(gblInfo *VrrpGlobalInfo, key string)
 	VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader,
 		gblInfo *VrrpGlobalInfo, key string)
-	VrrpMasterState(gblInfo *VrrpGlobalInfo, key string)
+	VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader,
+		gblInfo *VrrpGlobalInfo, key string)
 	VrrpTransitionToMaster(gblInfo *VrrpGlobalInfo, key string)
-	VrrpTransitionToBackup(gblInfo *VrrpGlobalInfo, key string)
+	VrrpTransitionToBackup(gblInfo *VrrpGlobalInfo, key string,
+		AdvertisementInterval int32)
 	VrrpHandleIntfShutdownEvent(IfIndex int32)
 }
 
@@ -102,6 +106,7 @@ func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
 		// Set Timer expire func...
 		gblInfo.MasterDownTimer = time.AfterFunc(time.Duration(gblInfo.MasterDownValue),
 			timerCheck_func)
+		svr.vrrpGblInfo[key] = gblInfo
 	}
 }
 
@@ -120,6 +125,7 @@ func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 		gblInfo.AdverTimer = time.AfterFunc(
 			time.Duration(gblInfo.IntfConfig.AdvertisementInterval),
 			timerCheck_func)
+		svr.vrrpGblInfo[key] = gblInfo
 	}
 }
 
@@ -141,23 +147,25 @@ func (svr *VrrpServer) VrrpTransitionToMaster(gblInfo *VrrpGlobalInfo, key strin
 	svr.vrrpGblInfo[key] = *gblInfo
 }
 
-func (svr *VrrpServer) VrrpTransitionToBackup(gblInfo *VrrpGlobalInfo, key string) {
+func (svr *VrrpServer) VrrpTransitionToBackup(gblInfo *VrrpGlobalInfo, key string,
+	AdvertisementInterval int32) {
 	//(155) + Set Master_Adver_Interval to Advertisement_Interval
-	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
+	gblInfo.MasterAdverInterval = AdvertisementInterval
 	//(160) + Set the Master_Down_Timer to Master_Down_Interval
 	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
 		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
 			gblInfo.MasterAdverInterval) / 256
 	}
 	gblInfo.MasterDownValue = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
+	svr.vrrpGblInfo[key] = *gblInfo
+	// Start with handling MasterDownTimer
+	svr.VrrpHandleMasterDownTimer(key)
 	//(165) + Transition to the {Backup} state
 	gblInfo.StateLock.Lock()
 	gblInfo.StateName = VRRP_BACKUP_STATE
 	gblInfo.StateLock.Unlock()
 	svr.vrrpGblInfo[key] = *gblInfo
 
-	// Start with handling MasterDownTimer
-	svr.VrrpHandleMasterDownTimer(key)
 }
 
 func (svr *VrrpServer) VrrpInitState(gblInfo *VrrpGlobalInfo, key string) {
@@ -166,7 +174,8 @@ func (svr *VrrpServer) VrrpInitState(gblInfo *VrrpGlobalInfo, key string) {
 	} else {
 		svr.VrrpUpdateSecIp(gblInfo, false /*configure or set*/)
 		// Transition to backup state first
-		svr.VrrpTransitionToBackup(gblInfo, key)
+		svr.VrrpTransitionToBackup(gblInfo, key,
+			gblInfo.IntfConfig.AdvertisementInterval)
 	}
 }
 
@@ -224,7 +233,45 @@ func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 	// end BACKUP STATE
 }
 
-func (svr *VrrpServer) VrrpMasterState(gblInfo *VrrpGlobalInfo, key string) {
+func (svr *VrrpServer) VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader,
+	gblInfo *VrrpGlobalInfo, key string) {
+	/* // @TODO:
+	   (645) - MUST forward packets with a destination link-layer MAC
+	   address equal to the virtual router MAC address.
+
+	   (650) - MUST accept packets addressed to the IPvX address(es)
+	   associated with the virtual router if it is the IPvX address owner
+	   or if Accept_Mode is True.  Otherwise, MUST NOT accept these
+	   packets.
+	*/
+	if vrrpHdr.Priority == VRRP_MASTER_DOWN_PRIORITY {
+		svr.vrrpTxPktCh <- VrrpTxChannelInfo{
+			key:      key,
+			priority: VRRP_IGNORE_PRIORITY,
+		}
+		svr.VrrpHandleMasterAdverTimer(key)
+	} else {
+		ipLayer := inPkt.Layer(layers.LayerTypeIPv4)
+		if ipLayer == nil {
+			svr.logger.Err("Not an ip packet?")
+			return
+		}
+		ipHdr := ipLayer.(*layers.IPv4)
+		if int32(vrrpHdr.Priority) > gblInfo.IntfConfig.Priority ||
+			(int32(vrrpHdr.Priority) == gblInfo.IntfConfig.Priority &&
+				bytes.Compare(ipHdr.SrcIP,
+					net.ParseIP(gblInfo.IpAddr)) > 0) {
+			gblInfo.AdverTimer.Stop()
+			svr.vrrpGblInfo[key] = *gblInfo
+			svr.VrrpTransitionToBackup(gblInfo, key,
+				int32(vrrpHdr.MaxAdverInt))
+		} else { // new Master logic
+			// Discard Advertisement
+			return
+		} // endif new Master Detected
+	} // end if was priority zero
+	// end for Advertisemtn received over the channel
+	// end MASTER STATE
 }
 
 func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
@@ -243,7 +290,7 @@ func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 	case VRRP_BACKUP_STATE:
 		svr.VrrpBackupState(pktInfo, pktHdr, gblInfo, key)
 	case VRRP_MASTER_STATE:
-		svr.VrrpMasterState(gblInfo, key)
+		svr.VrrpMasterState(pktInfo, pktHdr, gblInfo, key)
 	}
 }
 
