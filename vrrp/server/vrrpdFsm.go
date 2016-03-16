@@ -2,6 +2,7 @@ package vrrpServer
 
 import (
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"net"
 )
 
@@ -106,6 +107,18 @@ func (svr *VrrpServer) VrrpInitState(gblInfo *VrrpGlobalInfo, key string) {
 func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader,
 	gblInfo *VrrpGlobalInfo, key string) {
 	// @TODO: Handle arp drop...
+
+	// Check dmac address from the inPacket and if it is same discard the packet
+	ethLayer := inPkt.Layer(layers.LayerTypeEthernet)
+	if ethLayer == nil {
+		svr.logger.Err("Not an eth packet?")
+		return
+	}
+	eth := ethLayer.(*layers.Ethernet)
+	if (eth.DstMAC).String() == gblInfo.IntfConfig.VirtualRouterMACAddress {
+		svr.logger.Err("Dmac is equal to VMac and hence fsm is aborted")
+		return
+	}
 
 }
 
