@@ -109,6 +109,8 @@ func (v *VxlanLinux) deleteVxLAN(c *VxlanConfig) {
 		if err := netlink.LinkDel(link); err != nil {
 			panic(err)
 		}
+
+		delete(VxlanDB, c.VNI)
 	}
 }
 
