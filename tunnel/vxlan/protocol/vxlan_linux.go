@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/vishvananda/netlink"
 	"net"
+	"time"
 	//"os/exec"
 	"utils/logging"
 )
@@ -232,6 +233,8 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 			time.Sleep(time.Millisecond * 10)
 		} else if err != nil {
 			panic(err)
+		} else {
+			break
 		}
 	}
 }
