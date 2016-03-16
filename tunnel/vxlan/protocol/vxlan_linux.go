@@ -218,7 +218,9 @@ func (v *VxlanLinux) deleteVtep(c *VtepConfig) {
 
 	if vxlan, ok := VxlanDB[c.VxlanId]; ok {
 		for i, link := range vxlan.Links {
-			if (*link).(*netlink.Vxlan).Attrs().Name == c.VtepName {
+			linkName := (*link).(*netlink.Vxlan).Attrs().Name
+			v.logger.Info(fmt.Sprintf("deleteVtep: link found %s looking for %s", linkName, c.VtepName))
+			if linkName == c.VtepName {
 				vxlan.Links = append(vxlan.Links[:i], vxlan.Links[i+1:]...)
 				break
 			}
