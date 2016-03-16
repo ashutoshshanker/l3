@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"github.com/vishvananda/netlink"
 	"net"
-	"os/exec"
+	"time"
+	//"os/exec"
 	"utils/logging"
 )
 
@@ -221,17 +222,22 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 		panic(err)
 	}
 
+	time.Sleep(time.Second * 2)
+
 	/* ON RECREATE - Link up is failing with reason:
-	   transport endpoint is not connected
+	   transport endpoint is not connected*/
 	// lets set the vtep interface to up
 	if err := netlink.LinkSetUp(link); err != nil {
 		panic(err)
 	}
-	*/
+
+	/* ON RECREATE - link up is failing with reason:
+	   exit status 255
 	ifconfigpath, err := exec.LookPath("ifconfig")
 	if err := exec.Command(ifconfigpath, vtep.Name, "up").Run(); err != nil {
 		v.logger.Info(fmt.Sprintf("createVtep: if up failed", err))
 	}
+	*/
 }
 
 func (v *VxlanLinux) deleteVtep(c *VtepConfig) {
