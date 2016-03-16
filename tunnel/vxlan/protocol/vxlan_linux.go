@@ -2,6 +2,7 @@
 package vxlan
 
 import (
+	"errors"
 	"fmt"
 	"github.com/vishvananda/netlink"
 	"net"
@@ -216,26 +217,34 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 
 func (v *VxlanLinux) deleteVtep(c *VtepConfig) {
 
+	foundEntry := false
 	if vxlan, ok := VxlanDB[c.VxlanId]; ok {
 		for i, link := range vxlan.Links {
 			linkName := (*link).(*netlink.Vxlan).Attrs().Name
-			v.logger.Info(fmt.Sprintf("deleteVtep: link found %s looking for %s", linkName, c.VtepName))
 			if linkName == c.VtepName {
-				vxlan.Links = append(vxlan.Links[:i], vxlan.Links[i+1:]...)
+				v.logger.Info(fmt.Sprintf("deleteVtep: link found %s looking for %s", linkName, c.VtepName))
+				foundEntry = true
+				vxlanDbEntry := VxlanDB[c.VxlanId]
+				vxlanDbEntry.Links = append(vxlanDbEntry.Links[:i], vxlanDbEntry.Links[i+1:]...)
+				VxlanDB[c.VxlanId] = vxlanDbEntry
 				break
 			}
 		}
 	}
 
-	link, err := netlink.LinkByName(c.VtepName)
-	if err != nil {
-		panic(err)
-	}
-	if err := netlink.LinkSetDown(link); err != nil {
-		panic(err)
-	}
+	if foundEntry {
+		link, err := netlink.LinkByName(c.VtepName)
+		if err != nil {
+			panic(err)
+		}
+		if err := netlink.LinkSetDown(link); err != nil {
+			panic(err)
+		}
 
-	if err := netlink.LinkDel(link); err != nil {
-		panic(err)
+		if err := netlink.LinkDel(link); err != nil {
+			panic(err)
+		}
+	} else {
+		panic(errors.New("Unable to find vtep in vxlan db"))
 	}
 }
