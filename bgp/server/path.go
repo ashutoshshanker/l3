@@ -7,6 +7,7 @@ import (
 	"l3/bgp/packet"
 	"net"
 	"ribd"
+	"strings"
 	"utils/logging"
 )
 
@@ -164,8 +165,8 @@ func (p *Path) GetPreference() uint32 {
 	return p.Pref
 }
 
-func (p *Path) GetAS4ByteList() [][]int32 {
-	asList := make([][]int32, 0)
+func (p *Path) GetAS4ByteList() []string {
+	asList := make([]string, 0)
 	for _, attr := range p.pathAttrs {
 		if attr.GetCode() == packet.BGPPathAttrTypeASPath {
 			asPaths := attr.(*packet.BGPPathAttrASPath).Value
@@ -174,36 +175,45 @@ func (p *Path) GetAS4ByteList() [][]int32 {
 				if asSize == 4 {
 					seg := asSegment.(*packet.BGPAS4PathSegment)
 					if seg.Type == packet.BGPASPathSegmentSet {
-						asSetList := make([]int32, 0, len(seg.AS))
+						asSetList := make([]string, 0, len(seg.AS))
 						for _, as := range seg.AS {
-							asSetList = append(asSetList, int32(as))
+							asSetList = append(asSetList, string(as))
 						}
-						asList = append(asList, asSetList)
+						asSetStr := strings.Join(asSetList, ", ")
+						asSetStr = "{ " + asSetStr + " }"
+						//asSetStr = append(asSetStr, "}")
+						asList = append(asList, asSetStr)
 					} else if seg.Type == packet.BGPASPathSegmentSequence {
-						asSeqList := make([][]int32, 0, len(seg.AS))
+						//asSeqList := make([]string, 0, len(seg.AS))
 						for _, as := range seg.AS {
-							asSeq := make([]int32, 1)
-							asSeq[0] = int32(as)
-							asSeqList = append(asSeqList, asSeq)
+							//asSeq := make([]int32, 1)
+							//asSeq[0] = int32(as)
+							//asSeqList = append(asSeqList, asSeq)
+							asList = append(asList, string(as))
 						}
-						asList = append(asList, asSeqList...)
+						//asList = append(asList, asSeqList...)
 					}
 				} else {
 					seg := asSegment.(*packet.BGPAS2PathSegment)
 					if seg.Type == packet.BGPASPathSegmentSet {
-						asSetList := make([]int32, 0, len(seg.AS))
+						asSetList := make([]string, 0, len(seg.AS))
 						for _, as := range seg.AS {
-							asSetList = append(asSetList, int32(as))
+							asSetList = append(asSetList, string(as))
 						}
-						asList = append(asList, asSetList)
+						asSetStr := strings.Join(asSetList, ", ")
+						asSetStr = "{ " + asSetStr + " }"
+						//asSetStr = append("{", asSetStr...)
+						//asSetStr = append(asSetStr, "}")
+						asList = append(asList, asSetStr)
 					} else if seg.Type == packet.BGPASPathSegmentSequence {
-						asSeqList := make([][]int32, 0, len(seg.AS))
+						//asSeqList := make([][]int32, 0, len(seg.AS))
 						for _, as := range seg.AS {
-							asSeq := make([]int32, 1)
-							asSeq[0] = int32(as)
-							asSeqList = append(asSeqList, asSeq)
+							//asSeq := make([]int32, 1)
+							//asSeq[0] = int32(as)
+							//asSeqList = append(asSeqList, asSeq)
+							asList = append(asList, string(as))
 						}
-						asList = append(asList, asSeqList...)
+						//asList = append(asList, asSeqList...)
 					}
 				}
 			}
