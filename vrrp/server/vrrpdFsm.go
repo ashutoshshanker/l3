@@ -1,11 +1,12 @@
 package vrrpServer
 
 import (
+	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	_ "net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type VrrpFsmIntf interface {
@@ -16,6 +17,8 @@ type VrrpFsmIntf interface {
 		gblInfo *VrrpGlobalInfo, key string)
 	VrrpMasterState(gblInfo *VrrpGlobalInfo)
 	VrrpUpdateSecIp(gblInfo *VrrpGlobalInfo, configure bool)
+	VrrpTransitionToMaster(gblInfo *VrrpGlobalInfo, key string)
+	VrrpTransitionToBackup(gblInfo *VrrpGlobalInfo, key string)
 	VrrpStopTimers(IfIndex int32)
 }
 
@@ -38,7 +41,7 @@ type VrrpFsmIntf interface {
 func (svr *VrrpServer) VrrpCreateObject(gblInfo VrrpGlobalInfo) (fsmObj VrrpFsm) {
 	vrrpHeader := VrrpPktHeader{
 		Version:       VRRP_VERSION2,
-		Type:          VRRP_PKT_TYPE,
+		Type:          VRRP_PKT_TYPE_ADVERTISEMENT,
 		VirtualRtrId:  uint8(gblInfo.IntfConfig.VRID),
 		Priority:      uint8(gblInfo.IntfConfig.Priority),
 		CountIPv4Addr: 1, // FIXME for more than 1 vip
@@ -81,34 +84,68 @@ func (svr *VrrpServer) VrrpUpdateSecIp(gblInfo *VrrpGlobalInfo, configure bool) 
 	return
 }
 
+func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
+	var timerCheck_func func()
+	// On Timer expiration we will transition to master
+	timerCheck_func = func() {
+		gblInfo, exists := svr.vrrpGblInfo[key]
+		// do timer expiry handling here
+		if !exists {
+			svr.logger.Err("Gbl Config for " + key + " doesn't exists")
+			return
+		}
+		svr.VrrpTransitionToMaster(&gblInfo, key)
+		return
+	}
+
+	gblInfo, exists := svr.vrrpGblInfo[key]
+	if exists {
+		// Set Timer expire func...
+		gblInfo.MasterDownTimer = time.AfterFunc(time.Duration(gblInfo.MasterDownValue),
+			timerCheck_func)
+	}
+}
+
+func (svr *VrrpServer) VrrpTransitionToMaster(gblInfo *VrrpGlobalInfo, key string) {
+	// (110) + Send an ADVERTISEMENT
+	svr.vrrpTxPktCh <- key
+	svr.VrrpUpdateSecIp(gblInfo, true /*configure or set*/)
+	// (140) + Set the Adver_Timer to Advertisement_Interval
+	gblInfo.AdverTimer = gblInfo.IntfConfig.AdvertisementInterval
+	// (145) + Transition to the {Master} state
+	gblInfo.StateLock.Lock()
+	gblInfo.StateName = VRRP_MASTER_STATE
+	gblInfo.StateLock.Unlock()
+	svr.vrrpGblInfo[key] = *gblInfo
+}
+
+func (svr *VrrpServer) VrrpTransitionToBackup(gblInfo *VrrpGlobalInfo, key string) {
+	//(155) + Set Master_Adver_Interval to Advertisement_Interval
+	gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
+	//(160) + Set the Master_Down_Timer to Master_Down_Interval
+	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
+		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
+			gblInfo.MasterAdverInterval) / 256
+	}
+	gblInfo.MasterDownValue = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
+	//(165) + Transition to the {Backup} state
+	gblInfo.StateLock.Lock()
+	gblInfo.StateName = VRRP_BACKUP_STATE
+	gblInfo.StateLock.Unlock()
+	svr.vrrpGblInfo[key] = *gblInfo
+
+	// Start with handling MasterDownTimer
+	svr.VrrpHandleMasterDownTimer(key)
+}
+
 func (svr *VrrpServer) VrrpInitState(gblInfo *VrrpGlobalInfo, key string) {
 	if gblInfo.IntfConfig.Priority == VRRP_MASTER_PRIORITY {
-		// (110) + Send an ADVERTISEMENT
-		svr.vrrpTxPktCh <- key
-		svr.VrrpUpdateSecIp(gblInfo, true /*configure or set*/)
-		// (140) + Set the Adver_Timer to Advertisement_Interval
-		gblInfo.AdverTimer = gblInfo.IntfConfig.AdvertisementInterval
-		// (145) + Transition to the {Master} state
-		gblInfo.StateLock.Lock()
-		gblInfo.StateName = VRRP_MASTER_STATE
-		gblInfo.StateLock.Unlock()
+		svr.VrrpTransitionToMaster(gblInfo, key)
 	} else {
 		svr.VrrpUpdateSecIp(gblInfo, false /*configure or set*/)
-		//(155) + Set Master_Adver_Interval to Advertisement_Interval
-		gblInfo.MasterAdverInterval = gblInfo.IntfConfig.AdvertisementInterval
-		//(160) + Set the Master_Down_Timer to Master_Down_Interval
-		if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
-			gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
-				gblInfo.MasterAdverInterval) / 256
-		}
-		gblInfo.MasterDownValue = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
-		//(165) + Transition to the {Backup} state
-		gblInfo.StateLock.Lock()
-		gblInfo.StateName = VRRP_BACKUP_STATE
-		gblInfo.StateLock.Unlock()
 		// Transition to backup state first
+		svr.VrrpTransitionToBackup(gblInfo, key)
 	}
-	svr.vrrpGblInfo[key] = *gblInfo
 }
 
 func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader,
@@ -139,6 +176,30 @@ func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 		return
 	}
 
+	if vrrpHdr.Type == VRRP_PKT_TYPE_ADVERTISEMENT {
+		svr.logger.Info(fmt.Sprintln("Advertisement pkt for VRID",
+			gblInfo.IntfConfig.VRID, "in backup state"))
+		if vrrpHdr.Priority == 0 {
+			// Change down Value to Skew time
+			gblInfo.MasterDownValue = gblInfo.SkewTime
+			svr.vrrpGblInfo[key] = *gblInfo
+		} else {
+			if gblInfo.IntfConfig.PreemptMode == false ||
+				vrrpHdr.Priority >= uint8(gblInfo.IntfConfig.Priority) {
+				gblInfo.MasterAdverInterval = int32(vrrpHdr.MaxAdverInt)
+				gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
+					gblInfo.MasterAdverInterval) / 256
+				gblInfo.MasterDownValue = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
+				gblInfo.MasterDownTimer.Reset(time.Duration(gblInfo.MasterDownValue))
+				svr.vrrpGblInfo[key] = *gblInfo
+			} else {
+				svr.logger.Info("Discarding advertisment")
+				return
+			} // endif preempt test
+		} // endif was priority zero
+	} // endif was advertisement received
+
+	// end BACKUP STATE
 }
 
 func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {

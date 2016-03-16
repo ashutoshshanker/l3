@@ -73,7 +73,7 @@ func (svr *VrrpServer) VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uin
 	// @TODO: handle v6 packets.....
 	vrrpHeader := VrrpPktHeader{
 		Version:       VRRP_VERSION2,
-		Type:          VRRP_PKT_TYPE,
+		Type:          VRRP_PKT_TYPE_ADVERTISEMENT,
 		VirtualRtrId:  uint8(gblInfo.IntfConfig.VRID),
 		Priority:      uint8(gblInfo.IntfConfig.Priority),
 		CountIPv4Addr: 1, // FIXME for more than 1 vip
@@ -170,6 +170,7 @@ func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan string /*VrrpPktChannelInfo*/) 
 	}
 }
 
+/*
 func (svr *VrrpServer) VrrpSendGratuitousArp(gblInfo *VrrpGlobalInfo) {
 	srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
 	// Ethernet Layer, SMAC == VMAC & DMAC == BCAST
@@ -195,3 +196,4 @@ func (svr *VrrpServer) VrrpSendGratuitousArp(gblInfo *VrrpGlobalInfo) {
 	svr.VrrpWritePacket(*gblInfo, svr.VrrpCreateWriteBuf(eth, arp, nil, nil))
 	return
 }
+*/
