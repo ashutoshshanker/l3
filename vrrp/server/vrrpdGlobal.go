@@ -57,6 +57,7 @@ type VrrpFsm struct {
 	key      string
 	vrrpHdr  *VrrpPktHeader
 	vrrpInFo *VrrpGlobalInfo
+	inPkt    gopacket.Packet
 }
 
 type VrrpClientJson struct {

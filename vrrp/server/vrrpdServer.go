@@ -225,11 +225,13 @@ func (svr *VrrpServer) VrrpConnectToArpd(client VrrpClientJson) error {
 			client.Name, "failed ", err))
 		return err
 	}
-	svr.arpdClient.ClientHdl =
-		arpdServices.NewARPDServicesClientFactory(
-			svr.arpdClient.Transport,
-			svr.arpdClient.PtrProtocolFactory)
-	svr.arpdClient.IsConnected = true
+	/*
+		svr.arpdClient.ClientHdl =
+			arpdServices.NewARPDServicesClientFactory(
+				svr.arpdClient.Transport,
+				svr.arpdClient.PtrProtocolFactory)
+		svr.arpdClient.IsConnected = true
+	*/
 	return nil
 }
 

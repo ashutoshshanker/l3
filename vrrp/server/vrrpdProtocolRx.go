@@ -157,8 +157,10 @@ func (svr *VrrpServer) VrrpCheckRcvdPkt(rcvdCh <-chan VrrpPktChannelInfo) {
 		// Start FSM for VRRP after all the checks are successful
 		/*
 			svr.vrrpFsmCh <- VrrpFsm{
-				VrrpPktHeader,
-				vrrpInFo,
+				VrrpPktHeader: vrrpHeader,
+				vrrpInFo: gblInfo,
+				inPkt: packet,
+				key: key,
 			}
 			/*
 				//svr.logger.Info("Vrrp Info Check Pass...Start FSM")

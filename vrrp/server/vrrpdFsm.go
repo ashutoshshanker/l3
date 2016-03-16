@@ -1,6 +1,7 @@
 package vrrpServer
 
 import (
+	"github.com/google/gopacket"
 	"net"
 )
 
@@ -8,7 +9,8 @@ type VrrpFsmIntf interface {
 	VrrpFsmStart(fsmObj VrrpFsm)
 	VrrpCreateObject(gblInfo VrrpGlobalInfo) (fsmObj VrrpFsm)
 	VrrpInitState(gblInfo *VrrpGlobalInfo, key string)
-	VrrpBackupState(gblInfo *VrrpGlobalInfo)
+	VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader,
+		gblInfo *VrrpGlobalInfo, key string)
 	VrrpMasterState(gblInfo *VrrpGlobalInfo)
 }
 
@@ -58,7 +60,7 @@ func (svr *VrrpServer) VrrpInitState(gblInfo *VrrpGlobalInfo, key string) {
 			   virtual router MAC address for each IP address associated
 			   with the virtual router.
 			*/
-			svr.VrrpSendGratuitousArp(gblInfo)
+			//svr.VrrpSendGratuitousArp(gblInfo)
 		} else { // @TODO: ipv6 implementation
 			// (125) + else // IPv6
 			/*
@@ -101,9 +103,17 @@ func (svr *VrrpServer) VrrpInitState(gblInfo *VrrpGlobalInfo, key string) {
 	svr.vrrpGblInfo[key] = *gblInfo
 }
 
+func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader,
+	gblInfo *VrrpGlobalInfo, key string) {
+	// @TODO: Handle arp drop...
+
+}
+
 func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 	gblInfo := fsmObj.vrrpInFo
 	key := fsmObj.key
+	pktInfo := fsmObj.inPkt
+	pktHdr := fsmObj.vrrpHdr
 
 	gblInfo.StateLock.Lock()
 	currentState := gblInfo.StateName
@@ -113,7 +123,7 @@ func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 	case VRRP_INITIALIZE_STATE:
 		svr.VrrpInitState(gblInfo, key)
 	case VRRP_BACKUP_STATE:
-
+		svr.VrrpBackupState(pktInfo, pktHdr, gblInfo, key)
 	case VRRP_MASTER_STATE:
 	}
 }
