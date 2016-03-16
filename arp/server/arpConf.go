@@ -61,10 +61,3 @@ func (server *ARPServer) processArpConf(conf ArpConf) (int, error) {
 	server.arpEntryCntUpdateCh <- server.timeoutCounter
 	return 0, nil
 }
-
-// API: It will create a map entry for vip and ifindex
-//      We will use vip as key so that indexing is faster
-func (server *ARPServer) registerVirtualIp(conf VirtualIpInfo) {
-	server.vipIfIndexmap[conf.IpAddr] = conf.IfIndex
-	server.logger.Info("Virtual Ip " + conf.IpAddr + " stored in arp")
-}

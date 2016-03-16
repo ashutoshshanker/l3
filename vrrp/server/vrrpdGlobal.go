@@ -1,7 +1,6 @@
 package vrrpServer
 
 import (
-	"arpd"
 	"asicdServices"
 	"database/sql"
 	"git.apache.org/thrift.git/lib/go/thrift"
@@ -77,11 +76,6 @@ type VrrpAsicdClient struct {
 	ClientHdl *asicdServices.ASICDServicesClient
 }
 
-type VrrpArpdClient struct {
-	VrrpClientBase
-	ClientHdl *arpd.ARPDServicesClient
-}
-
 type VrrpGlobalInfo struct {
 	IntfConfig vrrpd.VrrpIntfConfig
 	// The initial value is the same as Advertisement_Interval.
@@ -117,7 +111,6 @@ type VrrpServer struct {
 	vrrpDbHdl                     *sql.DB
 	paramsDir                     string
 	asicdClient                   VrrpAsicdClient
-	arpdClient                    VrrpArpdClient
 	asicdSubSocket                *nanomsg.SubSocket
 	vrrpGblInfo                   map[string]VrrpGlobalInfo // IfIndex + VRID
 	vrrpIntfStateSlice            []string

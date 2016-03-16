@@ -56,11 +56,6 @@ type ArpConf struct {
 	RefTimeout int
 }
 
-type VirtualIpInfo struct {
-	IpAddr  string
-	IfIndex int32
-}
-
 type ArpClientBase struct {
 	Address            string
 	Transport          thrift.TTransport
@@ -106,8 +101,6 @@ type ARPServer struct {
 	arpCounterUpdateCh     chan bool
 	ResolveIPv4Ch          chan ResolveIPv4
 	ArpConfCh              chan ArpConf
-	VirtualIpCh            chan VirtualIpInfo
-	vipIfIndexmap          map[string]int32
 	dumpArpTable           bool
 }
 
@@ -131,8 +124,6 @@ func NewARPServer(logger *logging.Writer) *ARPServer {
 	arpServer.arpCounterUpdateCh = make(chan bool)
 	arpServer.ResolveIPv4Ch = make(chan ResolveIPv4)
 	arpServer.ArpConfCh = make(chan ArpConf)
-	arpServer.VirtualIpCh = make(chan VirtualIpInfo)
-	arpServer.vipIfIndexmap = make(map[string]int32, 10)
 	return arpServer
 }
 
@@ -271,8 +262,6 @@ func (server *ARPServer) StartServer(paramDir string) {
 			server.processResolveIPv4(rConf)
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
-		case vipInfo := <-server.VirtualIpCh:
-			server.registerVirtualIp(vipInfo)
 		case <-server.asicdSubSocketErrCh:
 		}
 	}

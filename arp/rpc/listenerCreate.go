@@ -35,11 +35,3 @@ func (h *ARPHandler) CreateArpConfig(conf *arpd.ArpConfig) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Received CreateArpConfig call with Timeout:", conf.Timeout))
 	return h.SendSetArpConfig(int(conf.Timeout)), nil
 }
-
-func (h *ARPHandler) RegisterVirtualIp(IpAddr string, IfIndex int32) (arpdInt.Int, error) {
-	h.server.VirtualIpCh <- server.VirtualIpInfo{
-		IpAddr:  IpAddr,
-		IfIndex: IfIndex,
-	}
-	return 1, nil
-}
