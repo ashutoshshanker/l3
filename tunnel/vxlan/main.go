@@ -30,7 +30,7 @@ func main() {
 
 	// create a new vxlan server
 	server := vxlan.NewVXLANServer(logger, path)
-	handler := rpc.NewVXLANDServiceHandler(server)
+	handler := rpc.NewVXLANDServiceHandler(server, logger)
 	// blocking call
 	handler.StartThriftServer()
 }

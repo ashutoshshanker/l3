@@ -8,6 +8,7 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	_ "github.com/mattn/go-sqlite3"
 	vxlan "l3/tunnel/vxlan/protocol"
+	"utils/logging"
 	"vxland"
 )
 
@@ -15,14 +16,16 @@ const DBName string = "UsrConfDb.db"
 
 type VXLANDServiceHandler struct {
 	server *vxlan.VXLANServer
+	logger *logging.Writer
 }
 
-func NewVXLANDServiceHandler(server *vxlan.VXLANServer) *VXLANDServiceHandler {
+func NewVXLANDServiceHandler(server *vxlan.VXLANServer, logger *logging.Writer) *VXLANDServiceHandler {
 	//lacp.LacpStartTime = time.Now()
 	// link up/down events for now
 	//startEvtHandler()
 	handler := &VXLANDServiceHandler{
 		server: server,
+		logger: logger,
 	}
 
 	// lets read the current config and re-play the config
@@ -57,19 +60,19 @@ func (v *VXLANDServiceHandler) StartThriftServer() {
 }
 
 func (v *VXLANDServiceHandler) CreateVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
-	fmt.Println("CreateVxlanConfigInstance %#v", config)
+	v.logger.Info(fmt.Sprintf("CreateVxlanConfigInstance %#v", config))
 	v.server.Configchans.Vxlancreate <- *config
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) DeleteVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
-	fmt.Println("DeleteVxlanConfigInstance %#v", config)
+	v.logger.Info(fmt.Sprintf("DeleteVxlanConfigInstance %#v", config))
 	v.server.Configchans.Vxlandelete <- *config
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInstance, newconfig *vxland.VxlanInstance, attrset []bool) (bool, error) {
-	fmt.Println("UpdateVxlanConfigInstance orig[%#v] new[%#v]", origconfig, newconfig)
+	v.logger.Info(fmt.Sprintf("UpdateVxlanConfigInstance orig[%#v] new[%#v]", origconfig, newconfig))
 	update := vxlan.VxlanUpdate{
 		Oldconfig: *origconfig,
 		Newconfig: *newconfig,
@@ -80,19 +83,19 @@ func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInsta
 }
 
 func (v *VXLANDServiceHandler) CreateVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
-	fmt.Println("CreateVxlanVtepInstances %#v", config)
+	v.logger.Info(fmt.Sprintf("CreateVxlanVtepInstances %#v", config))
 	v.server.Configchans.Vtepcreate <- *config
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) DeleteVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
-	fmt.Println("DeleteVxlanVtepInstances %#v", config)
+	v.logger.Info(fmt.Sprintf("DeleteVxlanVtepInstances %#v", config))
 	v.server.Configchans.Vtepdelete <- *config
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) UpdateVxlanVtepInstances(origconfig *vxland.VxlanVtepInstances, newconfig *vxland.VxlanVtepInstances, attrset []bool) (bool, error) {
-	fmt.Println("UpdateVxlanVtepInstances orig[%#v] new[%#v]", origconfig, newconfig)
+	v.logger.Info(fmt.Sprintf("UpdateVxlanVtepInstances orig[%#v] new[%#v]", origconfig, newconfig))
 	update := vxlan.VtepUpdate{
 		Oldconfig: *origconfig,
 		Newconfig: *newconfig,
