@@ -31,7 +31,7 @@ func (svr *VrrpServer) VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
 	svr.logger.Info(fmt.Sprintln("AdvertisementTime:", gblInfo.IntfConfig.AdvertisementInterval))
 	svr.logger.Info(fmt.Sprintln("MasterAdverInterval:", gblInfo.MasterAdverInterval))
 	svr.logger.Info(fmt.Sprintln("Skew Time:", gblInfo.SkewTime))
-	svr.logger.Info(fmt.Sprintln("Master Down Timer:", gblInfo.MasterDownTimer))
+	svr.logger.Info(fmt.Sprintln("Master Down Timer:", gblInfo.MasterDownValue))
 	svr.logger.Info(fmt.Sprintln("Adver Timer:", gblInfo.AdverTimer))
 }
 
@@ -61,12 +61,12 @@ func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfSt
 	entry.PreemptMode = gblInfo.IntfConfig.PreemptMode
 	entry.VirtualRouterMACAddress = gblInfo.IntfConfig.VirtualRouterMACAddress
 	entry.SkewTime = gblInfo.SkewTime
-	entry.MasterDownTimer = gblInfo.MasterDownTimer
+	entry.MasterDownTimer = gblInfo.MasterDownValue
 	entry.AdverTimer = gblInfo.AdverTimer
 }
 
 func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key string) {
-	key := strconv.Itoa(int(config.IfIndex)) + strconv.Itoa(int(config.VRID))
+	key := strconv.Itoa(int(config.IfIndex)) + "_" + strconv.Itoa(int(config.VRID))
 	gblInfo := svr.vrrpGblInfo[key]
 
 	gblInfo.IntfConfig.IfIndex = config.IfIndex
