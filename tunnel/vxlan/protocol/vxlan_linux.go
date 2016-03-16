@@ -83,7 +83,7 @@ func (v *VxlanLinux) createVxLAN(c *VxlanConfig) {
 func (v *VxlanLinux) deleteVxLAN(c *VxlanConfig) {
 
 	if vxlan, ok := VxlanDB[c.VNI]; ok {
-		for _, link := range vxlan.Links {
+		for i, link := range vxlan.Links {
 			// lets set the vtep interface to up
 			if err := netlink.LinkSetDown(*link); err != nil {
 				panic(err)
@@ -91,6 +91,23 @@ func (v *VxlanLinux) deleteVxLAN(c *VxlanConfig) {
 			if err := netlink.LinkDel(*link); err != nil {
 				panic(err)
 			}
+
+			vxlanDbEntry := VxlanDB[c.VNI]
+			vxlanDbEntry.Links = append(vxlanDbEntry.Links[:i], vxlanDbEntry.Links[i+1:]...)
+			VxlanDB[c.VNI] = vxlanDbEntry
+		}
+
+		link, err := netlink.LinkByName(vxlan.Brg.Name)
+		if err != nil {
+			panic(err)
+		}
+
+		// lets set the vtep interface to up
+		if err := netlink.LinkSetDown(link); err != nil {
+			panic(err)
+		}
+		if err := netlink.LinkDel(link); err != nil {
+			panic(err)
 		}
 	}
 }
