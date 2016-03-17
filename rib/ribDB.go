@@ -176,17 +176,17 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 			return err
 		}
 		logger.Info(fmt.Sprintln("executed cmd ", dbCmd, "policy name = ", policy.Name, " precedence: ", policy.Precedence))
-		dbCmdPrecedence := "select * from PolicyDefinitionStmtPrecedence"
+		dbCmdPrecedence := "select * from PolicyDefinitionConfigStatementList"
 		conditionrows, err := dbHdl.Query(dbCmdPrecedence)
 		if err != nil {
 			logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmdPrecedence, err))
 			return err
 		}
 		policy.StatementList = make([]*ribd.PolicyDefinitionStmtPrecedence, 0)
-		var stmt, policyName, policyStmtName string
+		var stmt, policyName string
 		var precedence int
 		for conditionrows.Next() {
-			if err = conditionrows.Scan(&policyName, &policyStmtName, &stmt, &precedence); err != nil {
+			if err = conditionrows.Scan(&policyName, &precedence, &stmt); err != nil {
 				logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtPrecedence rows with error %s\n", err))
 				return err
 			}
