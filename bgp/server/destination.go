@@ -3,6 +3,9 @@ package server
 
 import (
 	"bgpd"
+	"ribd"
+	"ribdInt"
+	"strconv"
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
@@ -453,10 +456,13 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, []*Ro
 					if paths[0].IsExternal() {
 						protocol = "EBGP"
 					}
-					ret, err := d.server.ribdClient.CreateV4Route(d.ipPrefix.Prefix.String(),
+					nextHopIfTypeStr,_ := d.server.ribdClient.GetNextHopIfTypeStr(ribdInt.Int(paths[0].NextHopIfType))
+                    cfg := ribd.IPv4Route{nextHopIfTypeStr, protocol, strconv.Itoa(int(paths[0].NextHopIfIdx)),d.ipPrefix.Prefix.String(),int32(paths[0].Metric),constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),paths[0].NextHop}
+					ret, err := d.server.ribdClient.CreateIPv4Route(&cfg)
+					/*(d.ipPrefix.Prefix.String(),
 						constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),
 						paths[0].Metric, paths[0].NextHop, paths[0].NextHopIfType,
-						paths[0].NextHopIfIdx, protocol)
+						paths[0].NextHopIfIdx, protocol)*/
 					if err != nil {
 						d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
 					}
@@ -483,8 +489,10 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, []*Ro
 					if path.IsExternal() {
 						protocol = "EBGP"
 					}
-					ret, err := d.server.ribdClient.DeleteV4Route(d.ipPrefix.Prefix.String(),
-						constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), protocol, path.NextHop)
+                    cfg := ribd.IPv4Route{"", protocol, strconv.Itoa(int(path.NextHopIfIdx)),d.ipPrefix.Prefix.String(),int32(path.Metric),constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),path.NextHop}
+					ret, err := d.server.ribdClient.DeleteIPv4Route(&cfg)
+					//d.ipPrefix.Prefix.String(),
+						//constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), protocol, path.NextHop)
 					if err != nil {
 						d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 					}
@@ -504,8 +512,10 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, []*Ro
 				if path.IsExternal() {
 					protocol = "EBGP"
 				}
-				ret, err := d.server.ribdClient.DeleteV4Route(d.ipPrefix.Prefix.String(),
-					constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), protocol, path.NextHop)
+                cfg := ribd.IPv4Route{"", protocol, strconv.Itoa(int(path.NextHopIfIdx)),d.ipPrefix.Prefix.String(),int32(path.Metric),constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),path.NextHop}
+				ret, err := d.server.ribdClient.DeleteIPv4Route(&cfg)
+				//d.ipPrefix.Prefix.String(),
+					//constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), protocol, path.NextHop)
 				if err != nil {
 					d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
 				}
@@ -526,8 +536,10 @@ func (d *Destination) updateRoute(path *Path) {
 	if path.IsExternal() {
 		protocol = "EBGP"
 	}
-	ret, err := d.server.ribdClient.DeleteV4Route(d.ipPrefix.Prefix.String(),
-		constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), protocol, path.NextHop)
+    cfg := ribd.IPv4Route{"", protocol, strconv.Itoa(int(path.NextHopIfIdx)),d.ipPrefix.Prefix.String(),int32(path.Metric),constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),path.NextHop}
+	ret, err := d.server.ribdClient.DeleteIPv4Route(&cfg)
+	//d.ipPrefix.Prefix.String(),
+		//constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), protocol, path.NextHop)
 
 	if err != nil {
 		d.logger.Err(fmt.Sprintf("DeleteV4Route failed with error: %s, retVal: %d", err, ret))
@@ -543,10 +555,13 @@ func (d *Destination) updateRoute(path *Path) {
 
 		d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s", d.ipPrefix.Prefix.String(),
 			constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), nextHop))
-		ret, err = d.server.ribdClient.CreateV4Route(d.ipPrefix.Prefix.String(),
+		nextHopIfTypeStr,_ := d.server.ribdClient.GetNextHopIfTypeStr(ribdInt.Int(path.NextHopIfType))
+        cfg := ribd.IPv4Route{nextHopIfTypeStr, protocol, strconv.Itoa(int(path.NextHopIfIdx)),d.ipPrefix.Prefix.String(),int32(path.Metric),constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),nextHop}
+		ret, err = d.server.ribdClient.CreateIPv4Route(&cfg)
+		/*d.ipPrefix.Prefix.String(),
 			constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),
 			path.Metric, nextHop, path.NextHopIfType,
-			path.NextHopIfIdx, protocol)
+			path.NextHopIfIdx, protocol)*/
 		if err != nil {
 			d.logger.Err(fmt.Sprintf("CreateV4Route failed with error: %s, retVal: %d", err, ret))
 		}

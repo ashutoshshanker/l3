@@ -287,9 +287,9 @@ func (p *Path) GetReachabilityInfo() {
 		p.logger.Info(fmt.Sprintf("Next hop for %s is %s. Using %s as the next hop", ipStr, p.NextHop, ipStr))
 		p.NextHop = ipStr
 	}
-	p.NextHopIfType = reachabilityInfo.NextHopIfType
-	p.NextHopIfIdx = reachabilityInfo.NextHopIfIndex
-	p.Metric = reachabilityInfo.Metric
+	p.NextHopIfType = ribd.Int(reachabilityInfo.NextHopIfType)
+	p.NextHopIfIdx = ribd.Int(reachabilityInfo.NextHopIfIndex)
+	p.Metric = ribd.Int(reachabilityInfo.Metric)
 }
 
 func (p *Path) IsReachable() bool {
