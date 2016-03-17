@@ -132,6 +132,7 @@ func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMs
 func (svr *VrrpServer) VrrpUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
 	switch msg.IfState {
 	case asicdConstDefs.INTF_STATE_UP:
+		svr.VrrpHandleIntfUpEvent(msg.IfIndex)
 		svr.logger.Info("VRRP: Got Interface state up notification")
 	case asicdConstDefs.INTF_STATE_DOWN:
 		svr.VrrpHandleIntfShutdownEvent(msg.IfIndex)

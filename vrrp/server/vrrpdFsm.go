@@ -19,6 +19,7 @@ type VrrpFsmIntf interface {
 	VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader, key string)
 	VrrpTransitionToMaster(key string)
 	VrrpTransitionToBackup(key string, AdvertisementInterval int32)
+	VrrpHandleIntfUpEvent(IfIndex int32)
 	VrrpHandleIntfShutdownEvent(IfIndex int32)
 }
 
@@ -163,8 +164,8 @@ func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
 }
 
 func (svr *VrrpServer) VrrpTransitionToBackup(key string, AdvertisementInterval int32) {
-	svr.logger.Info(fmt.Sprintln("advertisement timer to be used for",
-		"calculating down timer is ", AdvertisementInterval))
+	svr.logger.Info(fmt.Sprintln("advertisement timer to be used in backup state for",
+		"calculating master down timer is ", AdvertisementInterval))
 	gblInfo, exists := svr.vrrpGblInfo[key]
 	if !exists {
 		svr.logger.Err("No entry found ending fsm")
@@ -295,6 +296,10 @@ func (svr *VrrpServer) VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 			(int32(vrrpHdr.Priority) == gblInfo.IntfConfig.Priority &&
 				bytes.Compare(ipHdr.SrcIP,
 					net.ParseIP(gblInfo.IpAddr)) > 0) {
+			svr.logger.Info(fmt.Sprintln("Remote Priority is higher or ",
+				"(priority are equal && remote ip is higher then local ip)"))
+			svr.logger.Info("because of the above reason stopping adver timer" +
+				" and transitioning to Backup State")
 			gblInfo.AdverTimer.Stop()
 			svr.vrrpGblInfo[key] = gblInfo
 			svr.VrrpTransitionToBackup(key, int32(vrrpHdr.MaxAdverInt))
@@ -352,13 +357,18 @@ func (svr *VrrpServer) VrrpStopTimers(IfIndex int32) {
 		if !found {
 			svr.logger.Err("No entry found for Ifindex:" +
 				splitString[0] + " VRID:" + splitString[1])
+			return
 		}
 		svr.logger.Info("Stopping Master Down Timer for Ifindex:" +
 			splitString[0] + " VRID:" + splitString[1])
-		gblInfo.MasterDownTimer.Stop()
+		if gblInfo.MasterDownTimer != nil {
+			gblInfo.MasterDownTimer.Stop()
+		}
 		svr.logger.Info("Stopping Master Advertisemen Timer for Ifindex:" +
 			splitString[0] + " VRID:" + splitString[1])
-		gblInfo.AdverTimer.Stop()
+		if gblInfo.AdverTimer != nil {
+			gblInfo.AdverTimer.Stop()
+		}
 		// If state is Master then we need to send an advertisement with
 		// priority as 0
 		gblInfo.StateLock.Lock()
@@ -372,9 +382,37 @@ func (svr *VrrpServer) VrrpStopTimers(IfIndex int32) {
 		gblInfo.StateName = VRRP_INITIALIZE_STATE
 		gblInfo.StateLock.Unlock()
 		svr.vrrpGblInfo[key] = gblInfo
+		svr.logger.Info(fmt.Sprintln("VRID:", gblInfo.IntfConfig.VRID,
+			" transitioned to INIT State"))
 	}
 }
 
 func (svr *VrrpServer) VrrpHandleIntfShutdownEvent(IfIndex int32) {
 	svr.VrrpStopTimers(IfIndex)
+}
+
+func (svr *VrrpServer) VrrpHandleIntfUpEvent(IfIndex int32) {
+	for _, key := range svr.vrrpIntfStateSlice {
+		splitString := strings.Split(key, "_")
+		// splitString = { IfIndex, VRID }
+		ifindex, _ := strconv.Atoi(splitString[0])
+		if int32(ifindex) != IfIndex {
+			// Key doesn't match
+			continue
+		}
+		// If IfIndex matches then use that key and stop the timer for
+		// that VRID
+		gblInfo, found := svr.vrrpGblInfo[key]
+		if !found {
+			svr.logger.Err("No entry found for Ifindex:" +
+				splitString[0] + " VRID:" + splitString[1])
+			return
+		}
+
+		svr.logger.Info(fmt.Sprintln("Intf State Up Notification",
+			" restarting the fsm event for VRID:", gblInfo.IntfConfig.VRID))
+		svr.vrrpFsmCh <- VrrpFsm{
+			key: key,
+		}
+	}
 }
