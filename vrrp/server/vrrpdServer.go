@@ -130,16 +130,13 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 	// Send the config global on the channel... We do not need to create a
 	// vrrp header right now.. it will be created only if necessary
 	svr.vrrpFsmCh <- VrrpFsm{
-		key:      key,
-		vrrpInFo: &gblInfo,
+		key: key,
 	}
 
 	if !svr.vrrpMacConfigAdded {
 		go svr.VrrpAddMacEntry(true /*add vrrp protocol mac*/)
 	}
 
-	// @TODO: remove this call... this is just for debugging during initial stages
-	svr.VrrpDumpIntfInfo(gblInfo)
 }
 
 func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(fromIndex int, cnt int) (int,
