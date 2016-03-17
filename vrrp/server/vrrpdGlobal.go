@@ -77,6 +77,8 @@ type VrrpAsicdClient struct {
 
 type VrrpGlobalInfo struct {
 	IntfConfig vrrpd.VrrpIntfConfig
+	// VRRP MAC aka VMAC
+	VirtualRouterMACAddress string
 	// The initial value is the same as Advertisement_Interval.
 	MasterAdverInterval int32
 	// (((256 - priority) * Master_Adver_Interval) / 256)

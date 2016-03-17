@@ -26,12 +26,14 @@ func (svr *VrrpServer) VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
 	svr.logger.Info(fmt.Sprintln("IfIndex:", gblInfo.IntfConfig.IfIndex))
 	svr.logger.Info(fmt.Sprintln("Priority:", gblInfo.IntfConfig.Priority))
 	svr.logger.Info(fmt.Sprintln("Preempt Mode:", gblInfo.IntfConfig.PreemptMode))
-	svr.logger.Info(fmt.Sprintln("Virt Mac Addr:", gblInfo.IntfConfig.VirtualRouterMACAddress))
+	svr.logger.Info(fmt.Sprintln("Virt Mac Addr:", gblInfo.VirtualRouterMACAddress))
 	svr.logger.Info(fmt.Sprintln("VirtualIPv4Addr:", gblInfo.IntfConfig.VirtualIPv4Addr))
-	svr.logger.Info(fmt.Sprintln("AdvertisementTime:", gblInfo.IntfConfig.AdvertisementInterval))
-	svr.logger.Info(fmt.Sprintln("MasterAdverInterval:", gblInfo.MasterAdverInterval))
+	svr.logger.Info(fmt.Sprintln("AdvertisementTime Value:", gblInfo.IntfConfig.AdvertisementInterval))
+	svr.logger.Info(fmt.Sprintln("Calculated MasterAdverInterval:", gblInfo.MasterAdverInterval))
 	svr.logger.Info(fmt.Sprintln("Skew Time:", gblInfo.SkewTime))
-	svr.logger.Info(fmt.Sprintln("Master Down Timer:", gblInfo.MasterDownValue))
+	svr.logger.Info(fmt.Sprintln("Master Down Value:", gblInfo.MasterDownValue))
+	svr.logger.Info(fmt.Sprintln("Advertise timer:", gblInfo.AdverTimer))
+	svr.logger.Info(fmt.Sprintln("Master Down Timer:", gblInfo.MasterDownTimer))
 }
 
 func (svr *VrrpServer) VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
@@ -58,7 +60,7 @@ func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfSt
 	entry.VirtualIPv4Addr = gblInfo.IntfConfig.VirtualIPv4Addr
 	entry.AdvertisementInterval = gblInfo.IntfConfig.AdvertisementInterval
 	entry.PreemptMode = gblInfo.IntfConfig.PreemptMode
-	entry.VirtualRouterMACAddress = gblInfo.IntfConfig.VirtualRouterMACAddress
+	entry.VirtualRouterMACAddress = gblInfo.VirtualRouterMACAddress
 	entry.SkewTime = gblInfo.SkewTime
 	entry.MasterDownTimer = gblInfo.MasterDownValue
 }
@@ -89,18 +91,13 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 		gblInfo.IntfConfig.AcceptMode = false
 	}
 
-	if config.VirtualRouterMACAddress != "" {
-		gblInfo.IntfConfig.VirtualRouterMACAddress =
-			config.VirtualRouterMACAddress
-	} else {
-		if gblInfo.IntfConfig.VRID < 10 {
-			gblInfo.IntfConfig.VirtualRouterMACAddress = VRRP_IEEE_MAC_ADDR +
-				"0" + strconv.Itoa(int(gblInfo.IntfConfig.VRID))
+	if gblInfo.IntfConfig.VRID < 10 {
+		gblInfo.VirtualRouterMACAddress = VRRP_IEEE_MAC_ADDR +
+			"0" + strconv.Itoa(int(gblInfo.IntfConfig.VRID))
 
-		} else {
-			gblInfo.IntfConfig.VirtualRouterMACAddress = VRRP_IEEE_MAC_ADDR +
-				strconv.Itoa(int(gblInfo.IntfConfig.VRID))
-		}
+	} else {
+		gblInfo.VirtualRouterMACAddress = VRRP_IEEE_MAC_ADDR +
+			strconv.Itoa(int(gblInfo.IntfConfig.VRID))
 	}
 	if ok := svr.VrrpUpdateIntfIpAddr(&gblInfo); ok == false {
 		// If we miss Asic Notification then do one time get bulk for Ipv4
@@ -134,7 +131,8 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 	}
 
 	if !svr.vrrpMacConfigAdded {
-		go svr.VrrpAddMacEntry(true /*add vrrp protocol mac*/)
+		svr.logger.Info("Adding protocol mac for punting packets to CPU")
+		svr.VrrpAddMacEntry(true /*add vrrp protocol mac*/)
 	}
 
 }

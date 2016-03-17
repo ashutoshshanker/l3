@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
+	"vrrpd"
 )
 
 func (svr *VrrpServer) VrrpInitDB() error {
@@ -36,6 +37,16 @@ func (svr *VrrpServer) VrrpReadDB() error {
 	}
 
 	for rows.Next() {
+		var config vrrpd.VrrpIntfConfig
+		err = rows.Scan(&config.IfIndex, &config.VRID,
+			&config.Priority, &config.VirtualIPv4Addr,
+			&config.AdvertisementInterval, &config.PreemptMode,
+			&config.AcceptMode)
+		if err != nil {
+			svr.logger.Err(fmt.Sprintln("scanning rows failed", err))
+		} else {
+			svr.VrrpUpdateGblInfo(config)
+		}
 		//@TODO: finish implementation
 	}
 	svr.vrrpDbHdl.Close()

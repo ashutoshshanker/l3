@@ -125,7 +125,7 @@ func (svr *VrrpServer) VrrpCreateWriteBuf(eth *layers.Ethernet,
 func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte,
 	hdrLen uint16) []byte {
 	// Ethernet Layer
-	srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
+	srcMAC, _ := net.ParseMAC(gblInfo.VirtualRouterMACAddress)
 	dstMAC, _ := net.ParseMAC(VRRP_PROTOCOL_MAC)
 	eth := &layers.Ethernet{
 		SrcMAC:       srcMAC,
@@ -148,7 +148,6 @@ func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []by
 }
 
 func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan VrrpTxChannelInfo) {
-	svr.logger.Info("started send packet routine")
 	for {
 		txInfo := <-rcvdCh
 		key := txInfo.key
@@ -178,7 +177,7 @@ func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan VrrpTxChannelInfo) {
 
 /*
 func (svr *VrrpServer) VrrpSendGratuitousArp(gblInfo *VrrpGlobalInfo) {
-	srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
+	srcMAC, _ := net.ParseMAC(gblInfo.VirtualRouterMACAddress)
 	// Ethernet Layer, SMAC == VMAC & DMAC == BCAST
 	eth := &layers.Ethernet{
 		SrcMAC:       srcMAC,

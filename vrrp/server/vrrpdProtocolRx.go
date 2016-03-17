@@ -113,7 +113,6 @@ func (svr *VrrpServer) VrrpCheckHeader(hdr *VrrpPktHeader, layerContent []byte, 
 }
 
 func (svr *VrrpServer) VrrpCheckRcvdPkt(rcvdCh <-chan VrrpPktChannelInfo) {
-	svr.logger.Info("started pre-fsm check")
 	for {
 		pktChannel := <-rcvdCh
 		packet := pktChannel.pkt
@@ -153,7 +152,8 @@ func (svr *VrrpServer) VrrpCheckRcvdPkt(rcvdCh <-chan VrrpPktChannelInfo) {
 				". Dropping received packet from", ipHdr.SrcIP))
 			continue
 		}
-
+		svr.logger.Info(fmt.Sprintln("RX packet from", ipHdr.SrcIP,
+			" passed basic ip check, hence starting FSM"))
 		// Start FSM for VRRP after all the checks are successful
 		svr.vrrpFsmCh <- VrrpFsm{
 			vrrpHdr: vrrpHeader,
