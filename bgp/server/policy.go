@@ -1,8 +1,7 @@
 // policy.go
-package policy
+package server
 
 import (
-	"bgpd"
 	"fmt"
 	"utils/logging"
 	utilspolicy "utils/policy"
@@ -18,7 +17,7 @@ type PolicyActionFunc struct {
 type PolicyExtensions struct {
 	HitCounter    int
 	RouteList     []string
-	RouteInfoList []*bgpd.BGPRoute
+	RouteInfoList []*Route
 }
 
 type BGPPolicyEngine struct {
