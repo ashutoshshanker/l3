@@ -111,7 +111,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
-		logger.Info(fmt.Sprintln("Scanning stmt ", stmt.Name))
+		logger.Info(fmt.Sprintln("Scanning stmt ", stmt.Name, "MatchConditions:",stmt.MatchConditions))
 		dbCmdCond := "select * from PolicyStmtConfigConditions"
 		conditionrows, err := dbHdl.Query(dbCmdCond)
 		if err != nil {
@@ -184,17 +184,17 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 		}
 		policy.StatementList = make([]*ribd.PolicyDefinitionStmtPrecedence, 0)
 		var stmt, policyName string
-		var precedence int
+		var precedence int32
 		for conditionrows.Next() {
-			if err = conditionrows.Scan(&policyName, &precedence, &stmt); err != nil {
-				logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtPrecedence rows with error %s\n", err))
+			if err = conditionrows.Scan(&policyName, &stmt, &precedence); err != nil {
+				logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionConfigStatementList rows with error %s\n", err))
 				return err
 			}
 			if policyName != policy.Name {
 				logger.Info(fmt.Sprintln("Not a stmt for this policy, policyName: ", policyName))
 				continue
 			}
-			logger.Info(fmt.Sprintln("Fetching stmt ", stmt))
+			logger.Info(fmt.Sprintln("Fetching stmt ", stmt,"Precedence:",precedence))
 			policyStmtPrecedence := ribd.PolicyDefinitionStmtPrecedence{Precedence: int32(precedence), Statement: stmt}
 			policy.StatementList = append(policy.StatementList, &policyStmtPrecedence)
 		}

@@ -172,9 +172,8 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 		}
 	}
 }
-func policyEngineUndoRouteDispositionAction(actionItem interface{}, conditionList []interface{}, params interface{}, policyStmt policy.PolicyStmt) {
+func policyEngineUndoRouteDispositionAction(action interface{}, conditionList []interface{}, params interface{}, policyStmt policy.PolicyStmt) {
 	logger.Info(fmt.Sprintln("policyEngineUndoRouteDispositionAction"))
-	action := actionItem.(policy.PolicyAction).ActionInfo
 	logger.Info(fmt.Sprintln("RouteDisposition action = ", action.(string)))
 	if action.(string) == "Reject" {
 		logger.Info(fmt.Sprintln("Reject action"))
@@ -192,8 +191,7 @@ func policyEngineActionUndoNetworkStatemenAdvertiseAction(actionItem interface{}
 	logger.Info(fmt.Sprintln("policyEngineActionUndoNetworkStatemenAdvertiseAction"))
 	RouteInfo := params.(RouteParams)
 	var route ribdInt.Routes
-	action := actionItem.(policy.PolicyAction).ActionInfo
-	networkStatementTargetProtocol := action.(string)
+	networkStatementTargetProtocol := actionItem.(string)
 	//Send a event based on target protocol
 	var evt int
 	evt = ribdCommonDefs.NOTIFY_ROUTE_DELETED
@@ -213,8 +211,7 @@ func policyEngineActionUndoRedistribute(actionItem interface{}, conditionsList [
 	logger.Info(fmt.Sprintln("policyEngineActionUndoRedistribute"))
 	RouteInfo := params.(RouteParams)
 	var route ribdInt.Routes
-	action := actionItem.(policy.PolicyAction).ActionInfo
-	redistributeActionInfo := action.(policy.RedistributeActionInfo)
+	redistributeActionInfo := actionItem.(policy.RedistributeActionInfo)
 	//Send a event based on target protocol
 	var evt int
 	logger.Info(fmt.Sprintln("redistributeAction set to ", redistributeActionInfo.Redistribute))
@@ -297,7 +294,8 @@ func policyEngineActionUndoSetAdminDistance(actionItem interface{}, conditionsLi
 		logger.Info(fmt.Sprintln("No valid condition provided for set admin distance action"))
 		return
 	}
-	conditionProtocol := conditionItem.(string)
+	conditionInfo := conditionItem.(policy.PolicyCondition).ConditionInfo
+	conditionProtocol := conditionInfo.(string)
 	//case policyCommonDefs.PolicyConditionTypeProtocolMatch:
 	routeDistanceConfig,ok := ProtocolAdminDistanceMapDB[conditionProtocol]
 	if !ok {
