@@ -61,21 +61,22 @@ func (v *VXLANDServiceHandler) StartThriftServer() {
 
 func (v *VXLANDServiceHandler) CreateVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
 	v.logger.Info(fmt.Sprintf("CreateVxlanConfigInstance %#v", config))
-	v.server.Configchans.Vxlancreate <- *config
+
+	v.server.Configchans.Vxlancreate <- *(v.server.ConvertVxlanInstanceToVxlanConfig(config))
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) DeleteVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
 	v.logger.Info(fmt.Sprintf("DeleteVxlanConfigInstance %#v", config))
-	v.server.Configchans.Vxlandelete <- *config
+	v.server.Configchans.Vxlandelete <- *(v.server.ConvertVxlanInstanceToVxlanConfig(config))
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInstance, newconfig *vxland.VxlanInstance, attrset []bool) (bool, error) {
 	v.logger.Info(fmt.Sprintf("UpdateVxlanConfigInstance orig[%#v] new[%#v]", origconfig, newconfig))
 	update := vxlan.VxlanUpdate{
-		Oldconfig: *origconfig,
-		Newconfig: *newconfig,
+		Oldconfig: *(v.server.ConvertVxlanInstanceToVxlanConfig(origconfig)),
+		Newconfig: *(v.server.ConvertVxlanInstanceToVxlanConfig(newconfig)),
 		Attr:      attrset,
 	}
 	v.server.Configchans.Vxlanupdate <- update
@@ -84,21 +85,21 @@ func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInsta
 
 func (v *VXLANDServiceHandler) CreateVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
 	v.logger.Info(fmt.Sprintf("CreateVxlanVtepInstances %#v", config))
-	v.server.Configchans.Vtepcreate <- *config
+	v.server.Configchans.Vtepcreate <- *(v.server.ConvertVxlanVtepInstanceToVtepConfig(config))
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) DeleteVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
 	v.logger.Info(fmt.Sprintf("DeleteVxlanVtepInstances %#v", config))
-	v.server.Configchans.Vtepdelete <- *config
+	v.server.Configchans.Vtepdelete <- *(v.server.ConvertVxlanVtepInstanceToVtepConfig(config))
 	return true, nil
 }
 
 func (v *VXLANDServiceHandler) UpdateVxlanVtepInstances(origconfig *vxland.VxlanVtepInstances, newconfig *vxland.VxlanVtepInstances, attrset []bool) (bool, error) {
 	v.logger.Info(fmt.Sprintf("UpdateVxlanVtepInstances orig[%#v] new[%#v]", origconfig, newconfig))
 	update := vxlan.VtepUpdate{
-		Oldconfig: *origconfig,
-		Newconfig: *newconfig,
+		Oldconfig: *(v.server.ConvertVxlanVtepInstanceToVtepConfig(origconfig)),
+		Newconfig: *(v.server.ConvertVxlanVtepInstanceToVtepConfig(newconfig)),
 		Attr:      attrset,
 	}
 	v.server.Configchans.Vtepupdate <- update

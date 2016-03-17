@@ -1,5 +1,6 @@
 // vxlan_linux.go
-package vxlan
+// NOTE: this is meant for testing, it should eventually live in asicd
+package vxlan_linux
 
 import (
 	"errors"
@@ -26,9 +27,40 @@ type VxlanLinux struct {
 	logger *logging.Writer
 }
 
-func NewVxlanLinux() *VxlanLinux {
+// bridge for the VNI
+type VxlanConfig struct {
+	VNI    uint32
+	VlanId uint16 // used to tag inner ethernet frame when egressing
+	Group  net.IP // multicast group IP
+	MTU    uint32 // MTU size for each VTEP
+}
+
+// tunnel endpoint for the VxLAN
+type VtepConfig struct {
+	VtepId                uint32           `SNAPROUTE: KEY` //VTEP ID.
+	VxlanId               uint32           `SNAPROUTE: KEY` //VxLAN ID.
+	VtepName              string           //VTEP instance name.
+	SrcIfIndex            int32            //Source interface ifIndex.
+	UDP                   uint16           //vxlan udp port.  Deafult is the iana default udp port
+	TTL                   uint16           //TTL of the Vxlan tunnel
+	TOS                   uint16           //Type of Service
+	InnerVlanHandlingMode bool             //The inner vlan tag handling mode.
+	Learning              bool             //specifies if unknown source link layer  addresses and IP addresses are entered into the VXLAN  device forwarding database.
+	Rsc                   bool             //specifies if route short circuit is turned on.
+	L2miss                bool             //specifies if netlink LLADDR miss notifications are generated.
+	L3miss                bool             //specifies if netlink IP ADDR miss notifications are generated.
+	TunnelSrcIp           net.IP           //Source IP address for the static VxLAN tunnel
+	TunnelDstIp           net.IP           //Destination IP address for the static VxLAN tunnel
+	VlanId                uint16           //Vlan Id to encapsulate with the vtep tunnel ethernet header
+	TunnelSrcMac          net.HardwareAddr //Src Mac assigned to the VTEP within this VxLAN. If an address is not assigned the the local switch address will be used.
+	TunnelDstMac          net.HardwareAddr
+}
+
+func NewVxlanLinux(logger *logging.Writer) *VxlanLinux {
 	initVxlanDB()
-	return &VxlanLinux{}
+	return &VxlanLinux{
+		logger: logger,
+	}
 
 }
 
@@ -41,7 +73,7 @@ func initVxlanDB() {
 // createVxLAN is the equivalent to creating a bridge in the linux
 // The VNI is actually associated with the VTEP so lets just create a bridge
 // if necessary
-func (v *VxlanLinux) createVxLAN(c *VxlanConfig) {
+func (v *VxlanLinux) CreateVxLAN(c *VxlanConfig) {
 
 	if _, ok := VxlanDB[c.VNI]; !ok {
 		VxlanDB[c.VNI] = VxlanDbEntry{
@@ -81,7 +113,7 @@ func (v *VxlanLinux) createVxLAN(c *VxlanConfig) {
 	}
 }
 
-func (v *VxlanLinux) deleteVxLAN(c *VxlanConfig) {
+func (v *VxlanLinux) DeleteVxLAN(c *VxlanConfig) {
 
 	if vxlan, ok := VxlanDB[c.VNI]; ok {
 		for i, link := range vxlan.Links {
@@ -115,7 +147,7 @@ func (v *VxlanLinux) deleteVxLAN(c *VxlanConfig) {
 	}
 }
 
-func (v *VxlanLinux) createVtep(c *VtepConfig) {
+func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 
 	vtep := &netlink.Vxlan{
 		LinkAttrs: netlink.LinkAttrs{
@@ -125,7 +157,7 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 		},
 		VxlanId:      int(c.VxlanId),
 		VtepDevIndex: int(c.SrcIfIndex),
-		SrcAddr:      c.TunnelSourceIp,
+		SrcAddr:      c.TunnelSrcIp,
 		Group:        VxlanDB[c.VxlanId].Group,
 		TTL:          int(c.TTL),
 		TOS:          int(c.TOS),
@@ -229,8 +261,8 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 	for i := 0; i < 10; i++ {
 		err := netlink.LinkSetUp(link)
 		if err != nil && i < 10 {
-			v.logger.Info(fmt.Sprintf("createVtep: %s link not connected yet waiting 10ms", vtep.Name))
-			time.Sleep(time.Millisecond * 10)
+			v.logger.Info(fmt.Sprintf("createVtep: %s link not connected yet waiting 5ms", vtep.Name))
+			time.Sleep(time.Millisecond * 5)
 		} else if err != nil {
 			panic(err)
 		} else {
@@ -239,11 +271,11 @@ func (v *VxlanLinux) createVtep(c *VtepConfig) {
 	}
 }
 
-func (v *VxlanLinux) deleteVtep(c *VtepConfig) {
+func (v *VxlanLinux) DeleteVtep(c *VtepConfig) {
 
 	foundEntry := false
-	if vxlan, ok := VxlanDB[c.VxlanId]; ok {
-		for i, link := range vxlan.Links {
+	if vxlanentry, ok := VxlanDB[c.VxlanId]; ok {
+		for i, link := range vxlanentry.Links {
 			linkName := (*link).(*netlink.Vxlan).Attrs().Name
 			if linkName == c.VtepName {
 				v.logger.Info(fmt.Sprintf("deleteVtep: link found %s looking for %s", linkName, c.VtepName))

@@ -3,29 +3,30 @@
 package vxlan
 
 import (
+	"l3/tunnel/vxlan/vxlan_linux"
 	"net"
 	"reflect"
 	"vxland"
 )
 
-type VxLanChannels struct {
-	Vxlancreate chan vxland.VxlanInstance
-	Vxlandelete chan vxland.VxlanInstance
+type VxLanConfigChannels struct {
+	Vxlancreate chan VxlanConfig
+	Vxlandelete chan VxlanConfig
 	Vxlanupdate chan VxlanUpdate
-	Vtepcreate  chan vxland.VxlanVtepInstances
-	Vtepdelete  chan vxland.VxlanVtepInstances
+	Vtepcreate  chan VtepConfig
+	Vtepdelete  chan VtepConfig
 	Vtepupdate  chan VtepUpdate
 }
 
 type VxlanUpdate struct {
-	Oldconfig vxland.VxlanInstance
-	Newconfig vxland.VxlanInstance
+	Oldconfig VxlanConfig
+	Newconfig VxlanConfig
 	Attr      []bool
 }
 
 type VtepUpdate struct {
-	Oldconfig vxland.VxlanVtepInstances
-	Newconfig vxland.VxlanVtepInstances
+	Oldconfig VtepConfig
+	Newconfig VtepConfig
 	Attr      []bool
 }
 
@@ -51,10 +52,11 @@ type VtepConfig struct {
 	Rsc                   bool             //specifies if route short circuit is turned on.
 	L2miss                bool             //specifies if netlink LLADDR miss notifications are generated.
 	L3miss                bool             //specifies if netlink IP ADDR miss notifications are generated.
-	TunnelSourceIp        net.IP           //Source IP address for the static VxLAN tunnel
-	TunnelDestinationIp   net.IP           //Destination IP address for the static VxLAN tunnel
+	TunnelSrcIp           net.IP           //Source IP address for the static VxLAN tunnel
+	TunnelDstIp           net.IP           //Destination IP address for the static VxLAN tunnel
 	VlanId                uint16           //Vlan Id to encapsulate with the vtep tunnel ethernet header
-	SrcMac                net.HardwareAddr //Src Mac assigned to the VTEP within this VxLAN. If an address is not assigned the the local switch address will be used.
+	TunnelSrcMac          net.HardwareAddr //Src Mac assigned to the VTEP within this VxLAN. If an address is not assigned the the local switch address will be used.
+	TunnelDstMac          net.HardwareAddr
 }
 
 func ConvertInt32ToBool(val int32) bool {
@@ -75,10 +77,14 @@ func (s *VXLANServer) ConvertVxlanInstanceToVxlanConfig(c *vxland.VxlanInstance)
 }
 
 func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepInstances) *VtepConfig {
-	mac, err := net.ParseMAC(c.SrcMac)
-	if err != nil {
-		mac = NetSwitchMac
+
+	DstNetMac, _ := net.ParseMAC(c.DstMac)
+
+	ok, mac, ip := s.getLoopbackInfo()
+	if !ok {
+		s.logger.Info("VTEP: Src Tunnel Info not provisioned yet, loopback intf needed")
 	}
+
 	return &VtepConfig{
 		VtepId:     uint32(c.VtepId),
 		VxlanId:    uint32(c.VxlanId),
@@ -92,10 +98,11 @@ func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepIn
 		Rsc:                   ConvertInt32ToBool(c.Rsc),
 		L2miss:                ConvertInt32ToBool(c.L2miss),
 		L3miss:                ConvertInt32ToBool(c.L3miss),
-		TunnelSourceIp:        net.ParseIP(c.TunnelSourceIp),
-		TunnelDestinationIp:   net.ParseIP(c.TunnelDestinationIp),
+		TunnelSrcIp:           ip,
+		TunnelDstIp:           net.ParseIP(c.DstIp),
 		VlanId:                uint16(c.VlanId),
-		SrcMac:                mac,
+		TunnelSrcMac:          mac,
+		TunnelDstMac:          DstNetMac,
 	}
 }
 
@@ -187,40 +194,45 @@ func (s *VXLANServer) updateThriftVtep(c *VtepUpdate) {
 	}
 }
 
-func (s *VXLANServer) StartConfigListener() {
+func (s *VXLANServer) ConfigListener() {
 
-	s.Configchans = &VxLanChannels{
-		Vxlancreate: make(chan vxland.VxlanInstance, 0),
-		Vxlandelete: make(chan vxland.VxlanInstance, 0),
+	s.Configchans = &VxLanConfigChannels{
+		Vxlancreate: make(chan VxlanConfig, 0),
+		Vxlandelete: make(chan VxlanConfig, 0),
 		Vxlanupdate: make(chan VxlanUpdate, 0),
-		Vtepcreate:  make(chan vxland.VxlanVtepInstances, 0),
-		Vtepdelete:  make(chan vxland.VxlanVtepInstances, 0),
+		Vtepcreate:  make(chan VtepConfig, 0),
+		Vtepdelete:  make(chan VtepConfig, 0),
 		Vtepupdate:  make(chan VtepUpdate, 0),
 	}
 
-	softswitch := NewVxlanLinux()
-	softswitch.logger = s.logger
+	softswitch := vxlan_linux.NewVxlanLinux(s.logger)
 
-	go func(cc *VxLanChannels, ss *VxlanLinux) {
+	go func(cc *VxLanConfigChannels, ss *vxlan_linux.VxlanLinux) {
 		for {
 			select {
 			case vxlan := <-cc.Vxlancreate:
-				ss.createVxLAN(s.ConvertVxlanInstanceToVxlanConfig(&vxlan))
+				s.saveVxLanConfigData(&vxlan)
+				c := vxlan_linux.VxlanConfig(vxlan)
+				ss.CreateVxLAN(&c)
 
 			case vxlan := <-cc.Vxlandelete:
-				ss.deleteVxLAN(s.ConvertVxlanInstanceToVxlanConfig(&vxlan))
+				c := vxlan_linux.VxlanConfig(vxlan)
+				ss.DeleteVxLAN(&c)
 
-			case vxlan := <-cc.Vxlanupdate:
-				s.updateThriftVxLAN(&vxlan)
+			case <-cc.Vxlanupdate:
+				//s.UpdateThriftVxLAN(&vxlan)
 
 			case vtep := <-cc.Vtepcreate:
-				ss.createVtep(s.ConvertVxlanVtepInstanceToVtepConfig(&vtep))
+				s.saveVtepConfigData(&vtep)
+				c := vxlan_linux.VtepConfig(vtep)
+				ss.CreateVtep(&c)
 
 			case vtep := <-cc.Vtepdelete:
-				ss.deleteVtep(s.ConvertVxlanVtepInstanceToVtepConfig(&vtep))
+				c := vxlan_linux.VtepConfig(vtep)
+				ss.DeleteVtep(&c)
 
-			case vtep := <-cc.Vtepupdate:
-				s.updateThriftVtep(&vtep)
+			case <-cc.Vtepupdate:
+				//s.UpdateThriftVtep(&vtep)
 			}
 		}
 	}(s.Configchans, softswitch)
