@@ -124,7 +124,8 @@ type VrrpServer struct {
 	vrrpLinuxIfIndex2AsicdIfIndex map[int32]*net.Interface
 	vrrpIfIndexIpAddr             map[int32]string
 	vrrpVlanId2Name               map[int]string
-	VrrpIntfConfigCh              chan vrrpd.VrrpIntfConfig //VrrpGlobalInfo
+	VrrpCreateIntfConfigCh        chan vrrpd.VrrpIntfConfig
+	VrrpDeleteIntfConfigCh        chan vrrpd.VrrpIntfConfig
 	vrrpRxPktCh                   chan VrrpPktChannelInfo
 	vrrpTxPktCh                   chan VrrpTxChannelInfo
 	vrrpFsmCh                     chan VrrpFsm

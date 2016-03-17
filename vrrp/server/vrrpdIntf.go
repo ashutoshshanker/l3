@@ -6,14 +6,35 @@ import (
 	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
+	"strconv"
+	"strings"
 )
 
 func (svr *VrrpServer) VrrpCreateIfIndexEntry(IfIndex int32, IpAddr string) {
-	entry := svr.vrrpIfIndexIpAddr[IfIndex]
-	entry = IpAddr
-	svr.vrrpIfIndexIpAddr[IfIndex] = entry
+	svr.vrrpIfIndexIpAddr[IfIndex] = IpAddr
 	svr.logger.Info(fmt.Sprintln("VRRP: ip address for ifindex ", IfIndex,
-		"is", entry))
+		"is", IpAddr))
+	for _, key := range svr.vrrpIntfStateSlice {
+		splitString := strings.Split(key, "_")
+		// splitString = { IfIndex, VRID }
+		ifindex, _ := strconv.Atoi(splitString[0])
+		if int32(ifindex) != IfIndex {
+			// Key doesn't match
+			continue
+		}
+		// If IfIndex matches then use that key and check if gblInfo is
+		// created or not
+		gblInfo, found := svr.vrrpGblInfo[key]
+		if !found {
+			svr.logger.Err("No entry found for Ifindex:" +
+				splitString[0] + " VRID:" + splitString[1] +
+				" hence not updating ip addr, " +
+				"it will be updated during create")
+			return
+		}
+		gblInfo.IpAddr = IpAddr
+		svr.vrrpGblInfo[key] = gblInfo
+	}
 }
 
 func (svr *VrrpServer) VrrpCreateVlanEntry(vlanId int, vlanName string) {

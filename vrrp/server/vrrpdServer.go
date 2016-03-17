@@ -41,6 +41,7 @@ func (svr *VrrpServer) VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
 	if ok == false {
 		svr.logger.Err(fmt.Sprintln("missed ipv4 intf notification for IfIndex:",
 			gblInfo.IntfConfig.IfIndex))
+		gblInfo.IpAddr = ""
 		return false
 	}
 	gblInfo.IpAddr = IpAddr
@@ -74,11 +75,11 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 	gblInfo.IntfConfig.VirtualIPv4Addr = config.VirtualIPv4Addr
 	gblInfo.IntfConfig.PreemptMode = config.PreemptMode
 
-	if config.Priority == 0 {
-		gblInfo.IntfConfig.Priority = VRRP_DEFAULT_PRIORITY
-	} else {
-		gblInfo.IntfConfig.Priority = config.Priority
-	}
+	//	if config.Priority == 0 {
+	//		gblInfo.IntfConfig.Priority = VRRP_DEFAULT_PRIORITY
+	//	} else {
+	gblInfo.IntfConfig.Priority = config.Priority
+	//	}
 	if config.AdvertisementInterval == 0 {
 		gblInfo.IntfConfig.AdvertisementInterval = 1
 	} else {
@@ -99,13 +100,6 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 		gblInfo.VirtualRouterMACAddress = VRRP_IEEE_MAC_ADDR +
 			strconv.Itoa(int(gblInfo.IntfConfig.VRID))
 	}
-	if ok := svr.VrrpUpdateIntfIpAddr(&gblInfo); ok == false {
-		// If we miss Asic Notification then do one time get bulk for Ipv4
-		// Interface... Once done then update Ip Addr again
-		svr.logger.Err("recalling get ipv4interface list")
-		svr.VrrpGetIPv4IntfList()
-		svr.VrrpUpdateIntfIpAddr(&gblInfo)
-	}
 
 	// Initialize Locks for accessing shared ds
 	gblInfo.PcapHdlLock = &sync.RWMutex{}
@@ -114,6 +108,9 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 	gblInfo.StateLock.Lock()
 	gblInfo.StateName = VRRP_INITIALIZE_STATE
 	gblInfo.StateLock.Unlock()
+
+	// Update Ip Addr at last
+	svr.VrrpUpdateIntfIpAddr(&gblInfo)
 
 	svr.vrrpGblInfo[key] = gblInfo
 	svr.vrrpIntfStateSlice = append(svr.vrrpIntfStateSlice, key)
@@ -132,9 +129,26 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 
 	if !svr.vrrpMacConfigAdded {
 		svr.logger.Info("Adding protocol mac for punting packets to CPU")
-		svr.VrrpAddMacEntry(true /*add vrrp protocol mac*/)
+		go svr.VrrpUpdateProtocolMacEntry(true /*add vrrp protocol mac*/)
 	}
 
+}
+
+func (svr *VrrpServer) VrrpDeleteGblInfo(config vrrpd.VrrpIntfConfig) {
+	key := strconv.Itoa(int(config.IfIndex)) + "_" + strconv.Itoa(int(config.VRID))
+	delete(svr.vrrpGblInfo, key)
+	for i := 0; i < len(svr.vrrpIntfStateSlice); i++ {
+		if svr.vrrpIntfStateSlice[i] == key {
+			svr.vrrpIntfStateSlice = append(svr.vrrpIntfStateSlice[:i],
+				svr.vrrpIntfStateSlice[i+1:]...)
+			break
+		}
+	}
+	if len(svr.vrrpIntfStateSlice) != 0 {
+		return
+	}
+	svr.logger.Info("No vrrp configured on the system, disabling protocol mac")
+	go svr.VrrpUpdateProtocolMacEntry(false /*delete vrrp protocol mac*/)
 }
 
 func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(fromIndex int, cnt int) (int,
@@ -297,7 +311,9 @@ func (vrrpServer *VrrpServer) VrrpInitGlobalDS() {
 		VRRP_LINUX_INTF_MAPPING_DEFAULT_SIZE)
 	vrrpServer.vrrpVlanId2Name = make(map[int]string,
 		VRRP_VLAN_MAPPING_DEFAULT_SIZE)
-	vrrpServer.VrrpIntfConfigCh = make(chan vrrpd.VrrpIntfConfig, //VrrpGlobalInfo,
+	vrrpServer.VrrpCreateIntfConfigCh = make(chan vrrpd.VrrpIntfConfig,
+		VRRP_INTF_CONFIG_CH_SIZE)
+	vrrpServer.VrrpDeleteIntfConfigCh = make(chan vrrpd.VrrpIntfConfig,
 		VRRP_INTF_CONFIG_CH_SIZE)
 	vrrpServer.vrrpRxPktCh = make(chan VrrpPktChannelInfo, VRRP_RX_BUF_CHANNEL_SIZE)
 	vrrpServer.vrrpTxPktCh = make(chan VrrpTxChannelInfo, VRRP_TX_BUF_CHANNEL_SIZE)
@@ -315,6 +331,8 @@ func (svr *VrrpServer) VrrpDeAllocateMemoryToGlobalDS() {
 	svr.vrrpVlanId2Name = nil
 	svr.vrrpRxPktCh = nil
 	svr.vrrpTxPktCh = nil
+	svr.VrrpDeleteIntfConfigCh = nil
+	svr.VrrpCreateIntfConfigCh = nil
 }
 
 func (svr *VrrpServer) StartServer(paramsDir string) {
@@ -332,8 +350,11 @@ func (svr *VrrpServer) StartServer(paramsDir string) {
 	// Start receviing in rpc values in the channell
 	for {
 		select {
-		case intfConf := <-svr.VrrpIntfConfigCh:
+		case intfConf := <-svr.VrrpCreateIntfConfigCh:
 			svr.VrrpUpdateGblInfo(intfConf)
+		case delConf := <-svr.VrrpDeleteIntfConfigCh:
+			svr.VrrpDeleteGblInfo(delConf)
+
 		case fsmInfo := <-svr.vrrpFsmCh:
 			svr.VrrpFsmStart(fsmInfo)
 		}

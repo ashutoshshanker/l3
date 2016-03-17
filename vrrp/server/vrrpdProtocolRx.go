@@ -211,10 +211,15 @@ func (svr *VrrpServer) VrrpInitPacketListener(key string, IfIndex int32) {
 	go svr.VrrpReceivePackets(handle, key, IfIndex)
 }
 
-func (svr *VrrpServer) VrrpAddMacEntry(add bool) {
-	for !svr.asicdClient.IsConnected {
-		time.Sleep(time.Millisecond * 750)
-		svr.logger.Info("Waiting for vrrp to connect to asicd")
+func (svr *VrrpServer) VrrpUpdateProtocolMacEntry(add bool) {
+	if !svr.asicdClient.IsConnected {
+		for {
+			svr.logger.Info("sleeping 750 ms for vrrp to connect with asicd")
+			time.Sleep(time.Millisecond * 750)
+			if svr.asicdClient.IsConnected {
+				break
+			}
+		}
 	}
 	macConfig := asicdServices.RsvdProtocolMacConfig{
 		MacAddr:     VRRP_PROTOCOL_MAC,

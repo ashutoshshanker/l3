@@ -28,7 +28,7 @@ func (h *VrrpHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool
 		h.logger.Info("VRRP: Invalid VRID")
 		return false, errors.New(vrrpServer.VRRP_INVALID_VRID)
 	}
-	h.server.VrrpIntfConfigCh <- *config
+	h.server.VrrpCreateIntfConfigCh <- *config
 	return true, nil
 }
 func (h *VrrpHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,
@@ -37,7 +37,7 @@ func (h *VrrpHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,
 }
 
 func (h *VrrpHandler) DeleteVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
-	go h.server.VrrpAddMacEntry(false /*delete vrrp protocol mac*/)
+	h.server.VrrpDeleteIntfConfigCh <- *config
 	return true, nil
 }
 
