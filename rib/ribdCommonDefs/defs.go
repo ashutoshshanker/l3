@@ -1,5 +1,5 @@
 package ribdCommonDefs
-import "ribd"
+import "ribdInt"
 
 const (
       CONNECTED  = 0
@@ -25,5 +25,5 @@ type RibdNotifyMsg struct {
 }
 
 type RoutelistInfo struct {
-    RouteInfo ribd.Routes
+    RouteInfo ribdInt.Routes
 }

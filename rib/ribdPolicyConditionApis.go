@@ -6,29 +6,39 @@ import (
 	"ribd"
 	"utils/policy"
 )
-
-func (m RouteServiceHandler) CreatePolicyPrefixSet(cfg *ribd.PolicyPrefixSet) (val bool, err error) {
-	logger.Info(fmt.Sprintln("CreatePolicyPrefixSet"))
-	return val, err
+func (m RIBDServicesHandler) CreatePolicyConditionConfig(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("CreatePolicyConditioncfg: ",cfg.Name))
+	m.PolicyConditionCreateConfCh <- cfg
+	return true,err
 }
-
-func (m RouteServiceHandler) CreatePolicyCondition(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
-	logger.Info(fmt.Sprintln("CreatePolicyConditioncfg"))
-	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.MatchProtocolConditionInfo}
-	if cfg.MatchDstIpPrefixConditionInfo != nil {
+func (m RIBDServicesHandler) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg: ",cfg.Name))
+	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.MatchProtocol}
+	matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.IpPrefix, MasklengthRange: cfg.MaskLengthRange}
+	newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{ Prefix: matchPrefix}
+/*	if cfg.MatchDstIpPrefixConditionInfo != nil {
 		matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.MatchDstIpPrefixConditionInfo.Prefix.IpPrefix, MasklengthRange: cfg.MatchDstIpPrefixConditionInfo.Prefix.MasklengthRange}
 		newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{PrefixSet: cfg.MatchDstIpPrefixConditionInfo.PrefixSet, Prefix: matchPrefix}
-	}
+	}*/
 	err = PolicyEngineDB.CreatePolicyCondition(newPolicy)
 	return val, err
 }
-func (m RouteServiceHandler) DeletePolicyCondition(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
-	logger.Info(fmt.Sprintln("DeletePolicyCondition"))
+func (m RIBDServicesHandler) DeletePolicyConditionConfig(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("DeletePolicyConditionConfig: ",cfg.Name))
+	m.PolicyConditionDeleteConfCh <- cfg
+	return true,err
+}
+func (m RIBDServicesHandler) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition: ",cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyCondition(newPolicy)
 	return val, err
 }
-func (m RouteServiceHandler) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServicesHandler) UpdatePolicyConditionConfig(origconfig *ribd.PolicyConditionConfig , newconfig *ribd.PolicyConditionConfig , attrset []bool) (val bool, err error) {
+	logger.Info(fmt.Sprintln("UpdatePolicyConditionConfig:UpdatePolicyCondition: ",newconfig.Name))
+	return val,err
+}
+func (m RIBDServicesHandler) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyConditionState"))
 	PolicyConditionsDB := PolicyEngineDB.PolicyConditionsDB
 	localPolicyConditionsDB := *PolicyEngineDB.LocalPolicyConditionsDB

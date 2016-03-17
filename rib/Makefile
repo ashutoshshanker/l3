@@ -3,12 +3,12 @@ RMFORCE=rm -rf
 DESTDIR=$(SR_CODE_BASE)/snaproute/src/out/bin
 GENERATED_IPC=$(SR_CODE_BASE)/generated/src
 IPC_GEN_CMD=thrift 
-SRCS=ribhandler.go  ribmain.go ribDB.go ribdUtils.go ribdRouteApis.go ribdPolicyEngine.go ribdPolicyApis.go ribdPolicyConditionApis.go ribdPolicyActionApis.go
+SRCS=ribdServer.go  ribmain.go ribDB.go ribdUtils.go ribdRouteServiceApis.go ribdRouteProcessApis.go ribdPolicyEngine.go ribdPolicyApis.go ribdPolicyConditionApis.go ribdPolicyActionApis.go
 IPC_SRCS=ribd.thrift
 COMP_NAME=ribd
 all:ipc exe
 ipc:
-	 $(IPC_GEN_CMD) --gen go -out $(GENERATED_IPC) $(IPC_SRCS)
+	 $(IPC_GEN_CMD) -r --gen go -out $(GENERATED_IPC) $(IPC_SRCS)
 
 exe: $(SRCS)
 	 go build -o $(DESTDIR)/$(COMP_NAME) -ldflags="$(GOLDFLAGS)" $(SRCS)

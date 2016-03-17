@@ -4,8 +4,7 @@ package main
 import (
 	"fmt"
 	"ribd"
-	"strconv"
-	"utils/commonDefs"
+	//"utils/commonDefs"
 	//    "utils/dbutils"
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
@@ -25,7 +24,7 @@ func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over IPV4Route rows with error %s\n", err))
 			return err
 		}
-		outIntf, _ := strconv.Atoi(ipRoute.OutgoingInterface)
+/*		outIntf, _ := strconv.Atoi(ipRoute.OutgoingInterface)
 		var outIntfType ribd.Int
 		if ipRoute.OutgoingIntfType == "VLAN" {
 			outIntfType = commonDefs.L2RefTypeVlan
@@ -33,8 +32,9 @@ func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
 			outIntfType = commonDefs.L2RefTypePort
 		} else if ipRoute.OutgoingIntfType == "NULL" {
 			outIntfType = commonDefs.IfTypeNull
-		}
-		_, err = routeServiceHandler.CreateV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
+		}*/
+        cfg := ribd.IPv4Route {ipRoute.OutgoingIntfType, ipRoute.Protocol, ipRoute.OutgoingInterface,ipRoute.DestinationNw,int32(ipRoute.Cost),ipRoute.NetworkMask,ipRoute.NextHopIp}
+		_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg)//ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
 		//_,err = createV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto),  FIBAndRIB,ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 		if err != nil {
 			logger.Info(fmt.Sprintf("Route create failed with err %s\n", err))
@@ -55,17 +55,19 @@ func UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
 	var condition ribd.PolicyConditionConfig
 	var IpPrefix, MaskLengthRange string
 	for rows.Next() {
-		if err = rows.Scan(&condition.Name, &condition.ConditionType, &condition.MatchProtocolConditionInfo, &IpPrefix, &MaskLengthRange); err != nil {
+		if err = rows.Scan(&condition.Name, &condition.ConditionType, &condition.MatchProtocol, &IpPrefix, &MaskLengthRange); err != nil {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
-		var cfgIpPrefix ribd.PolicyPrefix
-		var dstIpMatchPrefixconditionCfg ribd.PolicyDstIpMatchPrefixSetCondition
-		cfgIpPrefix.IpPrefix = IpPrefix
-		cfgIpPrefix.MasklengthRange = MaskLengthRange
-		dstIpMatchPrefixconditionCfg.Prefix = &cfgIpPrefix
-		condition.MatchDstIpPrefixConditionInfo = &dstIpMatchPrefixconditionCfg
-		routeServiceHandler.CreatePolicyCondition(&condition)
+		//var cfgIpPrefix ribd.PolicyPrefix
+		//var dstIpMatchPrefixconditionCfg ribd.PolicyDstIpMatchPrefixSetCondition
+		//cfgIpPrefix.IpPrefix = IpPrefix
+		//cfgIpPrefix.MasklengthRange = MaskLengthRange
+		//dstIpMatchPrefixconditionCfg.Prefix = &cfgIpPrefix
+		//condition.MatchDstIpPrefixConditionInfo = &dstIpMatchPrefixconditionCfg
+		condition.IpPrefix = IpPrefix
+		condition.MaskLengthRange = MaskLengthRange
+		routeServiceHandler.ProcessPolicyConditionConfigCreate(&condition)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Condition create failed with err %s\n", err))
 			return err
@@ -87,7 +89,7 @@ func UpdatePolicyActionsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
-		_, err = routeServiceHandler.CreatePolicyAction(&action)
+		_, err = routeServiceHandler.ProcessPolicyActionConfigCreate(&action)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -109,7 +111,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
-		logger.Info(fmt.Sprintln("Scanning stmt ", stmt.Name))
+		logger.Info(fmt.Sprintln("Scanning stmt ", stmt.Name, "MatchConditions:",stmt.MatchConditions))
 		dbCmdCond := "select * from PolicyStmtConfigConditions"
 		conditionrows, err := dbHdl.Query(dbCmdCond)
 		if err != nil {
@@ -151,7 +153,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintln("Fetching action ", Actions))
 			stmt.Actions = append(stmt.Actions, Actions)
 		}
-		_, err = routeServiceHandler.CreatePolicyStatement(&stmt)
+		_, err = routeServiceHandler.ProcessPolicyStmtConfigCreate(&stmt)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -174,30 +176,30 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 			return err
 		}
 		logger.Info(fmt.Sprintln("executed cmd ", dbCmd, "policy name = ", policy.Name, " precedence: ", policy.Precedence))
-		dbCmdPrecedence := "select * from PolicyDefinitionStmtPrecedence"
+		dbCmdPrecedence := "select * from PolicyDefinitionConfigStatementList"
 		conditionrows, err := dbHdl.Query(dbCmdPrecedence)
 		if err != nil {
 			logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmdPrecedence, err))
 			return err
 		}
-		policy.PolicyDefinitionStatements = make([]*ribd.PolicyDefinitionStmtPrecedence, 0)
-		var stmt, policyName, policyStmtName string
-		var precedence int
+		policy.StatementList = make([]*ribd.PolicyDefinitionStmtPrecedence, 0)
+		var stmt, policyName string
+		var precedence int32
 		for conditionrows.Next() {
-			if err = conditionrows.Scan(&policyName, &policyStmtName, &stmt, &precedence); err != nil {
-				logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtPrecedence rows with error %s\n", err))
+			if err = conditionrows.Scan(&policyName, &stmt, &precedence); err != nil {
+				logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionConfigStatementList rows with error %s\n", err))
 				return err
 			}
 			if policyName != policy.Name {
 				logger.Info(fmt.Sprintln("Not a stmt for this policy, policyName: ", policyName))
 				continue
 			}
-			logger.Info(fmt.Sprintln("Fetching stmt ", stmt))
-			policyStmtPrecedence := ribd.PolicyDefinitionStmtPrecedence{Precedence: ribd.Int(precedence), Statement: stmt}
-			policy.PolicyDefinitionStatements = append(policy.PolicyDefinitionStatements, &policyStmtPrecedence)
+			logger.Info(fmt.Sprintln("Fetching stmt ", stmt,"Precedence:",precedence))
+			policyStmtPrecedence := ribd.PolicyDefinitionStmtPrecedence{Precedence: int32(precedence), Statement: stmt}
+			policy.StatementList = append(policy.StatementList, &policyStmtPrecedence)
 		}
 
-		_, err = routeServiceHandler.CreatePolicyDefinition(&policy)
+		_, err = routeServiceHandler.ProcessPolicyDefinitionConfigCreate(&policy)
 		if err != nil {
 			logger.Info(fmt.Sprintf("policy create failed with err %s\n", err))
 			return err

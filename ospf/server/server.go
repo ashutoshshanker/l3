@@ -94,9 +94,10 @@ type OSPFServer struct {
 	neighborLSAACKEventCh chan ospfNeighborLSAAckMsg
 	ospfNbrDBDSendCh      chan ospfNeighborDBDMsg
 	ospfNbrLsaReqSendCh   chan ospfNeighborLSAreqMsg
-	ospfNbrLsaUpdSendCh   chan ospfLsdbToNbrMsg
+	ospfNbrLsaUpdSendCh   chan ospfFloodMsg
 	ospfNbrLsaAckSendCh   chan ospfNeighborAckTxMsg
-	ospfRxTxNbrPktStopCh  chan bool
+	ospfRxNbrPktStopCh  chan bool
+	ospfTxNbrPktStopCh       chan bool
 
 	//neighborDBDEventCh   chan IntfToNeighDbdMsg
 
@@ -170,8 +171,9 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.ospfNbrDBDSendCh = make(chan ospfNeighborDBDMsg)
 	ospfServer.ospfNbrLsaAckSendCh = make(chan ospfNeighborAckTxMsg)
 	ospfServer.ospfNbrLsaReqSendCh = make(chan ospfNeighborLSAreqMsg)
-	ospfServer.ospfNbrLsaUpdSendCh = make(chan ospfLsdbToNbrMsg)
-	ospfServer.ospfRxTxNbrPktStopCh = make(chan bool)
+	ospfServer.ospfNbrLsaUpdSendCh = make(chan ospfFloodMsg)
+	ospfServer.ospfRxNbrPktStopCh = make(chan bool)
+	ospfServer.ospfTxNbrPktStopCh = make(chan bool)
 
 	/*
 	   ospfServer.ribSubSocketCh = make(chan []byte)
@@ -261,7 +263,7 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 				}
 			}
 			server.logger.Info("Ospfd is connected to Ribd")
-			server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
+			server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
 			server.ribdClient.IsConnected = true
 			/*
 				if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {

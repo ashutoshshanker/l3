@@ -6,22 +6,35 @@ import (
 	"ribd"
 	"utils/policy"
 )
-
-func (m RouteServiceHandler) CreatePolicyAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyActionConfig(cfg *ribd.PolicyActionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
+	m.PolicyActionCreateConfCh <- cfg
+	return val, err
+}
+
+func (m RIBDServicesHandler) ProcessPolicyActionConfigCreate(cfg *ribd.PolicyActionConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigCreate:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name, ActionType: cfg.ActionType, SetAdminDistanceValue: int(cfg.SetAdminDistanceValue), Accept: cfg.Accept, Reject: cfg.Reject, RedistributeAction: cfg.RedistributeAction, RedistributeTargetProtocol: cfg.RedistributeTargetProtocol, NetworkStatementTargetProtocol: cfg.NetworkStatementTargetProtocol}
 	err = PolicyEngineDB.CreatePolicyAction(newAction)
 	return val, err
 }
 
-func (m RouteServiceHandler) DeletePolicyAction(cfg *ribd.PolicyActionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyActionConfig(cfg *ribd.PolicyActionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
+	m.PolicyActionDeleteConfCh <- cfg
+	return val, err
+}
+
+func (m RIBDServicesHandler) ProcessPolicyActionConfigDelete(cfg *ribd.PolicyActionConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigDelete:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyAction(newAction)
 	return val, err
 }
-
-func (m RouteServiceHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServicesHandler) UpdatePolicyActionConfig(origconfig *ribd.PolicyActionConfig , newconfig *ribd.PolicyActionConfig , attrset []bool) (val bool, err error) {
+	return val,err
+}
+func (m RIBDServicesHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyActionState"))
 	PolicyActionsDB := PolicyEngineDB.PolicyActionsDB
 	localPolicyActionsDB := *PolicyEngineDB.LocalPolicyActionsDB
