@@ -58,7 +58,7 @@ func StartServer(logger *logging.Writer, handler *BGPHandler, filePath string) {
 		logger.Info(fmt.Sprintln("StartServer: NewTServerSocket failed with error:", err))
 		return
 	}
-	processor := bgpd.NewBGPServerProcessor(handler)
+	processor := bgpd.NewBGPDServicesProcessor(handler)
 	server := thrift.NewTSimpleServer4(processor, serverTransport, transportFactory, protocolFactory)
 	err = server.Serve()
 	if err != nil {
@@ -117,7 +117,7 @@ func StartAsicdClient(logger *logging.Writer, filePath string, asicdClient chan 
 	asicdClient <- client
 }
 
-func StartRibdClient(logger *logging.Writer, filePath string, ribdClient chan *ribd.RouteServiceClient) {
+func StartRibdClient(logger *logging.Writer, filePath string, ribdClient chan *ribd.RIBDServicesClient) {
 	fileName := filePath + ClientsFileName
 	clientJson, err := getClient(logger, fileName, "ribd")
 	if err != nil || clientJson == nil {
@@ -143,7 +143,7 @@ func StartRibdClient(logger *logging.Writer, filePath string, ribdClient chan *r
 		}
 	}
 
-	client := ribd.NewRouteServiceClientFactory(clientTransport, protocolFactory)
+	client := ribd.NewRIBDServicesClientFactory(clientTransport, protocolFactory)
 	ribdClient <- client
 }
 

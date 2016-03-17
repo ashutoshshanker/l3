@@ -82,7 +82,7 @@ func connectToClient(logger *logging.Writer, clientTransport thrift.TTransport) 
 	return clientTransport.Open()
 }
 
-func StartClient(logger *logging.Writer, fileName string, ribdClient chan *ribd.RouteServiceClient) {
+func StartClient(logger *logging.Writer, fileName string, ribdClient chan *ribd.RIBDServicesClient) {
 	clientJson, err := getClient(logger, fileName, "ribd")
 	if err != nil || clientJson == nil {
 		ribdClient <- nil
@@ -102,6 +102,6 @@ func StartClient(logger *logging.Writer, fileName string, ribdClient chan *ribd.
 		}
 	}
 
-	client := ribd.NewRouteServiceClientFactory(clientTransport, protocolFactory)
+	client := ribd.NewRIBDServicesClientFactory(clientTransport, protocolFactory)
 	ribdClient <- client
 }

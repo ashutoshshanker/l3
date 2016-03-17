@@ -10,7 +10,7 @@ import (
 
 type RibdClient struct {
         OspfClientBase
-        ClientHdl *ribd.RouteServiceClient
+        ClientHdl *ribd.RIBDServicesClient
 }
 
 /*

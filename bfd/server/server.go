@@ -43,7 +43,7 @@ type BfdClientBase struct {
 
 type RibdClient struct {
 	BfdClientBase
-	ClientHdl *ribd.RouteServiceClient
+	ClientHdl *ribd.RIBDServicesClient
 }
 
 type IpIntfProperty struct {
@@ -215,7 +215,7 @@ func (server *BFDServer) ConnectToServers(paramsFile string) {
 				}
 			}
 			if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {
-				server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
+				server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
 				server.ribdClient.IsConnected = true
 				server.logger.Info("Bfdd is connected to Ribd")
 			}

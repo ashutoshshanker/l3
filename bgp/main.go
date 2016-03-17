@@ -6,7 +6,6 @@ import (
 	"bfdd"
 	"flag"
 	"fmt"
-	"l3/bgp/policy"
 	"l3/bgp/rpc"
 	"l3/bgp/server"
 	"l3/bgp/utils"
@@ -51,8 +50,8 @@ func main() {
 		logger.Info("Connected to ASICd")
 	}
 
-	var ribdClient *ribd.RouteServiceClient = nil
-	ribdClientChan := make(chan *ribd.RouteServiceClient)
+	var ribdClient *ribd.RIBDServicesClient = nil
+	ribdClientChan := make(chan *ribd.RIBDServicesClient)
 
 	logger.Info("Connecting to RIBd")
 	go rpc.StartRibdClient(logger, fileName, ribdClientChan)
@@ -78,7 +77,7 @@ func main() {
 	}
 
 	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
-	bgpPolicyEng := policy.NewBGPPolicyEngine(logger)
+	bgpPolicyEng := server.NewBGPPolicyEngine(logger)
 	go bgpPolicyEng.StartPolicyEngine()
 
 	logger.Info(fmt.Sprintln("Starting BGP Server..."))

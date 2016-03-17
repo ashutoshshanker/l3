@@ -4,23 +4,30 @@ package main
 import (
 	"fmt"
 	"ribd"
+	"ribdInt"
 	"utils/policy"
 )
 
 type PolicyExtensions struct {
 	hitCounter    int
 	routeList     []string
-	routeInfoList []ribd.Routes
+	routeInfoList []ribdInt.Routes
 }
 type Policy struct {
 	*policy.Policy
 	hitCounter    int
 	routeList     []string
-	routeInfoList []ribd.Routes
+	routeInfoList []ribdInt.Routes
 }
 
-func (m RouteServiceHandler) CreatePolicyStatement(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyStmtConfig(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyStatement"))
+	m.PolicyStmtCreateConfCh <- cfg
+	return val, err
+}
+
+func (m RIBDServicesHandler) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyStatementCreate:CreatePolicyStatement"))
 	newPolicyStmt := policy.PolicyStmtConfig{Name: cfg.Name, MatchConditions: cfg.MatchConditions}
 	newPolicyStmt.Conditions = make([]string, 0)
 	for i := 0; i < len(cfg.Conditions); i++ {
@@ -33,14 +40,21 @@ func (m RouteServiceHandler) CreatePolicyStatement(cfg *ribd.PolicyStmtConfig) (
 	return val, err
 }
 
-func (m RouteServiceHandler) DeletePolicyStatement(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyStmtConfig(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeletePolicyStatement for name ", cfg.Name))
+	m.PolicyStmtDeleteConfCh <- cfg
+	return val, err
+}
+func (m RIBDServicesHandler) ProcessPolicyStmtConfigDelete(cfg *ribd.PolicyStmtConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyStatementDelete:DeletePolicyStatement for name ", cfg.Name))
 	stmt := policy.PolicyStmtConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyStatement(stmt)
 	return val, err
 }
-
-func (m RouteServiceHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyStmtStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServicesHandler) UpdatePolicyStmtConfig(origconfig *ribd.PolicyStmtConfig , newconfig *ribd.PolicyStmtConfig , attrset []bool) (val bool, err error) {
+	return val,err
+}
+func (m RIBDServicesHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyStmtStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyStmtState"))
 	PolicyStmtDB := PolicyEngineDB.PolicyStmtDB
 	localPolicyStmtDB := *PolicyEngineDB.LocalPolicyStmtDB
@@ -102,14 +116,19 @@ func (m RouteServiceHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount r
 	return policyStmts, err
 }
 
-func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyDefinitionConfig(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyDefinition"))
+	m.PolicyDefinitionCreateConfCh <- cfg
+	return val, err
+}
+func (m RIBDServicesHandler) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyDefinitionCreate:CreatePolicyDefinition"))
 	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Precedence), MatchType: cfg.MatchType}
 	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence, 0)
 	var policyDefinitionStatement policy.PolicyDefinitionStmtPrecedence
-	for i := 0; i < len(cfg.PolicyDefinitionStatements); i++ {
-		policyDefinitionStatement.Precedence = int(cfg.PolicyDefinitionStatements[i].Precedence)
-		policyDefinitionStatement.Statement = cfg.PolicyDefinitionStatements[i].Statement
+	for i := 0; i < len(cfg.StatementList); i++ {
+		policyDefinitionStatement.Precedence = int(cfg.StatementList[i].Precedence)
+		policyDefinitionStatement.Statement = cfg.StatementList[i].Statement
 		newPolicy.PolicyDefinitionStatements = append(newPolicy.PolicyDefinitionStatements, policyDefinitionStatement)
 	}
 	newPolicy.Extensions = PolicyExtensions{}
@@ -117,14 +136,21 @@ func (m RouteServiceHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinitionCo
 	return val, err
 }
 
-func (m RouteServiceHandler) DeletePolicyDefinition(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyDefinitionConfig(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeletePolicyDefinition for name ", cfg.Name))
+	m.PolicyDefinitionDeleteConfCh <- cfg
+	return val, err
+}
+func (m RIBDServicesHandler) ProcessPolicyDefinitionConfigDelete(cfg *ribd.PolicyDefinitionConfig) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyDefinitionDelete:DeletePolicyDefinition for name ", cfg.Name))
 	policy := policy.PolicyDefinitionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyDefinition(policy)
 	return val, err
 }
-
-func (m RouteServiceHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServicesHandler) UpdatePolicyDefinitionConfig(origconfig *ribd.PolicyDefinitionConfig , newconfig *ribd.PolicyDefinitionConfig , attrset []bool) (val bool, err error) {
+	return val,err
+}
+func (m RIBDServicesHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyDefinitionState"))
 	PolicyDB := PolicyEngineDB.PolicyDB
 	localPolicyDB := *PolicyEngineDB.LocalPolicyDB
@@ -162,7 +188,7 @@ func (m RouteServiceHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rc
 			nextNode = &tempNode[validCount]
 			nextNode.Name = prefixNode.Name
 			extensions := prefixNode.Extensions.(PolicyExtensions)
-			nextNode.HitCounter = ribd.Int(extensions.hitCounter)
+			nextNode.HitCounter = int32(extensions.hitCounter)
 			nextNode.IpPrefixList = make([]string, 0)
 			for k := 0; k < len(extensions.routeList); k++ {
 				nextNode.IpPrefixList = append(nextNode.IpPrefixList, extensions.routeList[k])
