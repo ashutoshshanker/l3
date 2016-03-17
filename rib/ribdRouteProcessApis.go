@@ -18,6 +18,7 @@ import (
 	//	"github.com/op/go-nanomsg"
 	"net"
 	"strconv"
+	"reflect"
 	"time"
 )
 
@@ -1458,7 +1459,7 @@ func createV4Route(destNetIp string,
 
 }
 
-func (m RIBDServicesHandler) ProcessRouteCreateConfig (cfg ribd.IPv4Route) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessRouteCreateConfig (cfg *ribd.IPv4Route) (val bool, err error) {
 	logger.Info(fmt.Sprintf("ProcessRouteCreate: Received create route request for ip %s mask %s\n", cfg.DestinationNw, cfg.NetworkMask))
 	var nextHopIfType ribd.Int
 	var nextHopIf int
@@ -1580,7 +1581,7 @@ func deleteV4Route(destNetIp string,
 	networkMask string,
 	routeTypeString string,
 	nextHopIP string) (rc ribd.Int, err error) {*/
-func (m RIBDServicesHandler) ProcessRouteDeleteConfig(cfg ribd.IPv4Route) (val bool, err error){
+func (m RIBDServicesHandler) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val bool, err error){
 	logger.Info(fmt.Sprintln("ProcessRouteDeleteConfig:Received Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHopIp, "Protocol ", cfg.Protocol))
 	if !acceptConfig {
 		logger.Println("Not ready to accept config")
@@ -1589,7 +1590,7 @@ func (m RIBDServicesHandler) ProcessRouteDeleteConfig(cfg ribd.IPv4Route) (val b
 	_, err = deleteV4Route(cfg.DestinationNw, cfg.NetworkMask, cfg.Protocol, cfg.NextHopIp, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoInValid)
 	return true, err
 }
-func (m RIBDServicesHandler) ProcessRouteUpdateConfig(origconfig ribd.IPv4Route, newconfig ribd.IPv4Route, attrset []bool) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
 	logger.Println("ProcessRouteUpdateConfig:Received update route request")
 	if !acceptConfig {
 		logger.Println("Not ready to accept config")
@@ -1610,9 +1611,54 @@ func (m RIBDServicesHandler) ProcessRouteUpdateConfig(origconfig ribd.IPv4Route,
 		logger.Println("No route for destination network")
 		return val, err
 	}
+	callUpdate := true
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
 	if attrset != nil {
 		logger.Println("attr set not nil, set individual attributes")
+		found, routeInfoRecord, index := findRouteWithNextHop(routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol], origconfig.NextHopIp)
+		if !found || index == -1 {
+			logger.Println("Invalid nextHopIP")
+			return val,err
+		}
+	    objTyp := reflect.TypeOf(*origconfig)
+	    for i := 0; i < objTyp.NumField(); i++ {
+		    objName := objTyp.Field(i).Name
+		    if attrset[i] {
+			    logger.Info(fmt.Sprintf("ProcessRouteUpdateConfig (server): changed ", objName))
+
+			    if objName == "Cost" {
+					routeInfoRecord.metric = ribd.Int(newconfig.Cost)
+			    }
+			    if objName == "OutgoingIntfType" {
+                    if newconfig.OutgoingIntfType == "NULL" {
+						logger.Err("Cannot update the type to NULL interface: delete and create the route")
+						return val,err
+					}
+                    if origconfig.OutgoingIntfType == "NULL" {
+						logger.Err("Cannot update NULL interface type with another type: delete and create the route")
+						return val,err
+					}
+	                var nextHopIfType ribd.Int
+	                if newconfig.OutgoingIntfType == "VLAN" {
+		                nextHopIfType = commonDefs.L2RefTypeVlan
+	                } else if newconfig.OutgoingIntfType == "PHY" {
+		                nextHopIfType = commonDefs.L2RefTypePort
+	                } 
+					routeInfoRecord.nextHopIfType  = int8(nextHopIfType)
+					callUpdate = false
+			    }
+			    if objName == "OutgoingInterface" {
+					nextHopIfIndex,_:= strconv.Atoi(newconfig.OutgoingInterface)
+					routeInfoRecord.nextHopIfIndex = ribd.Int(nextHopIfIndex)
+					callUpdate = false
+			    }
+ 		    }
+	    }
+		routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol][index] = routeInfoRecord
+		RouteInfoMap.Set(destNet,routeInfoRecordList)
+		if callUpdate == false {
+		    return val,err
+		}
 	}
 	updateBestRoute(destNet, routeInfoRecordList)
 	return val, err

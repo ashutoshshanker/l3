@@ -8,10 +8,10 @@ import (
 )
 func (m RIBDServicesHandler) CreatePolicyConditionConfig(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyConditioncfg"))
-	m.PolicyConditionCreateConfCh <- *cfg
+	m.PolicyConditionCreateConfCh <- cfg
 	return true,err
 }
-func (m RIBDServicesHandler) ProcessPolicyConditionConfigCreate(cfg ribd.PolicyConditionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg"))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.MatchProtocol}
 	matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.IpPrefix, MasklengthRange: cfg.MaskLengthRange}
@@ -25,10 +25,10 @@ func (m RIBDServicesHandler) ProcessPolicyConditionConfigCreate(cfg ribd.PolicyC
 }
 func (m RIBDServicesHandler) DeletePolicyConditionConfig(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeletePolicyConditionConfig"))
-	m.PolicyConditionDeleteConfCh <- *cfg
+	m.PolicyConditionDeleteConfCh <- cfg
 	return true,err
 }
-func (m RIBDServicesHandler) ProcessPolicyConditionConfigDelete(cfg ribd.PolicyConditionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition"))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyCondition(newPolicy)

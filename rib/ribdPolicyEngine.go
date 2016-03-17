@@ -38,7 +38,7 @@ func policyEngineActionRejectRoute(params interface{}) {
 			break
 	}
     cfg := ribd.IPv4Route{nextHopIfTypeStr, ReverseRouteProtoTypeMapDB[int(routeInfo.routeType)], strconv.Itoa(int(routeInfo.nextHopIfIndex)),routeInfo.destNetIp,int32(routeInfo.metric),routeInfo.networkMask,routeInfo.nextHopIp}
-	_, err := routeServiceHandler.DeleteIPv4Route(&cfg)//routeInfo.destNetIp, routeInfo.networkMask, ReverseRouteProtoTypeMapDB[int(routeInfo.routeType)], routeInfo.nextHopIp) // FIBAndRIB)//,ribdCommonDefs.RoutePolicyStateChangetoInValid)
+	_, err := routeServiceHandler.ProcessRouteDeleteConfig(&cfg)//routeInfo.destNetIp, routeInfo.networkMask, ReverseRouteProtoTypeMapDB[int(routeInfo.routeType)], routeInfo.nextHopIp) // FIBAndRIB)//,ribdCommonDefs.RoutePolicyStateChangetoInValid)
 	if err != nil {
 		logger.Info(fmt.Sprintln("deleting v4 route failed with err ", err))
 		return
@@ -96,7 +96,7 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 				continue
 			}
             cfg := ribd.IPv4Route {ipRoute.OutgoingIntfType, "STATIC", ipRoute.OutgoingInterface,tempRoute.Ipaddr,int32(tempRoute.Metric),tempRoute.Mask,tempRoute.NextHopIp}
-			_, err = routeServiceHandler.CreateIPv4Route(&cfg)//tempRoute.Ipaddr, tempRoute.Mask, tempRoute.Metric, tempRoute.NextHopIp, tempRoute.NextHopIfType, tempRoute.IfIndex, "STATIC") //tempRoute.Prototype)
+			_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg)//tempRoute.Ipaddr, tempRoute.Mask, tempRoute.Metric, tempRoute.NextHopIp, tempRoute.NextHopIfType, tempRoute.IfIndex, "STATIC") //tempRoute.Prototype)
 			if err != nil {
 				logger.Info(fmt.Sprintf("Route create failed with err %s\n", err))
 				return
@@ -159,7 +159,7 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 				}
 				logger.Info(fmt.Sprintf("Calling createv4Route with ipaddr %s mask %s\n", ipAddrStr, ipMaskStr))
                 cfg := ribd.IPv4Route {nextHopIfTypeStr, "CONNECTED", strconv.Itoa(int(tempRoute.IfIndex)),tempRoute.Ipaddr,0,tempRoute.Mask,"0.0.0.0"}
-				_, err = routeServiceHandler.CreateIPv4Route(&cfg)//ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
+				_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg)//ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
 				if err != nil {
 					logger.Info(fmt.Sprintf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex))))
 				}
@@ -268,7 +268,8 @@ func policyEngineUpdateRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, han
 	nextHopIf := strconv.Itoa(int(selectedRouteInfoRecord.nextHopIfIndex))
     cfg := ribd.IPv4Route {nextHopIfTypeStr, ReverseRouteProtoTypeMapDB[int(selectedRouteInfoRecord.protocol)], nextHopIf,selectedRouteInfoRecord.destNetIp.String(),int32(selectedRouteInfoRecord.metric),selectedRouteInfoRecord.networkMask.String(),selectedRouteInfoRecord.nextHopIp.String()}
 	//Even though we could potentially have multiple selected routes, calling update once for this prefix should suffice
-	routeServiceHandler.UpdateIPv4Route(&cfg, nil, nil)
+	//routeServiceHandler.UpdateIPv4Route(&cfg, nil, nil)
+    routeServiceHandler.ProcessRouteUpdateConfig(&cfg,&cfg,nil)
 	return err
 }
 func policyEngineTraverseAndUpdate() {
@@ -287,73 +288,53 @@ func policyEngineActionAcceptRoute(params interface{}) {
 }
 func policyEngineActionUndoSetAdminDistance(actionItem interface{}, conditionsList []interface{}, conditionItem interface{}, policyStmt policy.PolicyStmt) {
 	logger.Info(fmt.Sprintln("policyEngineActionUndoSetAdminDistance"))
-	actionInfo := actionItem.(policy.PolicyAction)
-	switch actionInfo.ActionType {
-	case policyCommonDefs.PoilcyActionTypeSetAdminDistance:
-		logger.Info(fmt.Sprintln("PoilcyActionTypeSetAdminDistance action to be undone"))
-		if ProtocolAdminDistanceMapDB == nil {
-			logger.Info(fmt.Sprintln("ProtocolAdminDistanceMap nil"))
-			break
-		}
-		if conditionItem == nil {
-			logger.Info(fmt.Sprintln("No valid condition provided for set admin distance action"))
-			return
-		}
-		conditionInfo := conditionItem.(policy.PolicyCondition)
-		switch conditionInfo.ConditionType {
-		case policyCommonDefs.PolicyConditionTypeProtocolMatch:
-			routeDistanceConfig := ProtocolAdminDistanceMapDB[conditionInfo.ConditionInfo.(string)]
-			routeDistanceConfig.configuredDistance = -1
-			ProtocolAdminDistanceMapDB[conditionInfo.ConditionInfo.(string)] = routeDistanceConfig
-			logger.Info(fmt.Sprintln("Setting configured distance of prototype ", conditionInfo.ConditionInfo.(string), " to value ", 0, " default distance of this protocol is ", routeDistanceConfig.defaultDistance))
-			break
-		default:
-			logger.Info(fmt.Sprintln("Invalid condition type provided for undo set admin distance"))
-			return
-		}
-		policyEngineTraverseAndUpdate()
-		break
-	default:
-		logger.Info(fmt.Sprintln("Invalid global policy action"))
+	logger.Info(fmt.Sprintln("PoilcyActionTypeSetAdminDistance action to be undone"))
+	if ProtocolAdminDistanceMapDB == nil {
+		logger.Info(fmt.Sprintln("ProtocolAdminDistanceMap nil"))
 		return
 	}
+	if conditionItem == nil {
+		logger.Info(fmt.Sprintln("No valid condition provided for set admin distance action"))
+		return
+	}
+	conditionProtocol := conditionItem.(string)
+	//case policyCommonDefs.PolicyConditionTypeProtocolMatch:
+	routeDistanceConfig,ok := ProtocolAdminDistanceMapDB[conditionProtocol]
+	if !ok {
+		logger.Info(fmt.Sprintln("Invalid protocol provided for undo set admin distance"))
+		return
+	}
+	routeDistanceConfig.configuredDistance = -1
+	ProtocolAdminDistanceMapDB[conditionProtocol] = routeDistanceConfig
+	logger.Info(fmt.Sprintln("Setting configured distance of prototype ", conditionProtocol, " to value ", 0, " default distance of this protocol is ", routeDistanceConfig.defaultDistance))
+	policyEngineTraverseAndUpdate()
 }
 func policyEngineActionSetAdminDistance(actionItem interface{}, conditionList []interface{}, params interface{}) {
 	logger.Info(fmt.Sprintln("policyEngipolicyEngineActionSetAdminDistance"))
-	actionInfo := actionItem.(policy.PolicyAction)
-	switch actionInfo.ActionType {
-	case policyCommonDefs.PoilcyActionTypeSetAdminDistance:
-		logger.Info(fmt.Sprintln("PoilcyActionTypeSetAdminDistance action to be applied"))
-		if ProtocolAdminDistanceMapDB == nil {
-			logger.Info(fmt.Sprintln("ProtocolAdminDistanceMap nil"))
-			break
-		}
-		if conditionList == nil {
-			logger.Info(fmt.Sprintln("No valid condition provided for set admin distance action"))
-			return
-		}
-		found := false
-		for i := 0; i < len(conditionList); i++ {
-			conditionItem := conditionList[i].(policy.PolicyCondition)
-			switch conditionItem.ConditionType {
-			case policyCommonDefs.PolicyConditionTypeProtocolMatch:
-				routeDistanceConfig := ProtocolAdminDistanceMapDB[conditionItem.ConditionInfo.(string)]
-				routeDistanceConfig.configuredDistance = int(actionInfo.ActionInfo.(int))
-				ProtocolAdminDistanceMapDB[conditionItem.ConditionInfo.(string)] = routeDistanceConfig
-				logger.Info(fmt.Sprintln("Setting distance of prototype ", conditionItem.ConditionInfo.(string), " to value ", actionInfo.ActionInfo.(int)))
-				found = true
-			}
-		}
-		if !found {
-			logger.Info(fmt.Sprintln("Invalid condition type provided for set admin distance"))
-			return
-		}
-		policyEngineTraverseAndUpdate()
-		break
-	default:
-		logger.Info(fmt.Sprintln("Invalid global policy action"))
+	actionInfo := actionItem.(int)
+	logger.Info(fmt.Sprintln("PoilcyActionTypeSetAdminDistance action to be applied"))
+	if ProtocolAdminDistanceMapDB == nil {
+		logger.Info(fmt.Sprintln("ProtocolAdminDistanceMap nil"))
 		return
 	}
+	if conditionList == nil {
+		logger.Info(fmt.Sprintln("No valid condition provided for set admin distance action"))
+		return
+	}
+	for i := 0; i < len(conditionList); i++ {
+		//case policyCommonDefs.PolicyConditionTypeProtocolMatch:
+		conditionProtocol := conditionList[i].(string)
+		routeDistanceConfig,ok := ProtocolAdminDistanceMapDB[conditionProtocol]
+		if !ok {
+		    logger.Info(fmt.Sprintln("Invalid protocol provided for set admin distance"))
+		    return
+		}
+		routeDistanceConfig.configuredDistance = actionInfo
+		ProtocolAdminDistanceMapDB[conditionProtocol] = routeDistanceConfig
+		logger.Info(fmt.Sprintln("Setting distance of prototype ", conditionProtocol, " to value ", actionInfo))
+	}
+	policyEngineTraverseAndUpdate()
+	return
 }
 func policyEngineRouteDispositionAction(action interface{}, conditionInfo []interface{}, params interface{}) {
 	logger.Info(fmt.Sprintln("policyEngineRouteDispositionAction"))

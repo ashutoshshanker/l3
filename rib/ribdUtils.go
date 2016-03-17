@@ -296,6 +296,18 @@ func addRoutePolicyState(route ribdInt.Routes, policy string, policyStmt string)
 	}
 	logger.Info(fmt.Sprintln("Adding policy ", policy, " to route %v", destNet))
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
+    found := false
+	idx := 0
+	for idx = 0; idx < len(routeInfoRecordList.policyList); idx++ {
+		if routeInfoRecordList.policyList[idx] == policy {
+			found = true
+			break
+		}
+	}
+	if found {
+		logger.Info(fmt.Sprintln("Policy ", policy, "already a part of policyList of route ", destNet))
+		return
+	}
 	routeInfoRecordList.policyHitCounter = ribd.Int(route.PolicyHitCounter)
 	if routeInfoRecordList.policyList == nil {
 		routeInfoRecordList.policyList = make([]string, 0)

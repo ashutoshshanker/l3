@@ -34,7 +34,7 @@ func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
 			outIntfType = commonDefs.IfTypeNull
 		}*/
         cfg := ribd.IPv4Route {ipRoute.OutgoingIntfType, ipRoute.Protocol, ipRoute.OutgoingInterface,ipRoute.DestinationNw,int32(ipRoute.Cost),ipRoute.NetworkMask,ipRoute.NextHopIp}
-		_, err = routeServiceHandler.CreateIPv4Route(&cfg)//ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
+		_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg)//ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
 		//_,err = createV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto),  FIBAndRIB,ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 		if err != nil {
 			logger.Info(fmt.Sprintf("Route create failed with err %s\n", err))
@@ -67,7 +67,7 @@ func UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
 		//condition.MatchDstIpPrefixConditionInfo = &dstIpMatchPrefixconditionCfg
 		condition.IpPrefix = IpPrefix
 		condition.MaskLengthRange = MaskLengthRange
-		routeServiceHandler.CreatePolicyConditionConfig(&condition)
+		routeServiceHandler.ProcessPolicyConditionConfigCreate(&condition)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Condition create failed with err %s\n", err))
 			return err
@@ -89,7 +89,7 @@ func UpdatePolicyActionsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
-		_, err = routeServiceHandler.CreatePolicyActionConfig(&action)
+		_, err = routeServiceHandler.ProcessPolicyActionConfigCreate(&action)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -153,7 +153,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintln("Fetching action ", Actions))
 			stmt.Actions = append(stmt.Actions, Actions)
 		}
-		_, err = routeServiceHandler.CreatePolicyStmtConfig(&stmt)
+		_, err = routeServiceHandler.ProcessPolicyStmtConfigCreate(&stmt)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -199,7 +199,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 			policy.StatementList = append(policy.StatementList, &policyStmtPrecedence)
 		}
 
-		_, err = routeServiceHandler.CreatePolicyDefinitionConfig(&policy)
+		_, err = routeServiceHandler.ProcessPolicyDefinitionConfigCreate(&policy)
 		if err != nil {
 			logger.Info(fmt.Sprintf("policy create failed with err %s\n", err))
 			return err

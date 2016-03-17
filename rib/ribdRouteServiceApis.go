@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"ribd"
 	"errors"
+	"reflect"
 )
 
 func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
@@ -19,7 +20,7 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 		err = errors.New("Invalid route protocol type")
 		return false, err
 	}
-    m.RouteCreateConfCh <- *cfg
+    m.RouteCreateConfCh <- cfg
 	return true,err	
 }
 func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err error){
@@ -28,7 +29,7 @@ func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 		logger.Println("Not ready to accept config")
 		//return 0,err
 	}
-	m.RouteDeleteConfCh <- *cfg
+	m.RouteDeleteConfCh <- cfg
 	return true, err
 }
 func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
@@ -52,7 +53,22 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
 		logger.Println("No route for destination network")
 		return val, err
 	}
-	routeUpdateConfig := UpdateRouteInfo{*origconfig,*newconfig,attrset}
+	objTyp := reflect.TypeOf(*origconfig)
+	for i:=0;i<objTyp.NumField(); i++ {
+	    objName := objTyp.Field(i).Name
+	    if objName == "OutgoingIntfType" {
+            if newconfig.OutgoingIntfType == "NULL" {
+		        logger.Err("Cannot update the type to NULL interface: delete and create the route")
+			    return val,errors.New("Cannot update the type to NULL interface: delete and create the route")
+		    }
+            if origconfig.OutgoingIntfType == "NULL" {
+			    logger.Err("Cannot update NULL interface type with another type: delete and create the route")
+			    return val,errors.New("Cannot update NULL interface type with another type: delete and create the route")
+		    }
+	        break
+	    }
+	}
+	routeUpdateConfig := UpdateRouteInfo{origconfig,newconfig,attrset}
 	m.RouteUpdateConfCh <- routeUpdateConfig
 	return val, err
 }
