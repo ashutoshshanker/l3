@@ -98,7 +98,6 @@ func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 			svr.logger.Err("Gbl Config for " + key + " doesn't exists")
 			return
 		}
-		// Debug remove this later
 		gblInfo.AdverTimer.Reset(
 			time.Duration(gblInfo.IntfConfig.AdvertisementInterval) * time.Second)
 		svr.vrrpGblInfo[key] = gblInfo

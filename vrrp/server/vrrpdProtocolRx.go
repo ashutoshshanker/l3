@@ -9,7 +9,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	_ "net"
-	"time"
+	_ "time"
 )
 
 /*
@@ -212,15 +212,6 @@ func (svr *VrrpServer) VrrpInitPacketListener(key string, IfIndex int32) {
 }
 
 func (svr *VrrpServer) VrrpUpdateProtocolMacEntry(add bool) {
-	if !svr.asicdClient.IsConnected {
-		for {
-			svr.logger.Info("sleeping 750 ms for vrrp to connect with asicd")
-			time.Sleep(time.Millisecond * 750)
-			if svr.asicdClient.IsConnected {
-				break
-			}
-		}
-	}
 	macConfig := asicdServices.RsvdProtocolMacConfig{
 		MacAddr:     VRRP_PROTOCOL_MAC,
 		MacAddrMask: VRRP_MAC_MASK,

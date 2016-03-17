@@ -66,7 +66,7 @@ func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfSt
 	entry.MasterDownTimer = gblInfo.MasterDownValue
 }
 
-func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key string) {
+func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntf) { //key string) {
 	key := strconv.Itoa(int(config.IfIndex)) + "_" + strconv.Itoa(int(config.VRID))
 	gblInfo := svr.vrrpGblInfo[key]
 
@@ -129,12 +129,12 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntfConfig) { //key st
 
 	if !svr.vrrpMacConfigAdded {
 		svr.logger.Info("Adding protocol mac for punting packets to CPU")
-		go svr.VrrpUpdateProtocolMacEntry(true /*add vrrp protocol mac*/)
+		svr.VrrpUpdateProtocolMacEntry(true /*add vrrp protocol mac*/)
 	}
 
 }
 
-func (svr *VrrpServer) VrrpDeleteGblInfo(config vrrpd.VrrpIntfConfig) {
+func (svr *VrrpServer) VrrpDeleteGblInfo(config vrrpd.VrrpIntf) {
 	key := strconv.Itoa(int(config.IfIndex)) + "_" + strconv.Itoa(int(config.VRID))
 	delete(svr.vrrpGblInfo, key)
 	for i := 0; i < len(svr.vrrpIntfStateSlice); i++ {
@@ -148,7 +148,7 @@ func (svr *VrrpServer) VrrpDeleteGblInfo(config vrrpd.VrrpIntfConfig) {
 		return
 	}
 	svr.logger.Info("No vrrp configured on the system, disabling protocol mac")
-	go svr.VrrpUpdateProtocolMacEntry(false /*delete vrrp protocol mac*/)
+	svr.VrrpUpdateProtocolMacEntry(false /*delete vrrp protocol mac*/)
 }
 
 func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(fromIndex int, cnt int) (int,
@@ -311,9 +311,9 @@ func (vrrpServer *VrrpServer) VrrpInitGlobalDS() {
 		VRRP_LINUX_INTF_MAPPING_DEFAULT_SIZE)
 	vrrpServer.vrrpVlanId2Name = make(map[int]string,
 		VRRP_VLAN_MAPPING_DEFAULT_SIZE)
-	vrrpServer.VrrpCreateIntfConfigCh = make(chan vrrpd.VrrpIntfConfig,
+	vrrpServer.VrrpCreateIntfConfigCh = make(chan vrrpd.VrrpIntf,
 		VRRP_INTF_CONFIG_CH_SIZE)
-	vrrpServer.VrrpDeleteIntfConfigCh = make(chan vrrpd.VrrpIntfConfig,
+	vrrpServer.VrrpDeleteIntfConfigCh = make(chan vrrpd.VrrpIntf,
 		VRRP_INTF_CONFIG_CH_SIZE)
 	vrrpServer.vrrpRxPktCh = make(chan VrrpPktChannelInfo, VRRP_RX_BUF_CHANNEL_SIZE)
 	vrrpServer.vrrpTxPktCh = make(chan VrrpTxChannelInfo, VRRP_TX_BUF_CHANNEL_SIZE)
@@ -335,18 +335,7 @@ func (svr *VrrpServer) VrrpDeAllocateMemoryToGlobalDS() {
 	svr.VrrpCreateIntfConfigCh = nil
 }
 
-func (svr *VrrpServer) StartServer(paramsDir string) {
-	svr.paramsDir = paramsDir
-	// Initialize DB
-	err := svr.VrrpInitDB()
-	if err != nil {
-		svr.logger.Err("VRRP: DB init failed")
-	} else {
-		svr.VrrpReadDB()
-	}
-
-	svr.VrrpConnectAndInitPortVlan()
-
+func (svr *VrrpServer) VrrpChannelHanlder() {
 	// Start receviing in rpc values in the channell
 	for {
 		select {
@@ -354,14 +343,28 @@ func (svr *VrrpServer) StartServer(paramsDir string) {
 			svr.VrrpUpdateGblInfo(intfConf)
 		case delConf := <-svr.VrrpDeleteIntfConfigCh:
 			svr.VrrpDeleteGblInfo(delConf)
-
 		case fsmInfo := <-svr.vrrpFsmCh:
 			svr.VrrpFsmStart(fsmInfo)
 		}
 
 	}
-	//return
+}
 
+func (svr *VrrpServer) StartServer(paramsDir string) {
+	svr.paramsDir = paramsDir
+	// First connect to client to avoid any issues with start/re-start
+	svr.VrrpConnectAndInitPortVlan()
+
+	// Initialize DB
+	err := svr.VrrpInitDB()
+	if err != nil {
+		svr.logger.Err("VRRP: DB init failed")
+	} else {
+		// Populate Gbl Configs
+		go svr.VrrpReadDB()
+	}
+
+	go svr.VrrpChannelHanlder()
 }
 
 func VrrpNewServer(log *logging.Writer) *VrrpServer {

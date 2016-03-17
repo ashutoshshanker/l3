@@ -29,7 +29,8 @@ func main() {
 	logger.Info("Starting VRRP server....")
 	// Create vrrp server handler
 	vrrpSvr := vrrpServer.VrrpNewServer(logger)
-	go vrrpSvr.StartServer(*paramsDir)
+	// Until Server is connected to clients do not start with RPC
+	vrrpSvr.StartServer(*paramsDir)
 
 	logger.Info("Starting VRRP Rpc listener....")
 	// Create vrrp rpc handler

@@ -21,7 +21,7 @@ type VrrpClientJson struct {
 	Port int    `json:Port`
 }
 
-func (h *VrrpHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
+func (h *VrrpHandler) CreateVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error) {
 	h.logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
 		config.IfIndex))
 	if config.VRID == 0 {
@@ -31,12 +31,12 @@ func (h *VrrpHandler) CreateVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool
 	h.server.VrrpCreateIntfConfigCh <- *config
 	return true, nil
 }
-func (h *VrrpHandler) UpdateVrrpIntfConfig(origconfig *vrrpd.VrrpIntfConfig,
-	newconfig *vrrpd.VrrpIntfConfig, attrset []bool) (r bool, err error) {
+func (h *VrrpHandler) UpdateVrrpIntf(origconfig *vrrpd.VrrpIntf,
+	newconfig *vrrpd.VrrpIntf, attrset []bool) (r bool, err error) {
 	return true, nil
 }
 
-func (h *VrrpHandler) DeleteVrrpIntfConfig(config *vrrpd.VrrpIntfConfig) (r bool, err error) {
+func (h *VrrpHandler) DeleteVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error) {
 	h.server.VrrpDeleteIntfConfigCh <- *config
 	return true, nil
 }

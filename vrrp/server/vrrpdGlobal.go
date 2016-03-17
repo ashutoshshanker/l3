@@ -76,7 +76,7 @@ type VrrpAsicdClient struct {
 }
 
 type VrrpGlobalInfo struct {
-	IntfConfig vrrpd.VrrpIntfConfig
+	IntfConfig vrrpd.VrrpIntf
 	// VRRP MAC aka VMAC
 	VirtualRouterMACAddress string
 	// The initial value is the same as Advertisement_Interval.
@@ -124,8 +124,8 @@ type VrrpServer struct {
 	vrrpLinuxIfIndex2AsicdIfIndex map[int32]*net.Interface
 	vrrpIfIndexIpAddr             map[int32]string
 	vrrpVlanId2Name               map[int]string
-	VrrpCreateIntfConfigCh        chan vrrpd.VrrpIntfConfig
-	VrrpDeleteIntfConfigCh        chan vrrpd.VrrpIntfConfig
+	VrrpCreateIntfConfigCh        chan vrrpd.VrrpIntf
+	VrrpDeleteIntfConfigCh        chan vrrpd.VrrpIntf
 	vrrpRxPktCh                   chan VrrpPktChannelInfo
 	vrrpTxPktCh                   chan VrrpTxChannelInfo
 	vrrpFsmCh                     chan VrrpFsm

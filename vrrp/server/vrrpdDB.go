@@ -37,7 +37,7 @@ func (svr *VrrpServer) VrrpReadDB() error {
 	}
 
 	for rows.Next() {
-		var config vrrpd.VrrpIntfConfig
+		var config vrrpd.VrrpIntf
 		err = rows.Scan(&config.IfIndex, &config.VRID,
 			&config.Priority, &config.VirtualIPv4Addr,
 			&config.AdvertisementInterval, &config.PreemptMode,
