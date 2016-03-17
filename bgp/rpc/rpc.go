@@ -58,7 +58,7 @@ func StartServer(logger *logging.Writer, handler *BGPHandler, filePath string) {
 		logger.Info(fmt.Sprintln("StartServer: NewTServerSocket failed with error:", err))
 		return
 	}
-	processor := bgpd.NewBGPServerProcessor(handler)
+	processor := bgpd.NewBGPDServicesProcessor(handler)
 	server := thrift.NewTSimpleServer4(processor, serverTransport, transportFactory, protocolFactory)
 	err = server.Serve()
 	if err != nil {

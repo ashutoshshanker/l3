@@ -53,9 +53,9 @@ func NewDestination(server *BGPServer, ipPrefix *packet.IPPrefix) *Destination {
 	return dest
 }
 
-func (d *Destination) GetLocRibPathRoute() *bgpd.BGPRoute {
+func (d *Destination) GetLocRibPathRoute() *Route {
 	d.logger.Info(fmt.Sprintf("GetLocRibPathRoute for %s", d.ipPrefix.Prefix.String()))
-	return d.locRibPathRoute.GetBGPRoute()
+	return d.locRibPathRoute
 }
 
 func (d *Destination) GetBGPRoutes() []*bgpd.BGPRoute {

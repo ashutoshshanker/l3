@@ -16,13 +16,15 @@ const (
 )
 
 type Route struct {
-	bgpRoute     *bgpd.BGPRoute
-	dest         *Destination
-	path         *Path
-	routeListIdx int
-	time         time.Time
-	action       RouteAction
-	outPathId    uint32
+	bgpRoute         *bgpd.BGPRoute
+	dest             *Destination
+	path             *Path
+	routeListIdx     int
+	time             time.Time
+	action           RouteAction
+	outPathId        uint32
+	PolicyList       []string
+	PolicyHitCounter int
 }
 
 func NewRoute(dest *Destination, path *Path, action RouteAction, inPathId, outPathId uint32) *Route {
@@ -36,13 +38,15 @@ func NewRoute(dest *Destination, path *Path, action RouteAction, inPathId, outPa
 		PathId:    int32(inPathId),
 	}
 	return &Route{
-		bgpRoute:     bgpRoute,
-		dest:         dest,
-		path:         path,
-		routeListIdx: -1,
-		time:         time.Now(),
-		action:       action,
-		outPathId:    outPathId,
+		bgpRoute:         bgpRoute,
+		dest:             dest,
+		path:             path,
+		routeListIdx:     -1,
+		time:             time.Now(),
+		action:           action,
+		outPathId:        outPathId,
+		PolicyList:       make([]string, 0),
+		PolicyHitCounter: 0,
 	}
 }
 
