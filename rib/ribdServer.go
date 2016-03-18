@@ -47,6 +47,7 @@ type RIBDServicesHandler struct {
 	PolicyDefinitionCreateConfCh   chan *ribd.PolicyDefinitionConfig
 	PolicyDefinitionDeleteConfCh   chan *ribd.PolicyDefinitionConfig
 	PolicyDefinitionUpdateConfCh   chan *ribd.PolicyDefinitionConfig
+	AcceptConfig                   bool
 	//RouteInstallCh                 chan RouteParams
 }
 
@@ -122,7 +123,6 @@ var asicdclnt AsicdClient
 var arpdclnt ArpdClient
 var count int
 var ConnectedRoutes []*ribdInt.Routes
-var acceptConfig bool
 var AsicdSub *nanomsg.SubSocket
 var RIBD_PUB *nanomsg.PubSocket
 var RIBD_BGPD_PUB *nanomsg.PubSocket
@@ -295,14 +295,41 @@ func (m RIBDServicesHandler) IntfUp(ipAddr string) (err error) {
 	processL3IntfUpEvent(ipAddr)
 	return nil
 }
+//used at init time after connecting to ASICD so as to install any routes (static) read from DB in ASICd
+func installRoutesInASIC() {
+	logger.Println("installRoutesinASIC")
+	if destNetSlice == nil {
+		logger.Println("No routes installed in RIB")
+		return
+	}
+	for i:=0;i<len(destNetSlice);i++ {
+		if destNetSlice[i].isValid == false {
+			logger.Println("Invalid route")
+			continue
+		}
+		prefixNode := RouteInfoMap.Get(destNetSlice[i].prefix)
+		if prefixNode != nil {
+			prefixNodeRouteList := prefixNode.(RouteInfoRecordList)
+			if prefixNodeRouteList.routeInfoProtocolMap == nil || prefixNodeRouteList.selectedRouteProtocol == "INVALID" || prefixNodeRouteList.routeInfoProtocolMap[prefixNodeRouteList.selectedRouteProtocol] == nil {
+				logger.Println("selected route not valid")
+				continue
+			}
+			routeInfoList := prefixNodeRouteList.routeInfoProtocolMap[prefixNodeRouteList.selectedRouteProtocol]
+			for sel := 0; sel < len(routeInfoList); sel++ {
+				routeInfoRecord := routeInfoList[sel]
+			    asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String(), int32(routeInfoRecord.nextHopIfType))
+			}
+		}
 
+	}
+}
 func getIntfInfo() {
 	logger.Println("Getting intfs(ports) from asicd")
 	var currMarker asicdServices.Int
 	var count asicdServices.Int
 	count = 100
 	for {
-		logger.Info(fmt.Sprintln("Getting %d objects from currMarker %d\n", count, currMarker))
+		logger.Info(fmt.Sprintln("Getting ", count, "objects from currMarker:",currMarker))
 		bulkInfo, err := asicdclnt.ClientHdl.GetBulkPortState(currMarker, count)
 		if err != nil {
 			logger.Info(fmt.Sprintln("GetBulkPortState with err ", err))
@@ -337,32 +364,36 @@ func connectToClient(client ClientJson) {
 		timer = time.NewTimer(time.Second * 10)
 		<-timer.C
 		if client.Name == "asicd" {
-			//logger.Info(fmt.Sprintln("found asicd at port %d", client.Port))
+			logger.Info(fmt.Sprintln("found asicd at port %d", client.Port))
 			asicdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
 			asicdclnt.Transport, asicdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
-				//logger.Println("connecting to asicd")
+				logger.Info(fmt.Sprintln("connecting to asicd,arpdclnt.IsConnected:",arpdclnt.IsConnected))
 				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
-				getConnectedRoutes()
-				getIntfInfo()
 				if arpdclnt.IsConnected == true {
-					acceptConfig = true
+					logger.Println("Setting AcceptConfig to true")
+					routeServiceHandler.AcceptConfig = true
 				}
+				installRoutesInASIC()
+				getIntfInfo()
+				getConnectedRoutes()
 				timer.Stop()
+	            go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 				return
 			}
 		}
 		if client.Name == "arpd" {
-			//logger.Info(fmt.Sprintln("found arpd at port %d", client.Port))
+			logger.Info(fmt.Sprintln("found arpd at port %d", client.Port))
 			arpdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
 			arpdclnt.Transport, arpdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
-				//logger.Println("connecting to arpd")
+				logger.Info(fmt.Sprintln("connecting to arpd,asicdclnt.IsConnected:",asicdclnt.IsConnected))
 				arpdclnt.ClientHdl = arpd.NewARPDServicesClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
 				if asicdclnt.IsConnected == true {
-					acceptConfig = true
+					logger.Println("Setting AcceptConfig to true")
+					routeServiceHandler.AcceptConfig = true
 				}
 				timer.Stop()
 				return
@@ -392,11 +423,17 @@ func ConnectToClients(paramsFile string) {
 			asicdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
 			asicdclnt.Transport, asicdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
-				logger.Println("connecting to asicd")
+				logger.Info(fmt.Sprintln("connecting to asicd,arpdclnt.IsConnected:",arpdclnt.IsConnected))
 				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
-				getConnectedRoutes()
+				if arpdclnt.IsConnected == true {
+					logger.Println("Setting AcceptConfig to true")
+					routeServiceHandler.AcceptConfig = true
+				}
+				installRoutesInASIC()
 				getIntfInfo()
+				getConnectedRoutes()
+	            go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 			} else {
 				go connectToClient(client)
 			}
@@ -406,9 +443,13 @@ func ConnectToClients(paramsFile string) {
 			arpdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
 			arpdclnt.Transport, arpdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
-				logger.Println("connecting to arpd")
+				logger.Info(fmt.Sprintln("connecting to arpd,asicdclnt.IsConnected:",asicdclnt.IsConnected))
 				arpdclnt.ClientHdl = arpd.NewARPDServicesClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
+				if asicdclnt.IsConnected == true {
+					logger.Println("Setting AcceptConfig to true")
+					routeServiceHandler.AcceptConfig = true
+				}
 			} else {
 				go connectToClient(client)
 			}
@@ -616,6 +657,7 @@ func InitializePolicyDB() {
 	PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
 }
 func NewRIBDServicesHandler() *RIBDServicesHandler {
+    RouteInfoMap = patriciaDB.NewTrie()
 	ribdServicesHandler := &RIBDServicesHandler{}
 	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteDeleteConfCh = make(chan *ribd.IPv4Route)
@@ -646,12 +688,15 @@ func (ribdServiceHandler *RIBDServicesHandler) StartServer(paramsDir string) {
 	BuildProtocolAdminDistanceMapDB()
 	RIBD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_ADDR)
 	RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
-	go setupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	//CreateRoutes("RouteSetup.json")
 	InitializePolicyDB()
 	UpdateFromDB() //(paramsDir)
 	logger.Println("Starting the server loop")
 	for {
+		if !routeServiceHandler.AcceptConfig {
+		    logger.Println("Not ready to accept config")
+		    continue
+	    }
 		select {
 		case routeCreateConf := <-ribdServiceHandler.RouteCreateConfCh:
 		    logger.Println("received message on RouteCreateConfCh channel")

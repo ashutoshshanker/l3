@@ -10,7 +10,7 @@ import (
 
 func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
 	logger.Info(fmt.Sprintf("Received create route request for ip %s mask %s\n", cfg.DestinationNw, cfg.NetworkMask))
-	if !acceptConfig {
+	if !routeServiceHandler.AcceptConfig {
 		logger.Println("Not ready to accept config")
 		//return 0, err
 	}
@@ -25,7 +25,7 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 }
 func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err error){
 	logger.Info(fmt.Sprintln(":DeleteIPv4RouteReceived Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHopIp, "Protocol ", cfg.Protocol))
-	if !acceptConfig {
+	if !routeServiceHandler.AcceptConfig {
 		logger.Println("Not ready to accept config")
 		//return 0,err
 	}
@@ -34,7 +34,7 @@ func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 }
 func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
 	logger.Println("UpdateIPv4Route: Received update route request")
-	if !acceptConfig {
+	if !routeServiceHandler.AcceptConfig {
 		logger.Println("Not ready to accept config")
 		//return err
 	}
