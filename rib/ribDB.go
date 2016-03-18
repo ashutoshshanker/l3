@@ -46,13 +46,13 @@ func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
 
 func UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyConditionsFromDB"))
-	dbCmd := "select * from PolicyConditionConfig"
+	dbCmd := "select * from PolicyCondition"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
 		logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmd, err))
 		return err
 	}
-	var condition ribd.PolicyConditionConfig
+	var condition ribd.PolicyCondition
 	var IpPrefix, MaskLengthRange string
 	for rows.Next() {
 		if err = rows.Scan(&condition.Name, &condition.ConditionType, &condition.MatchProtocol, &IpPrefix, &MaskLengthRange); err != nil {
@@ -77,13 +77,13 @@ func UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
 }
 func UpdatePolicyActionsFromDB(dbHdl *sql.DB) (err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyActionsFromDB"))
-	dbCmd := "select * from PolicyActionConfig"
+	dbCmd := "select * from PolicyAction"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
 		logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmd, err))
 		return err
 	}
-	var action ribd.PolicyActionConfig
+	var action ribd.PolicyAction
 	for rows.Next() {
 		if err = rows.Scan(&action.Name, &action.ActionType, &action.SetAdminDistanceValue, &action.Accept, &action.Reject, &action.RedistributeAction, &action.RedistributeTargetProtocol, &action.NetworkStatementTargetProtocol); err != nil {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
@@ -99,20 +99,20 @@ func UpdatePolicyActionsFromDB(dbHdl *sql.DB) (err error) {
 }
 func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyStmtsFromDB"))
-	dbCmd := "select * from PolicyStmtConfig"
+	dbCmd := "select * from PolicyStmt"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
 		logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmd, err))
 		return err
 	}
-	var stmt ribd.PolicyStmtConfig
+	var stmt ribd.PolicyStmt
 	for rows.Next() {
 		if err = rows.Scan(&stmt.Name, &stmt.MatchConditions); err != nil {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
 		logger.Info(fmt.Sprintln("Scanning stmt ", stmt.Name, "MatchConditions:",stmt.MatchConditions))
-		dbCmdCond := "select * from PolicyStmtConfigConditions"
+		dbCmdCond := "select * from PolicyStmtConditions"
 		conditionrows, err := dbHdl.Query(dbCmdCond)
 		if err != nil {
 			logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmdCond, err))
@@ -133,7 +133,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			stmt.Conditions = append(stmt.Conditions, Conditions)
 		}
 
-		dbCmdAction := "select * from PolicyStmtConfigActions"
+		dbCmdAction := "select * from PolicyStmtActions"
 		actionrows, err := dbHdl.Query(dbCmdAction)
 		if err != nil {
 			logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmdAction, err))
@@ -163,20 +163,20 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 }
 func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyFromDB"))
-	dbCmd := "select * from PolicyDefinitionConfig"
+	dbCmd := "select * from PolicyDefinition"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
 		logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmd, err))
 		return err
 	}
-	var policy ribd.PolicyDefinitionConfig
+	var policy ribd.PolicyDefinition
 	for rows.Next() {
 		if err = rows.Scan(&policy.Name, &policy.Precedence, &policy.MatchType); err != nil {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionConfig rows with error %s\n", err))
 			return err
 		}
 		logger.Info(fmt.Sprintln("executed cmd ", dbCmd, "policy name = ", policy.Name, " precedence: ", policy.Precedence))
-		dbCmdPrecedence := "select * from PolicyDefinitionConfigStatementList"
+		dbCmdPrecedence := "select * from PolicyDefinitionStatementList"
 		conditionrows, err := dbHdl.Query(dbCmdPrecedence)
 		if err != nil {
 			logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmdPrecedence, err))
