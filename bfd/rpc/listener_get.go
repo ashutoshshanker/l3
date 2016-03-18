@@ -11,9 +11,9 @@ func (h *BFDHandler) GetBfdGlobalState() (*bfdd.BfdGlobalState, error) {
 	return bfdGlobalResponse, nil
 }
 
-func (h *BFDHandler) GetBfdIntfState() (*bfdd.BfdIntfState, error) {
+func (h *BFDHandler) GetBfdInterfaceState() (*bfdd.BfdInterfaceState, error) {
 	h.logger.Info(fmt.Sprintln("Get Interface attrs"))
-	bfdGlobalResponse := bfdd.NewBfdIntfState()
+	bfdGlobalResponse := bfdd.NewBfdInterfaceState()
 	return bfdGlobalResponse, nil
 }
 
