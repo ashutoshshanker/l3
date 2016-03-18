@@ -6,12 +6,12 @@ import (
 	"ribd"
 	"utils/policy"
 )
-func (m RIBDServicesHandler) CreatePolicyConditionConfig(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyCondition(cfg *ribd.PolicyCondition) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyConditioncfg: ",cfg.Name))
 	m.PolicyConditionCreateConfCh <- cfg
 	return true,err
 }
-func (m RIBDServicesHandler) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg: ",cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.MatchProtocol}
 	matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.IpPrefix, MasklengthRange: cfg.MaskLengthRange}
@@ -23,18 +23,18 @@ func (m RIBDServicesHandler) ProcessPolicyConditionConfigCreate(cfg *ribd.Policy
 	err = PolicyEngineDB.CreatePolicyCondition(newPolicy)
 	return val, err
 }
-func (m RIBDServicesHandler) DeletePolicyConditionConfig(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyCondition(cfg *ribd.PolicyCondition) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeletePolicyConditionConfig: ",cfg.Name))
 	m.PolicyConditionDeleteConfCh <- cfg
 	return true,err
 }
-func (m RIBDServicesHandler) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyConditionConfig) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyCondition) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition: ",cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyCondition(newPolicy)
 	return val, err
 }
-func (m RIBDServicesHandler) UpdatePolicyConditionConfig(origconfig *ribd.PolicyConditionConfig , newconfig *ribd.PolicyConditionConfig , attrset []bool) (val bool, err error) {
+func (m RIBDServicesHandler) UpdatePolicyCondition(origconfig *ribd.PolicyCondition , newconfig *ribd.PolicyCondition , attrset []bool) (val bool, err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyConditionConfig:UpdatePolicyCondition: ",newconfig.Name))
 	return val,err
 }

@@ -35,18 +35,18 @@ type RIBDServicesHandler struct {
 	RouteCreateConfCh              chan *ribd.IPv4Route
 	RouteDeleteConfCh              chan *ribd.IPv4Route
 	RouteUpdateConfCh               chan UpdateRouteInfo
-	PolicyConditionCreateConfCh    chan *ribd.PolicyConditionConfig
-	PolicyConditionDeleteConfCh    chan *ribd.PolicyConditionConfig
-	PolicyConditionUpdateConfCh     chan *ribd.PolicyConditionConfig
-	PolicyActionCreateConfCh       chan *ribd.PolicyActionConfig
-	PolicyActionDeleteConfCh       chan *ribd.PolicyActionConfig
-	PolicyActionUpdateConfCh        chan *ribd.PolicyActionConfig
-	PolicyStmtCreateConfCh         chan *ribd.PolicyStmtConfig
-	PolicyStmtDeleteConfCh         chan *ribd.PolicyStmtConfig
-	PolicyStmtUpdateConfCh          chan *ribd.PolicyStmtConfig
-	PolicyDefinitionCreateConfCh   chan *ribd.PolicyDefinitionConfig
-	PolicyDefinitionDeleteConfCh   chan *ribd.PolicyDefinitionConfig
-	PolicyDefinitionUpdateConfCh   chan *ribd.PolicyDefinitionConfig
+	PolicyConditionCreateConfCh    chan *ribd.PolicyCondition
+	PolicyConditionDeleteConfCh    chan *ribd.PolicyCondition
+	PolicyConditionUpdateConfCh     chan *ribd.PolicyCondition
+	PolicyActionCreateConfCh       chan *ribd.PolicyAction
+	PolicyActionDeleteConfCh       chan *ribd.PolicyAction
+	PolicyActionUpdateConfCh        chan *ribd.PolicyAction
+	PolicyStmtCreateConfCh         chan *ribd.PolicyStmt
+	PolicyStmtDeleteConfCh         chan *ribd.PolicyStmt
+	PolicyStmtUpdateConfCh          chan *ribd.PolicyStmt
+	PolicyDefinitionCreateConfCh   chan *ribd.PolicyDefinition
+	PolicyDefinitionDeleteConfCh   chan *ribd.PolicyDefinition
+	PolicyDefinitionUpdateConfCh   chan *ribd.PolicyDefinition
 	AcceptConfig                   bool
 	//RouteInstallCh                 chan RouteParams
 }
@@ -662,18 +662,18 @@ func NewRIBDServicesHandler() *RIBDServicesHandler {
 	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteDeleteConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteUpdateConfCh = make(chan UpdateRouteInfo)
-	ribdServicesHandler.PolicyConditionCreateConfCh = make(chan *ribd.PolicyConditionConfig)
-	ribdServicesHandler.PolicyConditionDeleteConfCh = make(chan *ribd.PolicyConditionConfig)
-	ribdServicesHandler.PolicyConditionUpdateConfCh = make(chan *ribd.PolicyConditionConfig)
-	ribdServicesHandler.PolicyActionCreateConfCh = make(chan *ribd.PolicyActionConfig)
-	ribdServicesHandler.PolicyActionDeleteConfCh = make(chan *ribd.PolicyActionConfig)
-	ribdServicesHandler.PolicyActionUpdateConfCh = make(chan *ribd.PolicyActionConfig)
-	ribdServicesHandler.PolicyStmtCreateConfCh = make(chan *ribd.PolicyStmtConfig)
-	ribdServicesHandler.PolicyStmtDeleteConfCh = make(chan *ribd.PolicyStmtConfig)
-	ribdServicesHandler.PolicyStmtUpdateConfCh = make(chan *ribd.PolicyStmtConfig)
-	ribdServicesHandler.PolicyDefinitionCreateConfCh = make(chan *ribd.PolicyDefinitionConfig)
-	ribdServicesHandler.PolicyDefinitionDeleteConfCh = make(chan *ribd.PolicyDefinitionConfig)
-	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan *ribd.PolicyDefinitionConfig)
+	ribdServicesHandler.PolicyConditionCreateConfCh = make(chan *ribd.PolicyCondition)
+	ribdServicesHandler.PolicyConditionDeleteConfCh = make(chan *ribd.PolicyCondition)
+	ribdServicesHandler.PolicyConditionUpdateConfCh = make(chan *ribd.PolicyCondition)
+	ribdServicesHandler.PolicyActionCreateConfCh = make(chan *ribd.PolicyAction)
+	ribdServicesHandler.PolicyActionDeleteConfCh = make(chan *ribd.PolicyAction)
+	ribdServicesHandler.PolicyActionUpdateConfCh = make(chan *ribd.PolicyAction)
+	ribdServicesHandler.PolicyStmtCreateConfCh = make(chan *ribd.PolicyStmt)
+	ribdServicesHandler.PolicyStmtDeleteConfCh = make(chan *ribd.PolicyStmt)
+	ribdServicesHandler.PolicyStmtUpdateConfCh = make(chan *ribd.PolicyStmt)
+	ribdServicesHandler.PolicyDefinitionCreateConfCh = make(chan *ribd.PolicyDefinition)
+	ribdServicesHandler.PolicyDefinitionDeleteConfCh = make(chan *ribd.PolicyDefinition)
+	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan *ribd.PolicyDefinition)
 	//ribdServicesHandler.RouteInstallCh = make(chan RouteParams)
 	return ribdServicesHandler
 }
