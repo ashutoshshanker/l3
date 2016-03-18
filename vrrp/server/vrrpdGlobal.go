@@ -140,6 +140,7 @@ type VrrpServer struct {
 const (
 	// Error Message
 	VRRP_USR_CONF_DB                    = "/UsrConfDb.db"
+	VRRP_INTF_DB                        = "VrrpIntf"
 	VRRP_INVALID_VRID                   = "VRID is invalid"
 	VRRP_CLIENT_CONNECTION_NOT_REQUIRED = "Connection to Client is not required"
 	VRRP_INCORRECT_VERSION              = "Version is not correct for received VRRP Packet"

@@ -32,9 +32,9 @@ func main() {
 	// Until Server is connected to clients do not start with RPC
 	vrrpSvr.StartServer(*paramsDir)
 
-	logger.Info("Starting VRRP Rpc listener....")
 	// Create vrrp rpc handler
 	vrrpHdl := vrrpRpc.VrrpNewHandler(vrrpSvr, logger)
+	logger.Info("Starting VRRP RPC listener....")
 	err = vrrpRpc.StartServer(logger, vrrpHdl, *paramsDir)
 	if err != nil {
 		logger.Err(fmt.Sprintln("VRRP: Cannot start vrrp server", err))

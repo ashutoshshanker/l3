@@ -28,7 +28,7 @@ func (svr *VrrpServer) VrrpInitDB() error {
 
 func (svr *VrrpServer) VrrpReadDB() error {
 	svr.logger.Info("VRRP: Reading from Database")
-	dbCmd := "SELECT * FROM VrrpIntfConfig"
+	dbCmd := "SELECT * FROM " + VRRP_INTF_DB
 	rows, err := svr.vrrpDbHdl.Query(dbCmd)
 	if err != nil {
 		svr.logger.Err(fmt.Sprintln("VRRP: Unable to querry DB:", err))
