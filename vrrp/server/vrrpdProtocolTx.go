@@ -147,10 +147,6 @@ func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []by
 }
 
 func (svr *VrrpServer) VrrpSendPkt(key string, priority uint16) {
-	//	for {
-	//txInfo := <-rcvdCh
-	//key := txInfo.key
-	//priority := txInfo.priority
 	gblInfo, found := svr.vrrpGblInfo[key]
 	if !found {
 		svr.logger.Err("No Entry for " + key)
@@ -173,5 +169,4 @@ func (svr *VrrpServer) VrrpSendPkt(key string, priority uint16) {
 	vrrpEncHdr, hdrLen := svr.VrrpCreateVrrpHeader(gblInfo)
 	svr.VrrpWritePacket(gblInfo,
 		svr.VrrpCreateSendPkt(gblInfo, vrrpEncHdr, hdrLen))
-	//	}
 }

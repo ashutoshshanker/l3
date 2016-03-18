@@ -15,9 +15,7 @@ func (svr *VrrpServer) VrrpCreateIfIndexEntry(IfIndex int32, IpAddr string) {
 }
 
 func (svr *VrrpServer) VrrpCreateVlanEntry(vlanId int, vlanName string) {
-	entry := svr.vrrpVlanId2Name[vlanId]
-	entry = vlanName
-	svr.vrrpVlanId2Name[vlanId] = entry
+	svr.vrrpVlanId2Name[vlanId] = vlanName
 }
 
 func (svr *VrrpServer) VrrpGetPortList() {
@@ -122,7 +120,8 @@ func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMs
 	case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
 		svr.VrrpCreateIfIndexEntry(msg.IfIndex, msg.IpAddr)
 		svr.VrrpMapIfIndexToLinuxIfIndex(msg.IfIndex)
-		go svr.VrrpChecknUpdateGblInfo(msg.IfIndex, msg.IpAddr)
+		// @TODO: add this call only when we support update of ip addr
+		//go svr.VrrpChecknUpdateGblInfo(msg.IfIndex, msg.IpAddr)
 	case asicdConstDefs.NOTIFY_IPV4INTF_DELETE:
 		delete(svr.vrrpIfIndexIpAddr, msg.IfIndex)
 	}

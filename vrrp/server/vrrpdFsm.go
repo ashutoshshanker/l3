@@ -207,9 +207,6 @@ func (svr *VrrpServer) VrrpInitState(key string) {
 func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader,
 	key string) {
 	// @TODO: Handle arp drop...
-	if inPkt == nil || vrrpHdr == nil {
-		return
-	}
 	// Check dmac address from the inPacket and if it is same discard the packet
 	ethLayer := inPkt.Layer(layers.LayerTypeEthernet)
 	if ethLayer == nil {
@@ -276,9 +273,6 @@ func (svr *VrrpServer) VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 	   or if Accept_Mode is True.  Otherwise, MUST NOT accept these
 	   packets.
 	*/
-	if inPkt == nil || vrrpHdr == nil {
-		return
-	}
 	if vrrpHdr.Priority == VRRP_MASTER_DOWN_PRIORITY {
 		svr.vrrpTxPktCh <- VrrpTxChannelInfo{
 			key:      key,
@@ -418,10 +412,8 @@ func (svr *VrrpServer) VrrpHandleIntfUpEvent(IfIndex int32) {
 
 		svr.logger.Info(fmt.Sprintln("Intf State Up Notification",
 			" restarting the fsm event for VRID:", gblInfo.IntfConfig.VRID))
-		if gblInfo.IpAddr != "" {
-			svr.vrrpFsmCh <- VrrpFsm{
-				key: key,
-			}
+		svr.vrrpFsmCh <- VrrpFsm{
+			key: key,
 		}
 	}
 }

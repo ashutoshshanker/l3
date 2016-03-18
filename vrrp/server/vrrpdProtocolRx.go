@@ -112,54 +112,49 @@ func (svr *VrrpServer) VrrpCheckHeader(hdr *VrrpPktHeader, layerContent []byte, 
 	return nil
 }
 
-func (svr *VrrpServer) VrrpCheckRcvdPkt(rcvdCh <-chan VrrpPktChannelInfo) {
-	for {
-		pktChannel := <-rcvdCh
-		packet := pktChannel.pkt
-		key := pktChannel.key
-		gblInfo := svr.vrrpGblInfo[key]
-		gblInfo.StateLock.Lock()
-		if gblInfo.StateName == VRRP_INITIALIZE_STATE {
-			gblInfo.StateLock.Unlock()
-			continue
-		}
+func (svr *VrrpServer) VrrpCheckRcvdPkt(packet gopacket.Packet, key string,
+	IfIndex int32) {
+	gblInfo := svr.vrrpGblInfo[key]
+	gblInfo.StateLock.Lock()
+	if gblInfo.StateName == VRRP_INITIALIZE_STATE {
 		gblInfo.StateLock.Unlock()
-		//IfIndex := pktChannel.IfIndex
-		// Get Entire IP layer Info
-		ipLayer := packet.Layer(layers.LayerTypeIPv4)
-		if ipLayer == nil {
-			svr.logger.Err("Not an ip packet?")
-			continue
-		}
-		// Get Ip Hdr and start doing basic check according to RFC
-		ipHdr := ipLayer.(*layers.IPv4)
-		if ipHdr.TTL != VRRP_TTL {
-			svr.logger.Err(fmt.Sprintln("ttl should be 255 instead of", ipHdr.TTL,
-				"dropping packet from", ipHdr.SrcIP))
-			continue
-		}
-		// Get Payload as checks are succesful
-		ipPayload := ipLayer.LayerPayload()
-		if ipPayload == nil {
-			svr.logger.Err("No payload for ip packet")
-			continue
-		}
-		// Get VRRP header from IP Payload
-		vrrpHeader := svr.VrrpDecodeHeader(ipPayload)
-		// Do Basic Vrrp Header Check
-		if err := svr.VrrpCheckHeader(vrrpHeader, ipPayload, key); err != nil {
-			svr.logger.Err(fmt.Sprintln(err.Error(),
-				". Dropping received packet from", ipHdr.SrcIP))
-			continue
-		}
-		svr.logger.Info(fmt.Sprintln("RX packet from", ipHdr.SrcIP,
-			" passed basic ip check, hence starting FSM"))
-		// Start FSM for VRRP after all the checks are successful
-		svr.vrrpFsmCh <- VrrpFsm{
-			vrrpHdr: vrrpHeader,
-			inPkt:   packet,
-			key:     key,
-		}
+		return
+	}
+	gblInfo.StateLock.Unlock()
+	// Get Entire IP layer Info
+	ipLayer := packet.Layer(layers.LayerTypeIPv4)
+	if ipLayer == nil {
+		svr.logger.Err("Not an ip packet?")
+		return
+	}
+	// Get Ip Hdr and start doing basic check according to RFC
+	ipHdr := ipLayer.(*layers.IPv4)
+	if ipHdr.TTL != VRRP_TTL {
+		svr.logger.Err(fmt.Sprintln("ttl should be 255 instead of", ipHdr.TTL,
+			"dropping packet from", ipHdr.SrcIP))
+		return
+	}
+	// Get Payload as checks are succesful
+	ipPayload := ipLayer.LayerPayload()
+	if ipPayload == nil {
+		svr.logger.Err("No payload for ip packet")
+		return
+	}
+	// Get VRRP header from IP Payload
+	vrrpHeader := svr.VrrpDecodeHeader(ipPayload)
+	// Do Basic Vrrp Header Check
+	if err := svr.VrrpCheckHeader(vrrpHeader, ipPayload, key); err != nil {
+		svr.logger.Err(fmt.Sprintln(err.Error(),
+			". Dropping received packet from", ipHdr.SrcIP))
+		return
+	}
+	svr.logger.Info(fmt.Sprintln("RX packet from", ipHdr.SrcIP,
+		" passed basic ip check, hence starting FSM"))
+	// Start FSM for VRRP after all the checks are successful
+	svr.vrrpFsmCh <- VrrpFsm{
+		vrrpHdr: vrrpHeader,
+		inPkt:   packet,
+		key:     key,
 	}
 }
 
@@ -199,11 +194,7 @@ func (svr *VrrpServer) VrrpInitPacketListener(key string, IfIndex int32) {
 	gblInfo.pHandle = handle
 	gblInfo.PcapHdlLock.Unlock()
 	svr.vrrpGblInfo[key] = gblInfo
-	svr.logger.Info(fmt.Sprintln("VRRP listener running for", IfIndex))
-	if svr.vrrpRxChStarted == false {
-		go svr.VrrpCheckRcvdPkt(svr.vrrpRxPktCh)
-		svr.vrrpRxChStarted = true
-	}
+	svr.logger.Info(fmt.Sprintln("VRRP listener started for", IfIndex))
 	go svr.VrrpReceivePackets(handle, key, IfIndex)
 }
 

@@ -28,8 +28,13 @@ func (h *VrrpHandler) CreateVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error)
 		h.logger.Info("VRRP: Invalid VRID")
 		return false, errors.New(vrrpServer.VRRP_INVALID_VRID)
 	}
+
+	err = h.server.VrrpValidateIntfConfig(config.IfIndex)
+	if err != nil {
+		return false, err
+	}
 	h.server.VrrpCreateIntfConfigCh <- *config
-	return true, nil
+	return true, err
 }
 func (h *VrrpHandler) UpdateVrrpIntf(origconfig *vrrpd.VrrpIntf,
 	newconfig *vrrpd.VrrpIntf, attrset []bool) (r bool, err error) {

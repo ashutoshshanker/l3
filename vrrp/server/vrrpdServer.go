@@ -67,7 +67,7 @@ func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfSt
 	entry.MasterDownTimer = gblInfo.MasterDownValue
 }
 
-func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntf) { //key string) {
+func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) {
 	key := strconv.Itoa(int(config.IfIndex)) + "_" + strconv.Itoa(int(config.VRID))
 	gblInfo := svr.vrrpGblInfo[key]
 
@@ -105,18 +105,14 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 	// Initialize Locks for accessing shared ds
 	gblInfo.PcapHdlLock = &sync.RWMutex{}
 	gblInfo.StateLock = &sync.RWMutex{}
-	// Set Initial state
-	gblInfo.StateLock.Lock()
-	if gblInfo.IpAddr == "" {
-		gblInfo.StateName = VRRP_UNINTIALIZE_STATE
-	} else {
-		gblInfo.StateName = VRRP_INITIALIZE_STATE
-	}
-	gblInfo.StateLock.Unlock()
 
 	// Update Ip Addr at last
 	svr.VrrpUpdateIntfIpAddr(&gblInfo)
 
+	// Set Initial state
+	gblInfo.StateLock.Lock()
+	gblInfo.StateName = VRRP_INITIALIZE_STATE
+	gblInfo.StateLock.Unlock()
 	svr.vrrpGblInfo[key] = gblInfo
 	svr.vrrpIntfStateSlice = append(svr.vrrpIntfStateSlice, key)
 
@@ -130,12 +126,9 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 		svr.VrrpUpdateProtocolMacEntry(true /*add vrrp protocol mac*/)
 	}
 	// Start FSM
-	if gblInfo.IpAddr != "" {
-		svr.vrrpFsmCh <- VrrpFsm{
-			key: key,
-		}
+	svr.vrrpFsmCh <- VrrpFsm{
+		key: key,
 	}
-
 }
 
 func (svr *VrrpServer) VrrpDeleteGblInfo(config vrrpd.VrrpIntf) {
@@ -151,7 +144,7 @@ func (svr *VrrpServer) VrrpDeleteGblInfo(config vrrpd.VrrpIntf) {
 	if len(svr.vrrpIntfStateSlice) != 0 {
 		return
 	}
-	svr.logger.Info("No vrrp configured on the system, disabling protocol mac")
+	svr.logger.Info("No more vrrp configured, disabling protocol mac")
 	svr.VrrpUpdateProtocolMacEntry(false /*delete vrrp protocol mac*/)
 }
 
@@ -344,13 +337,16 @@ func (svr *VrrpServer) VrrpChannelHanlder() {
 	for {
 		select {
 		case intfConf := <-svr.VrrpCreateIntfConfigCh:
-			svr.VrrpUpdateGblInfo(intfConf)
+			svr.VrrpCreateGblInfo(intfConf)
 		case delConf := <-svr.VrrpDeleteIntfConfigCh:
 			svr.VrrpDeleteGblInfo(delConf)
 		case fsmInfo := <-svr.vrrpFsmCh:
 			svr.VrrpFsmStart(fsmInfo)
 		case sendInfo := <-svr.vrrpTxPktCh:
 			svr.VrrpSendPkt(sendInfo.key, sendInfo.priority)
+		case rcvdInfo := <-svr.vrrpRxPktCh:
+			svr.VrrpCheckRcvdPkt(rcvdInfo.pkt, rcvdInfo.key,
+				rcvdInfo.IfIndex)
 		}
 
 	}
@@ -367,7 +363,7 @@ func (svr *VrrpServer) StartServer(paramsDir string) {
 		svr.logger.Err("VRRP: DB init failed")
 	} else {
 		// Populate Gbl Configs
-		go svr.VrrpReadDB()
+		svr.VrrpReadDB()
 	}
 
 	go svr.VrrpChannelHanlder()
@@ -379,6 +375,23 @@ func VrrpNewServer(log *logging.Writer) *VrrpServer {
 	// Allocate memory to all the Data Structures
 	vrrpServerInfo.VrrpInitGlobalDS()
 	return vrrpServerInfo
+}
+
+func (svr *VrrpServer) VrrpValidateIntfConfig(IfIndex int32) error {
+	// Check Vlan is created
+	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
+	_, created := svr.vrrpVlanId2Name[vlanId]
+	if !created {
+		return errors.New(VRRP_VLAN_NOT_CREATED)
+	}
+
+	// Check ipv4 interface is created
+	_, created = svr.vrrpLinuxIfIndex2AsicdIfIndex[IfIndex]
+	if !created {
+		return errors.New(VRRP_IPV4_INTF_NOT_CREATED)
+	}
+
+	return nil
 }
 
 func (svr *VrrpServer) VrrpChecknUpdateGblInfo(IfIndex int32, IpAddr string) {

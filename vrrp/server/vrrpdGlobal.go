@@ -129,7 +129,6 @@ type VrrpServer struct {
 	vrrpRxPktCh                   chan VrrpPktChannelInfo
 	vrrpTxPktCh                   chan VrrpTxChannelInfo
 	vrrpFsmCh                     chan VrrpFsm
-	vrrpRxChStarted               bool
 	vrrpMacConfigAdded            bool
 	vrrpSnapshotLen               int32
 	vrrpPromiscuous               bool
@@ -148,6 +147,8 @@ const (
 	VRRP_MISSING_VRID_CONFIG            = "VRID is not configured on interface"
 	VRRP_CHECKSUM_ERR                   = "VRRP checksum failure"
 	VRRP_INVALID_PCAP                   = "Invalid Pcap Handler"
+	VRRP_VLAN_NOT_CREATED               = "Create Vlan before configuring VRRP"
+	VRRP_IPV4_INTF_NOT_CREATED          = "Create IPv4 interface before configuring VRRP"
 
 	// VRRP multicast ip address for join
 	VRRP_GROUP_IP     = "224.0.0.18"
