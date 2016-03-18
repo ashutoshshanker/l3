@@ -50,21 +50,40 @@ func (h *VrrpHandler) DeleteVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error)
 	return true, nil
 }
 
+func (h *VrrpHandler) convertVrrpEntryToThriftEntry(state vrrpd.VrrpIntfState) *vrrpd.VrrpIntfState {
+	entry := vrrpd.NewVrrpIntfState()
+	entry.VirtualRouterMACAddress = state.VirtualRouterMACAddress
+	entry.PreemptMode = bool(state.PreemptMode)
+	entry.AdvertisementInterval = int32(state.AdvertisementInterval)
+	entry.VRID = int32(state.VRID)
+	entry.Priority = int32(state.Priority)
+	entry.SkewTime = int32(state.SkewTime)
+	entry.VirtualIPv4Addr = state.VirtualIPv4Addr
+	entry.IfIndex = int32(state.IfIndex)
+	entry.MasterDownTimer = int32(state.MasterDownTimer)
+	entry.IntfIpAddr = state.IntfIpAddr
+	entry.VrrpState = state.VrrpState
+	return entry
+}
+
 func (h *VrrpHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
-	count vrrpd.Int) (intfEntry *vrrpd.VrrpIntfStateGetInfo, err error) {
-	/*
-		nextIdx, currCount, vrrpIntfStates := h.server.VrrpGetBulkVrrpIntfStates(
-			int(fromIndex), int(count))
-		if vrrpIntfStates == nil {
-			return nil, errors.New("Interface Slice is not initialized")
-		}
-		intfEntry.VrrpIntfStateList = vrrpIntfStates
-		intfEntry.StartIdx = fromIndex
-		intfEntry.EndIdx = vrrpd.Int(nextIdx)
-		intfEntry.Count = vrrpd.Int(currCount)
-		intfEntry.More = (nextIdx != 0)
-	*/
-	return intfEntry, nil
+	count vrrpd.Int) (*vrrpd.VrrpIntfStateGetInfo, error) {
+	nextIdx, currCount, vrrpIntfStateEntries := h.server.VrrpGetBulkVrrpIntfStates(
+		int(fromIndex), int(count))
+	if vrrpIntfStateEntries == nil {
+		return nil, errors.New("Interface Slice is not initialized")
+	}
+	vrrpEntryResponse := make([]*vrrpd.VrrpIntfState, len(vrrpIntfStateEntries))
+	for idx, item := range vrrpIntfStateEntries {
+		vrrpEntryResponse[idx] = h.convertVrrpEntryToThriftEntry(item)
+	}
+	intfEntryBulk := vrrpd.NewVrrpIntfStateGetInfo()
+	intfEntryBulk.VrrpIntfStateList = vrrpEntryResponse
+	intfEntryBulk.StartIdx = fromIndex
+	intfEntryBulk.EndIdx = vrrpd.Int(nextIdx)
+	intfEntryBulk.Count = vrrpd.Int(currCount)
+	intfEntryBulk.More = (nextIdx != 0)
+	return intfEntryBulk, nil
 }
 
 func VrrpNewHandler(vrrpSvr *vrrpServer.VrrpServer, logger *logging.Writer) *VrrpHandler {

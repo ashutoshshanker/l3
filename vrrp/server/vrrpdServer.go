@@ -65,6 +65,9 @@ func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfSt
 	entry.VirtualRouterMACAddress = gblInfo.VirtualRouterMACAddress
 	entry.SkewTime = gblInfo.SkewTime
 	entry.MasterDownTimer = gblInfo.MasterDownValue
+	gblInfo.StateLock.Lock()
+	entry.VrrpState = gblInfo.StateName
+	gblInfo.StateLock.Unlock()
 }
 
 func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) {
@@ -148,28 +151,28 @@ func (svr *VrrpServer) VrrpDeleteGblInfo(config vrrpd.VrrpIntf) {
 	svr.VrrpUpdateProtocolMacEntry(false /*delete vrrp protocol mac*/)
 }
 
-func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(fromIndex int, cnt int) (int,
-	int, []*vrrpd.VrrpIntfState) {
+func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(idx int, cnt int) (int, int, []vrrpd.VrrpIntfState) {
 	var nextIdx int
-	var nextEntry vrrpd.VrrpIntfState
 	var count int
 	if svr.vrrpIntfStateSlice == nil {
 		svr.logger.Info("DRA: Interface Slice is not initialized")
 		return 0, 0, nil
 	}
 	length := len(svr.vrrpIntfStateSlice)
-	if fromIndex+cnt > length {
-		count = length - fromIndex
+	result := make([]vrrpd.VrrpIntfState, cnt)
+	var i int
+	var j int
+
+	for i, j = 0, idx; i < cnt && j < length; j++ {
+		key := svr.vrrpIntfStateSlice[j]
+		svr.VrrpPopulateIntfState(key, &result[i])
+		//result = append(result, &nextEntry)
+		i++
+	}
+	if j == length {
 		nextIdx = 0
-	} else {
-		nextIdx = fromIndex + cnt
 	}
-	result := make([]*vrrpd.VrrpIntfState, count)
-	for i := 0; i < count; i++ {
-		key := svr.vrrpIntfStateSlice[fromIndex+i]
-		svr.VrrpPopulateIntfState(key, &nextEntry)
-		result = append(result, &nextEntry)
-	}
+	count = i
 	return nextIdx, count, result
 }
 
