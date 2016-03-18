@@ -428,7 +428,7 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, []*Ro
 						route.update()
 					}
 
-					if (idx == 0) && (d.locRibPath != path) {
+					if (idx == 0) && (path.IsAggregate() || (d.locRibPath != path)) {
 						locRibAction = RouteActionReplace
 					}
 					updatedRoutes = append(updatedRoutes, route)
