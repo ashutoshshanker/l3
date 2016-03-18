@@ -15,6 +15,7 @@ func (svr *VrrpServer) VrrpCreateIfIndexEntry(IfIndex int32, IpAddr string) {
 	svr.logger.Info(fmt.Sprintln("VRRP: ip address for ifindex ", IfIndex,
 		"is", IpAddr))
 	for _, key := range svr.vrrpIntfStateSlice {
+		startFsm := false
 		splitString := strings.Split(key, "_")
 		// splitString = { IfIndex, VRID }
 		ifindex, _ := strconv.Atoi(splitString[0])
@@ -30,10 +31,25 @@ func (svr *VrrpServer) VrrpCreateIfIndexEntry(IfIndex int32, IpAddr string) {
 				splitString[0] + " VRID:" + splitString[1] +
 				" hence not updating ip addr, " +
 				"it will be updated during create")
-			return
+			continue
 		}
 		gblInfo.IpAddr = IpAddr
+		gblInfo.StateLock.Lock()
+		if gblInfo.StateName == VRRP_UNINTIALIZE_STATE {
+			startFsm = true
+			gblInfo.StateName = VRRP_INITIALIZE_STATE
+		}
+		gblInfo.StateLock.Unlock()
 		svr.vrrpGblInfo[key] = gblInfo
+		if !svr.vrrpMacConfigAdded {
+			svr.logger.Info("Adding protocol mac for punting packets to CPU")
+			svr.VrrpUpdateProtocolMacEntry(true /*add vrrp protocol mac*/)
+		}
+		if startFsm {
+			svr.vrrpFsmCh <- VrrpFsm{
+				key: key,
+			}
+		}
 	}
 }
 

@@ -13,11 +13,10 @@ import (
  *  VRRP TX INTERFACE
  */
 type VrrpTxIntf interface {
-	VrrpSendPkt(chan string /*VrrpPktChannelInfo*/)
+	VrrpSendPkt(key string, priority uint16)
 	VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16)
 	VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16)
 	VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte, hdrLen uint16) []byte
-	VrrpSendGratuitousArp(gblInfo *VrrpGlobalInfo)
 	VrrpCreateWriteBuf(eth *layers.Ethernet, arp *layers.ARP, ipv4 *layers.IPv4, payload []byte) []byte
 }
 
@@ -147,58 +146,32 @@ func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []by
 	return svr.VrrpCreateWriteBuf(eth, nil, ipv4, vrrpEncHdr)
 }
 
-func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan VrrpTxChannelInfo) {
-	for {
-		txInfo := <-rcvdCh
-		key := txInfo.key
-		priority := txInfo.priority
-		gblInfo, found := svr.vrrpGblInfo[key]
-		if !found {
-			svr.logger.Err("No Entry for " + key)
-			continue
-		}
-		gblInfo.PcapHdlLock.Lock()
-		if gblInfo.pHandle == nil {
-			svr.logger.Info("Invalid Pcap Handle")
-			gblInfo.PcapHdlLock.Unlock()
-			continue
-		}
-		// Because we do not update the gblInfo back into the map...
-		// we can overwrite the priority value if Master is down..
-		if priority == VRRP_MASTER_DOWN_PRIORITY {
-			gblInfo.IntfConfig.Priority = int32(priority)
-		}
+func (svr *VrrpServer) VrrpSendPkt(key string, priority uint16) {
+	//	for {
+	//txInfo := <-rcvdCh
+	//key := txInfo.key
+	//priority := txInfo.priority
+	gblInfo, found := svr.vrrpGblInfo[key]
+	if !found {
+		svr.logger.Err("No Entry for " + key)
+		return
+	}
+	svr.logger.Info(fmt.Sprintln("advertisement send by Master VRID",
+		gblInfo.IntfConfig.VRID))
+	gblInfo.PcapHdlLock.Lock()
+	if gblInfo.pHandle == nil {
+		svr.logger.Info("Invalid Pcap Handle")
 		gblInfo.PcapHdlLock.Unlock()
-		vrrpEncHdr, hdrLen := svr.VrrpCreateVrrpHeader(gblInfo)
-		svr.VrrpWritePacket(gblInfo,
-			svr.VrrpCreateSendPkt(gblInfo, vrrpEncHdr, hdrLen))
+		return
 	}
+	// Because we do not update the gblInfo back into the map...
+	// we can overwrite the priority value if Master is down..
+	if priority == VRRP_MASTER_DOWN_PRIORITY {
+		gblInfo.IntfConfig.Priority = int32(priority)
+	}
+	gblInfo.PcapHdlLock.Unlock()
+	vrrpEncHdr, hdrLen := svr.VrrpCreateVrrpHeader(gblInfo)
+	svr.VrrpWritePacket(gblInfo,
+		svr.VrrpCreateSendPkt(gblInfo, vrrpEncHdr, hdrLen))
+	//	}
 }
-
-/*
-func (svr *VrrpServer) VrrpSendGratuitousArp(gblInfo *VrrpGlobalInfo) {
-	srcMAC, _ := net.ParseMAC(gblInfo.VirtualRouterMACAddress)
-	// Ethernet Layer, SMAC == VMAC & DMAC == BCAST
-	eth := &layers.Ethernet{
-		SrcMAC:       srcMAC,
-		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
-		EthernetType: layers.EthernetTypeARP,
-	}
-	// @TODO: if we support more than 1 virtual ip address aka VIP then add a
-	// loop for all the ip address
-	// ARP Layer
-	arp := &layers.ARP{
-		AddrType:          layers.LinkTypeEthernet,
-		Protocol:          layers.EthernetTypeIPv4,
-		HwAddressSize:     6,
-		ProtAddressSize:   4,
-		Operation:         layers.ARPRequest,
-		SourceHwAddress:   []byte(srcMAC),
-		SourceProtAddress: []byte(net.ParseIP(gblInfo.IntfConfig.VirtualIPv4Addr)),
-		DstHwAddress:      []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
-		DstProtAddress:    []byte(net.ParseIP(gblInfo.IntfConfig.VirtualIPv4Addr)),
-	}
-	svr.VrrpWritePacket(*gblInfo, svr.VrrpCreateWriteBuf(eth, arp, nil, nil))
-	return
-}
-*/

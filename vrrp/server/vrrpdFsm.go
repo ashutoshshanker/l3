@@ -87,7 +87,7 @@ func (svr *VrrpServer) VrrpUpdateSecIp(gblInfo VrrpGlobalInfo, configure bool) {
 func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 	var timerCheck_func func()
 	timerCheck_func = func() {
-		svr.logger.Info(fmt.Sprintln("time to send advertisement to remote"))
+		svr.logger.Info(fmt.Sprintln("time to send advertisement to backup"))
 		// Send advertisment every time interval expiration
 		svr.vrrpTxPktCh <- VrrpTxChannelInfo{
 			key:      key,
@@ -98,6 +98,7 @@ func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 			svr.logger.Err("Gbl Config for " + key + " doesn't exists")
 			return
 		}
+		svr.logger.Info("resetting advertisement timer")
 		gblInfo.AdverTimer.Reset(
 			time.Duration(gblInfo.IntfConfig.AdvertisementInterval) * time.Second)
 		svr.vrrpGblInfo[key] = gblInfo
@@ -206,7 +207,9 @@ func (svr *VrrpServer) VrrpInitState(key string) {
 func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader,
 	key string) {
 	// @TODO: Handle arp drop...
-
+	if inPkt == nil || vrrpHdr == nil {
+		return
+	}
 	// Check dmac address from the inPacket and if it is same discard the packet
 	ethLayer := inPkt.Layer(layers.LayerTypeEthernet)
 	if ethLayer == nil {
@@ -273,6 +276,9 @@ func (svr *VrrpServer) VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 	   or if Accept_Mode is True.  Otherwise, MUST NOT accept these
 	   packets.
 	*/
+	if inPkt == nil || vrrpHdr == nil {
+		return
+	}
 	if vrrpHdr.Priority == VRRP_MASTER_DOWN_PRIORITY {
 		svr.vrrpTxPktCh <- VrrpTxChannelInfo{
 			key:      key,
@@ -334,6 +340,8 @@ func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 		svr.VrrpBackupState(pktInfo, pktHdr, key)
 	case VRRP_MASTER_STATE:
 		svr.VrrpMasterState(pktInfo, pktHdr, key)
+	default: // VRRP_UNINTIALIZE_STATE
+		svr.logger.Info("No Ip address and hence no need for fsm")
 	}
 }
 
@@ -410,8 +418,10 @@ func (svr *VrrpServer) VrrpHandleIntfUpEvent(IfIndex int32) {
 
 		svr.logger.Info(fmt.Sprintln("Intf State Up Notification",
 			" restarting the fsm event for VRID:", gblInfo.IntfConfig.VRID))
-		svr.vrrpFsmCh <- VrrpFsm{
-			key: key,
+		if gblInfo.IpAddr != "" {
+			svr.vrrpFsmCh <- VrrpFsm{
+				key: key,
+			}
 		}
 	}
 }

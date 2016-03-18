@@ -204,10 +204,6 @@ func (svr *VrrpServer) VrrpInitPacketListener(key string, IfIndex int32) {
 		go svr.VrrpCheckRcvdPkt(svr.vrrpRxPktCh)
 		svr.vrrpRxChStarted = true
 	}
-	if svr.vrrpTxChStarted == false {
-		go svr.VrrpSendPkt(svr.vrrpTxPktCh)
-		svr.vrrpTxChStarted = true
-	}
 	go svr.VrrpReceivePackets(handle, key, IfIndex)
 }
 

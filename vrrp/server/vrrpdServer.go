@@ -106,7 +106,11 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 	gblInfo.StateLock = &sync.RWMutex{}
 	// Set Initial state
 	gblInfo.StateLock.Lock()
-	gblInfo.StateName = VRRP_INITIALIZE_STATE
+	if gblInfo.IpAddr == "" {
+		gblInfo.StateName = VRRP_UNINTIALIZE_STATE
+	} else {
+		gblInfo.StateName = VRRP_INITIALIZE_STATE
+	}
 	gblInfo.StateLock.Unlock()
 
 	// Update Ip Addr at last
@@ -119,17 +123,16 @@ func (svr *VrrpServer) VrrpUpdateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 	// We will not receive any vrrp packets as punt to CPU is not yet done
 	svr.VrrpInitPacketListener(key, config.IfIndex)
 
-	// Create fsm object and push that object to fsm channel
-	// fsmObj := svr.VrrpCreateFsmObject(gblInfo)
-	// Send the config global on the channel... We do not need to create a
-	// vrrp header right now.. it will be created only if necessary
-	svr.vrrpFsmCh <- VrrpFsm{
-		key: key,
-	}
-
+	// Register Protocol Mac
 	if !svr.vrrpMacConfigAdded {
 		svr.logger.Info("Adding protocol mac for punting packets to CPU")
 		svr.VrrpUpdateProtocolMacEntry(true /*add vrrp protocol mac*/)
+	}
+	// Start FSM
+	if gblInfo.IpAddr != "" {
+		svr.vrrpFsmCh <- VrrpFsm{
+			key: key,
+		}
 	}
 
 }
@@ -345,6 +348,8 @@ func (svr *VrrpServer) VrrpChannelHanlder() {
 			svr.VrrpDeleteGblInfo(delConf)
 		case fsmInfo := <-svr.vrrpFsmCh:
 			svr.VrrpFsmStart(fsmInfo)
+		case sendInfo := <-svr.vrrpTxPktCh:
+			svr.VrrpSendPkt(sendInfo.key, sendInfo.priority)
 		}
 
 	}

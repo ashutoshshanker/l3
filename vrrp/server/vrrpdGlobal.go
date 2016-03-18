@@ -130,7 +130,6 @@ type VrrpServer struct {
 	vrrpTxPktCh                   chan VrrpTxChannelInfo
 	vrrpFsmCh                     chan VrrpFsm
 	vrrpRxChStarted               bool
-	vrrpTxChStarted               bool
 	vrrpMacConfigAdded            bool
 	vrrpSnapshotLen               int32
 	vrrpPromiscuous               bool
@@ -187,7 +186,8 @@ const (
 	VRRP_IEEE_MAC_ADDR    = "00-00-5E-00-01-"
 
 	// vrrp state names
-	VRRP_INITIALIZE_STATE = "Initialize"
-	VRRP_BACKUP_STATE     = "Backup"
-	VRRP_MASTER_STATE     = "Master"
+	VRRP_UNINTIALIZE_STATE = "Un-Initialize"
+	VRRP_INITIALIZE_STATE  = "Initialize"
+	VRRP_BACKUP_STATE      = "Backup"
+	VRRP_MASTER_STATE      = "Master"
 )
