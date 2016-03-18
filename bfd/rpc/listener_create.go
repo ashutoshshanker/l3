@@ -8,7 +8,7 @@ import (
 	"l3/bfd/server"
 )
 
-func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobalConfig) bool {
+func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobal) bool {
 	gConf := server.GlobalConfig{
 		Enable: bfdGlobalConfig.Enable,
 	}
@@ -16,7 +16,7 @@ func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobalConfig) 
 	return true
 }
 
-func (h *BFDHandler) SendBfdIntfConfig(bfdIntfConfig *bfdd.BfdIntfConfig) bool {
+func (h *BFDHandler) SendBfdIntfConfig(bfdIntfConfig *bfdd.BfdInterface) bool {
 	ifConf := server.IntfConfig{
 		InterfaceId:               bfdIntfConfig.IfIndex,
 		LocalMultiplier:           bfdIntfConfig.LocalMultiplier,
@@ -33,7 +33,7 @@ func (h *BFDHandler) SendBfdIntfConfig(bfdIntfConfig *bfdd.BfdIntfConfig) bool {
 	return true
 }
 
-func (h *BFDHandler) SendBfdSessionConfig(bfdSessionConfig *bfdd.BfdSessionConfig) bool {
+func (h *BFDHandler) SendBfdSessionConfig(bfdSessionConfig *bfdd.BfdSession) bool {
 	sessionConf := server.SessionConfig{
 		DestIp:    bfdSessionConfig.IpAddr,
 		PerLink:   bfdSessionConfig.PerLink,
@@ -44,7 +44,7 @@ func (h *BFDHandler) SendBfdSessionConfig(bfdSessionConfig *bfdd.BfdSessionConfi
 	return true
 }
 
-func (h *BFDHandler) CreateBfdGlobalConfig(bfdGlobalConf *bfdd.BfdGlobalConfig) (bool, error) {
+func (h *BFDHandler) CreateBfdGlobal(bfdGlobalConf *bfdd.BfdGlobal) (bool, error) {
 	if bfdGlobalConf == nil {
 		err := errors.New("Invalid Global Configuration")
 		return false, err
@@ -53,7 +53,7 @@ func (h *BFDHandler) CreateBfdGlobalConfig(bfdGlobalConf *bfdd.BfdGlobalConfig) 
 	return h.SendBfdGlobalConfig(bfdGlobalConf), nil
 }
 
-func (h *BFDHandler) CreateBfdIntfConfig(bfdIntfConf *bfdd.BfdIntfConfig) (bool, error) {
+func (h *BFDHandler) CreateBfdInterface(bfdIntfConf *bfdd.BfdInterface) (bool, error) {
 	if bfdIntfConf == nil {
 		err := errors.New("Invalid Interface Configuration")
 		return false, err
@@ -62,7 +62,7 @@ func (h *BFDHandler) CreateBfdIntfConfig(bfdIntfConf *bfdd.BfdIntfConfig) (bool,
 	return h.SendBfdIntfConfig(bfdIntfConf), nil
 }
 
-func (h *BFDHandler) CreateBfdSessionConfig(bfdSessionConf *bfdd.BfdSessionConfig) (bool, error) {
+func (h *BFDHandler) CreateBfdSession(bfdSessionConf *bfdd.BfdSession) (bool, error) {
 	if bfdSessionConf == nil {
 		err := errors.New("Invalid Session Configuration")
 		return false, err

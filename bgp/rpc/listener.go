@@ -374,6 +374,15 @@ func (h *BGPHandler) GetBGPGlobal() (*bgpd.BGPGlobalState, error) {
 	bgpGlobalResponse.TotalPrefixes = int32(bgpGlobal.TotalPrefixes)
 	return bgpGlobalResponse, nil
 }
+func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int, count bgpd.Int) (*bgpd.BGPGlobalStateGetInfo, error) {
+	bgpGlobalStateBulk := bgpd.NewBGPGlobalStateGetInfo()
+	bgpGlobalStateBulk.EndIdx = bgpd.Int(0)
+	bgpGlobalStateBulk.Count = bgpd.Int(1)
+	bgpGlobalStateBulk.More = false
+	bgpGlobalStateBulk.BGPGlobalStateList[0], _ = h.GetBGPGlobal()
+
+	return bgpGlobalStateBulk, nil
+}
 
 func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal, attrSet []bool) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update global config attrs:", updatedG, "old config:", origG))
