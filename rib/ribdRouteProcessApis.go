@@ -72,7 +72,7 @@ type PolicyRouteIndex struct {
 	policy    string
 }
 
-var RouteInfoMap = patriciaDB.NewTrie()
+var RouteInfoMap *patriciaDB.Trie
 var DummyRouteInfoRecord RouteInfoRecord //{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
 var destNetSlice []localDB
 var localRouteEventsDB []RouteEventInfo
@@ -359,7 +359,7 @@ func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ri
 	routes = &returnRouteGetInfo
 	moreRoutes := true
 	if destNetSlice == nil {
-		logger.Println("destNetSlice not initialized")
+		logger.Println("destNetSlice not initialized: No Routes installed in RIB")
 		return routes, err
 	}
 	for ; ; i++ {
@@ -1583,7 +1583,7 @@ func deleteV4Route(destNetIp string,
 	nextHopIP string) (rc ribd.Int, err error) {*/
 func (m RIBDServicesHandler) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val bool, err error){
 	logger.Info(fmt.Sprintln("ProcessRouteDeleteConfig:Received Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHopIp, "Protocol ", cfg.Protocol))
-	if !acceptConfig {
+	if !routeServiceHandler.AcceptConfig {
 		logger.Println("Not ready to accept config")
 		//return 0,err
 	}
@@ -1592,7 +1592,7 @@ func (m RIBDServicesHandler) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val 
 }
 func (m RIBDServicesHandler) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
 	logger.Println("ProcessRouteUpdateConfig:Received update route request")
-	if !acceptConfig {
+	if !routeServiceHandler.AcceptConfig {
 		logger.Println("Not ready to accept config")
 		//return err
 	}
