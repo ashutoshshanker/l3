@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -378,4 +379,53 @@ func VrrpNewServer(log *logging.Writer) *VrrpServer {
 	// Allocate memory to all the Data Structures
 	vrrpServerInfo.VrrpInitGlobalDS()
 	return vrrpServerInfo
+}
+
+func (svr *VrrpServer) VrrpChecknUpdateGblInfo(IfIndex int32, IpAddr string) {
+	for _, key := range svr.vrrpIntfStateSlice {
+		startFsm := false
+		splitString := strings.Split(key, "_")
+		// splitString = { IfIndex, VRID }
+		ifindex, _ := strconv.Atoi(splitString[0])
+		if int32(ifindex) != IfIndex {
+			// Key doesn't match
+			continue
+		}
+		// If IfIndex matches then use that key and check if gblInfo is
+		// created or not
+		gblInfo, found := svr.vrrpGblInfo[key]
+		if !found {
+			svr.logger.Err("No entry found for Ifindex:" +
+				splitString[0] + " VRID:" + splitString[1] +
+				" hence not updating ip addr, " +
+				"it will be updated during create")
+			continue
+		}
+		gblInfo.IpAddr = IpAddr
+		gblInfo.StateLock.Lock()
+		if gblInfo.StateName == VRRP_UNINTIALIZE_STATE {
+			startFsm = true
+			gblInfo.StateName = VRRP_INITIALIZE_STATE
+		}
+		gblInfo.StateLock.Unlock()
+		svr.vrrpGblInfo[key] = gblInfo
+		// Create Pkt Listener if not created... This will handle a
+		// scneario when VRRP configs are done before IF Index is up
+		gblInfo.PcapHdlLock.Lock()
+		if gblInfo.pHandle == nil {
+			gblInfo.PcapHdlLock.Unlock()
+			svr.VrrpInitPacketListener(key, IfIndex)
+		} else {
+			gblInfo.PcapHdlLock.Unlock()
+		}
+		if !svr.vrrpMacConfigAdded {
+			svr.logger.Info("Adding protocol mac for punting packets to CPU")
+			svr.VrrpUpdateProtocolMacEntry(true /*add vrrp protocol mac*/)
+		}
+		if startFsm {
+			svr.vrrpFsmCh <- VrrpFsm{
+				key: key,
+			}
+		}
+	}
 }
