@@ -8,7 +8,7 @@ import (
 	"l3/bfd/server"
 )
 
-func (h *BFDHandler) SendBfdSessionDeleteConfig(bfdSessionConfig *bfdd.BfdSessionConfig) bool {
+func (h *BFDHandler) SendBfdSessionDeleteConfig(bfdSessionConfig *bfdd.BfdSession) bool {
 	sessionConf := server.SessionConfig{
 		DestIp:    bfdSessionConfig.IpAddr,
 		PerLink:   bfdSessionConfig.PerLink,
@@ -19,19 +19,19 @@ func (h *BFDHandler) SendBfdSessionDeleteConfig(bfdSessionConfig *bfdd.BfdSessio
 	return true
 }
 
-func (h *BFDHandler) DeleteBfdGlobalConfig(bfdGlobalConf *bfdd.BfdGlobalConfig) (bool, error) {
+func (h *BFDHandler) DeleteBfdGlobal(bfdGlobalConf *bfdd.BfdGlobal) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Delete global config attrs:", bfdGlobalConf))
 	return true, nil
 }
 
-func (h *BFDHandler) DeleteBfdIntfConfig(bfdIfConf *bfdd.BfdIntfConfig) (bool, error) {
+func (h *BFDHandler) DeleteBfdInterface(bfdIfConf *bfdd.BfdInterface) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Delete interface config attrs:", bfdIfConf))
 	ifIndex := bfdIfConf.IfIndex
 	h.server.IntfConfigDeleteCh <- ifIndex
 	return true, nil
 }
 
-func (h *BFDHandler) DeleteBfdSessionConfig(bfdSessionConf *bfdd.BfdSessionConfig) (bool, error) {
+func (h *BFDHandler) DeleteBfdSession(bfdSessionConf *bfdd.BfdSession) (bool, error) {
 	if bfdSessionConf == nil {
 		err := errors.New("Invalid Session Configuration")
 		return false, err

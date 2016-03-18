@@ -876,13 +876,13 @@ func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 }
 
 func (server *BGPServer) ProcessBfd(peer *Peer) {
-	bfdSession := bfdd.NewBfdSessionConfig()
+	bfdSession := bfdd.NewBfdSession()
 	bfdSession.IpAddr = peer.Neighbor.NeighborAddress.String()
 	bfdSession.Owner = "bgp"
 	if peer.PeerConf.BfdEnable {
 		server.logger.Info(fmt.Sprintln("Bfd enabled on :", peer.Neighbor.NeighborAddress))
 		server.logger.Info(fmt.Sprintln("Creating BFD Session: ", bfdSession))
-		ret, err := server.bfddClient.CreateBfdSessionConfig(bfdSession)
+		ret, err := server.bfddClient.CreateBfdSession(bfdSession)
 		if !ret {
 			server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:", ret, "err:", err))
 		} else {
@@ -893,7 +893,7 @@ func (server *BGPServer) ProcessBfd(peer *Peer) {
 		if peer.Neighbor.State.BfdNeighborState != "" {
 			server.logger.Info(fmt.Sprintln("Bfd disabled on :", peer.Neighbor.NeighborAddress))
 			server.logger.Info(fmt.Sprintln("Deleting BFD Session: ", bfdSession))
-			ret, err := server.bfddClient.DeleteBfdSessionConfig(bfdSession)
+			ret, err := server.bfddClient.DeleteBfdSession(bfdSession)
 			if !ret {
 				server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:", ret, "err:", err))
 			} else {
