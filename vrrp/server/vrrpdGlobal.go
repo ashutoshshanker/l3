@@ -149,6 +149,7 @@ const (
 	VRRP_INVALID_PCAP                   = "Invalid Pcap Handler"
 	VRRP_VLAN_NOT_CREATED               = "Create Vlan before configuring VRRP"
 	VRRP_IPV4_INTF_NOT_CREATED          = "Create IPv4 interface before configuring VRRP"
+	VRRP_DATABASE_LOCKED                = "database is locked"
 
 	// VRRP multicast ip address for join
 	VRRP_GROUP_IP     = "224.0.0.18"

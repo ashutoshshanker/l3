@@ -21,6 +21,10 @@ type VrrpClientJson struct {
 	Port int    `json:Port`
 }
 
+const (
+	VRRP_RPC_NO_PORT = "could not find port and hence not starting rpc"
+)
+
 func (h *VrrpHandler) CreateVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error) {
 	h.logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
 		config.IfIndex))
@@ -48,16 +52,18 @@ func (h *VrrpHandler) DeleteVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error)
 
 func (h *VrrpHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
 	count vrrpd.Int) (intfEntry *vrrpd.VrrpIntfStateGetInfo, err error) {
-	nextIdx, currCount, vrrpIntfStates := h.server.VrrpGetBulkVrrpIntfStates(
-		int(fromIndex), int(count))
-	if vrrpIntfStates == nil {
-		return nil, errors.New("Interface Slice is not initialized")
-	}
-	intfEntry.VrrpIntfStateList = vrrpIntfStates
-	intfEntry.StartIdx = fromIndex
-	intfEntry.EndIdx = vrrpd.Int(nextIdx)
-	intfEntry.Count = vrrpd.Int(currCount)
-	intfEntry.More = (nextIdx != 0)
+	/*
+		nextIdx, currCount, vrrpIntfStates := h.server.VrrpGetBulkVrrpIntfStates(
+			int(fromIndex), int(count))
+		if vrrpIntfStates == nil {
+			return nil, errors.New("Interface Slice is not initialized")
+		}
+		intfEntry.VrrpIntfStateList = vrrpIntfStates
+		intfEntry.StartIdx = fromIndex
+		intfEntry.EndIdx = vrrpd.Int(nextIdx)
+		intfEntry.Count = vrrpd.Int(currCount)
+		intfEntry.More = (nextIdx != 0)
+	*/
 	return intfEntry, nil
 }
 
@@ -73,7 +79,7 @@ func VrrpRpcGetClient(logger *logging.Writer, fileName string, process string) (
 
 	data, err := ioutil.ReadFile(fileName)
 	if err != nil {
-		logger.Err(fmt.Sprintf("Failed to open OSPFd config file:%s, err:%s", fileName, err))
+		logger.Err(fmt.Sprintf("Failed to open VRRPd config file:%s, err:%s", fileName, err))
 		return nil, err
 	}
 
@@ -85,7 +91,7 @@ func VrrpRpcGetClient(logger *logging.Writer, fileName string, process string) (
 	}
 
 	logger.Err(fmt.Sprintf("Did not find port for %s in config file:%s", process, fileName))
-	return nil, nil
+	return nil, errors.New(VRRP_RPC_NO_PORT)
 
 }
 
@@ -102,21 +108,23 @@ func StartServer(log *logging.Writer, handler *VrrpHandler, paramsDir string) er
 	if err != nil || clientJson == nil {
 		return err
 	}
-	// create transport and protocol for server
+	logger.Info(fmt.Sprintln("Got Client Info for", clientJson.Name, " port",
+		clientJson.Port))
+	// create processor, transport and protocol for server
+	processor := vrrpd.NewVRRPDServicesProcessor(handler)
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
 	transport, err := thrift.NewTServerSocket("localhost:" + strconv.Itoa(clientJson.Port))
 	if err != nil {
-		logger.Info(fmt.Sprintln("VRRP: StartServer: NewTServerSocket "+
+		logger.Info(fmt.Sprintln("StartServer: NewTServerSocket "+
 			"failed with error:", err))
 		return err
 	}
-	processor := vrrpd.NewVRRPDServicesProcessor(handler)
 	server := thrift.NewTSimpleServer4(processor, transport,
 		transportFactory, protocolFactory)
 	err = server.Serve()
 	if err != nil {
-		logger.Err(fmt.Sprintln("VRRP: Failed to start the listener, err:", err))
+		logger.Err(fmt.Sprintln("Failed to start the listener, err:", err))
 		return err
 	}
 	return nil

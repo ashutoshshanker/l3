@@ -8,13 +8,13 @@ import (
 )
 
 func (svr *VrrpServer) VrrpInitDB() error {
-	svr.logger.Info("VRRP: Initializing SQL DB")
+	svr.logger.Info("Initializing SQL DB")
 	var err error
 	dbName := svr.paramsDir + VRRP_USR_CONF_DB
 	svr.logger.Info("VRRP: location for DB is " + dbName)
 	svr.vrrpDbHdl, err = sql.Open("sqlite3", dbName)
 	if err != nil {
-		svr.logger.Err(fmt.Sprintln("VRRP: Failed to Create DB Handle", err))
+		svr.logger.Err(fmt.Sprintln("Failed to Create DB Handle", err))
 		return err
 	}
 
@@ -22,17 +22,21 @@ func (svr *VrrpServer) VrrpInitDB() error {
 		svr.logger.Err(fmt.Sprintln("Failed to keep db connection alive", err))
 		return err
 	}
-	svr.logger.Info("VRRP: DB connection is established")
+	svr.logger.Info("DB connection is established")
 	return err
 }
 
+func (svr *VrrpServer) VrrpCloseDB() {
+	svr.logger.Info("Closed vrrp db")
+	svr.vrrpDbHdl.Close()
+}
+
 func (svr *VrrpServer) VrrpReadDB() error {
-	svr.logger.Info("VRRP: Reading from Database")
+	svr.logger.Info("Reading from Database")
 	dbCmd := "SELECT * FROM " + VRRP_INTF_DB
 	rows, err := svr.vrrpDbHdl.Query(dbCmd)
 	if err != nil {
-		svr.logger.Err(fmt.Sprintln("VRRP: Unable to querry DB:", err))
-		svr.vrrpDbHdl.Close()
+		svr.logger.Err(fmt.Sprintln("Unable to querry DB:", err))
 		return err
 	}
 
@@ -45,10 +49,10 @@ func (svr *VrrpServer) VrrpReadDB() error {
 		if err != nil {
 			svr.logger.Err(fmt.Sprintln("scanning rows failed", err))
 		} else {
+			//svr.logger.Info(fmt.Sprintln(config))
 			svr.VrrpCreateGblInfo(config)
 		}
-		//@TODO: finish implementation
 	}
-	svr.vrrpDbHdl.Close()
+	svr.logger.Info("Done reading from DB")
 	return err
 }

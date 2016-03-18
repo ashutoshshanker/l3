@@ -352,7 +352,7 @@ func (svr *VrrpServer) VrrpChannelHanlder() {
 	}
 }
 
-func (svr *VrrpServer) StartServer(paramsDir string) {
+func (svr *VrrpServer) VrrpStartServer(paramsDir string) {
 	svr.paramsDir = paramsDir
 	// First connect to client to avoid any issues with start/re-start
 	svr.VrrpConnectAndInitPortVlan()
@@ -364,8 +364,8 @@ func (svr *VrrpServer) StartServer(paramsDir string) {
 	} else {
 		// Populate Gbl Configs
 		svr.VrrpReadDB()
+		svr.VrrpCloseDB()
 	}
-
 	go svr.VrrpChannelHanlder()
 }
 
