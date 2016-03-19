@@ -26,6 +26,8 @@ type LsaOp uint8
 const (
 	LSAFLOOD    = 0 // flood when FULL state reached
 	LSASELFLOOD = 1 // flood for received LSA
+	LSAINTF     = 2 // Send LSA on the interface in reply to LSAREQ
+	LSAAGE      = 3 // flood aged LSAs.
 )
 
 type NeighborConfKey struct {
@@ -96,15 +98,6 @@ type ospfNeighborConfMsg struct {
 type ospfNeighborDBDMsg struct {
 	ospfNbrConfKey NeighborConfKey
 	ospfNbrDBDData ospfDatabaseDescriptionData
-}
-
-type ospfFloodMsg struct {
-	key    uint32
-	areaId uint32
-	lsType uint8
-	linkid uint32
-	lsOp   uint8
-	pkt    []byte //LSA flood packet received from another neighbor
 }
 
 type ospfNbrMdata struct {
@@ -277,7 +270,13 @@ func (server *OSPFServer) updateNeighborMdata(intf IntfConfKey, nbr uint32) {
 		nbrMdata = ospfIntfToNbrMap[intf]
 	}
 	nbrMdata.areaId = binary.BigEndian.Uint32(intfData.IfAreaId)
-	nbrMdata.isDR = bytesEqual(intfData.IfDRIp, intfData.IfIpAddr.To4())
+	routerid := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
+	if intfData.IfDRtrId == routerid {
+		nbrMdata.isDR = true
+	} else {
+		nbrMdata.isDR = false
+	}
+
 	for inst := range nbrMdata.nbrList {
 		if nbrMdata.nbrList[inst] == nbr {
 			// nbr already exist no need to add.
@@ -288,15 +287,11 @@ func (server *OSPFServer) updateNeighborMdata(intf IntfConfKey, nbr uint32) {
 	ospfIntfToNbrMap[intf] = nbrMdata
 }
 
-func (server *OSPFServer) sendLsdbToNeighborEvent(key uint32, areaId uint32, lsType uint8,
-	linkId uint32, op uint8) {
-	_, exists := server.NeighborConfigMap[key]
-	if !exists {
-		server.logger.Info(fmt.Sprintln("Nbr-LSDB: Failed to get nbr instance key ", key))
-		return
-	}
+func (server *OSPFServer) sendLsdbToNeighborEvent(intfKey IntfConfKey, nbrKey uint32,
+					          areaId uint32, lsType uint8, linkId uint32, op uint8) {
 	msg := ospfFloodMsg{
-		key:    key,
+		intfKey: intfKey,
+		nbrKey: nbrKey,
 		areaId: areaId,
 		lsType: lsType,
 		linkid: linkId,
@@ -304,29 +299,4 @@ func (server *OSPFServer) sendLsdbToNeighborEvent(key uint32, areaId uint32, lsT
 	}
 	server.ospfNbrLsaUpdSendCh <- msg
 	//server.logger.Info("Send flood data to Tx thread")
-}
-
-func (server *OSPFServer) calculateDBLsaAttach(nbrKey NeighborConfKey, nbrConf OspfNeighborEntry) (last_exchange bool, lsa_attach uint8) {
-	last_exchange = true
-	lsa_attach = 0
-
-	max_lsa_headers := calculateMaxLsaHeaders()
-	db_list := ospfNeighborDBSummary_list[nbrKey.OspfNbrRtrId]
-	slice_len := len(db_list)
-	server.logger.Info(fmt.Sprintln("DBD: slice_len ", slice_len, "max_lsa_header ", max_lsa_headers,
-		"nbrConf.lsa_index ", nbrConf.ospfNbrLsaIndex))
-	if slice_len == int(nbrConf.ospfNbrLsaIndex) {
-		return
-	}
-	if max_lsa_headers > (uint8(slice_len) - uint8(nbrConf.ospfNbrLsaIndex)) {
-		lsa_attach = uint8(slice_len) - uint8(nbrConf.ospfNbrLsaIndex)
-	} else {
-		lsa_attach = max_lsa_headers
-	}
-	if (nbrConf.ospfNbrLsaIndex + lsa_attach) >= uint8(slice_len) {
-		// the last slice in the list being sent
-		server.logger.Info(fmt.Sprintln("DBD:  Send the last dd packet with nbr/state ", nbrKey.OspfNbrRtrId, nbrConf.OspfNbrState))
-		last_exchange = true
-	}
-	return last_exchange, 0
 }

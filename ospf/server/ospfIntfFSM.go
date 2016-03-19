@@ -447,26 +447,29 @@ func (server *OSPFServer) createAndSendEventsIntfFSM(key IntfConfKey,
 		areaId: areaId,
 	}
 
-	msg1 := NetworkLSAChangeMsg{
+	msg1 := DrChangeMsg{
 		areaId:  areaId,
 		intfKey: key,
+		oldstate: oldState,
+		newstate: newState,
 	}
 
 	server.logger.Info("1. Sending msg for router LSA generation")
 	server.IntfStateChangeCh <- msg
 
+	/*
 	if oldState != newState {
 		if newState == config.DesignatedRouter {
 			// Construct Network LSA
 			server.logger.Info("1. Sending msg for Network LSA generation")
-			//server.CreateNetworkLSACh <- msg1
 		} else if oldState == config.DesignatedRouter {
 			// Flush Network LSA
 			server.logger.Info("2. Sending msg for Network LSA generation")
-			server.FlushNetworkLSACh <- msg1
 		}
+		server.NetworkDRChangeCh<-msg1
 		server.logger.Info(fmt.Sprintln("oldState", oldState, " != newState", newState))
-	}
+	} */
+	server.NetworkDRChangeCh<-msg1
 	server.logger.Info(fmt.Sprintln("oldState", oldState, " newState", newState))
 
 	/*

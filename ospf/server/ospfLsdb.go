@@ -25,6 +25,13 @@ type NetworkLSAChangeMsg struct {
 	intfKey IntfConfKey
 }
 
+type DrChangeMsg struct {
+	areaId   uint32
+	intfKey  IntfConfKey
+	oldstate config.IfState
+	newstate config.IfState
+}
+
 const (
 	LsdbAdd      uint8 = 0
 	LsdbDel      uint8 = 1
@@ -38,6 +45,8 @@ const (
 	StubLink    uint8 = 3
 	VirtualLink uint8 = 4
 )
+
+var lsdbTickerCh *time.Timer
 
 func (server *OSPFServer) initLSDatabase(areaId uint32) {
 	lsdbKey := LsdbKey{
@@ -57,6 +66,7 @@ func (server *OSPFServer) initLSDatabase(areaId uint32) {
 		selfOrigLsaEnt = make(map[LsaKey]bool)
 		server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
 	}
+
 }
 
 func (server *OSPFServer) lsdbStateRefresh() {
@@ -122,11 +132,14 @@ func (server *OSPFServer) StartLSDatabase() {
 
 	server.lsdbStateRefresh()
 	go server.processLSDatabaseUpdates()
+	maxAgeLsaMap = make(map[LsaKey][]byte)
+	// start LSDB aging ticker
+	lsdbTickerCh = time.NewTimer(time.Second * 1)
 	return
 }
 
 func (server *OSPFServer) StopLSDatabase() {
-
+	lsdbTickerCh.Stop()
 }
 
 func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
@@ -153,6 +166,10 @@ func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
 	selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
 
+	lsa, _ := server.getNetworkLsaFromLsdb(areaId, lsaKey)
+	lsa.LsaMd.LSAge = config.MaxAge
+	lsa_pkt := encodeNetworkLsa(lsa, lsaKey)
+	maxAgeLsaMap[lsaKey] = lsa_pkt
 	// Need to Flush these entries
 	delete(lsDbEnt.NetworkLsaMap, lsaKey)
 	delete(selfOrigLsaEnt, lsaKey)
@@ -160,24 +177,17 @@ func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 }
 
-func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isDR bool, nbr_list []uint32) {
-	server.logger.Info(fmt.Sprintln("Calling generate Network LSA func", nbr_list))
+func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isDR bool) {
 
 	//routerId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
 	ent := server.IntfConfMap[key]
 	AreaId := convertIPv4ToUint32(ent.IfAreaId)
-	nbrListLen := len(nbr_list)
+	nbrmdata := ospfIntfToNbrMap[key]
 
 	if areaId != AreaId {
 		return
 	}
 	if ent.IfFSMState <= config.Waiting {
-		return
-	}
-
-	if !isDR {
-		server.sendLsdbToNeighborEvent(nbr_list[nbrListLen-1], areaId, 0,
-			0, LSAFLOOD)
 		return
 	}
 
@@ -189,16 +199,16 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 		}
 		attachedRtr = append(attachedRtr, key.RouterId)
 	}*/
-	for index := range nbr_list {
-		/* TODO: HACK Need to be removed */
+	for index := range nbrmdata.nbrList {
 		flag := false
+		/* TODO: HACK Need to be removed */
 		for i := 0; i < len(attachedRtr); i++ {
-			if nbr_list[index] == attachedRtr[i] {
+			if nbrmdata.nbrList[index] == attachedRtr[i] {
 				flag = true
 			}
 		}
 		if flag == false {
-			attachedRtr = append(attachedRtr, nbr_list[index])
+			attachedRtr = append(attachedRtr, nbrmdata.nbrList[index])
 		}
 	}
 	selfRtrId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
@@ -244,7 +254,7 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 	server.logger.Info(fmt.Sprintln("Attached Routers:", entry.AttachedRtr))
 	selfOrigLsaEnt[lsaKey] = true
 	server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
-	server.logger.Info(fmt.Sprintln("Self Originated Router LSA Key:", server.AreaSelfOrigLsa[lsdbKey]))
+	//server.logger.Info(fmt.Sprintln("Self Originated Router LSA Key:", server.AreaSelfOrigLsa[lsdbKey]))
 	LsaEnc := encodeNetworkLsa(entry, lsaKey)
 	checksumOffset := uint16(14)
 	entry.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc[2:], checksumOffset)
@@ -260,8 +270,6 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 		val.AdvRtr = lsaKey.AdvRouter
 		server.LsdbSlice = append(server.LsdbSlice, val)
 	}
-	server.sendLsdbToNeighborEvent(nbr_list[nbrListLen-1], areaId, 0,
-		0, LSAFLOOD)
 	return
 }
 
@@ -706,37 +714,98 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 		case msg := <-server.IntfStateChangeCh:
 			server.logger.Info(fmt.Sprintf("Interface State change msg", msg))
 			server.generateRouterLSA(msg.areaId)
-			server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
+			//server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
 			server.StartCalcSPFCh <- true
 			spfStatus := <-server.DoneCalcSPFCh
 			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
 		case msg := <-server.NetworkDRChangeCh:
 			server.logger.Info(fmt.Sprintf("Network DR change msg", msg))
 			// Create a new router LSA
-			server.generateRouterLSA(msg.areaId)
-			server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
+			//server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
+			server.processDrBdrChangeMsg(msg)
 			server.StartCalcSPFCh <- true
 			spfStatus := <-server.DoneCalcSPFCh
 			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
 		case msg := <-server.CreateNetworkLSACh:
 			server.logger.Info(fmt.Sprintf("Create Network LSA msg", msg))
-			server.generateNetworkLSA(msg.areaId, msg.intf, msg.isDR, msg.nbrList)
+			server.processNeighborFullEvent(msg)
+			//server.generateNetworkLSA(msg.areaId, msg.intf, msg.isDR)
 			// Flush the old Network LSA
 			// Check if link is broadcast or not
 			// If link is broadcast
 			// Create Network LSA
-			server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
+			//server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
 			server.StartCalcSPFCh <- true
 			spfStatus := <-server.DoneCalcSPFCh
 			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
-		case msg := <-server.FlushNetworkLSACh:
-			server.logger.Info(fmt.Sprintf("Flush Network LSA msg", msg))
-			// Flush the old Network LSA
-			server.flushNetworkLSA(msg.areaId, msg.intfKey)
-			server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
-			server.StartCalcSPFCh <- true
-			spfStatus := <-server.DoneCalcSPFCh
-			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
+		/*
+			case msg := <-server.FlushNetworkLsACh:
+				server.logger.Info(fmt.Sprintf("Flush Network LSA msg", msg))
+				// Flush the old Network LSA
+				server.flushNetworkLSA(msg.areaId, msg.intfKey)
+				server.generateRouterLSA(msg.areaId)
+				//server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
+				//Flood Lsas
+				server.StartCalcSPFCh <- true
+				spfStatus := <-server.DoneCalcSPFCh
+				server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
+		*/
+		case msg := <-server.maxAgeLsaCh:
+			server.processMaxAgeLsaMsg(msg)
+
+		case <-lsdbTickerCh.C:
+			lsdbTickerCh.Stop()
+			server.processLSDatabaseTicker()
+			lsdbTickerCh.Reset(time.Duration(1) * time.Second)
+
 		}
+	}
+}
+
+func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
+	server.logger.Info(fmt.Sprintln("LSDB: Nbr full. area id  ", msg.areaId,
+		" intf ", msg.intf, " isDr ", msg.isDR, " nbrList ", msg.nbrList))
+	server.generateNetworkLSA(msg.areaId, msg.intf, msg.isDR)
+	server.sendLsdbToNeighborEvent(msg.intf, 0, msg.areaId, 0, 0, LSAFLOOD)
+}
+
+func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
+	if msg.oldstate != msg.newstate {
+		if msg.newstate == config.DesignatedRouter {
+			server.generateRouterLSA(msg.areaId)
+			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
+		} else if msg.oldstate == config.DesignatedRouter {
+			server.flushNetworkLSA(msg.areaId, msg.intfKey)
+			server.generateRouterLSA(msg.areaId)
+			/* send flush message to neighbor followed by flood for
+			   router LSAs */
+			flood_pkt := ospfFloodMsg{
+				lsOp: LSAAGE,
+			}
+			server.ospfNbrLsaUpdSendCh <- flood_pkt
+		}
+	} else {
+		server.generateRouterLSA(msg.areaId)
+	}
+	server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)
+}
+
+func (server *OSPFServer) processLSDatabaseTicker() {
+	/* scan through LSDB. Flood expired LSAs and
+	   delete from LSDB */
+	//server.logger.Info("LSDabase ticker called ")
+	for lsdbKey, lsDbEnt := range server.AreaLsdb {
+		server.processMaxAgeLSA(lsdbKey, lsDbEnt)
+
+	}
+
+}
+
+func (server *OSPFServer) processMaxAgeLsaMsg(msg maxAgeLsaMsg) {
+	switch msg.msg_type {
+	case addMaxAgeLsa:
+		maxAgeLsaMap[msg.lsaKey] = msg.pkt
+	case delMaxAgeLsa:
+		delete(maxAgeLsaMap, msg.lsaKey)
 	}
 }

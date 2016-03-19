@@ -116,7 +116,8 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				     structure's DD sequence number (indicating
 				     acknowledgment) and the neighbor's Router ID is smaller
 				     than the router's own.  In this case the router is
-				     Master. */
+				     Master.
+				*/
 				if nbrDbPkt.ibit == false && nbrDbPkt.msbit == false &&
 					nbrDbPkt.dd_sequence_number == nbrConf.ospfNbrSeqNum &&
 					nbrKey.OspfNbrRtrId < binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
@@ -134,7 +135,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 
 			var lsa_attach uint8
 			if negotiationDone {
-				server.logger.Info(fmt.Sprintln("DBD: (Exstart) lsa_headers = ", len(nbrDbPkt.lsa_headers)))
+				//server.logger.Info(fmt.Sprintln("DBD: (Exstart) lsa_headers = ", len(nbrDbPkt.lsa_headers)))
 				server.generateDbSummaryList(nbrKey)
 				if nbrConf.isMaster != true { // i am the master
 					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, true, true,
@@ -224,7 +225,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 
 					/* 1) get lsa headers update in req_list */
 					headers_len := len(nbrDbPkt.lsa_headers)
-					server.logger.Info(fmt.Sprintln("DBD: (Exchange) Received . nbr,total_lsa ", nbrKey.OspfNbrRtrId, headers_len))
+					//server.logger.Info(fmt.Sprintln("DBD: (Exchange) Received . nbr,total_lsa ", nbrKey.OspfNbrRtrId, headers_len))
 					req_list := ospfNeighborRequest_list[nbrKey.OspfNbrRtrId]
 					for i := 0; i < headers_len; i++ {
 						var lsaheader ospfLSAHeader
@@ -582,7 +583,7 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 			}
 
 		case msg := <-server.ospfNbrLsaUpdSendCh:
-			server.processTxLsaUpdate(msg)
+			server.processFloodMsg(msg)
 
 		case msg := <-server.ospfNbrLsaAckSendCh:
 			server.processTxLsaAck(msg)
@@ -634,8 +635,8 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 		db_summary.valid = true
 		/* add entry to the db summary list  */
 		db_list = append(db_list, db_summary)
-		lsid := convertUint32ToIPv4(lsaKey.LSId)
-		server.logger.Info(fmt.Sprintln("negotiation: db_list append router lsid  ", lsid))
+		//lsid := convertUint32ToIPv4(lsaKey.LSId)
+		//server.logger.Info(fmt.Sprintln("negotiation: db_list append router lsid  ", lsid))
 	} // end of for
 
 	for networkKey, _ := range network_lsa {
@@ -653,8 +654,8 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 			db_summary.valid = true
 			/* add entry to the db summary list  */
 			db_list = append(db_list, db_summary)
-			lsid := convertUint32ToIPv4(networkKey.LSId)
-			server.logger.Info(fmt.Sprintln("negotiation: db_list append network lsid  ", lsid))
+			//lsid := convertUint32ToIPv4(networkKey.LSId)
+			//server.logger.Info(fmt.Sprintln("negotiation: db_list append network lsid  ", lsid))
 		} // end of for
 	}
 
@@ -725,5 +726,10 @@ func (server *OSPFServer) refreshNeighborSlice() {
 			server.logger.Info(fmt.Sprintln("Get bulk slice refreshed - ", t))
 		}
 	}()
+
+}
+
+func (server *OSPFServer) processNeighborDeadEvent(nbrKey uint32) {
+	/* Age LSAs */
 
 }

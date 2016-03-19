@@ -60,11 +60,11 @@ type OSPFServer struct {
 	LsdbUpdateCh       chan LsdbUpdateMsg
 	LsaUpdateRetCodeCh chan bool
 	IntfStateChangeCh  chan LSAChangeMsg
-	NetworkDRChangeCh  chan LSAChangeMsg
+	NetworkDRChangeCh  chan DrChangeMsg
 	FlushNetworkLSACh  chan NetworkLSAChangeMsg
 	CreateNetworkLSACh chan ospfNbrMdata
 	AdjOKEvtCh         chan AdjOKEvtMsg
-
+	maxAgeLsaCh        chan maxAgeLsaMsg
 	/*
 	   connRoutesTimer         *time.Timer
 	   ribSubSocket        *nanomsg.SubSocket
@@ -140,13 +140,14 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.AreaLsdb = make(map[LsdbKey]LSDatabase)
 	ospfServer.AreaSelfOrigLsa = make(map[LsdbKey]SelfOrigLsa)
 	ospfServer.IntfStateChangeCh = make(chan LSAChangeMsg)
-	ospfServer.NetworkDRChangeCh = make(chan LSAChangeMsg)
+	ospfServer.NetworkDRChangeCh = make(chan DrChangeMsg)
 	ospfServer.CreateNetworkLSACh = make(chan ospfNbrMdata)
 	ospfServer.FlushNetworkLSACh = make(chan NetworkLSAChangeMsg)
 	ospfServer.LsdbSlice = []LsdbSliceEnt{}
 	ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
 	ospfServer.LsaUpdateRetCodeCh = make(chan bool)
 	ospfServer.AdjOKEvtCh = make(chan AdjOKEvtMsg)
+	ospfServer.maxAgeLsaCh = make(chan maxAgeLsaMsg)
 	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
@@ -263,7 +264,7 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 				}
 			}
 			server.logger.Info("Ospfd is connected to Ribd")
-			server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
+			server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
 			server.ribdClient.IsConnected = true
 			/*
 				if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {
