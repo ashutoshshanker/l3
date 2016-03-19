@@ -1,7 +1,7 @@
 package vrrpServer
 
 import (
-	"asicdServices"
+	"asicdInt"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -207,7 +207,7 @@ func (svr *VrrpServer) VrrpAddMacEntry(add bool) {
 		time.Sleep(time.Millisecond * 750)
 		svr.logger.Info("Waiting for vrrp to connect to asicd")
 	}
-	macConfig := asicdServices.RsvdProtocolMacConfig{
+	macConfig := asicdInt.RsvdProtocolMacConfig{
 		MacAddr:     VRRP_PROTOCOL_MAC,
 		MacAddrMask: VRRP_MAC_MASK,
 	}
