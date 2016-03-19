@@ -197,7 +197,7 @@ func (svr *VrrpServer) VrrpInitPacketListener(key string, IfIndex int32) {
 }
 
 func (svr *VrrpServer) VrrpUpdateProtocolMacEntry(add bool) {
-	macConfig := asicdServices.RsvdProtocolMacConfig{
+	macConfig := asicdInt.RsvdProtocolMacConfig{
 		MacAddr:     VRRP_PROTOCOL_MAC,
 		MacAddrMask: VRRP_MAC_MASK,
 	}
