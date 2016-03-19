@@ -148,8 +148,6 @@ func (svr *VrrpServer) VrrpCheckRcvdPkt(packet gopacket.Packet, key string,
 			". Dropping received packet from", ipHdr.SrcIP))
 		return
 	}
-	svr.logger.Info(fmt.Sprintln("RX packet from", ipHdr.SrcIP,
-		" passed basic ip check, hence starting FSM"))
 	// Start FSM for VRRP after all the checks are successful
 	svr.vrrpFsmCh <- VrrpFsm{
 		vrrpHdr: vrrpHeader,

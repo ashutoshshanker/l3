@@ -237,7 +237,7 @@ func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 	}
 
 	if vrrpHdr.Type == VRRP_PKT_TYPE_ADVERTISEMENT {
-		svr.logger.Info(fmt.Sprintln("Advertisement pkt for VRID",
+		svr.logger.Info(fmt.Sprintln("Rcvd Advertisement pkt for VRID",
 			gblInfo.IntfConfig.VRID, "in backup state"))
 		if vrrpHdr.Priority == 0 {
 			// Change down Value to Skew time
@@ -325,7 +325,6 @@ func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 	gblInfo.StateLock.Lock()
 	currentState := gblInfo.StateName
 	gblInfo.StateLock.Unlock()
-
 	svr.logger.Info("FSM state is " + currentState)
 	switch currentState {
 	case VRRP_INITIALIZE_STATE:
