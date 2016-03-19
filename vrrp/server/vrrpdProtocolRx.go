@@ -1,7 +1,7 @@
 package vrrpServer
 
 import (
-	"asicdServices"
+	"asicdInt"
 	"encoding/binary"
 	"errors"
 	"fmt"
