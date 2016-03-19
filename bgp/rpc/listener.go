@@ -408,15 +408,15 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (config.
 			//return config.NeighborConfig{}, false
 			ip = net.IPv4bcast
 		}
-		ipv4Intf, _ := h.server.AsicdClient.GetIPv4Intf(int32(ifIndex))
-		if ipv4Intf != nil {
+		ipv4Intf, err := h.server.AsicdClient.GetIPv4Intf(int32(ifIndex))
+		if err == nil {
 			h.logger.Info(fmt.Sprintln("Call ASICd to get ip address for interface with ifIndex: ", ifIndex))
-			ifIp, _, err := net.ParseCIDR(ipv4Intf.IpAddr)
+			ifIp, _, err := net.ParseCIDR(ipv4Intf)
 			if err != nil {
-				h.logger.Err(fmt.Sprintln("IpAddr: ", ipv4Intf.IpAddr, " derived for ifIndex ", ifIndex))
+				h.logger.Err(fmt.Sprintln("IpAddr: ", ipv4Intf, " derived for ifIndex ", ifIndex))
 				return config.NeighborConfig{}, false
 			}
-			h.logger.Info(fmt.Sprintln("Derived ip address as ", ipv4Intf.IpAddr, "ip: ", ifIp))
+			h.logger.Info(fmt.Sprintln("Derived ip address as ", ipv4Intf, "ip: ", ifIp))
 			ifIpBytes := ifIp.To4()
 			if ifIpBytes == nil {
 				h.logger.Err("Invalid ip address")
