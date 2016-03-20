@@ -411,16 +411,16 @@ func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string, neighborIfInd
 		flag = true
 	} else if neighborIfIndex != 0 {
 		//neighbor address is a ifIndex
-		ipv4Intf, err := h.server.AsicdClient.GetIPv4Intf(ifIndex)
+		ipv4Intf, err := h.server.AsicdClient.GetIPv4Intf(neighborIfIndex)
 		if err == nil {
-			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Call ASICd to get ip address for interface with ifIndex: ", ifIndex))
+			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Call ASICd to get ip address for interface with ifIndex: ", neighborIfIndex))
 			ifIP, ipMask, err := net.ParseCIDR(ipv4Intf)
 			if err != nil {
-				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ipv4Intf, "of the interface", ifIndex, "is not valid, error:", err))
+				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ipv4Intf, "of the interface", neighborIfIndex, "is not valid, error:", err))
 				return ip, ifIndex, flag
 			}
 			if ipMask.Mask[len(ipMask.Mask)-1] < 252 {
-				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ipv4Intf, "of the interface", ifIndex, "is not /30 or /31 address"))
+				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ipv4Intf, "of the interface", neighborIfIndex, "is not /30 or /31 address"))
 				return ip, ifIndex, flag
 			}
 			/*
@@ -439,7 +439,7 @@ func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string, neighborIfInd
 				//ifIpBytes[3][0] =  ifIpBytes[3][0] ^ 1 //toggle the last bit
 				h.logger.Info(fmt.Sprintln("last byte new ", ifIpBytes[3]))
 			*/
-			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP, "of the interface", ifIndex))
+			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP, "of the interface", neighborIfIndex))
 			ifIP[len(ifIP)-1] = ifIP[len(ifIP)-1] ^ (^ipMask.Mask[len(ipMask.Mask)-1])
 			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP, "of the neighbor interface"))
 			ip = ifIP
