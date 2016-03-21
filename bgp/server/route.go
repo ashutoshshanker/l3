@@ -31,7 +31,7 @@ func NewRoute(dest *Destination, path *Path, action RouteAction, inPathId, outPa
 	bgpRoute := &bgpd.BGPRoute{
 		Network:   dest.ipPrefix.Prefix.String(),
 		CIDRLen:   int16(dest.ipPrefix.Length),
-		NextHop:   path.NextHop,
+		NextHop:   path.GetNextHop().String(),
 		Metric:    int32(path.MED),
 		LocalPref: int32(path.LocalPref),
 		Path:      path.GetAS4ByteList(),
