@@ -44,23 +44,7 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 	}
 
 	peer.SetPeerConf(peerGroup, &peer.PeerConf)
-	peer.Neighbor.State = config.NeighborState{
-		PeerAS:                  peer.PeerConf.PeerAS,
-		LocalAS:                 peer.PeerConf.LocalAS,
-		AuthPassword:            peer.PeerConf.AuthPassword,
-		Description:             peer.PeerConf.Description,
-		NeighborAddress:         peer.PeerConf.NeighborAddress,
-		RouteReflectorClusterId: peer.PeerConf.RouteReflectorClusterId,
-		RouteReflectorClient:    peer.PeerConf.RouteReflectorClient,
-		MultiHopEnable:          peer.PeerConf.MultiHopEnable,
-		MultiHopTTL:             peer.PeerConf.MultiHopTTL,
-		ConnectRetryTime:        peer.PeerConf.ConnectRetryTime,
-		HoldTime:                peer.PeerConf.HoldTime,
-		KeepaliveTime:           peer.PeerConf.KeepaliveTime,
-		PeerGroup:               peer.PeerConf.PeerGroup,
-		AddPathsRx:              false,
-		AddPathsMaxTx:           0,
-	}
+	peer.SetNeighborState(&peer.PeerConf)
 
 	if peerConf.LocalAS == peerConf.PeerAS {
 		peer.Neighbor.State.PeerType = config.PeerTypeInternal
@@ -100,6 +84,27 @@ func (p *Peer) StopFSM(msg string) {
 	p.fsmManager.stopFSMCh <- msg
 }
 
+func (p *Peer) SetNeighborState(peerConf *config.NeighborConfig) {
+	p.Neighbor.State = config.NeighborState{
+		PeerAS:                  peerConf.PeerAS,
+		LocalAS:                 peerConf.LocalAS,
+		AuthPassword:            peerConf.AuthPassword,
+		Description:             peerConf.Description,
+		NeighborAddress:         peerConf.NeighborAddress,
+		IfIndex:                 peerConf.IfIndex,
+		RouteReflectorClusterId: peerConf.RouteReflectorClusterId,
+		RouteReflectorClient:    peerConf.RouteReflectorClient,
+		MultiHopEnable:          peerConf.MultiHopEnable,
+		MultiHopTTL:             peerConf.MultiHopTTL,
+		ConnectRetryTime:        peerConf.ConnectRetryTime,
+		HoldTime:                peerConf.HoldTime,
+		KeepaliveTime:           peerConf.KeepaliveTime,
+		PeerGroup:               peerConf.PeerGroup,
+		AddPathsRx:              false,
+		AddPathsMaxTx:           0,
+	}
+}
+
 func (p *Peer) UpdateNeighborConf(nConf config.NeighborConfig) {
 	p.Neighbor.NeighborAddress = nConf.NeighborAddress
 	p.Neighbor.Config = nConf
@@ -110,12 +115,14 @@ func (p *Peer) UpdateNeighborConf(nConf config.NeighborConfig) {
 		}
 	}
 	p.GetConfFromNeighbor(&p.Neighbor.Config, &p.PeerConf)
+	p.SetNeighborState(&p.PeerConf)
 }
 
 func (p *Peer) UpdatePeerGroup(peerGroup *config.PeerGroupConfig) {
 	p.PeerGroup = peerGroup
 	p.PeerConf = config.NeighborConfig{}
 	p.SetPeerConf(peerGroup, &p.PeerConf)
+	p.SetNeighborState(&p.PeerConf)
 }
 
 func (p *Peer) SetPeerConf(peerGroup *config.PeerGroupConfig, peerConf *config.NeighborConfig) {
@@ -196,6 +203,7 @@ func (p *Peer) GetConfFromNeighbor(inConf *config.NeighborConfig, outConf *confi
 	}
 
 	outConf.NeighborAddress = inConf.NeighborAddress
+	outConf.IfIndex = inConf.IfIndex
 	outConf.PeerGroup = inConf.PeerGroup
 }
 
