@@ -44,6 +44,7 @@ type RIBDServicesHandler struct {
 	PolicyDefinitionDeleteConfCh   chan *ribd.PolicyDefinition
 	PolicyDefinitionUpdateConfCh   chan *ribd.PolicyDefinition
 	AcceptConfig                   bool
+	ServerUpCh                     chan bool
 	DbHdl                          *sql.DB
 	//RouteInstallCh                 chan RouteParams
 }
@@ -382,8 +383,8 @@ func AcceptConfigActions() {
     getIntfInfo()
 	getConnectedRoutes()
 	UpdateRoutesFromDB()
-	routeServiceHandler.DbHdl.Close()
     go SetupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
+	routeServiceHandler.ServerUpCh <- true
 }
 func connectToClient(client ClientJson) {
 	var timer *time.Timer
@@ -514,7 +515,7 @@ func InitializePolicyDB() {
 	PolicyEngineDB.SetTraverseAndReversePolicyFunc(policyEngineTraverseAndReverse)
 	PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
 }
-func NewRIBDServicesHandler() *RIBDServicesHandler {
+func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
     RouteInfoMap = patriciaDB.NewTrie()
 	ribdServicesHandler := &RIBDServicesHandler{}
 	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route)
@@ -532,18 +533,7 @@ func NewRIBDServicesHandler() *RIBDServicesHandler {
 	ribdServicesHandler.PolicyDefinitionCreateConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.PolicyDefinitionDeleteConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan *ribd.PolicyDefinition)
-	DbName := PARAMSDIR + "/UsrConfDb.db"
-	logger.Info(fmt.Sprintln("DB Location: ", DbName))
-	dbHdl, err := sql.Open("sqlite3", DbName)
-	if err != nil {
-		logger.Info(fmt.Sprintln("Failed to create the handle with err ", err))
-		return nil
-	}
-
-	if err = dbHdl.Ping(); err != nil {
-		logger.Info(fmt.Sprintln("Failed to keep DB connection alive"))
-		return nil
-	}
+	ribdServicesHandler.ServerUpCh = make(chan bool)
 	ribdServicesHandler.DbHdl = dbHdl
 	//ribdServicesHandler.RouteInstallCh = make(chan RouteParams)
 	return ribdServicesHandler

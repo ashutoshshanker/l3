@@ -179,7 +179,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 		var stmt, policyName string
 		var precedence int32
 		for conditionrows.Next() {
-			if err = conditionrows.Scan(&policyName, &stmt, &precedence); err != nil {
+			if err = conditionrows.Scan(&policyName, &precedence, &stmt); err != nil {
 				logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionConfigStatementList rows with error %s\n", err))
 				return err
 			}
@@ -203,7 +203,6 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 func UpdatePolicyObjectsFromDB() { //(paramsDir string) (err error) {
 	logger.Info(fmt.Sprintln("UpdateFromDB"))
 	dbHdl := routeServiceHandler.DbHdl
-	defer dbHdl.Close()
 	UpdatePolicyConditionsFromDB(dbHdl) //paramsDir, dbHdl)
 	UpdatePolicyActionsFromDB(dbHdl)    //paramsDir, dbHdl)
 	UpdatePolicyStmtsFromDB(dbHdl)

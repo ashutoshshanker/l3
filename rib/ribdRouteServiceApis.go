@@ -36,7 +36,7 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 	_, ok = IntfIdNameMap[ifId]
 	if !ok {
 		logger.Err(fmt.Sprintln("Cannot create ip route on a unknown L3 interface"))
-		return false, errors.New("Cannot create ip route on a unknown L3 interface")
+//		return false, errors.New("Cannot create ip route on a unknown L3 interface")
 	}
     m.RouteCreateConfCh <- cfg
 	return true,err	
