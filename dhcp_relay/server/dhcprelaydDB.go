@@ -6,7 +6,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func DhcpRelayAgentInitDB(paramsDir string) error {
+func DhcpRelayAgentInitDB() error {
 	logger.Info("DRA: initializing SQL DB")
 	var err error
 	dbName := paramsDir + USR_CONF_DB

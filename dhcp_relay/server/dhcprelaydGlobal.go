@@ -30,7 +30,7 @@ type DhcpRelayAgentPacket []byte
  *	    PCAP Handler specific to Interface
  */
 type DhcpRelayAgentGlobalInfo struct {
-	IntfConfig dhcprelayd.DhcpRelayIntfConfig
+	IntfConfig dhcprelayd.DhcpRelayIntf
 	PcapHandle *pcap.Handle
 	IpAddr     string
 	Netmask    string

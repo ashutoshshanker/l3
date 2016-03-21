@@ -13,7 +13,7 @@ type PortProperty struct {
 	VlanName string
 	VlanId   uint16
 	IpAddr   net.IP
-        Mtu      int32
+	Mtu      int32
 }
 
 type VlanProperty struct {
@@ -27,7 +27,7 @@ type IPIntfProperty struct {
 	IpAddr  net.IP
 	MacAddr net.HardwareAddr
 	NetMask []byte
-        Mtu     int32
+	Mtu     int32
 }
 
 //FIXME: Old ipv4intf notify msg format from asic. Needs to be cleaned up later
@@ -38,38 +38,38 @@ type IPv4IntfNotifyMsg struct {
 }
 
 type IpProperty struct {
-        IfId    uint16
-        IfType  uint8
+	IfId   uint16
+	IfType uint8
 }
 
-func (server *OSPFServer)computeMinMTU(msg IPv4IntfNotifyMsg) (int32) {
-        var minMtu int32 = 10000 //in bytes
-        if msg.IfType == commonDefs.L2RefTypePort { // PHY
-                ent, _ := server.portPropertyMap[int32(msg.IfId)]
-                minMtu = ent.Mtu
-        } else if msg.IfType == commonDefs.L2RefTypeVlan { // Vlan
-                ent, _ := server.vlanPropertyMap[msg.IfId]
-                for _, portNum := range ent.UntagPorts {
-                        entry, _ := server.portPropertyMap[portNum]
-                        if minMtu > entry.Mtu {
-                                minMtu = entry.Mtu
-                        }
-                }
-        }
-        return minMtu
+func (server *OSPFServer) computeMinMTU(msg IPv4IntfNotifyMsg) int32 {
+	var minMtu int32 = 10000                    //in bytes
+	if msg.IfType == commonDefs.L2RefTypePort { // PHY
+		ent, _ := server.portPropertyMap[int32(msg.IfId)]
+		minMtu = ent.Mtu
+	} else if msg.IfType == commonDefs.L2RefTypeVlan { // Vlan
+		ent, _ := server.vlanPropertyMap[msg.IfId]
+		for _, portNum := range ent.UntagPorts {
+			entry, _ := server.portPropertyMap[portNum]
+			if minMtu > entry.Mtu {
+				minMtu = entry.Mtu
+			}
+		}
+	}
+	return minMtu
 }
 
 func (server *OSPFServer) updateIpPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
-        ipAddr, _, _ := net.ParseCIDR(msg.IpAddr)
-        ip := convertAreaOrRouterIdUint32(ipAddr.String())
-        if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
-                ent := server.ipPropertyMap[ip]
-                ent.IfId = msg.IfId
-                ent.IfType = msg.IfType
-                server.ipPropertyMap[ip] = ent
-        } else { // Delete IP
-                delete(server.ipPropertyMap, ip)
-        }
+	ipAddr, _, _ := net.ParseCIDR(msg.IpAddr)
+	ip := convertAreaOrRouterIdUint32(ipAddr.String())
+	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
+		ent := server.ipPropertyMap[ip]
+		ent.IfId = msg.IfId
+		ent.IfType = msg.IfType
+		server.ipPropertyMap[ip] = ent
+	} else { // Delete IP
+		delete(server.ipPropertyMap, ip)
+	}
 }
 
 func (server *OSPFServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
@@ -135,7 +135,7 @@ func (server *OSPFServer) BuildPortPropertyMap() {
 		for {
 			bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPortState(asicdServices.Int(currMarker), asicdServices.Int(count))
 			if bulkInfo == nil {
-                                break
+				break
 			}
 			objCount := int(bulkInfo.Count)
 			more := bool(bulkInfo.More)
@@ -149,7 +149,7 @@ func (server *OSPFServer) BuildPortPropertyMap() {
 				server.portPropertyMap[portNum] = ent
 			}
 			if more == false {
-                                break
+				break
 			}
 		}
 	}
@@ -158,17 +158,17 @@ func (server *OSPFServer) BuildPortPropertyMap() {
 		server.logger.Info("Calling asicd for getting the Port Config")
 		count := 10
 		for {
-			bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPortConfig(asicdServices.Int(currMarker), asicdServices.Int(count))
+			bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPort(asicdServices.Int(currMarker), asicdServices.Int(count))
 			if bulkInfo == nil {
-                                break
+				break
 			}
 			objCount := int(bulkInfo.Count)
 			more := bool(bulkInfo.More)
 			currMarker = asicdServices.Int(bulkInfo.EndIdx)
 			for i := 0; i < objCount; i++ {
-				portNum := bulkInfo.PortConfigList[i].PortNum
+				portNum := bulkInfo.PortList[i].PortNum
 				ent := server.portPropertyMap[portNum]
-				ent.Mtu = bulkInfo.PortConfigList[i].Mtu
+				ent.Mtu = bulkInfo.PortList[i].Mtu
 				server.portPropertyMap[portNum] = ent
 			}
 			if more == false {

@@ -72,6 +72,7 @@ type BaseConfig struct {
 type NeighborConfig struct {
 	BaseConfig
 	NeighborAddress net.IP
+	IfIndex         int32
 	PeerGroup       string
 }
 
@@ -82,6 +83,7 @@ type NeighborState struct {
 	AuthPassword            string
 	Description             string
 	NeighborAddress         net.IP
+	IfIndex                 int32
 	SessionState            uint32
 	Messages                Messages
 	Queues                  Queues

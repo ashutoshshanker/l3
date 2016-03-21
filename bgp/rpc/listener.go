@@ -10,7 +10,7 @@ import (
 	"l3/bgp/server"
 	"models"
 	"net"
-	"strconv"
+	"strings"
 	"utils/logging"
 	utilspolicy "utils/policy"
 
@@ -110,20 +110,29 @@ func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
 
 	var nConf config.NeighborConfig
 	var neighborIP string
+	var neighborIfIndex int32
 	for rows.Next() {
 		if err = rows.Scan(&nConf.PeerAS, &nConf.LocalAS, &nConf.AuthPassword, &nConf.Description, &neighborIP,
-			&nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable, &nConf.MultiHopTTL,
-			&nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime, &nConf.AddPathsRx, &nConf.AddPathsMaxTx,
-			&nConf.PeerGroup, &nConf.BfdEnable); err != nil {
+			&neighborIfIndex, &nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable,
+			&nConf.MultiHopTTL, &nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime, &nConf.AddPathsRx,
+			&nConf.AddPathsMaxTx, &nConf.PeerGroup, &nConf.BfdEnable); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighbor rows with error %s", err))
 			return err
 		}
 
-		nConf.NeighborAddress = net.ParseIP(neighborIP)
-		if nConf.NeighborAddress == nil {
-			h.logger.Info(fmt.Sprintf("Can't create BGP neighbor - IP[%s] not valid", neighborIP))
-			return config.IPError{neighborIP}
+		ip, ifIndex, flag := h.getIPAndIfIndexForNeighbor(neighborIP, neighborIfIndex)
+		if !flag {
+			h.logger.Info(fmt.Sprintln("handleNeighborConfig: getIPAndIfIndexForNeighbor failed for neighbor address",
+				neighborIP, "and ifIndex", neighborIfIndex))
+			continue
 		}
+		if ip == nil {
+			h.logger.Info(fmt.Sprintln("Can't create BGP neighbor - IP[%s] not valid", neighborIP))
+			continue
+		}
+
+		nConf.NeighborAddress = ip
+		nConf.IfIndex = ifIndex
 
 		h.server.AddPeerCh <- server.PeerUpdate{config.NeighborConfig{}, nConf, make([]bool, 0)}
 	}
@@ -394,51 +403,71 @@ func (h *BGPHandler) DeleteBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 	return true, nil
 }
 
+func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string, neighborIfIndex int32) (ip net.IP, ifIndex int32,
+	flag bool) {
+	if strings.TrimSpace(neighborIP) != "" {
+		ip = net.ParseIP(strings.TrimSpace(neighborIP))
+		ifIndex = 0
+		flag = true
+	} else if neighborIfIndex != 0 {
+		//neighbor address is a ifIndex
+		ipv4Intf, err := h.server.AsicdClient.GetIPv4Intf(neighborIfIndex)
+		if err == nil {
+			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Call ASICd to get ip address for interface with ifIndex: ", neighborIfIndex))
+			ifIP, ipMask, err := net.ParseCIDR(ipv4Intf)
+			if err != nil {
+				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ipv4Intf, "of the interface", neighborIfIndex, "is not valid, error:", err))
+				return ip, ifIndex, flag
+			}
+			if ipMask.Mask[len(ipMask.Mask)-1] < 252 {
+				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ipv4Intf, "of the interface", neighborIfIndex, "is not /30 or /31 address"))
+				return ip, ifIndex, flag
+			}
+			/*
+				ifIpBytes := ifIp.To4()
+				if ifIpBytes == nil {
+					h.logger.Err("Invalid ip address")
+					return config.NeighborConfig{}, false
+				}
+				h.logger.Info(fmt.Sprintln("last byte = ", ifIpBytes[3]))
+				if ifIpBytes[3]%2 == 1 {
+					//odd number
+					ifIpBytes[3] = ifIpBytes[3] - 1
+				} else {
+					ifIpBytes[3] = ifIpBytes[3] + 1
+				}
+				//ifIpBytes[3][0] =  ifIpBytes[3][0] ^ 1 //toggle the last bit
+				h.logger.Info(fmt.Sprintln("last byte new ", ifIpBytes[3]))
+			*/
+			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP, "of the interface", neighborIfIndex))
+			ifIP[len(ifIP)-1] = ifIP[len(ifIP)-1] ^ (^ipMask.Mask[len(ipMask.Mask)-1])
+			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP, "of the neighbor interface"))
+			ip = ifIP
+			ifIndex = neighborIfIndex
+			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Neighbor IP:", ip.String()))
+			flag = true
+		} else {
+			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - Neighbor IP", neighborIP, "or interface",
+				neighborIfIndex, "not configured "))
+		}
+	}
+	return ip, ifIndex, flag
+}
+
 func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (config.NeighborConfig, bool) {
 	if bgpNeighbor == nil {
 		return config.NeighborConfig{}, true
 	}
-	ip := net.ParseIP(bgpNeighbor.NeighborAddress)
+
+	ip, ifIndex, flag := h.getIPAndIfIndexForNeighbor(bgpNeighbor.NeighborAddress, bgpNeighbor.IfIndex)
+	if !flag {
+		h.logger.Info(fmt.Sprintln("ValidateBGPNeighbor: getIPAndIfIndexForNeighbor failed for neighbor address",
+			bgpNeighbor.NeighborAddress, "and ifIndex", bgpNeighbor.IfIndex))
+		return config.NeighborConfig{}, false
+	}
 	if ip == nil {
-		h.logger.Info(fmt.Sprintf("ValidateBGPNeighbor: Address %s is not valid", bgpNeighbor.NeighborAddress))
-		//neighbor address is a ifIndex
-		ifIndex, err := strconv.Atoi(bgpNeighbor.NeighborAddress)
-		if err != nil {
-			h.logger.Err("Error getting ifIndex")
-			//return config.NeighborConfig{}, false
-			ip = net.IPv4bcast
-		}
-		ipv4Intf, _ := h.server.AsicdClient.GetIPv4Intf(int32(ifIndex))
-		if ipv4Intf != nil {
-			h.logger.Info(fmt.Sprintln("Call ASICd to get ip address for interface with ifIndex: ", ifIndex))
-			ifIp, _, err := net.ParseCIDR(ipv4Intf.IpAddr)
-			if err != nil {
-				h.logger.Err(fmt.Sprintln("IpAddr: ", ipv4Intf.IpAddr, " derived for ifIndex ", ifIndex))
-				return config.NeighborConfig{}, false
-			}
-			h.logger.Info(fmt.Sprintln("Derived ip address as ", ipv4Intf.IpAddr, "ip: ", ifIp))
-			ifIpBytes := ifIp.To4()
-			if ifIpBytes == nil {
-				h.logger.Err("Invalid ip address")
-				return config.NeighborConfig{}, false
-			}
-			h.logger.Info(fmt.Sprintln("last byte = ", ifIpBytes[3]))
-			if ifIpBytes[3]%2 == 1 {
-				//odd number
-				ifIpBytes[3] = ifIpBytes[3] - 1
-			} else {
-				ifIpBytes[3] = ifIpBytes[3] + 1
-			}
-			//ifIpBytes[3][0] =  ifIpBytes[3][0] ^ 1 //toggle the last bit
-			h.logger.Info(fmt.Sprintln("last byte new ", ifIpBytes[3]))
-			ip = net.IP(ifIpBytes)
-			h.logger.Info(fmt.Sprintln("IP: ", ip.String()))
-		} else {
-			h.logger.Err(fmt.Sprintln("ipv4Intf not configured for the ifIndex ", ifIndex))
-			//TBD: do not return but add it anyways and track interface events
-			ip = net.IPv4bcast
-			// return config.NeighborConfig{}, false
-		}
+		h.logger.Info(fmt.Sprintln("ValidateBGPNeighbor: Neighbor IP address not valid", ip))
+		return config.NeighborConfig{}, false
 	}
 
 	pConf := config.NeighborConfig{
@@ -459,6 +488,7 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (config.
 			AddPathsMaxTx:           uint8(bgpNeighbor.AddPathsMaxTx),
 		},
 		NeighborAddress: ip,
+		IfIndex:         ifIndex,
 		PeerGroup:       bgpNeighbor.PeerGroup,
 	}
 	return pConf, true
@@ -492,6 +522,7 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.PeerType = int8(neighborState.PeerType)
 	bgpNeighborResponse.Description = neighborState.Description
 	bgpNeighborResponse.NeighborAddress = neighborState.NeighborAddress.String()
+	bgpNeighborResponse.IfIndex = neighborState.IfIndex
 	bgpNeighborResponse.SessionState = int32(neighborState.SessionState)
 	bgpNeighborResponse.RouteReflectorClusterId = int32(neighborState.RouteReflectorClusterId)
 	bgpNeighborResponse.RouteReflectorClient = neighborState.RouteReflectorClient

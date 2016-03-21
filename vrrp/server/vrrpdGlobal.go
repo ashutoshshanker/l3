@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/google/gopacket"
+	_ "github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"net"
+	"sync"
 	"time"
 	"utils/logging"
 	"vrrpd"
@@ -51,8 +53,9 @@ type VrrpPktHeader struct {
 }
 
 type VrrpFsm struct {
-	vrrpPkt  *VrrpPktHeader
-	vrrpInFo *VrrpGlobalInfo
+	key     string
+	vrrpHdr *VrrpPktHeader
+	inPkt   gopacket.Packet
 }
 
 type VrrpClientJson struct {
@@ -73,19 +76,30 @@ type VrrpAsicdClient struct {
 }
 
 type VrrpGlobalInfo struct {
-	IntfConfig vrrpd.VrrpIntfConfig
+	IntfConfig vrrpd.VrrpIntf
+	// VRRP MAC aka VMAC
+	VirtualRouterMACAddress string
 	// The initial value is the same as Advertisement_Interval.
 	MasterAdverInterval int32
 	// (((256 - priority) * Master_Adver_Interval) / 256)
 	SkewTime int32
 	// (3 * Master_Adver_Interval) + Skew_time
-	MasterDownInterval int32
+	MasterDownValue int32
+	MasterDownTimer *time.Timer
+	// Advertisement Timer
+	AdverTimer *time.Timer
 	// IfIndex IpAddr which needs to be used if no Virtual Ip is specified
 	IpAddr string
 	// cached info for IfName is required in future
 	IfName string
 	// Pcap Handler for receiving packets
 	pHandle *pcap.Handle
+	// Pcap Handler lock to write data one routine at a time
+	PcapHdlLock *sync.RWMutex
+	// State Name
+	StateName string
+	// Lock to read current state of vrrp object
+	StateLock *sync.RWMutex
 }
 
 type VrrpPktChannelInfo struct {
@@ -94,13 +108,10 @@ type VrrpPktChannelInfo struct {
 	IfIndex int32
 }
 
-/*
-var (
-	vrrpSnapshotLen int32         = 1024
-	vrrpPromiscuous bool          = false
-	vrrpTimeout     time.Duration = 10 * time.Microsecond
-)
-*/
+type VrrpTxChannelInfo struct {
+	key      string
+	priority uint16 // any value > 255 means ignore it
+}
 
 type VrrpServer struct {
 	logger                        *logging.Writer
@@ -113,11 +124,11 @@ type VrrpServer struct {
 	vrrpLinuxIfIndex2AsicdIfIndex map[int32]*net.Interface
 	vrrpIfIndexIpAddr             map[int32]string
 	vrrpVlanId2Name               map[int]string
-	VrrpIntfConfigCh              chan vrrpd.VrrpIntfConfig //VrrpGlobalInfo
+	VrrpCreateIntfConfigCh        chan vrrpd.VrrpIntf
+	VrrpDeleteIntfConfigCh        chan vrrpd.VrrpIntf
 	vrrpRxPktCh                   chan VrrpPktChannelInfo
-	vrrpTxPktCh                   chan VrrpPktChannelInfo
-	vrrpRxChStarted               bool
-	vrrpTxChStarted               bool
+	vrrpTxPktCh                   chan VrrpTxChannelInfo
+	vrrpFsmCh                     chan VrrpFsm
 	vrrpMacConfigAdded            bool
 	vrrpSnapshotLen               int32
 	vrrpPromiscuous               bool
@@ -127,6 +138,7 @@ type VrrpServer struct {
 const (
 	// Error Message
 	VRRP_USR_CONF_DB                    = "/UsrConfDb.db"
+	VRRP_INTF_DB                        = "VrrpIntf"
 	VRRP_INVALID_VRID                   = "VRID is invalid"
 	VRRP_CLIENT_CONNECTION_NOT_REQUIRED = "Connection to Client is not required"
 	VRRP_INCORRECT_VERSION              = "Version is not correct for received VRRP Packet"
@@ -135,6 +147,9 @@ const (
 	VRRP_MISSING_VRID_CONFIG            = "VRID is not configured on interface"
 	VRRP_CHECKSUM_ERR                   = "VRRP checksum failure"
 	VRRP_INVALID_PCAP                   = "Invalid Pcap Handler"
+	VRRP_VLAN_NOT_CREATED               = "Create Vlan before configuring VRRP"
+	VRRP_IPV4_INTF_NOT_CREATED          = "Create IPv4 interface before configuring VRRP"
+	VRRP_DATABASE_LOCKED                = "database is locked"
 
 	// VRRP multicast ip address for join
 	VRRP_GROUP_IP     = "224.0.0.18"
@@ -151,20 +166,30 @@ const (
 	VRRP_INTF_IPADDR_MAPPING_DEFAULT_SIZE = 5
 	VRRP_RX_BUF_CHANNEL_SIZE              = 100
 	VRRP_TX_BUF_CHANNEL_SIZE              = 1
+	VRRP_FSM_CHANNEL_SIZE                 = 1
 	VRRP_INTF_CONFIG_CH_SIZE              = 1
 
 	// ip/vrrp header Check Defines
 	VRRP_TTL                        = 255
 	VRRP_VERSION2                   = 2
 	VRRP_VERSION3                   = 3
-	VRRP_PKT_TYPE                   = 1 // Only one type is supported which is advertisement
+	VRRP_PKT_TYPE_ADVERTISEMENT     = 1 // Only one type is supported which is advertisement
 	VRRP_RSVD                       = 0
 	VRRP_HDR_CREATE_CHECKSUM        = 0
 	VRRP_HEADER_SIZE_EXCLUDING_IPVX = 8 // 8 bytes...
 	VRRP_IPV4_HEADER_MIN_SIZE       = 20
 	VRRP_HEADER_MIN_SIZE            = 20
+	VRRP_MASTER_PRIORITY            = 255
+	VRRP_IGNORE_PRIORITY            = 65535
+	VRRP_MASTER_DOWN_PRIORITY       = 0
 
 	// vrrp default configs
 	VRRP_DEFAULT_PRIORITY = 100
 	VRRP_IEEE_MAC_ADDR    = "00-00-5E-00-01-"
+
+	// vrrp state names
+	VRRP_UNINTIALIZE_STATE = "Un-Initialize"
+	VRRP_INITIALIZE_STATE  = "Initialize"
+	VRRP_BACKUP_STATE      = "Backup"
+	VRRP_MASTER_STATE      = "Master"
 )
