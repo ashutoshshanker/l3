@@ -10,8 +10,10 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
+func UpdateRoutesFromDB() (err error) {
 	logger.Info(fmt.Sprintln("UpdateRoutesFromDB"))
+	dbHdl := routeServiceHandler.DbHdl
+	defer dbHdl.Close()
 	dbCmd := "select * from IPv4Route"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
@@ -24,15 +26,6 @@ func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over IPV4Route rows with error %s\n", err))
 			return err
 		}
-/*		outIntf, _ := strconv.Atoi(ipRoute.OutgoingInterface)
-		var outIntfType ribd.Int
-		if ipRoute.OutgoingIntfType == "VLAN" {
-			outIntfType = commonDefs.L2RefTypeVlan
-		} else if ipRoute.OutgoingIntfType == "PHY" {
-			outIntfType = commonDefs.L2RefTypePort
-		} else if ipRoute.OutgoingIntfType == "NULL" {
-			outIntfType = commonDefs.IfTypeNull
-		}*/
         cfg := ribd.IPv4Route {ipRoute.OutgoingIntfType, ipRoute.Protocol, ipRoute.OutgoingInterface,ipRoute.DestinationNw,int32(ipRoute.Cost),ipRoute.NetworkMask,ipRoute.NextHopIp}
 		_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg)//ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
 		//_,err = createV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto),  FIBAndRIB,ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
@@ -207,21 +200,10 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 	}
 	return err
 }
-func UpdateFromDB() { //(paramsDir string) (err error) {
+func UpdatePolicyObjectsFromDB() { //(paramsDir string) (err error) {
 	logger.Info(fmt.Sprintln("UpdateFromDB"))
-	DbName := PARAMSDIR + "/UsrConfDb.db"
-	logger.Info(fmt.Sprintln("DB Location: ", DbName))
-	dbHdl, err := sql.Open("sqlite3", DbName)
-	if err != nil {
-		logger.Info(fmt.Sprintln("Failed to create the handle with err ", err))
-		return
-	}
-
-	if err = dbHdl.Ping(); err != nil {
-		logger.Info(fmt.Sprintln("Failed to keep DB connection alive"))
-		return
-	}
-	UpdateRoutesFromDB(dbHdl)           //paramsDir, dbHdl)
+	dbHdl := routeServiceHandler.DbHdl
+	defer dbHdl.Close()
 	UpdatePolicyConditionsFromDB(dbHdl) //paramsDir, dbHdl)
 	UpdatePolicyActionsFromDB(dbHdl)    //paramsDir, dbHdl)
 	UpdatePolicyStmtsFromDB(dbHdl)
