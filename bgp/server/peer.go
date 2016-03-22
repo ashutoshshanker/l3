@@ -218,10 +218,12 @@ func (p *Peer) getIfIdx() int32 {
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
 	if p.Neighbor.State.BfdNeighborState == "down" {
 		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n", p.Neighbor.NeighborAddress))
+		(*conn).Close()
 		return
 	}
 	if p.fsmManager == nil {
 		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s\n", p.Neighbor.NeighborAddress))
+		(*conn).Close()
 		return
 	}
 	p.fsmManager.acceptCh <- conn
