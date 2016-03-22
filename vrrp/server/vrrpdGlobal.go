@@ -83,7 +83,7 @@ type VrrpUpdateConfig struct {
 
 type VrrpGlobalStateInfo struct {
 	AdverRx             uint32 // Total advertisement received
-	AverTx              uint32 // Total advertisement send out
+	AdverTx             uint32 // Total advertisement send out
 	MasterIp            string // Remote Master Ip Address
 	LastAdverRx         string // Last advertisement received
 	LastAdverTx         string // Last advertisment send out

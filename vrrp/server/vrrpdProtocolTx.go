@@ -179,6 +179,6 @@ func (svr *VrrpServer) VrrpSendPkt(key string, priority uint16) {
 func (svr *VrrpServer) VrrpUpdateMasterTimerStateInfo(gblInfo *VrrpGlobalInfo) {
 	gblInfo.StateInfoLock.Lock()
 	gblInfo.StateInfo.LastAdverTx = time.Now().String()
-	gblInfo.StateInfo.AverTx++
+	gblInfo.StateInfo.AdverTx++
 	gblInfo.StateInfoLock.Unlock()
 }

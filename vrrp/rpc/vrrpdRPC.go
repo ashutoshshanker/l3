@@ -182,6 +182,16 @@ func (h *VrrpHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
 
 func (h *VrrpHandler) convertVrrpVridEntryToThriftEntry(state vrrpd.VrrpVridState) *vrrpd.VrrpVridState {
 	entry := vrrpd.NewVrrpVridState()
+	entry.IfIndex = state.IfIndex
+	entry.VRID = state.VRID
+	entry.AdverRx = int32(state.AdverRx)
+	entry.AdverTx = int32(state.AdverTx)
+	entry.CurrentState = state.CurrentState
+	entry.PreviousState = state.PreviousState
+	entry.LastAdverRx = state.LastAdverRx
+	entry.LastAdverTx = state.LastAdverTx
+	entry.MasterIp = state.MasterIp
+	entry.TransitionReason = state.TransitionReason
 	return entry
 }
 
@@ -194,7 +204,7 @@ func (h *VrrpHandler) GetBulkVrrpVridState(fromIndex vrrpd.Int,
 	}
 	vrrpEntryResponse := make([]*vrrpd.VrrpVridState, len(vrrpVridStateEntries))
 	for idx, item := range vrrpVridStateEntries {
-		vrrpEntryResponse[idx] = &item //h.convertVrrpVridEntryToThriftEntry(item)
+		vrrpEntryResponse[idx] = h.convertVrrpVridEntryToThriftEntry(item)
 	}
 	vridEntryBulk := vrrpd.NewVrrpVridStateGetInfo()
 	vridEntryBulk.VrrpVridStateList = vrrpEntryResponse
