@@ -355,6 +355,9 @@ func encodeRouterLsa(lsa RouterLsa, lsakey LsaKey) []byte {
 */
 
 func encodeNetworkLsa(lsa NetworkLsa, lsakey LsaKey) []byte {
+	if lsa.LsaMd.LSLen == 0 {
+		return nil
+	}
 	nLsa := make([]byte, lsa.LsaMd.LSLen)
 	lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
 	copy(nLsa[0:20], lsaHdr)

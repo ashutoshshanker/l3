@@ -325,7 +325,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				*/
 				if nbrConf.isMaster {
 					dbd_mdata, _ := server.ConstructAndSendDbdPacket(nbrKey, false, nbrDbPkt.mbit, false,
-						nbrDbPkt.options, nbrConf.ospfNbrSeqNum, false, false)
+						nbrDbPkt.options, nbrDbPkt.dd_sequence_number, false, false)
 					seq_num = dbd_mdata.dd_sequence_number + 1
 				}
 				nbrConf.ospfNbrLsaReqIndex = server.BuildAndSendLSAReq(nbrKey.OspfNbrRtrId, nbrConf)
@@ -673,9 +673,6 @@ func (server *OSPFServer) neighborDeadTimerEvent(nbrConfKey NeighborConfKey) {
 
 	nbr_entry_dead_func = func() {
 		server.logger.Info(fmt.Sprintln("NBRSCAN: DEAD ", nbrConfKey.OspfNbrRtrId))
-		nbrStateChangeData := NbrStateChangeMsg{
-			RouterId: nbrConfKey.OspfNbrRtrId,
-		}
 
 		_, exists := server.NeighborConfigMap[nbrConfKey.OspfNbrRtrId]
 		if exists {
@@ -697,9 +694,8 @@ func (server *OSPFServer) neighborDeadTimerEvent(nbrConfKey NeighborConfKey) {
 				nbrMsgType: NBRDEL,
 			}
 			// update neighbor map
+			server.processNeighborDeadEvent(nbrConfKey.OspfNbrRtrId, nbrConf.intfConfKey)
 			server.neighborConfCh <- nbrConfMsg
-			intfConf := server.IntfConfMap[nbrConf.intfConfKey]
-			intfConf.NbrStateChangeCh <- nbrStateChangeData
 		}
 	} // end of afterFunc callback
 
@@ -729,7 +725,31 @@ func (server *OSPFServer) refreshNeighborSlice() {
 
 }
 
-func (server *OSPFServer) processNeighborDeadEvent(nbrKey uint32) {
-	/* Age LSAs */
+/* @fn processNeighborDeadEvent
+	1) clear retransmission list.
+	2) send message to IFFSM
+	3) Updade If to neighbor map.
+	   Send message to LSDB  - To update router LSA
+	   and if i am DR update network LSA . Flood these LSAs.
+	4) delete neighbor from neighbor global map.
+IfFSM takes care of electing DR BDR and sending message to LSDB to
+update LSAs . therefore following APIs takes action 1.
+Note - From RFC -
+        If an adjacent router goes down, retransmissions may occur until
+        the adjacency is destroyed by OSPF's Hello Protocol.  When the
+        adjacency is destroyed, the Link state retransmission list is
+        cleared.
 
+*/
+func (server *OSPFServer) processNeighborDeadEvent(nbrKey uint32, intfKey IntfConfKey) {
+	/* Age LSAs */
+	server.logger.Info(fmt.Sprintln("DEAD: start processing nbr dead ", nbrKey))
+	server.resetNeighborLists(nbrKey, intfKey)
+	nbrStateChangeData := NbrStateChangeMsg{
+		RouterId: nbrKey,
+	}
+
+	intfConf := server.IntfConfMap[intfKey]
+	intfConf.NbrStateChangeCh <- nbrStateChangeData
+	server.logger.Info(fmt.Sprintln("DEAD: end processing nbr dead ", nbrKey))
 }

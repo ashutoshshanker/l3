@@ -193,15 +193,8 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 
 	netmask := convertIPv4ToUint32(ent.IfNetmask)
 	attachedRtr := make([]uint32, 0)
-	/*for key, nbrEnt := range ent.NeighborMap {
-		if nbrEnt.FullState == false {
-			continue
-		}
-		attachedRtr = append(attachedRtr, key.RouterId)
-	}*/
 	for index := range nbrmdata.nbrList {
 		flag := false
-		/* TODO: HACK Need to be removed */
 		for i := 0; i < len(attachedRtr); i++ {
 			if nbrmdata.nbrList[index] == attachedRtr[i] {
 				flag = true
@@ -219,6 +212,10 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 		return
 	}
 
+	server.logger.Info(fmt.Sprintln("NetworkLSA: attached router"))
+	for i := range attachedRtr {
+		server.logger.Info(fmt.Sprintln("NetworkLSA: ", i, " ", attachedRtr[i]))
+	}
 	LSType := NetworkLSA
 	LSId := convertAreaOrRouterIdUint32(ent.IfIpAddr.String())
 	Options := uint8(2) // Need to be revisited
@@ -762,6 +759,11 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 	}
 }
 
+/* @fn processNeighborFullEvent
+	Generate network LSA if the router is DR.
+	Send message for LSAFLOOD which will flood
+	router (and network) LSA 
+*/
 func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
 	server.logger.Info(fmt.Sprintln("LSDB: Nbr full. area id  ", msg.areaId,
 		" intf ", msg.intf, " isDr ", msg.isDR, " nbrList ", msg.nbrList))
@@ -769,6 +771,12 @@ func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
 	server.sendLsdbToNeighborEvent(msg.intf, 0, msg.areaId, 0, 0, LSAFLOOD)
 }
 
+/* @fn processDrBdrChangeMsg
+	when DR changes 
+	generate network and router LSA if I am DR. 
+	generate router LSA if I am not DR. Also flush 
+	network LSA is I am become DR to no DR.
+*/
 func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 	if msg.oldstate != msg.newstate {
 		if msg.newstate == config.DesignatedRouter {
@@ -785,11 +793,19 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 			server.ospfNbrLsaUpdSendCh <- flood_pkt
 		}
 	} else {
+		if  msg.newstate == config.DesignatedRouter {
+			 server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
+		}
 		server.generateRouterLSA(msg.areaId)
 	}
 	server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)
 }
 
+/* @processLSDatabaseTicker
+	Visited every time ticker is fired to 
+	check expired LSAs and send message to 
+	flood LSA 
+*/
 func (server *OSPFServer) processLSDatabaseTicker() {
 	/* scan through LSDB. Flood expired LSAs and
 	   delete from LSDB */

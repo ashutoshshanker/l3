@@ -210,6 +210,10 @@ func (server *OSPFServer) processFloodMsg(lsa_data ospfFloodMsg) {
 		server.logger.Info(fmt.Sprintln("FLOOD: Flood request received from interface key ",
 			lsa_data.intfKey, " nbr ", lsa_data.nbrKey))
 		for key, intf := range server.IntfConfMap {
+			flood_lsa := server.interfaceFloodCheck(key)
+			if !flood_lsa {
+				continue // dont flood if no nbr is full for this interface
+			}
 			lsa_upd_pkt := server.SendSelfOrigLSA(lsa_data.areaId, lsa_data.intfKey)
 			lsa_pkt_len := len(lsa_upd_pkt)
 			if lsa_pkt_len == 0 {
@@ -228,7 +232,7 @@ func (server *OSPFServer) processFloodMsg(lsa_data ospfFloodMsg) {
 			if intf.IfIpAddr.Equal(intConf.IfIpAddr) {
 				continue // dont flood the LSA on the interface it is received.
 			}
-			send := server.interfaceFloodCheck(lsa_data.nbrKey, key, intf)
+			send := server.nbrFloodCheck(lsa_data.nbrKey, key, intf)
 			if send {
 				if lsa_data.pkt != nil {
 					server.logger.Info(fmt.Sprintln("LSASELFLOOD: Unicast LSA interface ", intf.IfIpAddr, " lsid ", lsid, " lstype ", lsa_data.lsType))
@@ -322,7 +326,7 @@ func (server *OSPFServer) constructAndSendLsaAgeFlood() {
 /* @fn interfaceFloodCheck
 Check if we need to flood the LSA on the interface
 */
-func (server *OSPFServer) interfaceFloodCheck(nbrKey uint32, key IntfConfKey, intf IntfConf) bool {
+func (server *OSPFServer) nbrFloodCheck(nbrKey uint32, key IntfConfKey, intf IntfConf) bool {
 	/* Check neighbor state */
 	flood_check := true
 	nbrConf := server.NeighborConfigMap[nbrKey]
@@ -331,6 +335,12 @@ func (server *OSPFServer) interfaceFloodCheck(nbrKey uint32, key IntfConfKey, in
 		server.logger.Info(fmt.Sprintln("IF FLOOD: Nbr is DR/BDR. Dont flood on this interface . nbr - ", nbrKey, nbrConf.OspfNbrIPAddr))
 		return false
 	}
+	flood_check = server.interfaceFloodCheck(key)
+	return flood_check
+}
+
+func (server *OSPFServer) interfaceFloodCheck(key IntfConfKey) bool {
+	flood_check := false
 	nbrData, exist := ospfIntfToNbrMap[key]
 	if !exist {
 		return false

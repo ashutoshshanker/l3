@@ -300,3 +300,22 @@ func (server *OSPFServer) sendLsdbToNeighborEvent(intfKey IntfConfKey, nbrKey ui
 	server.ospfNbrLsaUpdSendCh <- msg
 	//server.logger.Info("Send flood data to Tx thread")
 }
+
+func (server *OSPFServer) resetNeighborLists(nbr uint32, intf IntfConfKey) {
+/* List of Neighbors per interface instance */
+	updateLSALists(nbr)
+ nbrMdata, exists := ospfIntfToNbrMap[intf]
+        if !exists {
+		server.logger.Info(fmt.Sprintln("DEAD: Nbr dead but if to nbr map doesnt exist. ", nbr))
+		return
+        }       
+        newList := []uint32{}
+        for inst := range nbrMdata.nbrList {
+                if nbrMdata.nbrList[inst] != nbr {
+		 newList = append(newList, nbrMdata.nbrList[inst])
+                }       
+        }
+	nbrMdata.nbrList = newList       
+        ospfIntfToNbrMap[intf] = nbrMdata
+	server.logger.Info(fmt.Sprintln("DEAD: nbrList ", nbrMdata.nbrList))
+}

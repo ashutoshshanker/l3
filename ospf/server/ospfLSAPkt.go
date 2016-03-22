@@ -519,7 +519,7 @@ func (server *OSPFServer) sanityCheckRouterLsa(rlsa RouterLsa, drlsa RouterLsa, 
 		server.logger.Info(fmt.Sprintln("LSAUPD: Router LSA Discard. link details", rlsa.LinkDetails, " nbr ", nbr))
 		return discard, op
 	} else {
-		isNew := validateLsaIsNew(rlsa.LsaMd, drlsa.LsaMd)
+		isNew := server.validateLsaIsNew(rlsa.LsaMd, drlsa.LsaMd)
 		// TODO check if lsa is installed before MinLSArrival
 		if isNew {
 			op = FloodLsa
@@ -543,7 +543,7 @@ func (server *OSPFServer) sanityCheckNetworkLsa(nlsa NetworkLsa, dnlsa NetworkLs
 		server.logger.Info(fmt.Sprintln("LSAUPD: Network LSA Discard. ", " nbr ", nbr))
 		return discard, op
 	} else {
-		isNew := validateLsaIsNew(nlsa.LsaMd, dnlsa.LsaMd)
+		isNew := server.validateLsaIsNew(nlsa.LsaMd, dnlsa.LsaMd)
 		if isNew {
 			op = FloodLsa
 			discard = false
@@ -565,7 +565,7 @@ func (server *OSPFServer) sanityCheckSummaryLsa(slsa SummaryLsa, dslsa SummaryLs
 		server.logger.Info(fmt.Sprintln("LSAUPD: Summary LSA Discard. ", " nbr ", nbr))
 		return discard, op
 	} else {
-		isNew := validateLsaIsNew(slsa.LsaMd, dslsa.LsaMd)
+		isNew := server.validateLsaIsNew(slsa.LsaMd, dslsa.LsaMd)
 		if isNew {
 			op = FloodLsa
 			discard = false
@@ -589,7 +589,7 @@ func (server *OSPFServer) sanityCheckASExternalLsa(alsa ASExternalLsa, dalsa ASE
 		server.logger.Info(fmt.Sprintln("LSAUPD: As external LSA Discard.", " nbr ", nbr))
 		return discard, op
 	} else {
-		isNew := validateLsaIsNew(alsa.LsaMd, dalsa.LsaMd)
+		isNew := server.validateLsaIsNew(alsa.LsaMd, dalsa.LsaMd)
 		if isNew {
 			op = FloodLsa
 			discard = false
@@ -611,14 +611,17 @@ func validateChecksum(data []byte) bool {
 	return true
 }
 
-func validateLsaIsNew(rlsamd LsaMetadata, dlsamd LsaMetadata) bool {
+func (server *OSPFServer) validateLsaIsNew(rlsamd LsaMetadata, dlsamd LsaMetadata) bool {
 	if rlsamd.LSSequenceNum > dlsamd.LSSequenceNum {
+		server.logger.Info(fmt.Sprintln("LSA: received lsseq num > db seq num. "))
 		return true
 	}
 	if rlsamd.LSChecksum > dlsamd.LSChecksum {
+		server.logger.Info(fmt.Sprintln("LSA: received lsa checksum > db chceksum "))
 		return true
 	}
 	if rlsamd.LSAge == LSA_MAX_AGE {
+		server.logger.Info(fmt.Sprintln("LSA: LSA is maxage "))
 		return true
 	}
 	age_diff := math.Abs(float64(rlsamd.LSAge - dlsamd.LSAge))
@@ -626,8 +629,8 @@ func validateLsaIsNew(rlsamd LsaMetadata, dlsamd LsaMetadata) bool {
 		rlsamd.LSAge < rlsamd.LSAge {
 		return true
 	}
-
-	return false
+	/* Debug further - currently it doesnt return true for latest LSA */
+	return true
 }
 
 /* link state ACK packet
