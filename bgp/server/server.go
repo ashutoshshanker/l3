@@ -68,6 +68,11 @@ type PolicyParams struct {
 	withdrawn  *([]*Destination)
 }
 
+type ReachabilityInfo struct {
+	IP          string
+	ReachableCh chan bool
+}
+
 type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *BGPPolicyEngine
@@ -86,6 +91,7 @@ type BGPServer struct {
 	PeerConnEstCh    chan string
 	PeerConnBrokenCh chan string
 	PeerCommandCh    chan config.PeerCommand
+	ReachabilityCh   chan ReachabilityInfo
 	BGPPktSrc        chan *packet.BGPPktSrc
 
 	NeighborMutex  sync.RWMutex
@@ -118,6 +124,7 @@ func NewBGPServer(logger *logging.Writer, policyEngine *BGPPolicyEngine, ribdCli
 	bgpServer.PeerConnEstCh = make(chan string)
 	bgpServer.PeerConnBrokenCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
+	bgpServer.ReachabilityCh = make(chan ReachabilityInfo)
 	bgpServer.BGPPktSrc = make(chan *packet.BGPPktSrc)
 	bgpServer.NeighborMutex = sync.RWMutex{}
 	bgpServer.PeerMap = make(map[string]*Peer)
@@ -1338,6 +1345,15 @@ func (server *BGPServer) StartServer() {
 
 		case err := <-bfdSubSocketErrCh:
 			server.logger.Info(fmt.Sprintf("Server: BFD subscriber socket returned err:%s", err))
+
+		case reachabilityInfo := <-server.ReachabilityCh:
+			server.logger.Info(fmt.Sprintln("Server: Reachability info for ip", reachabilityInfo.IP))
+			_, err := server.ribdClient.GetRouteReachabilityInfo(reachabilityInfo.IP)
+			if err != nil {
+				reachabilityInfo.ReachableCh <- false
+			} else {
+				reachabilityInfo.ReachableCh <- true
+			}
 		}
 	}
 }
