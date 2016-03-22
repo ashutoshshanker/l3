@@ -40,6 +40,69 @@ func VrrpCheckConfig(config *vrrpd.VrrpIntf, h *VrrpHandler) (bool, error) {
 	return true, nil
 }
 
+func VrrpNewHandler(vrrpSvr *vrrpServer.VrrpServer, logger *logging.Writer) *VrrpHandler {
+	hdl := new(VrrpHandler)
+	hdl.server = vrrpSvr
+	hdl.logger = logger
+	return hdl
+}
+
+func VrrpRpcGetClient(logger *logging.Writer, fileName string, process string) (*VrrpClientJson, error) {
+	var allClients []VrrpClientJson
+
+	data, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		logger.Err(fmt.Sprintf("Failed to open VRRPd config file:%s, err:%s", fileName, err))
+		return nil, err
+	}
+
+	json.Unmarshal(data, &allClients)
+	for _, client := range allClients {
+		if client.Name == process {
+			return &client, nil
+		}
+	}
+
+	logger.Err(fmt.Sprintf("Did not find port for %s in config file:%s", process, fileName))
+	return nil, errors.New(VRRP_RPC_NO_PORT)
+
+}
+
+func VrrpRpcStartServer(log *logging.Writer, handler *VrrpHandler, paramsDir string) error {
+	logger := log
+	fileName := paramsDir
+
+	if fileName[len(fileName)-1] != '/' {
+		fileName = fileName + "/"
+	}
+	fileName = fileName + "clients.json"
+
+	clientJson, err := VrrpRpcGetClient(logger, fileName, "vrrpd")
+	if err != nil || clientJson == nil {
+		return err
+	}
+	logger.Info(fmt.Sprintln("Got Client Info for", clientJson.Name, " port",
+		clientJson.Port))
+	// create processor, transport and protocol for server
+	processor := vrrpd.NewVRRPDServicesProcessor(handler)
+	transportFactory := thrift.NewTBufferedTransportFactory(8192)
+	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
+	transport, err := thrift.NewTServerSocket("localhost:" + strconv.Itoa(clientJson.Port))
+	if err != nil {
+		logger.Info(fmt.Sprintln("StartServer: NewTServerSocket "+
+			"failed with error:", err))
+		return err
+	}
+	server := thrift.NewTSimpleServer4(processor, transport,
+		transportFactory, protocolFactory)
+	err = server.Serve()
+	if err != nil {
+		logger.Err(fmt.Sprintln("Failed to start the listener, err:", err))
+		return err
+	}
+	return nil
+}
+
 func (h *VrrpHandler) CreateVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error) {
 	h.logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
 		config.IfIndex))
@@ -81,7 +144,7 @@ func (h *VrrpHandler) DeleteVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error)
 	return true, nil
 }
 
-func (h *VrrpHandler) convertVrrpEntryToThriftEntry(state vrrpd.VrrpIntfState) *vrrpd.VrrpIntfState {
+func (h *VrrpHandler) convertVrrpIntfEntryToThriftEntry(state vrrpd.VrrpIntfState) *vrrpd.VrrpIntfState {
 	entry := vrrpd.NewVrrpIntfState()
 	entry.VirtualRouterMACAddress = state.VirtualRouterMACAddress
 	entry.PreemptMode = bool(state.PreemptMode)
@@ -106,7 +169,7 @@ func (h *VrrpHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
 	}
 	vrrpEntryResponse := make([]*vrrpd.VrrpIntfState, len(vrrpIntfStateEntries))
 	for idx, item := range vrrpIntfStateEntries {
-		vrrpEntryResponse[idx] = h.convertVrrpEntryToThriftEntry(item)
+		vrrpEntryResponse[idx] = h.convertVrrpIntfEntryToThriftEntry(item)
 	}
 	intfEntryBulk := vrrpd.NewVrrpIntfStateGetInfo()
 	intfEntryBulk.VrrpIntfStateList = vrrpEntryResponse
@@ -117,65 +180,27 @@ func (h *VrrpHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
 	return intfEntryBulk, nil
 }
 
-func VrrpNewHandler(vrrpSvr *vrrpServer.VrrpServer, logger *logging.Writer) *VrrpHandler {
-	hdl := new(VrrpHandler)
-	hdl.server = vrrpSvr
-	hdl.logger = logger
-	return hdl
+func (h *VrrpHandler) convertVrrpVridEntryToThriftEntry(state vrrpd.VrrpVridState) *vrrpd.VrrpVridState {
+	entry := vrrpd.NewVrrpVridState()
+	return entry
 }
 
-func VrrpRpcGetClient(logger *logging.Writer, fileName string, process string) (*VrrpClientJson, error) {
-	var allClients []VrrpClientJson
-
-	data, err := ioutil.ReadFile(fileName)
-	if err != nil {
-		logger.Err(fmt.Sprintf("Failed to open VRRPd config file:%s, err:%s", fileName, err))
-		return nil, err
+func (h *VrrpHandler) GetBulkVrrpVridState(fromIndex vrrpd.Int,
+	count vrrpd.Int) (*vrrpd.VrrpVridStateGetInfo, error) {
+	nextIdx, currCount, vrrpVridStateEntries := h.server.VrrpGetBulkVrrpVridStates(
+		int(fromIndex), int(count))
+	if vrrpVridStateEntries == nil {
+		return nil, errors.New("Interface Slice is not initialized")
 	}
-
-	json.Unmarshal(data, &allClients)
-	for _, client := range allClients {
-		if client.Name == process {
-			return &client, nil
-		}
+	vrrpEntryResponse := make([]*vrrpd.VrrpVridState, len(vrrpVridStateEntries))
+	for idx, item := range vrrpVridStateEntries {
+		vrrpEntryResponse[idx] = &item //h.convertVrrpVridEntryToThriftEntry(item)
 	}
-
-	logger.Err(fmt.Sprintf("Did not find port for %s in config file:%s", process, fileName))
-	return nil, errors.New(VRRP_RPC_NO_PORT)
-
-}
-
-func StartServer(log *logging.Writer, handler *VrrpHandler, paramsDir string) error {
-	logger := log
-	fileName := paramsDir
-
-	if fileName[len(fileName)-1] != '/' {
-		fileName = fileName + "/"
-	}
-	fileName = fileName + "clients.json"
-
-	clientJson, err := VrrpRpcGetClient(logger, fileName, "vrrpd")
-	if err != nil || clientJson == nil {
-		return err
-	}
-	logger.Info(fmt.Sprintln("Got Client Info for", clientJson.Name, " port",
-		clientJson.Port))
-	// create processor, transport and protocol for server
-	processor := vrrpd.NewVRRPDServicesProcessor(handler)
-	transportFactory := thrift.NewTBufferedTransportFactory(8192)
-	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
-	transport, err := thrift.NewTServerSocket("localhost:" + strconv.Itoa(clientJson.Port))
-	if err != nil {
-		logger.Info(fmt.Sprintln("StartServer: NewTServerSocket "+
-			"failed with error:", err))
-		return err
-	}
-	server := thrift.NewTSimpleServer4(processor, transport,
-		transportFactory, protocolFactory)
-	err = server.Serve()
-	if err != nil {
-		logger.Err(fmt.Sprintln("Failed to start the listener, err:", err))
-		return err
-	}
-	return nil
+	vridEntryBulk := vrrpd.NewVrrpVridStateGetInfo()
+	vridEntryBulk.VrrpVridStateList = vrrpEntryResponse
+	vridEntryBulk.StartIdx = fromIndex
+	vridEntryBulk.EndIdx = vrrpd.Int(nextIdx)
+	vridEntryBulk.Count = vrrpd.Int(currCount)
+	vridEntryBulk.More = (nextIdx != 0)
+	return vridEntryBulk, nil
 }

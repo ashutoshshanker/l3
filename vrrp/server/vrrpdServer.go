@@ -49,9 +49,29 @@ func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfSt
 	entry.VirtualRouterMACAddress = gblInfo.VirtualRouterMACAddress
 	entry.SkewTime = gblInfo.SkewTime
 	entry.MasterDownTimer = gblInfo.MasterDownValue
-	gblInfo.StateLock.Lock()
+	gblInfo.StateNameLock.Lock()
 	entry.VrrpState = gblInfo.StateName
-	gblInfo.StateLock.Unlock()
+	gblInfo.StateNameLock.Unlock()
+}
+
+func (svr *VrrpServer) VrrpPopulateVridState(key string, entry *vrrpd.VrrpVridState) {
+	gblInfo, ok := svr.vrrpGblInfo[key]
+	if ok == false {
+		svr.logger.Err(fmt.Sprintln("Entry not found for", key))
+		return
+	}
+	entry.IfIndex = gblInfo.IntfConfig.IfIndex
+	entry.VRID = gblInfo.IntfConfig.VRID
+	gblInfo.StateInfoLock.Lock()
+	entry.AdverRx = int32(gblInfo.StateInfo.AdverRx)
+	entry.AdverTx = int32(gblInfo.StateInfo.AverTx)
+	entry.CurrentState = gblInfo.StateInfo.CurrentFsmState
+	entry.PreviousState = gblInfo.StateInfo.PreviousFsmState
+	entry.LastAdverRx = gblInfo.StateInfo.LastAdverRx
+	entry.LastAdverTx = gblInfo.StateInfo.LastAdverTx
+	entry.MasterIp = gblInfo.StateInfo.MasterIp
+	entry.TransitionReason = gblInfo.StateInfo.ReasonForTransition
+	gblInfo.StateInfoLock.Unlock()
 }
 
 func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) {
@@ -91,16 +111,17 @@ func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 
 	// Initialize Locks for accessing shared ds
 	gblInfo.PcapHdlLock = &sync.RWMutex{}
-	gblInfo.StateLock = &sync.RWMutex{}
+	gblInfo.StateNameLock = &sync.RWMutex{}
 	gblInfo.MasterDownLock = &sync.RWMutex{}
+	gblInfo.StateInfoLock = &sync.RWMutex{}
 
 	// Update Ip Addr at last
 	svr.VrrpUpdateIntfIpAddr(&gblInfo)
 
 	// Set Initial state
-	gblInfo.StateLock.Lock()
+	gblInfo.StateNameLock.Lock()
 	gblInfo.StateName = VRRP_INITIALIZE_STATE
-	gblInfo.StateLock.Unlock()
+	gblInfo.StateNameLock.Unlock()
 	svr.vrrpGblInfo[key] = gblInfo
 	svr.vrrpIntfStateSlice = append(svr.vrrpIntfStateSlice, key)
 
@@ -202,7 +223,7 @@ func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(idx int, cnt int) (int, int, []
 	var nextIdx int
 	var count int
 	if svr.vrrpIntfStateSlice == nil {
-		svr.logger.Info("DRA: Interface Slice is not initialized")
+		svr.logger.Info("Interface Slice is not initialized")
 		return 0, 0, nil
 	}
 	length := len(svr.vrrpIntfStateSlice)
@@ -213,7 +234,30 @@ func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(idx int, cnt int) (int, int, []
 	for i, j = 0, idx; i < cnt && j < length; j++ {
 		key := svr.vrrpIntfStateSlice[j]
 		svr.VrrpPopulateIntfState(key, &result[i])
-		//result = append(result, &nextEntry)
+		i++
+	}
+	if j == length {
+		nextIdx = 0
+	}
+	count = i
+	return nextIdx, count, result
+}
+
+func (svr *VrrpServer) VrrpGetBulkVrrpVridStates(idx int, cnt int) (int, int, []vrrpd.VrrpVridState) {
+	var nextIdx int
+	var count int
+	if svr.vrrpIntfStateSlice == nil {
+		svr.logger.Info("Interface slice is not initialized")
+		return 0, 0, nil
+	}
+	length := len(svr.vrrpIntfStateSlice)
+	result := make([]vrrpd.VrrpVridState, cnt)
+	var i int
+	var j int
+
+	for i, j = 0, idx; i < cnt && j < length; j++ {
+		key := svr.vrrpIntfStateSlice[j]
+		svr.VrrpPopulateVridState(key, &result[i])
 		i++
 	}
 	if j == length {
@@ -474,12 +518,12 @@ func (svr *VrrpServer) VrrpChecknUpdateGblInfo(IfIndex int32, IpAddr string) {
 			continue
 		}
 		gblInfo.IpAddr = IpAddr
-		gblInfo.StateLock.Lock()
+		gblInfo.StateNameLock.Lock()
 		if gblInfo.StateName == VRRP_UNINTIALIZE_STATE {
 			startFsm = true
 			gblInfo.StateName = VRRP_INITIALIZE_STATE
 		}
-		gblInfo.StateLock.Unlock()
+		gblInfo.StateNameLock.Unlock()
 		svr.vrrpGblInfo[key] = gblInfo
 		// Create Pkt Listener if not created... This will handle a
 		// scneario when VRRP configs are done before IF Index is up
