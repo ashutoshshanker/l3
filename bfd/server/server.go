@@ -258,11 +258,11 @@ func (server *BFDServer) PublishSessionNotifications() {
 }
 
 func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
-	server.logger.Info("Reading BfdGlobalConfig")
-	dbCmd := "SELECT * FROM BfdGlobalConfig"
+	server.logger.Info("Reading BfdGlobal")
+	dbCmd := "SELECT * FROM BfdGlobal"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdGlobalConfig: ", err))
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdGlobal: ", err))
 		return err
 	}
 
@@ -271,10 +271,10 @@ func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
 		var enable int
 		err = rows.Scan(&rtrBfd, &enable)
 		if err != nil {
-			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdGlobalConfig: ", err))
+			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdGlobal: ", err))
 			return err
 		}
-		server.logger.Info(fmt.Sprintln("BfdGlobalConfig - Enable: ", enable))
+		server.logger.Info(fmt.Sprintln("BfdGlobal - Enable: ", enable))
 		if enable != 1 {
 			gConf := GlobalConfig{
 				Enable: dbutils.ConvertIntToBool(enable),
@@ -286,11 +286,11 @@ func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
 }
 
 func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
-	server.logger.Info("Reading BfdIntfConfig")
-	dbCmd := "SELECT * FROM BfdIntfConfig"
+	server.logger.Info("Reading BfdInterface")
+	dbCmd := "SELECT * FROM BfdInterface"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdIntfConfig: ", err))
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdInterface: ", err))
 		return err
 	}
 
@@ -307,7 +307,7 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 		var authenticationData string
 		err = rows.Scan(&interfaceId, &localMultiplier, &desiredMinTxInterval, &requiredMinRxInterval, &requiredMinEchoRxInterval, &demandEnabled, &authenticationEnabled, &authenticationType, &authenticationKeyId, &authenticationData)
 		if err != nil {
-			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdIntfConfig: ", err))
+			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdInterface: ", err))
 			return err
 		}
 		ifConf := IntfConfig{
@@ -322,18 +322,18 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 			AuthenticationKeyId:       authenticationKeyId,
 			AuthenticationData:        authenticationData,
 		}
-		server.logger.Info(fmt.Sprintln("BfdIntfConfig - ", ifConf))
+		server.logger.Info(fmt.Sprintln("BfdInterface - ", ifConf))
 		server.IntfConfigCh <- ifConf
 	}
 	return nil
 }
 
 func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
-	server.logger.Info("Reading BfdSessionConfig")
-	dbCmd := "SELECT * FROM BfdSessionConfig"
+	server.logger.Info("Reading BfdSession")
+	dbCmd := "SELECT * FROM BfdSession"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdSessionConfig: ", err))
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdSession: ", err))
 		return err
 	}
 
@@ -343,7 +343,7 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 		var owner string
 		err = rows.Scan(&dstIp, &perLink, &owner)
 		if err != nil {
-			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSessionConfig: ", err))
+			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSession: ", err))
 			return err
 		}
 		sessionConf := SessionConfig{
@@ -352,7 +352,7 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 			Protocol:  bfddCommonDefs.USER,
 			Operation: bfddCommonDefs.CREATE,
 		}
-		server.logger.Info(fmt.Sprintln("BfdSessionConfig : ", sessionConf))
+		server.logger.Info(fmt.Sprintln("BfdSession : ", sessionConf))
 		server.SessionConfigCh <- sessionConf
 	}
 	return nil
