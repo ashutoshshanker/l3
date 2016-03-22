@@ -17,8 +17,8 @@ type VrrpFsmIntf interface {
 	VrrpInitState(key string)
 	VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader, key string)
 	VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHeader, key string)
-	VrrpTransitionToMaster(key string)
-	VrrpTransitionToBackup(key string, AdvertisementInterval int32)
+	VrrpTransitionToMaster(key string, reason string)
+	VrrpTransitionToBackup(key string, AdvertisementInterval int32, reason string)
 	VrrpHandleIntfUpEvent(IfIndex int32)
 	VrrpHandleIntfShutdownEvent(IfIndex int32)
 }
@@ -84,6 +84,22 @@ func (svr *VrrpServer) VrrpUpdateSecIp(gblInfo VrrpGlobalInfo, configure bool) {
 	return
 }
 
+func (svr *VrrpServer) VrrpUpdateStateInfo(key string, reason string, currentSt string) {
+	gblInfo, exists := svr.vrrpGblInfo[key]
+	if !exists {
+		svr.logger.Err("No entry found ending fsm")
+		return
+	}
+	gblInfo.StateInfoLock.Lock()
+	gblInfo.StateInfo.CurrentFsmState = currentSt
+	gblInfo.StateNameLock.Lock()
+	gblInfo.StateInfo.PreviousFsmState = gblInfo.StateName
+	gblInfo.StateNameLock.Unlock()
+	gblInfo.StateInfo.ReasonForTransition = reason
+	gblInfo.StateInfoLock.Unlock()
+	svr.vrrpGblInfo[key] = gblInfo
+}
+
 func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 	var timerCheck_func func()
 	timerCheck_func = func() {
@@ -112,19 +128,22 @@ func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 			time.Duration(gblInfo.IntfConfig.AdvertisementInterval)*time.Second,
 			timerCheck_func)
 		// (145) + Transition to the {Master} state
-		gblInfo.StateLock.Lock()
+		gblInfo.StateNameLock.Lock()
 		gblInfo.StateName = VRRP_MASTER_STATE
-		gblInfo.StateLock.Unlock()
+		gblInfo.StateNameLock.Unlock()
 		svr.vrrpGblInfo[key] = gblInfo
 	}
 }
 
-func (svr *VrrpServer) VrrpTransitionToMaster(key string) {
+func (svr *VrrpServer) VrrpTransitionToMaster(key string, reason string) {
 	// (110) + Send an ADVERTISEMENT
 	svr.vrrpTxPktCh <- VrrpTxChannelInfo{
 		key:      key,
 		priority: VRRP_IGNORE_PRIORITY,
 	}
+
+	svr.VrrpUpdateStateInfo(key, reason, VRRP_MASTER_STATE)
+
 	gblInfo, exists := svr.vrrpGblInfo[key]
 	if !exists {
 		svr.logger.Err("No entry found ending fsm")
@@ -155,7 +174,7 @@ func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
 		timerCheck_func = func() {
 			svr.logger.Info(fmt.Sprintln("master down timer expired..transition to Master"))
 			// do timer expiry handling here
-			svr.VrrpTransitionToMaster(key)
+			svr.VrrpTransitionToMaster(key, "Master Down Timer expired")
 		}
 		svr.logger.Info("initiating master down timer")
 		svr.logger.Info(fmt.Sprintln("setting down timer to", gblInfo.MasterDownValue))
@@ -167,9 +186,9 @@ func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
 		gblInfo.MasterDownLock.Unlock()
 	}
 	//(165) + Transition to the {Backup} state
-	gblInfo.StateLock.Lock()
+	gblInfo.StateNameLock.Lock()
 	gblInfo.StateName = VRRP_BACKUP_STATE
-	gblInfo.StateLock.Unlock()
+	gblInfo.StateNameLock.Unlock()
 	svr.vrrpGblInfo[key] = gblInfo
 }
 
@@ -185,7 +204,8 @@ func (svr *VrrpServer) VrrpCalculateDownValue(AdvertisementInterval int32,
 	gblInfo.MasterDownValue = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
 }
 
-func (svr *VrrpServer) VrrpTransitionToBackup(key string, AdvertisementInterval int32) {
+func (svr *VrrpServer) VrrpTransitionToBackup(key string, AdvertisementInterval int32,
+	reason string) {
 	svr.logger.Info(fmt.Sprintln("advertisement timer to be used in backup state for",
 		"calculating master down timer is ", AdvertisementInterval))
 	gblInfo, exists := svr.vrrpGblInfo[key]
@@ -198,6 +218,7 @@ func (svr *VrrpServer) VrrpTransitionToBackup(key string, AdvertisementInterval 
 	svr.VrrpCalculateDownValue(AdvertisementInterval, &gblInfo)
 	gblInfo.MasterDownLock.Unlock()
 	svr.vrrpGblInfo[key] = gblInfo
+	svr.VrrpUpdateStateInfo(key, reason, VRRP_BACKUP_STATE)
 	svr.VrrpHandleMasterDownTimer(key)
 }
 
@@ -210,13 +231,14 @@ func (svr *VrrpServer) VrrpInitState(key string) {
 	}
 	if gblInfo.IntfConfig.Priority == VRRP_MASTER_PRIORITY {
 		svr.logger.Info("Transitioning to Master State")
-		svr.VrrpTransitionToMaster(key)
+		svr.VrrpTransitionToMaster(key, "Priority is 255")
 	} else {
 		svr.logger.Info("Transitioning to Backup State")
 		svr.VrrpUpdateSecIp(gblInfo, false /*configure or set*/)
 		// Transition to backup state first
 		svr.VrrpTransitionToBackup(key,
-			gblInfo.IntfConfig.AdvertisementInterval)
+			gblInfo.IntfConfig.AdvertisementInterval,
+			"Priority is not 255")
 	}
 }
 
@@ -253,8 +275,13 @@ func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 	}
 
 	if vrrpHdr.Type == VRRP_PKT_TYPE_ADVERTISEMENT {
-		svr.logger.Info(fmt.Sprintln("Rcvd Advertisement pkt for VRID",
-			gblInfo.IntfConfig.VRID, "in backup state"))
+		gblInfo.StateInfoLock.Lock()
+		gblInfo.StateInfo.MasterIp = ipHdr.SrcIP.String()
+		gblInfo.StateInfo.AdverRx++
+		gblInfo.StateInfo.LastAdverRx = time.Now().String()
+		gblInfo.StateInfo.CurrentFsmState = gblInfo.StateName
+		gblInfo.StateInfoLock.Unlock()
+		svr.vrrpGblInfo[key] = gblInfo
 		if vrrpHdr.Priority == 0 {
 			// Change down Value to Skew time
 			gblInfo.MasterDownLock.Lock()
@@ -286,7 +313,8 @@ func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 					return
 				} else { // Preempt is true... need to take over
 					// as master
-					svr.VrrpTransitionToMaster(key)
+					svr.VrrpTransitionToMaster(key,
+						"Preempt is true and local Priority is higher than remote")
 				}
 			} // endif preempt test
 		} // endif was priority zero
@@ -327,15 +355,12 @@ func (svr *VrrpServer) VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 			(int32(vrrpHdr.Priority) == gblInfo.IntfConfig.Priority &&
 				bytes.Compare(ipHdr.SrcIP,
 					net.ParseIP(gblInfo.IpAddr)) > 0) {
-			svr.logger.Info(fmt.Sprintln("Remote Priority is higher or ",
-				"(priority are equal && remote ip is higher then local ip)"))
-			svr.logger.Info("because of the above reason stopping adver timer" +
-				" and transitioning to Backup State")
 			if gblInfo.AdverTimer != nil {
 				gblInfo.AdverTimer.Stop()
 			}
 			svr.vrrpGblInfo[key] = gblInfo
-			svr.VrrpTransitionToBackup(key, int32(vrrpHdr.MaxAdverInt))
+			svr.VrrpTransitionToBackup(key, int32(vrrpHdr.MaxAdverInt),
+				"Remote Priority is higher or priority are equal remote ip is higher than local ip")
 		} else { // new Master logic
 			// Discard Advertisement
 			return
@@ -356,10 +381,9 @@ func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 	}
 	svr.logger.Info(fmt.Sprintln("Received fsm request for vrid",
 		gblInfo.IntfConfig.VRID))
-	gblInfo.StateLock.Lock()
+	gblInfo.StateNameLock.Lock()
 	currentState := gblInfo.StateName
-	gblInfo.StateLock.Unlock()
-	svr.logger.Info("FSM state is " + currentState)
+	gblInfo.StateNameLock.Unlock()
 	switch currentState {
 	case VRRP_INITIALIZE_STATE:
 		svr.VrrpInitState(key)
@@ -405,7 +429,7 @@ func (svr *VrrpServer) VrrpStopTimers(IfIndex int32) {
 		}
 		// If state is Master then we need to send an advertisement with
 		// priority as 0
-		gblInfo.StateLock.Lock()
+		gblInfo.StateNameLock.Lock()
 		if gblInfo.StateName == VRRP_MASTER_STATE {
 			svr.vrrpTxPktCh <- VrrpTxChannelInfo{
 				key:      key,
@@ -414,7 +438,7 @@ func (svr *VrrpServer) VrrpStopTimers(IfIndex int32) {
 		}
 		// Transition to Init State
 		gblInfo.StateName = VRRP_INITIALIZE_STATE
-		gblInfo.StateLock.Unlock()
+		gblInfo.StateNameLock.Unlock()
 		svr.vrrpGblInfo[key] = gblInfo
 		svr.logger.Info(fmt.Sprintln("VRID:", gblInfo.IntfConfig.VRID,
 			" transitioned to INIT State"))

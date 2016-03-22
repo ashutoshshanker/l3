@@ -81,6 +81,17 @@ type VrrpUpdateConfig struct {
 	AttrSet   []bool
 }
 
+type VrrpGlobalStateInfo struct {
+	AdverRx             uint32 // Total advertisement received
+	AverTx              uint32 // Total advertisement send out
+	MasterIp            string // Remote Master Ip Address
+	LastAdverRx         string // Last advertisement received
+	LastAdverTx         string // Last advertisment send out
+	PreviousFsmState    string // previous fsm state
+	CurrentFsmState     string // current fsm state
+	ReasonForTransition string // why did we transition to current state?
+}
+
 type VrrpGlobalInfo struct {
 	IntfConfig vrrpd.VrrpIntf
 	// VRRP MAC aka VMAC
@@ -106,7 +117,10 @@ type VrrpGlobalInfo struct {
 	// State Name
 	StateName string
 	// Lock to read current state of vrrp object
-	StateLock *sync.RWMutex
+	StateNameLock *sync.RWMutex
+	// Vrrp State Lock for each IfIndex + VRID
+	StateInfo     VrrpGlobalStateInfo
+	StateInfoLock *sync.RWMutex
 }
 
 type VrrpPktChannelInfo struct {
