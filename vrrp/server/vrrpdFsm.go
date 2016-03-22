@@ -149,7 +149,6 @@ func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
 		gblInfo.MasterDownLock.Lock()
 		gblInfo.MasterDownTimer.Reset(time.Duration(gblInfo.MasterDownValue) * time.Second)
 		gblInfo.MasterDownLock.Unlock()
-		svr.vrrpGblInfo[key] = gblInfo
 	} else {
 		var timerCheck_func func()
 		// On Timer expiration we will transition to master
@@ -166,12 +165,12 @@ func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
 			time.Duration(gblInfo.MasterDownValue)*time.Second,
 			timerCheck_func)
 		gblInfo.MasterDownLock.Unlock()
-		//(165) + Transition to the {Backup} state
-		gblInfo.StateLock.Lock()
-		gblInfo.StateName = VRRP_BACKUP_STATE
-		gblInfo.StateLock.Unlock()
-		svr.vrrpGblInfo[key] = gblInfo
 	}
+	//(165) + Transition to the {Backup} state
+	gblInfo.StateLock.Lock()
+	gblInfo.StateName = VRRP_BACKUP_STATE
+	gblInfo.StateLock.Unlock()
+	svr.vrrpGblInfo[key] = gblInfo
 }
 
 func (svr *VrrpServer) VrrpCalculateDownValue(AdvertisementInterval int32,
