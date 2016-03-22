@@ -492,15 +492,15 @@ func ConstructOptParams(as uint32, afiSAfiMap map[uint32]bool, addPathsRx bool, 
 	capAddPaths := NewBGPCapAddPath()
 	addPathFlags := uint8(0)
 	if addPathsRx {
-		addPathFlags &= BGPCapAddPathRx
+		addPathFlags |= BGPCapAddPathRx
 	}
 	if addPathsMaxTx > 0 {
-		addPathFlags &= BGPCapAddPathTx
+		addPathFlags |= BGPCapAddPathTx
 	}
 
 	for protoFamily, _ := range afiSAfiMap {
 		afi, safi := GetAfiSafi(protoFamily)
-		utils.Logger.Info(fmt.Sprintf("Advertising capability for afi %d safi %d", afi, safi))
+		utils.Logger.Info(fmt.Sprintf("Advertising capability for afi %d safi %d\n", afi, safi))
 		capAfiSafi := NewBGPCapMPExt(afi, safi)
 		capParams = append(capParams, capAfiSafi)
 
@@ -509,6 +509,7 @@ func ConstructOptParams(as uint32, afiSAfiMap map[uint32]bool, addPathsRx bool, 
 	}
 
 	if addPathFlags != 0 {
+		utils.Logger.Info(fmt.Sprintf("Advertising capability for addPaths %+v\n", capAddPaths.Value))
 		capParams = append(capParams, capAddPaths)
 	}
 
@@ -539,6 +540,7 @@ func GetAddPathFamily(openMsg *BGPOpen) map[AFI]map[SAFI]uint8 {
 		if capabilities, ok := optParam.(*BGPOptParamCapability); ok {
 			for _, capability := range capabilities.Value {
 				if addPathCap, ok := capability.(*BGPCapAddPath); ok {
+					utils.Logger.Info(fmt.Sprintf("add path capability = %+v\n", addPathCap))
 					for _, val := range addPathCap.Value {
 						if _, ok := addPathFamily[val.AFI]; !ok {
 							addPathFamily[val.AFI] = make(map[SAFI]uint8)
