@@ -64,7 +64,7 @@ func (svr *VrrpServer) VrrpPopulateVridState(key string, entry *vrrpd.VrrpVridSt
 	entry.VRID = gblInfo.IntfConfig.VRID
 	gblInfo.StateInfoLock.Lock()
 	entry.AdverRx = int32(gblInfo.StateInfo.AdverRx)
-	entry.AdverTx = int32(gblInfo.StateInfo.AverTx)
+	entry.AdverTx = int32(gblInfo.StateInfo.AdverTx)
 	entry.CurrentState = gblInfo.StateInfo.CurrentFsmState
 	entry.PreviousState = gblInfo.StateInfo.PreviousFsmState
 	entry.LastAdverRx = gblInfo.StateInfo.LastAdverRx
