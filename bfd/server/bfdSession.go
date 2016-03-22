@@ -132,7 +132,9 @@ func (server *BFDServer) GetIfIndexAndLocalIpFromDestIp(DestIp string) (int32, s
 		server.logger.Info(fmt.Sprintf("%s is not reachable", DestIp))
 		return int32(0), ""
 	}
-	return int32(reachabilityInfo.NextHopIfIndex), reachabilityInfo.NextHopIp
+	ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(reachabilityInfo.NextHopIfIndex), int(reachabilityInfo.NextHopIfType))
+	server.logger.Info(fmt.Sprintln("GetIfIndexAndLocalIpFromDestIp: DestIp: ", DestIp, "IfIndex: ", ifIndex))
+	return ifIndex, reachabilityInfo.NextHopIp
 }
 
 func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLink bool, Protocol bfddCommonDefs.BfdSessionOwner) *BfdSession {
@@ -644,13 +646,19 @@ func (session *BfdSession) StopBfdSession() error {
 	return nil
 }
 
-func (session *BfdSession) SendBfdNotification() error {
+func (session *BfdSession) GetBfdSessionNotification() bool {
 	var bfdState bool
-	if session.state.SessionState == STATE_UP {
+	bfdState = false
+	if session.state.SessionState == STATE_UP ||
+		session.state.SessionState == STATE_ADMIN_DOWN ||
+		session.state.RemoteSessionState == STATE_ADMIN_DOWN {
 		bfdState = true
-	} else {
-		bfdState = false
 	}
+	return bfdState
+}
+
+func (session *BfdSession) SendBfdNotification() error {
+	bfdState := session.GetBfdSessionNotification()
 	bfdNotification := bfddCommonDefs.BfddNotifyMsg{
 		DestIp: session.state.RemoteIpAddr,
 		State:  bfdState,
@@ -675,24 +683,24 @@ func (session *BfdSession) StartBfdSession() error {
 }
 
 /* State Machine
-                                    +--+
-                                    |  | UP, ADMIN DOWN, TIMER, ADMIN_UP
-                                    |  V
-                            DOWN  +------+  INIT
-                     +------------|      |------------+
-                     |            | DOWN |            |
-                     |  +-------->|      |<--------+  |
-                     |  |         +------+         |  |
-                     |  |                          |  |
-                     |  |               ADMIN DOWN,|  |
-                     |  |ADMIN DOWN,          DOWN,|  |
-                     |  |TIMER                TIMER|  |
-                     V  |                          |  V
-                   +------+                      +------+
-              +----|      |                      |      |----+
-ADMIN_UP, DOWN|    | INIT |--------------------->|  UP  |    |INIT, UP, ADMIN_UP
-              +--->|      | INIT, UP             |      |<---+
-                   +------+                      +------+
+                             +--+
+                             |  | UP, TIMER
+                             |  V
+                     DOWN  +------+  INIT
+              +------------|      |------------+
+              |            | DOWN |            |
+              |  +-------->|      |<--------+  |
+              |  |         +------+         |  |
+              |  |                          |  |
+              |  |                          |  |
+              |  |                     DOWN,|  |
+              |  |TIMER                TIMER|  |
+              V  |                          |  V
+            +------+                      +------+
+       +----|      |                      |      |----+
+   DOWN|    | INIT |--------------------->|  UP  |    |INIT, UP
+       +--->|      | INIT, UP             |      |<---+
+            +------+                      +------+
 */
 // EventHandler is called after receiving a BFD packet from remote.
 func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
@@ -707,34 +715,55 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 			session.MoveToUpState()
 		case ADMIN_UP:
 			session.MoveToDownState()
-		case ADMIN_DOWN, TIMEOUT, REMOTE_UP, REMOTE_ADMIN_DOWN:
+		case ADMIN_DOWN:
+			session.LocalAdminDown()
+		case REMOTE_ADMIN_DOWN:
+			session.RemoteAdminDown()
+		case TIMEOUT, REMOTE_UP:
 		}
 	case STATE_INIT:
 		switch event {
 		case REMOTE_INIT, REMOTE_UP:
 			session.MoveToUpState()
-		case ADMIN_DOWN, TIMEOUT:
+		case TIMEOUT:
 			session.MoveToDownState()
-		case REMOTE_DOWN, ADMIN_UP, REMOTE_ADMIN_DOWN:
+		case ADMIN_DOWN:
+			session.LocalAdminDown()
+		case REMOTE_ADMIN_DOWN:
+			session.RemoteAdminDown()
+		case REMOTE_DOWN, ADMIN_UP:
 		}
 	case STATE_UP:
 		switch event {
-		case REMOTE_DOWN, ADMIN_DOWN, TIMEOUT:
+		case REMOTE_DOWN, TIMEOUT:
 			session.MoveToDownState()
-		case REMOTE_INIT, REMOTE_UP, ADMIN_UP:
+		case ADMIN_DOWN:
+			session.LocalAdminDown()
 		case REMOTE_ADMIN_DOWN:
 			session.RemoteAdminDown()
+		case REMOTE_INIT, REMOTE_UP, ADMIN_UP:
 		}
 	}
 	return nil
 }
 
-func (session *BfdSession) RemoteAdminDown() error {
-	session.state.RemoteSessionState = STATE_ADMIN_DOWN
-	session.state.SessionState = STATE_DOWN
-	session.state.LocalDiagType = DIAG_NEIGHBOR_SIGNAL_DOWN
+func (session *BfdSession) LocalAdminDown() error {
+	session.state.SessionState = STATE_ADMIN_DOWN
+	session.SendBfdNotification()
 	session.txInterval = STARTUP_TX_INTERVAL / 1000
 	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
+	session.sessionTimer.Stop()
+	session.txTimer.Reset(0)
+	return nil
+}
+
+func (session *BfdSession) RemoteAdminDown() error {
+	session.state.RemoteSessionState = STATE_ADMIN_DOWN
+	session.state.LocalDiagType = DIAG_NEIGHBOR_SIGNAL_DOWN
+	session.SendBfdNotification()
+	session.txInterval = STARTUP_TX_INTERVAL / 1000
+	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
+	session.sessionTimer.Stop()
 	session.txTimer.Reset(0)
 	return nil
 }
@@ -803,8 +832,11 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 					bfdSession.state.NumTxPackets++
 				}
 				bfdSession.txTimer.Stop()
-				txTimerMS = time.Duration(bfdSession.txInterval)
-				bfdSession.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { bfdSession.TxTimeoutCh <- bfdSession.state.SessionId })
+				if session.state.SessionState != STATE_ADMIN_DOWN ||
+					session.state.RemoteSessionState != STATE_ADMIN_DOWN {
+					txTimerMS = time.Duration(bfdSession.txInterval)
+					bfdSession.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { bfdSession.TxTimeoutCh <- bfdSession.state.SessionId })
+				}
 			}
 		case sessionId := <-session.SessionTimeoutCh:
 			bfdSession := server.bfdGlobal.Sessions[sessionId]
