@@ -22,26 +22,57 @@ type VrrpClientJson struct {
 }
 
 const (
-	VRRP_RPC_NO_PORT = "could not find port and hence not starting rpc"
+	VRRP_RPC_NO_PORT      = "could not find port and hence not starting rpc"
+	VRRP_NEED_UNIQUE_INFO = "Original IfIndex & new IfIndex have different ifindex or VRID, hence cannot do an update"
 )
 
-func (h *VrrpHandler) CreateVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error) {
-	h.logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
-		config.IfIndex))
+func VrrpCheckConfig(config *vrrpd.VrrpIntf, h *VrrpHandler) (bool, error) {
 	if config.VRID == 0 {
 		h.logger.Info("VRRP: Invalid VRID")
 		return false, errors.New(vrrpServer.VRRP_INVALID_VRID)
 	}
 
-	err = h.server.VrrpValidateIntfConfig(config.IfIndex)
+	err := h.server.VrrpValidateIntfConfig(config.IfIndex)
 	if err != nil {
 		return false, err
+	}
+
+	return true, nil
+}
+
+func (h *VrrpHandler) CreateVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error) {
+	h.logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
+		config.IfIndex))
+	r, err = VrrpCheckConfig(config, h)
+	if err != nil {
+		return r, err
 	}
 	h.server.VrrpCreateIntfConfigCh <- *config
 	return true, err
 }
 func (h *VrrpHandler) UpdateVrrpIntf(origconfig *vrrpd.VrrpIntf,
 	newconfig *vrrpd.VrrpIntf, attrset []bool) (r bool, err error) {
+	// Verify orig config
+	if (origconfig.IfIndex != newconfig.IfIndex) ||
+		(origconfig.VRID != newconfig.VRID) {
+		return false, errors.New(VRRP_NEED_UNIQUE_INFO)
+	}
+	r, err = VrrpCheckConfig(origconfig, h)
+	if err != nil {
+		return r, err
+	}
+	// Verify new config
+	r, err = VrrpCheckConfig(newconfig, h)
+	if err != nil {
+		return r, err
+	}
+	updConfg := vrrpServer.VrrpUpdateConfig{
+		OldConfig: *origconfig,
+		NewConfig: *newconfig,
+		AttrSet:   attrset,
+	}
+	h.server.VrrpUpdateIntfConfigCh <- updConfg
+
 	return true, nil
 }
 

@@ -116,7 +116,6 @@ func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 		gblInfo.StateName = VRRP_MASTER_STATE
 		gblInfo.StateLock.Unlock()
 		svr.vrrpGblInfo[key] = gblInfo
-		svr.vrrpGblInfo[key] = gblInfo
 	}
 }
 
@@ -140,27 +139,50 @@ func (svr *VrrpServer) VrrpTransitionToMaster(key string) {
 }
 
 func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
-	var timerCheck_func func()
-	// On Timer expiration we will transition to master
-	timerCheck_func = func() {
-		svr.logger.Info(fmt.Sprintln("master down timer expired..transition to Master"))
-		// do timer expiry handling here
-		svr.VrrpTransitionToMaster(key)
-	}
-	svr.logger.Info("initiating master down timer")
 	gblInfo, exists := svr.vrrpGblInfo[key]
-	if exists {
+	if !exists {
+		svr.logger.Err("No object for " + key)
+		return
+	}
+	if gblInfo.MasterDownTimer != nil {
+		svr.logger.Info("Resetting down timer")
+		gblInfo.MasterDownLock.Lock()
+		gblInfo.MasterDownTimer.Reset(time.Duration(gblInfo.MasterDownValue) * time.Second)
+		gblInfo.MasterDownLock.Unlock()
+	} else {
+		var timerCheck_func func()
+		// On Timer expiration we will transition to master
+		timerCheck_func = func() {
+			svr.logger.Info(fmt.Sprintln("master down timer expired..transition to Master"))
+			// do timer expiry handling here
+			svr.VrrpTransitionToMaster(key)
+		}
+		svr.logger.Info("initiating master down timer")
 		svr.logger.Info(fmt.Sprintln("setting down timer to", gblInfo.MasterDownValue))
 		// Set Timer expire func...
+		gblInfo.MasterDownLock.Lock()
 		gblInfo.MasterDownTimer = time.AfterFunc(
 			time.Duration(gblInfo.MasterDownValue)*time.Second,
 			timerCheck_func)
-		//(165) + Transition to the {Backup} state
-		gblInfo.StateLock.Lock()
-		gblInfo.StateName = VRRP_BACKUP_STATE
-		gblInfo.StateLock.Unlock()
-		svr.vrrpGblInfo[key] = gblInfo
+		gblInfo.MasterDownLock.Unlock()
 	}
+	//(165) + Transition to the {Backup} state
+	gblInfo.StateLock.Lock()
+	gblInfo.StateName = VRRP_BACKUP_STATE
+	gblInfo.StateLock.Unlock()
+	svr.vrrpGblInfo[key] = gblInfo
+}
+
+func (svr *VrrpServer) VrrpCalculateDownValue(AdvertisementInterval int32,
+	gblInfo *VrrpGlobalInfo) {
+	//(155) + Set Master_Adver_Interval to Advertisement_Interval
+	gblInfo.MasterAdverInterval = AdvertisementInterval
+	//(160) + Set the Master_Down_Timer to Master_Down_Interval
+	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
+		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
+			gblInfo.MasterAdverInterval) / 256
+	}
+	gblInfo.MasterDownValue = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
 }
 
 func (svr *VrrpServer) VrrpTransitionToBackup(key string, AdvertisementInterval int32) {
@@ -171,18 +193,12 @@ func (svr *VrrpServer) VrrpTransitionToBackup(key string, AdvertisementInterval 
 		svr.logger.Err("No entry found ending fsm")
 		return
 	}
-	//(155) + Set Master_Adver_Interval to Advertisement_Interval
-	gblInfo.MasterAdverInterval = AdvertisementInterval
-	//(160) + Set the Master_Down_Timer to Master_Down_Interval
-	if gblInfo.IntfConfig.Priority != 0 && gblInfo.MasterAdverInterval != 0 {
-		gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
-			gblInfo.MasterAdverInterval) / 256
-	}
-	gblInfo.MasterDownValue = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
-	svr.vrrpGblInfo[key] = gblInfo
-	// Start with handling MasterDownTimer
-	svr.VrrpHandleMasterDownTimer(key)
 
+	gblInfo.MasterDownLock.Lock()
+	svr.VrrpCalculateDownValue(AdvertisementInterval, &gblInfo)
+	gblInfo.MasterDownLock.Unlock()
+	svr.vrrpGblInfo[key] = gblInfo
+	svr.VrrpHandleMasterDownTimer(key)
 }
 
 func (svr *VrrpServer) VrrpInitState(key string) {
@@ -241,24 +257,40 @@ func (svr *VrrpServer) VrrpBackupState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 			gblInfo.IntfConfig.VRID, "in backup state"))
 		if vrrpHdr.Priority == 0 {
 			// Change down Value to Skew time
+			gblInfo.MasterDownLock.Lock()
 			gblInfo.MasterDownValue = gblInfo.SkewTime
+			gblInfo.MasterDownLock.Unlock()
 			svr.vrrpGblInfo[key] = gblInfo
+			svr.VrrpHandleMasterDownTimer(key)
 		} else {
-			if gblInfo.IntfConfig.PreemptMode == false ||
-				vrrpHdr.Priority >= uint8(gblInfo.IntfConfig.Priority) {
-				gblInfo.MasterAdverInterval = int32(vrrpHdr.MaxAdverInt)
-				gblInfo.SkewTime = ((256 - gblInfo.IntfConfig.Priority) *
-					gblInfo.MasterAdverInterval) / 256
-				gblInfo.MasterDownValue = (3 * gblInfo.MasterAdverInterval) + gblInfo.SkewTime
-				gblInfo.MasterDownTimer.Reset(time.Duration(gblInfo.MasterDownValue) * time.Second)
-				svr.vrrpGblInfo[key] = gblInfo
-			} else {
-				svr.logger.Info("Discarding advertisment")
-				return
+			// local preempt is false
+			if gblInfo.IntfConfig.PreemptMode == false {
+				// if remote priority is higher update master down
+				// timer and move on
+				if vrrpHdr.Priority >= uint8(gblInfo.IntfConfig.Priority) {
+					gblInfo.MasterDownLock.Lock()
+					svr.VrrpCalculateDownValue(int32(vrrpHdr.MaxAdverInt),
+						&gblInfo)
+					gblInfo.MasterDownLock.Unlock()
+					svr.vrrpGblInfo[key] = gblInfo
+					svr.VrrpHandleMasterDownTimer(key)
+				} else {
+					// Do nothing.... same as discarding packet
+					svr.logger.Info("Discarding advertisment")
+					return
+				}
+			} else { // local preempt is true
+				if vrrpHdr.Priority >= uint8(gblInfo.IntfConfig.Priority) {
+					// Do nothing..... same as discarding packet
+					svr.logger.Info("Discarding advertisment")
+					return
+				} else { // Preempt is true... need to take over
+					// as master
+					svr.VrrpTransitionToMaster(key)
+				}
 			} // endif preempt test
 		} // endif was priority zero
 	} // endif was advertisement received
-
 	// end BACKUP STATE
 }
 
@@ -299,7 +331,9 @@ func (svr *VrrpServer) VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 				"(priority are equal && remote ip is higher then local ip)"))
 			svr.logger.Info("because of the above reason stopping adver timer" +
 				" and transitioning to Backup State")
-			gblInfo.AdverTimer.Stop()
+			if gblInfo.AdverTimer != nil {
+				gblInfo.AdverTimer.Stop()
+			}
 			svr.vrrpGblInfo[key] = gblInfo
 			svr.VrrpTransitionToBackup(key, int32(vrrpHdr.MaxAdverInt))
 		} else { // new Master logic
