@@ -71,6 +71,7 @@ type BfdSession struct {
 	txInterval          int32
 	txTimer             *time.Timer
 	TxTimeoutCh         chan int32
+	txJitter            int32
 	SessionTimeoutCh    chan int32
 	bfdPacket           *BfdControlPacket
 	SessionStopClientCh chan bool
@@ -268,16 +269,16 @@ func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
 
 	for rows.Next() {
 		var rtrBfd string
-		var enable int
+		var enable string
 		err = rows.Scan(&rtrBfd, &enable)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdGlobal: ", err))
 			return err
 		}
 		server.logger.Info(fmt.Sprintln("BfdGlobal - Enable: ", enable))
-		if enable != 1 {
+		if enable == "false" {
 			gConf := GlobalConfig{
-				Enable: dbutils.ConvertIntToBool(enable),
+				Enable: dbutils.ConvertStringToBool(enable),
 			}
 			server.GlobalConfigCh <- gConf
 		}
@@ -359,23 +360,12 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 }
 
 func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB) error {
-	var err error
-	defer dbHdl.Close()
 	// BfdGlobalConfig
-	err = server.ReadGlobalConfigFromDB(dbHdl)
-	if err != nil {
-		return err
-	}
+	server.ReadGlobalConfigFromDB(dbHdl)
 	// BfdIntfConfig
-	err = server.ReadIntfConfigFromDB(dbHdl)
-	if err != nil {
-		return err
-	}
+	server.ReadIntfConfigFromDB(dbHdl)
 	// BfdSessionConfig
-	err = server.ReadSessionConfigFromDB(dbHdl)
-	if err != nil {
-		return err
-	}
+	server.ReadSessionConfigFromDB(dbHdl)
 	return nil
 }
 
@@ -405,7 +395,9 @@ func (server *BFDServer) SigHandler() {
 		case signal := <-sigChan:
 			switch signal {
 			case syscall.SIGHUP:
-				server.logger.Info("Received SIGHUP signal. Exiting")
+				server.logger.Info("Received SIGHUP signal")
+				server.SendAdminDownToAllNeighbors()
+				server.logger.Info("Exiting!!!")
 				os.Exit(0)
 			default:
 				server.logger.Info(fmt.Sprintln("Unhandled signal : ", signal))
