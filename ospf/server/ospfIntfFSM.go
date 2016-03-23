@@ -477,6 +477,7 @@ func (server *OSPFServer) createAndSendEventsIntfFSM(key IntfConfKey,
 		server.NetworkDRChangeCh<-msg1
 		server.logger.Info(fmt.Sprintln("oldState", oldState, " != newState", newState))
 	} */
+	server.logger.Info("DRBDR changed. Sending message for router/network LSA generation")
 	server.NetworkDRChangeCh<-msg1
 	server.logger.Info(fmt.Sprintln("oldState", oldState, " newState", newState))
 

@@ -226,10 +226,13 @@ func (server *OSPFServer) processFloodMsg(lsa_data ospfFloodMsg) {
 		}
 
 	case LSASELFLOOD: //Flood received LSA on selective interfaces.
+		nbrConf := server.NeighborConfigMap[lsa_data.nbrKey]
+		rxIntf := server.IntfConfMap[nbrConf.intfConfKey]
 		lsid := convertUint32ToIPv4(lsa_data.linkid)
 		var lsaEncPkt []byte
 		for key, intf := range server.IntfConfMap {
-			if intf.IfIpAddr.Equal(intConf.IfIpAddr) {
+			if intf.IfIpAddr.Equal(rxIntf.IfIpAddr) {
+				server.logger.Info(fmt.Sprintln("LSASELFLOOD:Dont flood on rx intf ", rxIntf.IfIpAddr))
 				continue // dont flood the LSA on the interface it is received.
 			}
 			send := server.nbrFloodCheck(lsa_data.nbrKey, key, intf)

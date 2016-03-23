@@ -177,6 +177,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					intfConfKey:            nbrConf.intfConfKey,
 					OspfNbrOptions:         0,
 					OspfNbrState:           nbrConf.OspfNbrState,
+					isStateUpdate:          true,
 					OspfNbrInactivityTimer: time.Now(),
 					OspfNbrDeadTimer:       nbrConf.OspfNbrDeadTimer,
 					ospfNbrSeqNum:          dbd_mdata.dd_sequence_number,
@@ -191,12 +192,13 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 			OspfNeighborLastDbd[nbrKey] = dbd_mdata
 
 		case config.NbrExchange:
+			var nbrState config.NbrState
 			isDiscard := server.exchangePacketDiscardCheck(nbrConf, nbrDbPkt)
 			if isDiscard {
 				server.logger.Info(fmt.Sprintln("NBRDBD: Discard packet. nbr", nbrKey.OspfNbrRtrId,
 					" nbr state ", nbrConf.OspfNbrState))
 
-				nbrConf.OspfNbrState = config.NbrExchangeStart
+				nbrState = config.NbrExchangeStart
 				//invalidate all lists.
 				newDbdMsg(nbrKey.OspfNbrRtrId, OspfNeighborLastDbd[nbrKey])
 			} else { // process exchange state
@@ -269,14 +271,14 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				}
 				if !nbrDbPkt.mbit || last_exchange {
 					server.logger.Info(fmt.Sprintln("DBD: Exchange done with nbr ", nbrKey.OspfNbrRtrId))
-					nbrConf.OspfNbrState = config.NbrLoading
+					nbrState = config.NbrLoading
 					server.lsaReTxTimerCheck(nbrKey.OspfNbrRtrId)
 				}
 				if !nbrDbPkt.mbit && last_exchange {
-					nbrConf.OspfNbrState = config.NbrLoading
+					nbrState = config.NbrLoading
 					server.logger.Info(fmt.Sprintln("DBD: FULL , nbr ", nbrKey.OspfNbrRtrId))
 					server.updateNeighborMdata(nbrConf.intfConfKey, nbrKey.OspfNbrRtrId)
-					server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
+					//	server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
 				}
 			}
 
@@ -289,7 +291,8 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					OspfRtrPrio:            nbrConf.OspfRtrPrio,
 					intfConfKey:            nbrConf.intfConfKey,
 					OspfNbrOptions:         0,
-					OspfNbrState:           nbrConf.OspfNbrState,
+					OspfNbrState:           nbrState,
+					isStateUpdate:          true,
 					OspfNbrInactivityTimer: time.Now(),
 					OspfNbrDeadTimer:       nbrConf.OspfNbrDeadTimer,
 					ospfNbrSeqNum:          dbd_mdata.dd_sequence_number,
@@ -343,6 +346,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					intfConfKey:            nbrConf.intfConfKey,
 					OspfNbrOptions:         0,
 					OspfNbrState:           nbrConf.OspfNbrState,
+					isStateUpdate:          true,
 					OspfNbrInactivityTimer: time.Now(),
 					OspfNbrDeadTimer:       nbrConf.OspfNbrDeadTimer,
 					ospfNbrSeqNum:          seq_num,
@@ -355,7 +359,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 			server.neighborConfCh <- nbrConfMsg
 			server.updateNeighborMdata(nbrConf.intfConfKey, nbrKey.OspfNbrRtrId)
 			server.logger.Info(fmt.Sprintln("NBREVENT: Flood the LSA. nbr full state ", nbrKey.OspfNbrRtrId))
-			server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
+		//	server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
 		case config.NbrTwoWay:
 			/* ignore packet */
 			server.logger.Info(fmt.Sprintln("NBRDBD: Ignore packet as NBR state is two way"))
@@ -386,12 +390,14 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 			_, exists := server.NeighborConfigMap[nbrData.RouterId]
 			send_dbd = false
 			seq_update = false
+			isStateUpdate := false
 			if exists {
 				nbrConf = server.NeighborConfigMap[nbrData.RouterId]
 				if nbrData.TwoWayStatus { // update the state
 					startAdjacency := server.adjacancyEstablishementCheck(nbrConf.isDRBDR, true)
 					if startAdjacency && nbrConf.OspfNbrState == config.NbrTwoWay {
 						nbrConf.OspfNbrState = config.NbrExchangeStart
+						isStateUpdate = true
 						if nbrConf.ospfNbrSeqNum == 0 {
 							nbrConf.ospfNbrSeqNum = uint32(time.Now().Unix())
 							dbd_mdata.dd_sequence_number = nbrConf.ospfNbrSeqNum
@@ -412,10 +418,12 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 					} else { // no adjacency
 						if nbrConf.OspfNbrState < config.NbrTwoWay {
 							nbrConf.OspfNbrState = config.NbrTwoWay
+							isStateUpdate = true
 						}
 					}
 				} else {
 					nbrConf.OspfNbrState = config.NbrInit
+					isStateUpdate = true
 				}
 
 				nbrConfMsg := ospfNeighborConfMsg{
@@ -428,6 +436,7 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 						intfConfKey:            nbrConf.intfConfKey,
 						OspfNbrOptions:         0,
 						OspfNbrState:           nbrConf.OspfNbrState,
+						isStateUpdate:          isStateUpdate,
 						OspfNbrInactivityTimer: time.Now(),
 						OspfNbrDeadTimer:       nbrConf.OspfNbrDeadTimer,
 						ospfNbrDBDTickerCh:     nbrConf.ospfNbrDBDTickerCh,
@@ -444,7 +453,6 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 					server.ConstructAndSendDbdPacket(nbrConfMsg.ospfNbrConfKey, true, true, true,
 						INTF_OPTIONS, nbrConf.ospfNbrSeqNum, false, false)
 				}
-				server.logger.Info(fmt.Sprintln("NBREVENT: update Nbr ", nbrData.RouterId, "state ", nbrConf.OspfNbrState))
 
 			} else { //neighbor doesnt exist
 				var ticker *time.Ticker
@@ -467,10 +475,12 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 					} else { // no adjacency
 						nbrState = config.NbrTwoWay
 						send_dbd = false
+						isStateUpdate = true
 					}
 				} else {
 					nbrState = config.NbrInit
 					send_dbd = false
+					isStateUpdate = true
 				}
 
 				nbrConfMsg := ospfNeighborConfMsg{
@@ -483,6 +493,7 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 						intfConfKey:            nbrData.IntfConfKey,
 						OspfNbrOptions:         0,
 						OspfNbrState:           nbrState,
+						isStateUpdate:          isStateUpdate,
 						OspfNbrInactivityTimer: time.Now(),
 						OspfNbrDeadTimer:       nbrData.nbrDeadTimer,
 						ospfNbrSeqNum:          dbd_mdata.dd_sequence_number,
@@ -519,6 +530,9 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 	} // end of for
 }
 
+/* @fn ProcessRxNbrPkt
+Nbr packet Rx thread. It handles LSA REQ/UPD/ACK in.
+*/
 func (server *OSPFServer) ProcessRxNbrPkt() {
 	for {
 		select {
@@ -553,6 +567,9 @@ func (server *OSPFServer) ProcessRxNbrPkt() {
 	}
 }
 
+/* @fn ProcessTxNbrPkt
+Nbr packet out thread. It handles LSA REQ/UPD/ACK out , DBD packets out
+*/
 func (server *OSPFServer) ProcessTxNbrPkt() {
 	for {
 		select {
@@ -565,6 +582,10 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 					data := server.BuildDBDPkt(nbrConf.intfConfKey, intConf, nbrConf,
 						dbd_mdata.ospfNbrDBDData, dstMac)
 					server.SendOspfPkt(nbrConf.intfConfKey, data)
+				}
+				/* This ensures Flood packet is sent only after last DBD.  */
+				if nbrConf.OspfNbrState == config.NbrLoading || nbrConf.OspfNbrState == config.NbrFull {
+					server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
 				}
 
 			}
@@ -605,7 +626,7 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 		return
 	}
 	intf, _ := server.IntfConfMap[nbrConf.intfConfKey]
-	nbrMdata, exists := ospfIntfToNbrMap[nbrConf.intfConfKey]
+	//nbrMdata, exists := ospfIntfToNbrMap[nbrConf.intfConfKey]
 
 	areaId := convertIPv4ToUint32(intf.IfAreaId)
 	lsdbKey := LsdbKey{
@@ -642,22 +663,22 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 	for networkKey, _ := range network_lsa {
 		// check if lsa instance is marked true
 		db_summary := newospfNeighborDBSummary()
-		if nbrMdata.isDR {
-			dnlsa, ret := server.getNetworkLsaFromLsdb(areaId, networkKey)
-			if ret == LsdbEntryNotFound {
-				continue
-			}
-			db_summary.lsa_headers = getLsaHeaderFromLsa(dnlsa.LsaMd.LSAge, dnlsa.LsaMd.Options,
-				NetworkLSA, networkKey.LSId, intf.IfDRtrId,
-				uint32(dnlsa.LsaMd.LSSequenceNum), dnlsa.LsaMd.LSChecksum,
-				dnlsa.LsaMd.LSLen)
-			db_summary.valid = true
-			/* add entry to the db summary list  */
-			db_list = append(db_list, db_summary)
-			//lsid := convertUint32ToIPv4(networkKey.LSId)
-			//server.logger.Info(fmt.Sprintln("negotiation: db_list append network lsid  ", lsid))
-		} // end of for
-	}
+		//if nbrMdata.isDR {
+		dnlsa, ret := server.getNetworkLsaFromLsdb(areaId, networkKey)
+		if ret == LsdbEntryNotFound {
+			continue
+		}
+		db_summary.lsa_headers = getLsaHeaderFromLsa(dnlsa.LsaMd.LSAge, dnlsa.LsaMd.Options,
+			NetworkLSA, networkKey.LSId, intf.IfDRtrId,
+			uint32(dnlsa.LsaMd.LSSequenceNum), dnlsa.LsaMd.LSChecksum,
+			dnlsa.LsaMd.LSLen)
+		db_summary.valid = true
+		/* add entry to the db summary list  */
+		db_list = append(db_list, db_summary)
+		//lsid := convertUint32ToIPv4(networkKey.LSId)
+		//server.logger.Info(fmt.Sprintln("negotiation: db_list append network lsid  ", lsid))
+		//}
+	} // end of for
 
 	for lsa := range db_list {
 		rtr_id := convertUint32ToIPv4(db_list[lsa].lsa_headers.adv_router_id)
@@ -688,6 +709,7 @@ func (server *OSPFServer) neighborDeadTimerEvent(nbrConfKey NeighborConfKey) {
 					intfConfKey:            nbrConf.intfConfKey,
 					OspfNbrOptions:         0,
 					OspfNbrState:           config.NbrDown,
+					isStateUpdate:          true,
 					OspfNbrInactivityTimer: time.Now(),
 					OspfNbrDeadTimer:       nbrConf.OspfNbrDeadTimer,
 				},
@@ -708,10 +730,21 @@ func (server *OSPFServer) neighborDeadTimerEvent(nbrConfKey NeighborConfKey) {
 
 }
 
+/*@fn refreshNeighborSlice
+Refresh get bulk slice for all keys.
+*/
 func (server *OSPFServer) refreshNeighborSlice() {
-	go func() {
-		for t := range server.neighborSliceRefCh.C {
-
+	for {
+		select {
+		case start := <-server.neighborSliceStartCh:
+			if start {
+				server.neighborSliceRefCh = time.NewTicker(server.RefreshDuration)
+			} else {
+				if server.neighborSliceRefCh != nil {
+					server.neighborSliceRefCh.Stop()
+				}
+			}
+		case <-server.neighborSliceRefCh.C:
 			server.neighborBulkSlice = []uint32{}
 			idx := 0
 			for nbrKey, _ := range server.NeighborConfigMap {
@@ -719,9 +752,8 @@ func (server *OSPFServer) refreshNeighborSlice() {
 				idx++
 			}
 
-			server.logger.Info(fmt.Sprintln("Get bulk slice refreshed - ", t))
 		}
-	}()
+	}
 
 }
 

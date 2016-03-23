@@ -118,9 +118,13 @@ func decodeLSAReq(data []byte) (lsa_req ospfLSAReq) {
 func decodeLSAReqPkt(data []byte, pktlen uint16) []ospfLSAReq {
 	no_of_lsa := int((pktlen - OSPF_HEADER_SIZE) / OSPF_LSA_REQ_SIZE)
 	lsa_req_pkt := []ospfLSAReq{}
+	start := 0
+	end := OSPF_LSA_REQ_SIZE
 	for i := 0; i < no_of_lsa; i++ {
-		lsa_req := decodeLSAReq(data[i : i+3])
+		lsa_req := decodeLSAReq(data[start:end])
 		lsa_req_pkt = append(lsa_req_pkt, lsa_req)
+		start = end
+		end += OSPF_LSA_REQ_SIZE
 	}
 	return lsa_req_pkt
 }

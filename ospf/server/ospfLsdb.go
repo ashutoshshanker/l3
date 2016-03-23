@@ -765,9 +765,10 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 	router (and network) LSA 
 */
 func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
-	server.logger.Info(fmt.Sprintln("LSDB: Nbr full. area id  ", msg.areaId,
-		" intf ", msg.intf, " isDr ", msg.isDR, " nbrList ", msg.nbrList))
+	server.logger.Info(fmt.Sprintln("LSDB: Nbr full. Generate router and network LSA  area id  ", 
+		           msg.areaId, " intf ", msg.intf, " isDr ", msg.isDR, " nbrList ", msg.nbrList))
 	server.generateNetworkLSA(msg.areaId, msg.intf, msg.isDR)
+	server.generateRouterLSA(msg.areaId)
 	server.sendLsdbToNeighborEvent(msg.intf, 0, msg.areaId, 0, 0, LSAFLOOD)
 }
 
@@ -780,9 +781,11 @@ func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
 func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 	if msg.oldstate != msg.newstate {
 		if msg.newstate == config.DesignatedRouter {
+			server.logger.Info("Generate network and router LSA")
 			server.generateRouterLSA(msg.areaId)
 			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
 		} else if msg.oldstate == config.DesignatedRouter {
+			server.logger.Info("Flush network LSA . Generate router LSA")
 			server.flushNetworkLSA(msg.areaId, msg.intfKey)
 			server.generateRouterLSA(msg.areaId)
 			/* send flush message to neighbor followed by flood for
@@ -794,8 +797,10 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 		}
 	} else {
 		if  msg.newstate == config.DesignatedRouter {
+			 server.logger.Info("Generate network LSA")
 			 server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
 		}
+		server.logger.Info("Generate router LSA")
 		server.generateRouterLSA(msg.areaId)
 	}
 	server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)

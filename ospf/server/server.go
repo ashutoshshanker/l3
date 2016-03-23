@@ -87,6 +87,7 @@ type OSPFServer struct {
 	neighborConfStopCh    chan bool
 	nbrFSMCtrlCh          chan bool
 	neighborSliceRefCh    *time.Ticker
+	neighborSliceStartCh  chan bool
 	neighborBulkSlice     []uint32
 	neighborDBDEventCh    chan ospfNeighborDBDMsg
 	neighborLSAReqEventCh chan ospfNeighborLSAreqMsg
@@ -96,8 +97,8 @@ type OSPFServer struct {
 	ospfNbrLsaReqSendCh   chan ospfNeighborLSAreqMsg
 	ospfNbrLsaUpdSendCh   chan ospfFloodMsg
 	ospfNbrLsaAckSendCh   chan ospfNeighborAckTxMsg
-	ospfRxNbrPktStopCh  chan bool
-	ospfTxNbrPktStopCh       chan bool
+	ospfRxNbrPktStopCh    chan bool
+	ospfTxNbrPktStopCh    chan bool
 
 	//neighborDBDEventCh   chan IntfToNeighDbdMsg
 
@@ -154,7 +155,7 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.neighborHelloEventCh = make(chan IntfToNeighMsg)
 	ospfServer.neighborConfCh = make(chan ospfNeighborConfMsg)
 	ospfServer.neighborConfStopCh = make(chan bool)
-	ospfServer.neighborSliceRefCh = time.NewTicker(time.Minute * 10)
+	ospfServer.neighborSliceStartCh = make(chan bool)
 	ospfServer.AreaStateMutex = sync.RWMutex{}
 	ospfServer.AreaStateMap = make(map[AreaConfKey]AreaState)
 	ospfServer.AreaStateSlice = []AreaConfKey{}

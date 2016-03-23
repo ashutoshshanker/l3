@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"l3/ospf/config"
 	"net"
-	"time"
 )
 
 func (server *OSPFServer) GetBulkOspfAreaEntryState(idx int, cnt int) (int, int, []config.AreaState) {
@@ -225,10 +224,11 @@ func (server *OSPFServer) GetOspfGlobalState() *config.GlobalState {
 }
 
 func (server *OSPFServer) GetBulkOspfNbrEntryState(idx int, cnt int) (int, int, []config.NeighborState) {
+	server.logger.Info(fmt.Sprintln("Getbulk: nbr states called."))
 	var nextIdx int
 	var count int
 
-	server.neighborSliceRefCh.Stop()
+	server.neighborSliceStartCh <- false
 	/*	if ret == false {
 		server.logger.Err("Ospf is busy refreshing the cache")
 		return nextIdx, count, nil
@@ -265,8 +265,7 @@ func (server *OSPFServer) GetBulkOspfNbrEntryState(idx int, cnt int) (int, int, 
 
 	}
 
-	server.neighborSliceRefCh = time.NewTicker(time.Minute * 10)
-	server.refreshNeighborSlice()
+	server.neighborSliceStartCh <- true
 	server.logger.Info(fmt.Sprintln("length:", length, "count:", count, "nextIdx:", nextIdx, "result:", result))
 	return nextIdx, count, result
 }
