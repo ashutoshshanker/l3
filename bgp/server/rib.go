@@ -169,8 +169,12 @@ func (adjRib *AdjRib) RemoveUpdatesFromNeighbor(peerIP string, peer *Peer, addPa
 	for destIP, dest := range adjRib.destPathMap {
 		dest.RemoveAllPaths(peerIP, remPath)
 		action, addRoutes, updRoutes, delRoutes := dest.SelectRouteForLocRib(addPathCount)
+		adjRib.logger.Info(fmt.Sprintln("RemoveUpdatesFromNeighbor - dest", dest.ipPrefix.Prefix.String(),
+			"SelectRouteForLocRib returned action", action, "addRoutes", addRoutes, "updRoutes", updRoutes,
+			"delRoutes", delRoutes))
 		withdrawn, updated = adjRib.updateRibOutInfo(action, addRoutes, updRoutes, delRoutes, dest, withdrawn, updated)
 		if action == RouteActionDelete && dest.IsEmpty() {
+			adjRib.logger.Info(fmt.Sprintln("All routes removed for dest", dest.ipPrefix.Prefix.String()))
 			delete(adjRib.destPathMap, destIP)
 		}
 	}

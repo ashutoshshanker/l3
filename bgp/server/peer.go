@@ -278,11 +278,11 @@ func (p *Peer) SetPeerAttrs(bgpId net.IP, asSize uint8, holdTime uint32, keepali
 		if afi == packet.AfiIP {
 			for _, val := range safiMap {
 				if (val & packet.BGPCapAddPathRx) != 0 {
-					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set addpathsmaxtx to %d\n", p.Neighbor.NeighborAddress, p.PeerConf.AddPathsMaxTx))
+					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set add paths maxtx to %d\n", p.Neighbor.NeighborAddress, p.PeerConf.AddPathsMaxTx))
 					p.Neighbor.State.AddPathsMaxTx = p.PeerConf.AddPathsMaxTx
 				}
 				if (val & packet.BGPCapAddPathTx) != 0 {
-					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set addpathsrx to %s\n", p.Neighbor.NeighborAddress, p.PeerConf.AddPathsRx))
+					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set add paths rx to %s\n", p.Neighbor.NeighborAddress, p.PeerConf.AddPathsRx))
 					p.Neighbor.State.AddPathsRx = true
 				}
 			}
@@ -401,8 +401,8 @@ func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destina
 	if len(withdrawn) > 0 {
 		for _, dest := range withdrawn {
 			if dest != nil {
+				ip := dest.ipPrefix.Prefix.String()
 				if addPathsTx > 0 {
-					ip := dest.ipPrefix.Prefix.String()
 					pathIdMap, ok := p.ribOut[ip]
 					if !ok {
 						p.logger.Err(fmt.Sprintf("Neighbor %s: SendUpdate - processing withdraes, dest %s not found in rib out",
@@ -413,8 +413,10 @@ func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destina
 						nlri := packet.NewExtNLRI(pathId, *dest.ipPrefix)
 						withdrawList = append(withdrawList, nlri)
 					}
+					delete(p.ribOut, ip)
 				} else {
 					withdrawList = append(withdrawList, dest.ipPrefix)
+					delete(p.ribOut, ip)
 				}
 			}
 		}
@@ -465,22 +467,26 @@ func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destina
 						} else if ribPath == path {
 							delete(pathIdMap, ribPathId)
 						} else if ribPath != path {
-							nlri = packet.NewExtNLRI(ribPathId, *dest.ipPrefix)
-							if _, ok := newUpdated[path]; !ok {
-								newUpdated[path] = make([]packet.NLRI, 0)
-							}
-							newUpdated[path] = append(newUpdated[path], nlri)
+							/*
+								nlri = packet.NewExtNLRI(ribPathId, *dest.ipPrefix)
+								if _, ok := newUpdated[path]; !ok {
+									newUpdated[path] = make([]packet.NLRI, 0)
+								}
+								newUpdated[path] = append(newUpdated[path], nlri)
+							*/
 							p.ribOut[ip][ribPathId] = path
 							delete(pathIdMap, ribPathId)
 						}
 					}
 
 					for pathId, path := range pathIdMap {
-						nlri = packet.NewExtNLRI(pathId, *dest.ipPrefix)
-						if _, ok := newUpdated[path]; !ok {
-							newUpdated[path] = make([]packet.NLRI, 0)
-						}
-						newUpdated[path] = append(newUpdated[path], nlri)
+						/*
+							nlri = packet.NewExtNLRI(pathId, *dest.ipPrefix)
+							if _, ok := newUpdated[path]; !ok {
+								newUpdated[path] = make([]packet.NLRI, 0)
+							}
+							newUpdated[path] = append(newUpdated[path], nlri)
+						*/
 						p.ribOut[ip][pathId] = path
 						delete(pathIdMap, pathId)
 					}
@@ -508,12 +514,16 @@ func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destina
 	}
 
 	if len(withdrawList) > 0 {
+		p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message withdraw routes:%+v",
+			p.Neighbor.NeighborAddress, withdrawList))
 		updateMsg := packet.NewBGPUpdateMessage(withdrawList, nil, nil)
 		p.sendUpdateMsg(updateMsg.Clone(), withdrawPath)
 		withdrawList = withdrawList[:0]
 	}
 
 	for path, nlriList := range newUpdated {
+		p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%+v",
+			p.Neighbor.NeighborAddress, nlriList))
 		updateMsg := packet.NewBGPUpdateMessage(make([]packet.NLRI, 0), path.pathAttrs, nlriList)
 		p.sendUpdateMsg(updateMsg.Clone(), path)
 	}

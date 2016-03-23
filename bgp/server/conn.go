@@ -155,7 +155,8 @@ func NewPeerConn(fsm *FSM, dir config.ConnDir, conn *net.Conn) *PeerConn {
 		dir:    dir,
 		conn:   conn,
 		peerAttrs: packet.BGPPeerAttrs{
-			ASSize: 2,
+			ASSize:           2,
+			AddPathsRxActual: false,
 		},
 		readCh: make(chan bool),
 		stopCh: make(chan bool),
@@ -296,6 +297,14 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool)
 			} else if header.Type == packet.BGPMsgTypeOpen {
 				p.peerAttrs.ASSize = packet.GetASSize(msg.Body.(*packet.BGPOpen))
 				p.peerAttrs.AddPathFamily = packet.GetAddPathFamily(msg.Body.(*packet.BGPOpen))
+				addPathsTxFarEnd := packet.IsAddPathsTxEnabledForIPv4(p.peerAttrs.AddPathFamily)
+				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress,
+					"Far end can send add paths"))
+				if addPathsTxFarEnd && p.fsm.pConf.AddPathsRx {
+					p.peerAttrs.AddPathsRxActual = true
+					p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress,
+						"negotiated to recieve add paths from far end"))
+				}
 			}
 			p.fsm.pktRxCh <- packet.NewBGPPktInfo(msg, msgErr)
 			doneCh <- msgOk
