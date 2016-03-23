@@ -9,17 +9,13 @@ import (
 )
 
 func (svr *VrrpServer) VrrpCreateIfIndexEntry(IfIndex int32, IpAddr string) {
-	entry := svr.vrrpIfIndexIpAddr[IfIndex]
-	entry = IpAddr
-	svr.vrrpIfIndexIpAddr[IfIndex] = entry
+	svr.vrrpIfIndexIpAddr[IfIndex] = IpAddr
 	svr.logger.Info(fmt.Sprintln("VRRP: ip address for ifindex ", IfIndex,
-		"is", entry))
+		"is", IpAddr))
 }
 
 func (svr *VrrpServer) VrrpCreateVlanEntry(vlanId int, vlanName string) {
-	entry := svr.vrrpVlanId2Name[vlanId]
-	entry = vlanName
-	svr.vrrpVlanId2Name[vlanId] = entry
+	svr.vrrpVlanId2Name[vlanId] = vlanName
 }
 
 func (svr *VrrpServer) VrrpGetPortList() {
@@ -123,7 +119,9 @@ func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMs
 	switch msgType {
 	case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
 		svr.VrrpCreateIfIndexEntry(msg.IfIndex, msg.IpAddr)
-		go svr.VrrpMapIfIndexToLinuxIfIndex(msg.IfIndex)
+		svr.VrrpMapIfIndexToLinuxIfIndex(msg.IfIndex)
+		// @TODO: add this call only when we support update of ip addr
+		//go svr.VrrpChecknUpdateGblInfo(msg.IfIndex, msg.IpAddr)
 	case asicdConstDefs.NOTIFY_IPV4INTF_DELETE:
 		delete(svr.vrrpIfIndexIpAddr, msg.IfIndex)
 	}
@@ -132,8 +130,10 @@ func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMs
 func (svr *VrrpServer) VrrpUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
 	switch msg.IfState {
 	case asicdConstDefs.INTF_STATE_UP:
+		svr.VrrpHandleIntfUpEvent(msg.IfIndex)
 		svr.logger.Info("VRRP: Got Interface state up notification")
 	case asicdConstDefs.INTF_STATE_DOWN:
+		svr.VrrpHandleIntfShutdownEvent(msg.IfIndex)
 		svr.logger.Info("VRRP: Got Interface state down notification")
 	}
 }

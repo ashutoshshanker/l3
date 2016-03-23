@@ -20,7 +20,7 @@ func getClient(logger *logging.Writer, fileName string, process string) (*Client
 
 	data, err := ioutil.ReadFile(fileName)
 	if err != nil {
-		logger.Err(fmt.Sprintf("Failed to open OSPFd config file:%s, err:%s", fileName, err))
+		logger.Err(fmt.Sprintf("Failed to open ARPD config file:%s, err:%s", fileName, err))
 		return nil, err
 	}
 

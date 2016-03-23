@@ -38,20 +38,27 @@ func NewOutTCPConn(fsm *FSM, fsmConnCh chan net.Conn, fsmConnErrCh chan error) *
 }
 
 func (o *OutTCPConn) Connect(seconds uint32, addr string, connCh chan net.Conn, errCh chan error) {
-	_, err := o.fsm.peer.Server.ribdClient.GetRouteReachabilityInfo(o.fsm.pConf.NeighborAddress.String())
-	if err != nil {
+	reachableCh := make(chan bool)
+	reachabilityInfo := ReachabilityInfo{
+		IP:          o.fsm.pConf.NeighborAddress.String(),
+		ReachableCh: reachableCh,
+	}
+	o.fsm.peer.Server.ReachabilityCh <- reachabilityInfo
+	reachable := <-reachableCh
+	if !reachable {
 		duration := uint32(3)
 		for {
 			select {
 			case <-time.After(time.Duration(duration) * time.Second):
-				_, err = o.fsm.peer.Server.ribdClient.GetRouteReachabilityInfo(o.fsm.pConf.NeighborAddress.String())
+				o.fsm.peer.Server.ReachabilityCh <- reachabilityInfo
+				reachable = <-reachableCh
 			}
 			seconds -= duration
-			if err == nil || seconds <= duration {
+			if reachable || seconds <= duration {
 				break
 			}
 		}
-		if err != nil {
+		if !reachable {
 			errCh <- config.AddressNotResolvedError{"Neighbor is not reachable"}
 			return
 		}

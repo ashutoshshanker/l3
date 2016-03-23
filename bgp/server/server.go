@@ -68,6 +68,11 @@ type PolicyParams struct {
 	withdrawn  *([]*Destination)
 }
 
+type ReachabilityInfo struct {
+	IP          string
+	ReachableCh chan bool
+}
+
 type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *BGPPolicyEngine
@@ -86,6 +91,7 @@ type BGPServer struct {
 	PeerConnEstCh    chan string
 	PeerConnBrokenCh chan string
 	PeerCommandCh    chan config.PeerCommand
+	ReachabilityCh   chan ReachabilityInfo
 	BGPPktSrc        chan *packet.BGPPktSrc
 
 	NeighborMutex  sync.RWMutex
@@ -118,6 +124,7 @@ func NewBGPServer(logger *logging.Writer, policyEngine *BGPPolicyEngine, ribdCli
 	bgpServer.PeerConnEstCh = make(chan string)
 	bgpServer.PeerConnBrokenCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
+	bgpServer.ReachabilityCh = make(chan ReachabilityInfo)
 	bgpServer.BGPPktSrc = make(chan *packet.BGPPktSrc)
 	bgpServer.NeighborMutex = sync.RWMutex{}
 	bgpServer.PeerMap = make(map[string]*Peer)
@@ -1313,15 +1320,17 @@ func (server *BGPServer) StartServer() {
 		case ifState := <-asicdL3IntfStateCh:
 			server.logger.Info(fmt.Sprintf("Server: Received update on Asicd sub socket %+v, ifacePeerMap %+v",
 				ifState, server.ifacePeerMap))
-			if ifState.state == asicdConstDefs.INTF_STATE_UP {
-				if peer, ok := server.PeerMap[strconv.Itoa(int(ifState.idx))]; ok {
-					ip, _, err := net.ParseCIDR(ifState.ipaddr)
-					if err == nil {
-						server.logger.Info(fmt.Sprintln("Updating neighbor address with peer idx ", ifState.idx, " to ", ip.String()))
-						peer.Neighbor.NeighborAddress = ip
+			/*
+				if ifState.state == asicdConstDefs.INTF_STATE_UP {
+					if peer, ok := server.PeerMap[strconv.Itoa(int(ifState.idx))]; ok {
+						ip, _, err := net.ParseCIDR(ifState.ipaddr)
+						if err == nil {
+							server.logger.Info(fmt.Sprintln("Updating neighbor address with peer idx ", ifState.idx, " to ", ip.String()))
+							peer.Neighbor.NeighborAddress = ip
+						}
 					}
 				}
-			}
+			*/
 			if peerList, ok := server.ifacePeerMap[ifState.idx]; ok && ifState.state == asicdConstDefs.INTF_STATE_DOWN {
 				for _, peerIP := range peerList {
 					if peer, ok := server.PeerMap[peerIP]; ok {
@@ -1336,6 +1345,15 @@ func (server *BGPServer) StartServer() {
 
 		case err := <-bfdSubSocketErrCh:
 			server.logger.Info(fmt.Sprintf("Server: BFD subscriber socket returned err:%s", err))
+
+		case reachabilityInfo := <-server.ReachabilityCh:
+			server.logger.Info(fmt.Sprintln("Server: Reachability info for ip", reachabilityInfo.IP))
+			_, err := server.ribdClient.GetRouteReachabilityInfo(reachabilityInfo.IP)
+			if err != nil {
+				reachabilityInfo.ReachableCh <- false
+			} else {
+				reachabilityInfo.ReachableCh <- true
+			}
 		}
 	}
 }
