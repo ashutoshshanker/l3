@@ -12,6 +12,7 @@ import (
 	"ribdInt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 	"utils/netUtils"
 	"utils/patriciaDB"
@@ -30,12 +31,36 @@ type RedistributeRouteInfo struct {
 	route ribdInt.Routes
 }
 
-var RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
-var RouteProtocolTypeMapDB = make(map[string]int)
-var ReverseRouteProtoTypeMapDB = make(map[int]string)
-var ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
+type PublisherMapInfo struct {
+	pub_ipc    string
+	pub_socket *nanomsg.PubSocket
+}
+var RedistributeRouteMap map[string][]RedistributeRouteInfo
+var RouteProtocolTypeMapDB map[string]int
+var ReverseRouteProtoTypeMapDB map[int]string
+var ProtocolAdminDistanceMapDB map[string]RouteDistanceConfig
 var ProtocolAdminDistanceSlice AdminDistanceSlice
+var PublisherInfoMap map[string]PublisherMapInfo
 
+func BuildPublisherMap() {
+	RIBD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_ADDR)
+	for k,_ := range RouteProtocolTypeMapDB {
+		logger.Info(fmt.Sprintln("Building publisher map for protocol ", k))
+		if k == "CONNECTED" || k == "STATIC" {
+			logger.Info(fmt.Sprintln("Publisher info for protocol ", k, " not required"))
+			continue
+		}
+		if k == "IBGP" || k == "EBGP" {
+           continue		
+		}
+		pub_ipc := "ipc:///tmp/ribd_"+strings.ToLower(k)+"d.ipc"
+		logger.Info(fmt.Sprintln("pub_ipc:", pub_ipc))
+		pub := InitPublisher(pub_ipc)
+		PublisherInfoMap[k] = PublisherMapInfo{pub_ipc, pub}
+	}
+	PublisherInfoMap["EBGP"] = PublisherInfoMap["BGP"]
+	PublisherInfoMap["IBGP"] = PublisherInfoMap["BGP"]
+}
 func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["CONNECTED"] = ribdCommonDefs.CONNECTED
 	RouteProtocolTypeMapDB["EBGP"] = ribdCommonDefs.EBGP
@@ -395,8 +420,8 @@ func UpdateRedistributeTargetMap(evt int, protocol string, route ribdInt.Routes)
 		}
 	}
 }
-func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes, evt int) {
-	logger.Println("RouteNotificationSend")
+func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes, evt int) {
+	logger.Println("RedistributionNotificationSend")
 	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: route}
 	msgbufbytes, err := json.Marshal(msgBuf)
 	msg := ribdCommonDefs.RibdNotifyMsg{MsgType: uint16(evt), MsgBuf: msgbufbytes}
@@ -422,7 +447,43 @@ func RouteNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes, evt int
 	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
 	PUB.Send(buf, nanomsg.DontWait)
 }
-
+func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteReachabilityStatusInfo) {
+	logger.Info(fmt.Sprintln("RouteReachabilityStatusNotificationSend"))
+	evt := ribdCommonDefs.NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE
+	publisherInfo,ok := PublisherInfoMap[targetProtocol]
+	if !ok {
+		logger.Err(fmt.Sprintln("Publisher not found for protocol ", targetProtocol))
+		return
+	}
+	PUB := publisherInfo.pub_socket
+	msgInfo := ribdCommonDefs.RouteReachabilityStatusMsgInfo{}
+	msgInfo.Network = info.destNet
+	if info.status == "Up" {
+		msgInfo.IsReachable = true
+	}
+	msgBuf := msgInfo
+	msgbufbytes, err := json.Marshal(msgBuf)
+	msg := ribdCommonDefs.RibdNotifyMsg{MsgType: uint16(evt), MsgBuf: msgbufbytes}
+	buf, err := json.Marshal(msg)
+	if err != nil {
+		logger.Println("Error in marshalling Json")
+		return
+	}
+	var evtStr string
+	if info.status == "Down" {
+		evtStr = "to Down"
+	} else if info.status == "Up" {
+		evtStr = "to Up"
+	}
+	eventInfo := "Update Route Reachability status " + evtStr + " for network " + info.destNet + "for protocol " + targetProtocol
+	logger.Info(fmt.Sprintln("Sending ", evtStr, " for network ", info.destNet))
+	t1 := time.Now()
+	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
+	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
+	PUB.Send(buf, nanomsg.DontWait)
+	//for non-subscriber protocols like BFD
+	RIBD_PUB.Send(buf, nanomsg.DontWait)
+}
 func delLinuxRoute(route RouteInfoRecord) {
 	logger.Println("delLinuxRoute")
 	if route.protocol == ribdCommonDefs.CONNECTED {

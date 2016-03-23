@@ -113,6 +113,49 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			break
 		case asicdConstDefs.NOTIFY_IPV4INTF_DELETE:
 			logger.Println("NOTIFY_IPV4INTF_DELETE  event")
+			var msg asicdConstDefs.IPv4IntfNotifyMsg
+			err = json.Unmarshal(Notif.Msg, &msg)
+			if err != nil {
+				logger.Info(fmt.Sprintln("Error in reading msg ", err))
+				return
+			}
+			logger.Info(fmt.Sprintln("Received ipv4 intf delete with ipAddr ", msg.IpAddr,  " ifIndex = ", msg.IfIndex, " ifType ",asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex), " ifId ", asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)))
+			var ipMask net.IP
+			ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
+			if err != nil {
+				return
+			}
+			ipMask = make(net.IP, 4)
+			copy(ipMask, ipNet.Mask)
+			ipAddrStr := ip.String()
+			ipMaskStr := net.IP(ipMask).String()
+			logger.Info(fmt.Sprintln("Calling deletev4Route with ipaddr ", ipAddrStr, " mask ", ipMaskStr))
+				nextHopIfTypeStr := ""
+				switch asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex) {
+					case commonDefs.L2RefTypePort:
+					    nextHopIfTypeStr = "PHY"
+						break
+					case commonDefs.L2RefTypeVlan:
+						nextHopIfTypeStr = "VLAN"
+						break
+					case commonDefs.IfTypeNull:
+						nextHopIfTypeStr = "NULL"
+						break
+					case commonDefs.IfTypeLoopback:
+					   nextHopIfTypeStr = "Loopback"
+			           if IntfIdNameMap == nil {
+				          IntfIdNameMap = make(map[int32]IntfEntry)
+			           }
+			           intfEntry := IntfEntry{}
+			           IntfIdNameMap[msg.IfIndex] = intfEntry
+					   break
+				}
+            cfg := ribd.IPv4Route{nextHopIfTypeStr, "CONNECTED", strconv.Itoa(int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex))),ipAddrStr,0,ipMaskStr,"0.0.0.0"}
+			_, err = routeServiceHandler.DeleteIPv4Route(&cfg)//ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
+			if err != nil {
+				logger.Info(fmt.Sprintln("Route delete failed with err %s\n", err))
+				return
+			}
 			break
 		}
 	}

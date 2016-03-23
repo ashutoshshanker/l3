@@ -13,6 +13,7 @@ const (
 	  NOTIFY_ROUTE_CREATED = 1
 	  NOTIFY_ROUTE_DELETED = 2
 	  NOTIFY_ROUTE_INVALIDATED = 3
+	  NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE = 3
 	  DEFAULT_NOTIFICATION_SIZE = 128
 	  RoutePolicyStateChangetoValid=1
 	  RoutePolicyStateChangetoInValid = 2
@@ -26,4 +27,9 @@ type RibdNotifyMsg struct {
 
 type RoutelistInfo struct {
     RouteInfo ribdInt.Routes
+}
+
+type RouteReachabilityStatusMsgInfo struct {
+	Network string
+	IsReachable bool
 }
