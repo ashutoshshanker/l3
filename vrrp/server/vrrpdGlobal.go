@@ -75,6 +75,23 @@ type VrrpAsicdClient struct {
 	ClientHdl *asicdServices.ASICDServicesClient
 }
 
+type VrrpUpdateConfig struct {
+	OldConfig vrrpd.VrrpIntf
+	NewConfig vrrpd.VrrpIntf
+	AttrSet   []bool
+}
+
+type VrrpGlobalStateInfo struct {
+	AdverRx             uint32 // Total advertisement received
+	AdverTx             uint32 // Total advertisement send out
+	MasterIp            string // Remote Master Ip Address
+	LastAdverRx         string // Last advertisement received
+	LastAdverTx         string // Last advertisment send out
+	PreviousFsmState    string // previous fsm state
+	CurrentFsmState     string // current fsm state
+	ReasonForTransition string // why did we transition to current state?
+}
+
 type VrrpGlobalInfo struct {
 	IntfConfig vrrpd.VrrpIntf
 	// VRRP MAC aka VMAC
@@ -86,6 +103,7 @@ type VrrpGlobalInfo struct {
 	// (3 * Master_Adver_Interval) + Skew_time
 	MasterDownValue int32
 	MasterDownTimer *time.Timer
+	MasterDownLock  *sync.RWMutex
 	// Advertisement Timer
 	AdverTimer *time.Timer
 	// IfIndex IpAddr which needs to be used if no Virtual Ip is specified
@@ -99,7 +117,10 @@ type VrrpGlobalInfo struct {
 	// State Name
 	StateName string
 	// Lock to read current state of vrrp object
-	StateLock *sync.RWMutex
+	StateNameLock *sync.RWMutex
+	// Vrrp State Lock for each IfIndex + VRID
+	StateInfo     VrrpGlobalStateInfo
+	StateInfoLock *sync.RWMutex
 }
 
 type VrrpPktChannelInfo struct {
@@ -126,6 +147,7 @@ type VrrpServer struct {
 	vrrpVlanId2Name               map[int]string
 	VrrpCreateIntfConfigCh        chan vrrpd.VrrpIntf
 	VrrpDeleteIntfConfigCh        chan vrrpd.VrrpIntf
+	VrrpUpdateIntfConfigCh        chan VrrpUpdateConfig
 	vrrpRxPktCh                   chan VrrpPktChannelInfo
 	vrrpTxPktCh                   chan VrrpTxChannelInfo
 	vrrpFsmCh                     chan VrrpFsm
@@ -168,6 +190,7 @@ const (
 	VRRP_TX_BUF_CHANNEL_SIZE              = 1
 	VRRP_FSM_CHANNEL_SIZE                 = 1
 	VRRP_INTF_CONFIG_CH_SIZE              = 1
+	VRRP_TOTAL_INTF_CONFIG_ELEMENTS       = 7
 
 	// ip/vrrp header Check Defines
 	VRRP_TTL                        = 255

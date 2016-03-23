@@ -22,68 +22,22 @@ type VrrpClientJson struct {
 }
 
 const (
-	VRRP_RPC_NO_PORT = "could not find port and hence not starting rpc"
+	VRRP_RPC_NO_PORT      = "could not find port and hence not starting rpc"
+	VRRP_NEED_UNIQUE_INFO = "Original IfIndex & new IfIndex have different ifindex or VRID, hence cannot do an update"
 )
 
-func (h *VrrpHandler) CreateVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error) {
-	h.logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
-		config.IfIndex))
+func VrrpCheckConfig(config *vrrpd.VrrpIntf, h *VrrpHandler) (bool, error) {
 	if config.VRID == 0 {
 		h.logger.Info("VRRP: Invalid VRID")
 		return false, errors.New(vrrpServer.VRRP_INVALID_VRID)
 	}
 
-	err = h.server.VrrpValidateIntfConfig(config.IfIndex)
+	err := h.server.VrrpValidateIntfConfig(config.IfIndex)
 	if err != nil {
 		return false, err
 	}
-	h.server.VrrpCreateIntfConfigCh <- *config
-	return true, err
-}
-func (h *VrrpHandler) UpdateVrrpIntf(origconfig *vrrpd.VrrpIntf,
-	newconfig *vrrpd.VrrpIntf, attrset []bool) (r bool, err error) {
+
 	return true, nil
-}
-
-func (h *VrrpHandler) DeleteVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error) {
-	h.server.VrrpDeleteIntfConfigCh <- *config
-	return true, nil
-}
-
-func (h *VrrpHandler) convertVrrpEntryToThriftEntry(state vrrpd.VrrpIntfState) *vrrpd.VrrpIntfState {
-	entry := vrrpd.NewVrrpIntfState()
-	entry.VirtualRouterMACAddress = state.VirtualRouterMACAddress
-	entry.PreemptMode = bool(state.PreemptMode)
-	entry.AdvertisementInterval = int32(state.AdvertisementInterval)
-	entry.VRID = int32(state.VRID)
-	entry.Priority = int32(state.Priority)
-	entry.SkewTime = int32(state.SkewTime)
-	entry.VirtualIPv4Addr = state.VirtualIPv4Addr
-	entry.IfIndex = int32(state.IfIndex)
-	entry.MasterDownTimer = int32(state.MasterDownTimer)
-	entry.IntfIpAddr = state.IntfIpAddr
-	entry.VrrpState = state.VrrpState
-	return entry
-}
-
-func (h *VrrpHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
-	count vrrpd.Int) (*vrrpd.VrrpIntfStateGetInfo, error) {
-	nextIdx, currCount, vrrpIntfStateEntries := h.server.VrrpGetBulkVrrpIntfStates(
-		int(fromIndex), int(count))
-	if vrrpIntfStateEntries == nil {
-		return nil, errors.New("Interface Slice is not initialized")
-	}
-	vrrpEntryResponse := make([]*vrrpd.VrrpIntfState, len(vrrpIntfStateEntries))
-	for idx, item := range vrrpIntfStateEntries {
-		vrrpEntryResponse[idx] = h.convertVrrpEntryToThriftEntry(item)
-	}
-	intfEntryBulk := vrrpd.NewVrrpIntfStateGetInfo()
-	intfEntryBulk.VrrpIntfStateList = vrrpEntryResponse
-	intfEntryBulk.StartIdx = fromIndex
-	intfEntryBulk.EndIdx = vrrpd.Int(nextIdx)
-	intfEntryBulk.Count = vrrpd.Int(currCount)
-	intfEntryBulk.More = (nextIdx != 0)
-	return intfEntryBulk, nil
 }
 
 func VrrpNewHandler(vrrpSvr *vrrpServer.VrrpServer, logger *logging.Writer) *VrrpHandler {
@@ -114,7 +68,7 @@ func VrrpRpcGetClient(logger *logging.Writer, fileName string, process string) (
 
 }
 
-func StartServer(log *logging.Writer, handler *VrrpHandler, paramsDir string) error {
+func VrrpRpcStartServer(log *logging.Writer, handler *VrrpHandler, paramsDir string) error {
 	logger := log
 	fileName := paramsDir
 
@@ -147,4 +101,116 @@ func StartServer(log *logging.Writer, handler *VrrpHandler, paramsDir string) er
 		return err
 	}
 	return nil
+}
+
+func (h *VrrpHandler) CreateVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error) {
+	h.logger.Info(fmt.Sprintln("VRRP: Interface config create for ifindex ",
+		config.IfIndex))
+	r, err = VrrpCheckConfig(config, h)
+	if err != nil {
+		return r, err
+	}
+	h.server.VrrpCreateIntfConfigCh <- *config
+	return true, err
+}
+func (h *VrrpHandler) UpdateVrrpIntf(origconfig *vrrpd.VrrpIntf,
+	newconfig *vrrpd.VrrpIntf, attrset []bool) (r bool, err error) {
+	// Verify orig config
+	if (origconfig.IfIndex != newconfig.IfIndex) ||
+		(origconfig.VRID != newconfig.VRID) {
+		return false, errors.New(VRRP_NEED_UNIQUE_INFO)
+	}
+	r, err = VrrpCheckConfig(origconfig, h)
+	if err != nil {
+		return r, err
+	}
+	// Verify new config
+	r, err = VrrpCheckConfig(newconfig, h)
+	if err != nil {
+		return r, err
+	}
+	updConfg := vrrpServer.VrrpUpdateConfig{
+		OldConfig: *origconfig,
+		NewConfig: *newconfig,
+		AttrSet:   attrset,
+	}
+	h.server.VrrpUpdateIntfConfigCh <- updConfg
+
+	return true, nil
+}
+
+func (h *VrrpHandler) DeleteVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error) {
+	h.server.VrrpDeleteIntfConfigCh <- *config
+	return true, nil
+}
+
+func (h *VrrpHandler) convertVrrpIntfEntryToThriftEntry(state vrrpd.VrrpIntfState) *vrrpd.VrrpIntfState {
+	entry := vrrpd.NewVrrpIntfState()
+	entry.VirtualRouterMACAddress = state.VirtualRouterMACAddress
+	entry.PreemptMode = bool(state.PreemptMode)
+	entry.AdvertisementInterval = int32(state.AdvertisementInterval)
+	entry.VRID = int32(state.VRID)
+	entry.Priority = int32(state.Priority)
+	entry.SkewTime = int32(state.SkewTime)
+	entry.VirtualIPv4Addr = state.VirtualIPv4Addr
+	entry.IfIndex = int32(state.IfIndex)
+	entry.MasterDownTimer = int32(state.MasterDownTimer)
+	entry.IntfIpAddr = state.IntfIpAddr
+	entry.VrrpState = state.VrrpState
+	return entry
+}
+
+func (h *VrrpHandler) GetBulkVrrpIntfState(fromIndex vrrpd.Int,
+	count vrrpd.Int) (*vrrpd.VrrpIntfStateGetInfo, error) {
+	nextIdx, currCount, vrrpIntfStateEntries := h.server.VrrpGetBulkVrrpIntfStates(
+		int(fromIndex), int(count))
+	if vrrpIntfStateEntries == nil {
+		return nil, errors.New("Interface Slice is not initialized")
+	}
+	vrrpEntryResponse := make([]*vrrpd.VrrpIntfState, len(vrrpIntfStateEntries))
+	for idx, item := range vrrpIntfStateEntries {
+		vrrpEntryResponse[idx] = h.convertVrrpIntfEntryToThriftEntry(item)
+	}
+	intfEntryBulk := vrrpd.NewVrrpIntfStateGetInfo()
+	intfEntryBulk.VrrpIntfStateList = vrrpEntryResponse
+	intfEntryBulk.StartIdx = fromIndex
+	intfEntryBulk.EndIdx = vrrpd.Int(nextIdx)
+	intfEntryBulk.Count = vrrpd.Int(currCount)
+	intfEntryBulk.More = (nextIdx != 0)
+	return intfEntryBulk, nil
+}
+
+func (h *VrrpHandler) convertVrrpVridEntryToThriftEntry(state vrrpd.VrrpVridState) *vrrpd.VrrpVridState {
+	entry := vrrpd.NewVrrpVridState()
+	entry.IfIndex = state.IfIndex
+	entry.VRID = state.VRID
+	entry.AdverRx = int32(state.AdverRx)
+	entry.AdverTx = int32(state.AdverTx)
+	entry.CurrentState = state.CurrentState
+	entry.PreviousState = state.PreviousState
+	entry.LastAdverRx = state.LastAdverRx
+	entry.LastAdverTx = state.LastAdverTx
+	entry.MasterIp = state.MasterIp
+	entry.TransitionReason = state.TransitionReason
+	return entry
+}
+
+func (h *VrrpHandler) GetBulkVrrpVridState(fromIndex vrrpd.Int,
+	count vrrpd.Int) (*vrrpd.VrrpVridStateGetInfo, error) {
+	nextIdx, currCount, vrrpVridStateEntries := h.server.VrrpGetBulkVrrpVridStates(
+		int(fromIndex), int(count))
+	if vrrpVridStateEntries == nil {
+		return nil, errors.New("Interface Slice is not initialized")
+	}
+	vrrpEntryResponse := make([]*vrrpd.VrrpVridState, len(vrrpVridStateEntries))
+	for idx, item := range vrrpVridStateEntries {
+		vrrpEntryResponse[idx] = h.convertVrrpVridEntryToThriftEntry(item)
+	}
+	vridEntryBulk := vrrpd.NewVrrpVridStateGetInfo()
+	vridEntryBulk.VrrpVridStateList = vrrpEntryResponse
+	vridEntryBulk.StartIdx = fromIndex
+	vridEntryBulk.EndIdx = vrrpd.Int(nextIdx)
+	vridEntryBulk.Count = vrrpd.Int(currCount)
+	vridEntryBulk.More = (nextIdx != 0)
+	return vridEntryBulk, nil
 }

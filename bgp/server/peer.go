@@ -64,11 +64,11 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 
 func (p *Peer) Init() {
 	if p.Neighbor.State.BfdNeighborState == "down" {
-		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s", p.Neighbor.NeighborAddress))
+		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n", p.Neighbor.NeighborAddress))
 		return
 	}
 	if p.fsmManager == nil {
-		p.logger.Info(fmt.Sprintf("Instantiating new FSM Manager for neighbor %s", p.Neighbor.NeighborAddress))
+		p.logger.Info(fmt.Sprintf("Instantiating new FSM Manager for neighbor %s\n", p.Neighbor.NeighborAddress))
 		p.fsmManager = NewFSMManager(p, &p.Server.BgpConfig.Global.Config, &p.PeerConf)
 	}
 
@@ -217,11 +217,13 @@ func (p *Peer) getIfIdx() int32 {
 
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
 	if p.Neighbor.State.BfdNeighborState == "down" {
-		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s", p.Neighbor.NeighborAddress))
+		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n", p.Neighbor.NeighborAddress))
+		(*conn).Close()
 		return
 	}
 	if p.fsmManager == nil {
-		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s", p.Neighbor.NeighborAddress))
+		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s\n", p.Neighbor.NeighborAddress))
+		(*conn).Close()
 		return
 	}
 	p.fsmManager.acceptCh <- conn
@@ -229,7 +231,7 @@ func (p *Peer) AcceptConn(conn *net.TCPConn) {
 
 func (p *Peer) Command(command int) {
 	if p.fsmManager == nil {
-		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s", p.Neighbor.NeighborAddress))
+		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s\n", p.Neighbor.NeighborAddress))
 		return
 	}
 	p.fsmManager.commandCh <- command
@@ -276,9 +278,11 @@ func (p *Peer) SetPeerAttrs(bgpId net.IP, asSize uint8, holdTime uint32, keepali
 		if afi == packet.AfiIP {
 			for _, val := range safiMap {
 				if (val & packet.BGPCapAddPathRx) != 0 {
+					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set addpathsmaxtx to %d\n", p.Neighbor.NeighborAddress, p.PeerConf.AddPathsMaxTx))
 					p.Neighbor.State.AddPathsMaxTx = p.PeerConf.AddPathsMaxTx
 				}
 				if (val & packet.BGPCapAddPathTx) != 0 {
+					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set addpathsrx to %s\n", p.Neighbor.NeighborAddress, p.PeerConf.AddPathsRx))
 					p.Neighbor.State.AddPathsRx = true
 				}
 			}
@@ -292,13 +296,13 @@ func (p *Peer) getAddPathsMaxTx() int {
 
 func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *Path) bool {
 	if p.Neighbor.Transport.Config.LocalAddress == nil {
-		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message, FSM is not in Established state",
+		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message, FSM is not in Established state\n",
 			p.Neighbor.NeighborAddress))
 		return false
 	}
 
 	if bgpMsg == nil || bgpMsg.Body.(*packet.BGPUpdate).PathAttributes == nil {
-		p.logger.Err(fmt.Sprintf("Neighbor %s: Path attrs not found in BGP Update message", p.Neighbor.NeighborAddress))
+		p.logger.Err(fmt.Sprintf("Neighbor %s: Path attrs not found in BGP Update message\n", p.Neighbor.NeighborAddress))
 		return false
 	}
 

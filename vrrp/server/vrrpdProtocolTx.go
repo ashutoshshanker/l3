@@ -7,6 +7,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"net"
+	"time"
 )
 
 /*
@@ -160,13 +161,24 @@ func (svr *VrrpServer) VrrpSendPkt(key string, priority uint16) {
 		gblInfo.PcapHdlLock.Unlock()
 		return
 	}
+	gblInfo.PcapHdlLock.Unlock()
+	configuredPriority := gblInfo.IntfConfig.Priority
 	// Because we do not update the gblInfo back into the map...
 	// we can overwrite the priority value if Master is down..
 	if priority == VRRP_MASTER_DOWN_PRIORITY {
 		gblInfo.IntfConfig.Priority = int32(priority)
 	}
-	gblInfo.PcapHdlLock.Unlock()
 	vrrpEncHdr, hdrLen := svr.VrrpCreateVrrpHeader(gblInfo)
 	svr.VrrpWritePacket(gblInfo,
 		svr.VrrpCreateSendPkt(gblInfo, vrrpEncHdr, hdrLen))
+	svr.VrrpUpdateMasterTimerStateInfo(&gblInfo)
+	gblInfo.IntfConfig.Priority = configuredPriority
+	svr.vrrpGblInfo[key] = gblInfo
+}
+
+func (svr *VrrpServer) VrrpUpdateMasterTimerStateInfo(gblInfo *VrrpGlobalInfo) {
+	gblInfo.StateInfoLock.Lock()
+	gblInfo.StateInfo.LastAdverTx = time.Now().String()
+	gblInfo.StateInfo.AdverTx++
+	gblInfo.StateInfoLock.Unlock()
 }
