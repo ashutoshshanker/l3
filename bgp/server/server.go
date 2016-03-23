@@ -919,6 +919,7 @@ func (server *BGPServer) ProcessRoutesFromRIB() {
 
 func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
 	updated, withdrawn, withdrawPath := server.AdjRib.RemoveUpdatesFromNeighbor(peerIp, peer, server.addPathCount)
+	server.logger.Info(fmt.Sprintf("ProcessRemoveNeighbor - Neighbor %s, send updated paths %v, withdrawn paths %v\n", peerIp, updated, withdrawn))
 	updated, withdrawn, withdrawPath = server.checkForAggregation(updated, withdrawn, withdrawPath)
 	server.SendUpdate(updated, withdrawn, withdrawPath)
 }
