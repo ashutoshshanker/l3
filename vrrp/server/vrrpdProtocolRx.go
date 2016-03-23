@@ -115,12 +115,12 @@ func (svr *VrrpServer) VrrpCheckHeader(hdr *VrrpPktHeader, layerContent []byte, 
 func (svr *VrrpServer) VrrpCheckRcvdPkt(packet gopacket.Packet, key string,
 	IfIndex int32) {
 	gblInfo := svr.vrrpGblInfo[key]
-	gblInfo.StateLock.Lock()
+	gblInfo.StateNameLock.Lock()
 	if gblInfo.StateName == VRRP_INITIALIZE_STATE {
-		gblInfo.StateLock.Unlock()
+		gblInfo.StateNameLock.Unlock()
 		return
 	}
-	gblInfo.StateLock.Unlock()
+	gblInfo.StateNameLock.Unlock()
 	// Get Entire IP layer Info
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	if ipLayer == nil {

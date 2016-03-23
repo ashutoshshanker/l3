@@ -107,6 +107,13 @@ func (server *BFDServer) processSessionConfig(sessionConfig SessionConfig) error
 	return nil
 }
 
+func (server *BFDServer) SendAdminDownToAllNeighbors() error {
+	for _, session := range server.bfdGlobal.Sessions {
+		session.StopBfdSession()
+	}
+	return nil
+}
+
 func (server *BFDServer) ReadFromConnection(conn net.Conn) error {
 	defer conn.Close()
 	sessionConf := SessionConfig{
@@ -120,9 +127,22 @@ func (server *BFDServer) ReadFromConnection(conn net.Conn) error {
 }
 
 func (server *BFDServer) GetNewSessionId() int32 {
-	s1 := rand.NewSource(time.Now().UnixNano())
-	r1 := rand.New(s1)
-	sessionId := r1.Int31n(MAX_NUM_SESSIONS)
+	var sessionIdUsed bool
+	var sessionId int32
+	sessionId = 0
+	if server.bfdGlobal.NumSessions < MAX_NUM_SESSIONS {
+		sessionIdUsed = true //By default assume the sessionId is already used.
+		s1 := rand.NewSource(time.Now().UnixNano())
+		r1 := rand.New(s1)
+		for sessionIdUsed {
+			sessionId = r1.Int31n(MAX_NUM_SESSIONS)
+			if _, exist := server.bfdGlobal.Sessions[sessionId]; exist {
+				server.logger.Info(fmt.Sprintln("GetNewSessionId: sessionId ", sessionId, " is in use, Generating a new one"))
+			} else {
+				sessionIdUsed = false
+			}
+		}
+	}
 	return sessionId
 }
 
@@ -137,9 +157,20 @@ func (server *BFDServer) GetIfIndexAndLocalIpFromDestIp(DestIp string) (int32, s
 	return ifIndex, reachabilityInfo.NextHopIp
 }
 
+func (server *BFDServer) GetTxJitter() int32 {
+	s1 := rand.NewSource(time.Now().UnixNano())
+	r1 := rand.New(s1)
+	jitter := r1.Int31n(TX_JITTER)
+	return jitter
+}
+
 func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLink bool, Protocol bfddCommonDefs.BfdSessionOwner) *BfdSession {
 	bfdSession := &BfdSession{}
 	sessionId := server.GetNewSessionId()
+	if sessionId == 0 {
+		server.logger.Info("Failed to get sessionId")
+		return nil
+	}
 	bfdSession.state.SessionId = sessionId
 	bfdSession.state.RemoteIpAddr = DestIp
 	bfdSession.state.InterfaceId = IfIndex
@@ -159,6 +190,7 @@ func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLi
 	intf, exist := server.bfdGlobal.Interfaces[bfdSession.state.InterfaceId]
 	if exist {
 		bfdSession.txInterval = STARTUP_TX_INTERVAL / 1000
+		bfdSession.txJitter = server.GetTxJitter()
 		bfdSession.rxInterval = (STARTUP_RX_INTERVAL * intf.conf.LocalMultiplier) / 1000
 		bfdSession.state.LocalIpAddr = intf.property.IpAddr.String()
 		bfdSession.state.DesiredMinTxInterval = intf.conf.DesiredMinTxInterval
@@ -561,6 +593,9 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
 	session.state.RemoteMinRxInterval = int32(bfdPacket.RequiredMinRxInterval)
 	session.rxInterval = (int32(bfdPacket.DesiredMinTxInterval) * int32(bfdPacket.DetectMult)) / 1000
+	if session.state.RemoteSessionState == STATE_ADMIN_DOWN {
+		session.state.RemoteSessionState = STATE_DOWN
+	}
 	switch session.state.RemoteSessionState {
 	case STATE_DOWN:
 		event = REMOTE_DOWN
@@ -796,6 +831,11 @@ func (session *BfdSession) MoveToUpState() error {
 	return nil
 }
 
+func (session *BfdSession) ApplyTxJitter() time.Duration {
+	txInterval := session.txInterval * (1 - session.txJitter/100)
+	return time.Duration(txInterval)
+}
+
 func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 	destAddr := session.state.RemoteIpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
@@ -834,7 +874,7 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 				bfdSession.txTimer.Stop()
 				if session.state.SessionState != STATE_ADMIN_DOWN ||
 					session.state.RemoteSessionState != STATE_ADMIN_DOWN {
-					txTimerMS = time.Duration(bfdSession.txInterval)
+					txTimerMS = bfdSession.ApplyTxJitter()
 					bfdSession.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { bfdSession.TxTimeoutCh <- bfdSession.state.SessionId })
 				}
 			}
