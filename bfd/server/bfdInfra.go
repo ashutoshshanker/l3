@@ -147,12 +147,12 @@ func (server *BFDServer) BuildIPv4InterfacesMap() error {
 			server.logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4Intf"))
 			return nil
 		}
-		server.logger.Info(fmt.Sprintln("Got IPv4 interfaces - len  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfList), IPIntfBulk.Count))
+		server.logger.Info(fmt.Sprintf("Got IPv4 interfaces - len  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfList), IPIntfBulk.Count))
 		for i := 0; i < int(IPIntfBulk.Count); i++ {
 			ipv4IntfMsg.IpAddr = IPIntfBulk.IPv4IntfList[i].IpAddr
 			ipv4IntfMsg.IfId = IPIntfBulk.IPv4IntfList[i].IfIndex
 			server.createIPIntfConfMap(ipv4IntfMsg)
-			server.logger.Info(fmt.Sprintln("Created IPv4 interface (%d : %s)\n", ipv4IntfMsg.IfId, ipv4IntfMsg.IpAddr))
+			server.logger.Info(fmt.Sprintf("Created IPv4 interface (%d : %s)\n", ipv4IntfMsg.IfId, ipv4IntfMsg.IpAddr))
 		}
 		if IPIntfBulk.More == false {
 			server.logger.Info(fmt.Sprintln("Get IPv4 interfaces - more returned as false, so no more get bulks"))
