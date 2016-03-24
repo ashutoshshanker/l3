@@ -512,7 +512,7 @@ func delLinuxRoute(route RouteInfoRecord) {
 		return
 	}
 
-	lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst}
+	lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst, Gw:route.nextHopIp}
 	err = netlink.RouteDel(&lxroute)
 	if err != nil {
 		logger.Info(fmt.Sprintln("Route delete call failed with error ", err))
@@ -548,7 +548,11 @@ func addLinuxRoute(route RouteInfoRecord) {
 		return
 	}
 
-	logger.Info(fmt.Sprintln("adding linux route for dst.ip= ", dst.IP.String(), " mask: ", dst.Mask.String(), "Gw: ", route.nextHopIp))
+	logger.Info(fmt.Sprintln("adding linux route for dst.ip= ", dst.IP.String(), " mask: ", dst.Mask.String(), "Gw: ", route.nextHopIp, " maskedIP: ",maskedIP))
+	_,err = netlink.RouteGet(maskedIP)
+	if err == nil {
+		logger.Info(fmt.Sprintln("No route for ip ", dst))
+	}
 	lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst, Gw: route.nextHopIp}
 	err = netlink.RouteAdd(&lxroute)
 	if err != nil {

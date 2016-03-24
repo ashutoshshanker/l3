@@ -646,6 +646,7 @@ func (m RIBDServicesHandler) GetRoute(destNetIp string, networkMask string) (rou
 	return route, err
 }
 func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.Item, item patriciaDB.Item) (err error) {
+
 	if handle == nil {
 		logger.Err(fmt.Sprintln("nil handle"))
 		return err
@@ -656,10 +657,10 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 		logger.Err(fmt.Sprintln("Error getting IP from cidr: ", routeReachabilityStatusInfo.destNet))
 		return err
 	}
-	//logger.Info(fmt.Sprintln("UpdateRouteReachabilityStatus network: ", routeReachabilityStatusInfo.destNet, " status:", routeReachabilityStatusInfo.status, "ip: ", ip.String()))
+	logger.Info(fmt.Sprintln("UpdateRouteReachabilityStatus network: ", routeReachabilityStatusInfo.destNet, " status:", routeReachabilityStatusInfo.status, "ip: ", ip.String()))
 	rmapInfoRecordList := handle.(RouteInfoRecordList)
 	for k,v := range rmapInfoRecordList.routeInfoProtocolMap {
-		logger.Info(fmt.Sprintln("protocol: ", k))
+		logger.Info(fmt.Sprintln("UpdateRouteReachabilityStatus - protocol: ", k))
 		for i:=0;i<len(v);i++ {
             if v[i].nextHopIp.String() == ip.String() {
 				if routeReachabilityStatusInfo.status == "Down" &&  v[i].resolvedNextHopIpIntf.IsReachable == true {
@@ -917,8 +918,8 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		addLinuxRoute(routeInfoRecord)
 		if routeInfoRecord.resolvedNextHopIpIntf.IsReachable {
 			logger.Info(fmt.Sprintln("Mark this network reachable"))
-			routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up"}
-			RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
+			//routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up"}
+			//RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 		}
 		//update in the event log
 		eventInfo := "Created route " + policyRoute.Ipaddr + " " + policyRoute.Mask + " type" + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)]
@@ -987,8 +988,8 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 		}
 	}
     logger.Info(fmt.Sprintln("Route deleted for this destination, traverse dependent routes to update routeReachability status"))
-    routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Down"}
-	RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
+    //routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Down"}
+	//RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 	if routeInfoRecordList.selectedRouteProtocol != ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)] {
 		logger.Println("This is not the selected protocol, nothing more to do here")
 		return
@@ -1167,8 +1168,8 @@ func createV4Route(destNetIp string,
 		addLinuxRoute(routeInfoRecord)
 		if routeInfoRecord.resolvedNextHopIpIntf.IsReachable {
 			logger.Info(fmt.Sprintln("Mark this network reachable"))
-			routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up"}
-			RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
+			//routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up"}
+			//RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 		}
 		//update in the event log
 		eventInfo := "Created route " + policyRoute.Ipaddr + " " + policyRoute.Mask + " type" + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)]
