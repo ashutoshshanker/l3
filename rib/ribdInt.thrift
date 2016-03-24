@@ -6,7 +6,7 @@ struct NextHopInfo {
     3: int NextHopIfIndex,
 	4: int Metric,
 	5: string Ipaddr,
-	6: string Mask
+	6: string Mask,
 	7: bool   IsReachable
 }
 struct Routes {
