@@ -359,13 +359,14 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 	return nil
 }
 
-func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB) error {
+func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB, done chan bool) error {
 	// BfdGlobalConfig
 	server.ReadGlobalConfigFromDB(dbHdl)
 	// BfdIntfConfig
 	server.ReadIntfConfigFromDB(dbHdl)
 	// BfdSessionConfig
 	server.ReadSessionConfigFromDB(dbHdl)
+	done <- true
 	return nil
 }
 
@@ -412,7 +413,8 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	// Initialize BFD server from params file
 	server.InitServer(paramFile)
 	// Read BFD configurations already present in DB
-	server.ReadConfigFromDB(dbHdl)
+	dbReadCh := make(chan bool)
+	go server.ReadConfigFromDB(dbHdl, dbReadCh)
 	// Start subcriber for ASICd events
 	go server.CreateASICdSubscriber()
 	// Start session management handler
@@ -420,12 +422,14 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	// Initialize and run notification publisher
 	go server.PublishSessionNotifications()
 
-	// Server is up. Let rpc handler started now.
-	server.ServerUpCh <- true
-
 	// Now, wait on below channels to process
 	for {
 		select {
+		case dbRead := <-dbReadCh:
+			if dbRead == true {
+				// Server is up. Let rpc handler get started now.
+				server.ServerUpCh <- true
+			}
 		case gConf := <-server.GlobalConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Global Configuration", gConf))
 			server.processGlobalConfig(gConf)
