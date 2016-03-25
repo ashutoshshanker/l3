@@ -158,7 +158,14 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			           IntfIdNameMap[msg.IfIndex] = intfEntry
 					   break
 				}
-            cfg := ribd.IPv4Route{nextHopIfTypeStr, "CONNECTED", strconv.Itoa(int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex))),ipAddrStr,0,ipMaskStr,"0.0.0.0"}
+			cfg := ribd.IPv4Route{
+				DestinationNw:     ipAddrStr,
+				Protocol:          "CONNECTED",
+				OutgoingInterface: strconv.Itoa(int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex))),
+				OutgoingIntfType:  nextHopIfTypeStr,
+				Cost:              0,
+				NetworkMask:       ipMaskStr,
+				NextHopIp:         "0.0.0.0"}
 			_, err = routeServiceHandler.DeleteIPv4Route(&cfg)//ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
 			if err != nil {
 				logger.Info(fmt.Sprintln("Route delete failed with err %s\n", err))

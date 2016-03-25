@@ -692,25 +692,16 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 	return err
 }
 func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, err error) {
-<<<<<<< HEAD
-=======
-	var prev_intf ribdInt.NextHopInfo
->>>>>>> upstream/master
 	logger.Info(fmt.Sprintln("ResolveNextHop for ", ipAddr))
 	nextHopIntf.NextHopIp = ipAddr
 	if ipAddr == "0.0.0.0" {
-<<<<<<< HEAD
 		nextHopIntf.IsReachable = true
 		return nextHopIntf,err
-=======
-		return nextHopIntf, err
->>>>>>> upstream/master
 	}
 	ip := ipAddr
 	for {
 		intf, err := routeServiceHandler.GetRouteReachabilityInfo(ip)
 		if err != nil {
-<<<<<<< HEAD
 			logger.Err(fmt.Sprintln("next hop ", ip, " not reachable"))
 			return nextHopIntf,err
 		}
@@ -721,16 +712,6 @@ func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, err error) 
 			intf.IsReachable = true
 			return *intf,err
 		}
-=======
-			logger.Err(fmt.Sprintln("next hop ", ipAddr, " not reachable"))
-			return nextHopIntf, err
-		}
-		logger.Info(fmt.Sprintln("intf.nextHopIp ", intf.NextHopIp, " intf.Ipaddr:", intf.Ipaddr))
-		if intf.NextHopIp == "0.0.0.0" {
-			return prev_intf, err
-		}
-		prev_intf = *intf
->>>>>>> upstream/master
 		ip = intf.NextHopIp
 	}
 	return nextHopIntf, err
@@ -928,12 +909,6 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 	policyRoute.Ipaddr = routeInfoRecord.destNetIp.String()
 	policyRoute.Mask = routeInfoRecord.networkMask.String()
 	if policyPath == policyCommonDefs.PolicyPath_Export {
-<<<<<<< HEAD
-		//TO-DO: Update this when resolveNextHop is tested 
-=======
-		//TO-DO: Update this when resolveNextHop is tested
-		//routeInfoRecord.resolvedNextHopIpIntf,_ = ResolveNextHop(routeInfoRecord.nextHopIp.String())
->>>>>>> upstream/master
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIp = routeInfoRecord.nextHopIp.String()
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType = ribdInt.Int(routeInfoRecord.nextHopIfType)
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex = ribdInt.Int(routeInfoRecord.nextHopIfIndex)
@@ -1034,14 +1009,6 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 		return
 	}
 	logger.Println("This is the selected protocol")
-<<<<<<< HEAD
-=======
-	//TO-DO: Update this when resolveNextHop is tested
-	//routeInfoRecord.resolvedNextHopIpIntf,_ = ResolveNextHop(routeInfoRecord.nextHopIp.String())
-	routeInfoRecord.resolvedNextHopIpIntf.NextHopIp = routeInfoRecord.nextHopIp.String()
-	routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType = ribdInt.Int(routeInfoRecord.nextHopIfType)
-	routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex = ribdInt.Int(routeInfoRecord.nextHopIfIndex)
->>>>>>> upstream/master
 	//delete in asicd
 	if asicdclnt.IsConnected {
 		logger.Info(fmt.Sprintln("Calling asicd to delete this route- ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
@@ -1196,14 +1163,6 @@ func createV4Route(destNetIp string,
 			destNetSlice = make([]localDB, 0)
 		}
 		destNetSlice = append(destNetSlice, localDBRecord)
-<<<<<<< HEAD
-=======
-		//TO-DO: Update this when resolveNextHop is tested
-		//routeInfoRecord.resolvedNextHopIpIntf,err = ResolveNextHop(routeInfoRecord.nextHopIp.String())
-		routeInfoRecord.resolvedNextHopIpIntf.NextHopIp = routeInfoRecord.nextHopIp.String()
-		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType = ribdInt.Int(routeInfoRecord.nextHopIfType)
-		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex = ribdInt.Int(routeInfoRecord.nextHopIfIndex)
->>>>>>> upstream/master
 		//call asicd
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
