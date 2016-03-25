@@ -1,10 +1,10 @@
 package server
 
 import (
-        "fmt"
-        "ribd"
-		"ribdInt"
-		"strconv"
+	"fmt"
+	"ribd"
+	"ribdInt"
+	"strconv"
 )
 
 type DestType bool
@@ -372,8 +372,15 @@ func (server *OSPFServer) DeleteRoute(rKey RoutingTblKey) {
 	for key, _ := range oldEnt.NextHops {
 		nextHopIp := convertUint32ToIPv4(key.NextHopIP) //String : 4
 		server.logger.Info(fmt.Sprintln("Deleting Route: destNetIp:", destNetIp, "networkMask:", networkMask, "nextHopIp:", nextHopIp, "routeType:", routeType))
-        cfg := ribd.IPv4Route{"", routeType, "",destNetIp,0,networkMask,nextHopIp}
-        ret, err := server.ribdClient.ClientHdl.DeleteIPv4Route(&cfg)
+		cfg := ribd.IPv4Route{
+			DestinationNw:     destNetIp,
+			Protocol:          routeType,
+			OutgoingInterface: "",
+			OutgoingIntfType:  "",
+			Cost:              0,
+			NetworkMask:       networkMask,
+			NextHopIp:         nextHopIp}
+		ret, err := server.ribdClient.ClientHdl.DeleteIPv4Route(&cfg)
 		//destNetIp, networkMask, routeType, nextHopIp)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Error Installing Route:", err))
@@ -408,9 +415,17 @@ func (server *OSPFServer) InstallRoute(rKey RoutingTblKey) {
 		nextHopIfType := ribd.Int(ipProp.IfType) // ifType int : 5
 		nextHopIfIndex := ribd.Int(ipProp.IfId)  // Vlan Id int : 6
 		server.logger.Info(fmt.Sprintln("Installing Route: destNetIp:", destNetIp, "networkMask:", networkMask, "metric:", metric, "nextHopIp:", nextHopIp, "nextHopIfType:", nextHopIfType, "nextHopIfIndex:", nextHopIfIndex, "routeType:", routeType))
-		nextHopIfTypeStr,_ := server.ribdClient.ClientHdl.GetNextHopIfTypeStr(ribdInt.Int(nextHopIfType))
-        cfg := ribd.IPv4Route{nextHopIfTypeStr, routeType, strconv.Itoa(int(nextHopIfIndex)),destNetIp,int32(metric),networkMask,nextHopIp}
-        ret, err := server.ribdClient.ClientHdl.CreateIPv4Route(&cfg)//destNetIp, networkMask, metric, nextHopIp, nextHopIfType, nextHopIfIndex, routeType)
+		nextHopIfTypeStr, _ := server.ribdClient.ClientHdl.GetNextHopIfTypeStr(ribdInt.Int(nextHopIfType))
+		cfg := ribd.IPv4Route{
+			DestinationNw:     destNetIp,
+			Protocol:          routeType,
+			OutgoingInterface: strconv.Itoa(int(nextHopIfIndex)),
+			OutgoingIntfType:  nextHopIfTypeStr,
+			Cost:              int32(metric),
+			NetworkMask:       networkMask,
+			NextHopIp:         nextHopIp}
+
+		ret, err := server.ribdClient.ClientHdl.CreateIPv4Route(&cfg) //destNetIp, networkMask, metric, nextHopIp, nextHopIfType, nextHopIfIndex, routeType)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Error Installing Route:", err))
 		}

@@ -593,9 +593,6 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
 	session.state.RemoteMinRxInterval = int32(bfdPacket.RequiredMinRxInterval)
 	session.rxInterval = (int32(bfdPacket.DesiredMinTxInterval) * int32(bfdPacket.DetectMult)) / 1000
-	if session.state.RemoteSessionState == STATE_ADMIN_DOWN {
-		session.state.RemoteSessionState = STATE_DOWN
-	}
 	switch session.state.RemoteSessionState {
 	case STATE_DOWN:
 		event = REMOTE_DOWN
@@ -614,8 +611,11 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	session.RemoteChangedDemandMode(bfdPacket)
 	session.ProcessPollSequence(bfdPacket)
 	session.sessionTimer.Stop()
-	sessionTimeoutMS := time.Duration(session.rxInterval)
-	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
+	if session.state.SessionState != STATE_ADMIN_DOWN &&
+		session.state.RemoteSessionState != STATE_ADMIN_DOWN {
+		sessionTimeoutMS := time.Duration(session.rxInterval)
+		session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
+	}
 	return nil
 }
 
@@ -872,7 +872,7 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 					bfdSession.state.NumTxPackets++
 				}
 				bfdSession.txTimer.Stop()
-				if session.state.SessionState != STATE_ADMIN_DOWN ||
+				if session.state.SessionState != STATE_ADMIN_DOWN &&
 					session.state.RemoteSessionState != STATE_ADMIN_DOWN {
 					txTimerMS = bfdSession.ApplyTxJitter()
 					bfdSession.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { bfdSession.TxTimeoutCh <- bfdSession.state.SessionId })
