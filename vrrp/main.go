@@ -34,7 +34,7 @@ func main() {
 	// Create vrrp rpc handler
 	vrrpHdl := vrrpRpc.VrrpNewHandler(vrrpSvr, logger)
 	logger.Info("Starting VRRP RPC listener....")
-	err = vrrpRpc.StartServer(logger, vrrpHdl, *paramsDir)
+	err = vrrpRpc.VrrpRpcStartServer(logger, vrrpHdl, *paramsDir)
 	if err != nil {
 		logger.Err(fmt.Sprintln("VRRP: Cannot start vrrp server", err))
 		return

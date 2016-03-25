@@ -21,22 +21,6 @@ import (
 	"vrrpd"
 )
 
-func (svr *VrrpServer) VrrpDumpIntfInfo(gblInfo VrrpGlobalInfo) {
-	svr.logger.Info(fmt.Sprintln("VRID:", gblInfo.IntfConfig.VRID))
-	svr.logger.Info(fmt.Sprintln("IpAddr:", gblInfo.IpAddr))
-	svr.logger.Info(fmt.Sprintln("IfIndex:", gblInfo.IntfConfig.IfIndex))
-	svr.logger.Info(fmt.Sprintln("Priority:", gblInfo.IntfConfig.Priority))
-	svr.logger.Info(fmt.Sprintln("Preempt Mode:", gblInfo.IntfConfig.PreemptMode))
-	svr.logger.Info(fmt.Sprintln("Virt Mac Addr:", gblInfo.VirtualRouterMACAddress))
-	svr.logger.Info(fmt.Sprintln("VirtualIPv4Addr:", gblInfo.IntfConfig.VirtualIPv4Addr))
-	svr.logger.Info(fmt.Sprintln("AdvertisementTime Value:", gblInfo.IntfConfig.AdvertisementInterval))
-	svr.logger.Info(fmt.Sprintln("Calculated MasterAdverInterval:", gblInfo.MasterAdverInterval))
-	svr.logger.Info(fmt.Sprintln("Skew Time:", gblInfo.SkewTime))
-	svr.logger.Info(fmt.Sprintln("Master Down Value:", gblInfo.MasterDownValue))
-	svr.logger.Info(fmt.Sprintln("Advertise timer:", gblInfo.AdverTimer))
-	svr.logger.Info(fmt.Sprintln("Master Down Timer:", gblInfo.MasterDownTimer))
-}
-
 func (svr *VrrpServer) VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
 	IpAddr, ok := svr.vrrpIfIndexIpAddr[gblInfo.IntfConfig.IfIndex]
 	if ok == false {
@@ -65,9 +49,29 @@ func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfSt
 	entry.VirtualRouterMACAddress = gblInfo.VirtualRouterMACAddress
 	entry.SkewTime = gblInfo.SkewTime
 	entry.MasterDownTimer = gblInfo.MasterDownValue
-	gblInfo.StateLock.Lock()
+	gblInfo.StateNameLock.Lock()
 	entry.VrrpState = gblInfo.StateName
-	gblInfo.StateLock.Unlock()
+	gblInfo.StateNameLock.Unlock()
+}
+
+func (svr *VrrpServer) VrrpPopulateVridState(key string, entry *vrrpd.VrrpVridState) {
+	gblInfo, ok := svr.vrrpGblInfo[key]
+	if ok == false {
+		svr.logger.Err(fmt.Sprintln("Entry not found for", key))
+		return
+	}
+	entry.IfIndex = gblInfo.IntfConfig.IfIndex
+	entry.VRID = gblInfo.IntfConfig.VRID
+	gblInfo.StateInfoLock.Lock()
+	entry.AdverRx = int32(gblInfo.StateInfo.AdverRx)
+	entry.AdverTx = int32(gblInfo.StateInfo.AdverTx)
+	entry.CurrentState = gblInfo.StateInfo.CurrentFsmState
+	entry.PreviousState = gblInfo.StateInfo.PreviousFsmState
+	entry.LastAdverRx = gblInfo.StateInfo.LastAdverRx
+	entry.LastAdverTx = gblInfo.StateInfo.LastAdverTx
+	entry.MasterIp = gblInfo.StateInfo.MasterIp
+	entry.TransitionReason = gblInfo.StateInfo.ReasonForTransition
+	gblInfo.StateInfoLock.Unlock()
 }
 
 func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) {
@@ -107,15 +111,17 @@ func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 
 	// Initialize Locks for accessing shared ds
 	gblInfo.PcapHdlLock = &sync.RWMutex{}
-	gblInfo.StateLock = &sync.RWMutex{}
+	gblInfo.StateNameLock = &sync.RWMutex{}
+	gblInfo.MasterDownLock = &sync.RWMutex{}
+	gblInfo.StateInfoLock = &sync.RWMutex{}
 
 	// Update Ip Addr at last
 	svr.VrrpUpdateIntfIpAddr(&gblInfo)
 
 	// Set Initial state
-	gblInfo.StateLock.Lock()
+	gblInfo.StateNameLock.Lock()
 	gblInfo.StateName = VRRP_INITIALIZE_STATE
-	gblInfo.StateLock.Unlock()
+	gblInfo.StateNameLock.Unlock()
 	svr.vrrpGblInfo[key] = gblInfo
 	svr.vrrpIntfStateSlice = append(svr.vrrpIntfStateSlice, key)
 
@@ -128,6 +134,7 @@ func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 		svr.logger.Info("Adding protocol mac for punting packets to CPU")
 		svr.VrrpUpdateProtocolMacEntry(true /*add vrrp protocol mac*/)
 	}
+	svr.logger.Info(fmt.Sprintln("Init Vrrp config obj is:", gblInfo))
 	// Start FSM
 	svr.vrrpFsmCh <- VrrpFsm{
 		key: key,
@@ -151,11 +158,72 @@ func (svr *VrrpServer) VrrpDeleteGblInfo(config vrrpd.VrrpIntf) {
 	svr.VrrpUpdateProtocolMacEntry(false /*delete vrrp protocol mac*/)
 }
 
+func (svr *VrrpServer) VrrpUpdateIntf(origconfig vrrpd.VrrpIntf,
+	newconfig vrrpd.VrrpIntf, attrset []bool) {
+	key := strconv.Itoa(int(origconfig.IfIndex)) + "_" +
+		strconv.Itoa(int(origconfig.VRID))
+	gblInfo, exists := svr.vrrpGblInfo[key]
+	if !exists {
+		svr.logger.Err("No object for " + key)
+		return
+	}
+	svr.logger.Info(fmt.Sprintln("old config info is", gblInfo))
+	/*
+		1 : bool PreemptMode
+		2 : i32 VRID
+		3 : i32 Priority
+		4 : i32 AdvertisementInterval
+		5 : bool AcceptMode
+		6 : string VirtualIPv4Addr
+		7 : i32 IfIndex
+	*/
+	updDownTimer := false
+	for elem, _ := range attrset {
+		//for elem <= VRRP_TOTAL_INTF_CONFIG_ELEMENTS {
+		if !attrset[elem] {
+			continue
+		} else {
+			switch elem {
+			case 0:
+				gblInfo.IntfConfig.PreemptMode = newconfig.PreemptMode
+			case 1:
+				// Cannot change VRID
+			case 2:
+				gblInfo.IntfConfig.Priority = newconfig.Priority
+			case 3:
+				gblInfo.IntfConfig.AdvertisementInterval =
+					newconfig.AdvertisementInterval
+				updDownTimer = true
+			case 4:
+				gblInfo.IntfConfig.AcceptMode = newconfig.AcceptMode
+			case 5:
+				gblInfo.IntfConfig.VirtualIPv4Addr =
+					newconfig.VirtualIPv4Addr
+			case 6:
+				// Cannot change IfIndex
+			}
+		}
+	}
+	svr.logger.Info(fmt.Sprintln("new config info is", gblInfo))
+
+	// If Advertisment value changed then we need to update master down timer
+	if updDownTimer {
+		gblInfo.MasterDownLock.Lock()
+		svr.VrrpCalculateDownValue(gblInfo.IntfConfig.AdvertisementInterval,
+			&gblInfo)
+		gblInfo.MasterDownLock.Unlock()
+		svr.vrrpGblInfo[key] = gblInfo
+		svr.VrrpHandleMasterDownTimer(key)
+	} else {
+		svr.vrrpGblInfo[key] = gblInfo
+	}
+}
+
 func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(idx int, cnt int) (int, int, []vrrpd.VrrpIntfState) {
 	var nextIdx int
 	var count int
 	if svr.vrrpIntfStateSlice == nil {
-		svr.logger.Info("DRA: Interface Slice is not initialized")
+		svr.logger.Info("Interface Slice is not initialized")
 		return 0, 0, nil
 	}
 	length := len(svr.vrrpIntfStateSlice)
@@ -166,7 +234,30 @@ func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(idx int, cnt int) (int, int, []
 	for i, j = 0, idx; i < cnt && j < length; j++ {
 		key := svr.vrrpIntfStateSlice[j]
 		svr.VrrpPopulateIntfState(key, &result[i])
-		//result = append(result, &nextEntry)
+		i++
+	}
+	if j == length {
+		nextIdx = 0
+	}
+	count = i
+	return nextIdx, count, result
+}
+
+func (svr *VrrpServer) VrrpGetBulkVrrpVridStates(idx int, cnt int) (int, int, []vrrpd.VrrpVridState) {
+	var nextIdx int
+	var count int
+	if svr.vrrpIntfStateSlice == nil {
+		svr.logger.Info("Interface slice is not initialized")
+		return 0, 0, nil
+	}
+	length := len(svr.vrrpIntfStateSlice)
+	result := make([]vrrpd.VrrpVridState, cnt)
+	var i int
+	var j int
+
+	for i, j = 0, idx; i < cnt && j < length; j++ {
+		key := svr.vrrpIntfStateSlice[j]
+		svr.VrrpPopulateVridState(key, &result[i])
 		i++
 	}
 	if j == length {
@@ -315,8 +406,12 @@ func (vrrpServer *VrrpServer) VrrpInitGlobalDS() {
 		VRRP_INTF_CONFIG_CH_SIZE)
 	vrrpServer.VrrpDeleteIntfConfigCh = make(chan vrrpd.VrrpIntf,
 		VRRP_INTF_CONFIG_CH_SIZE)
-	vrrpServer.vrrpRxPktCh = make(chan VrrpPktChannelInfo, VRRP_RX_BUF_CHANNEL_SIZE)
-	vrrpServer.vrrpTxPktCh = make(chan VrrpTxChannelInfo, VRRP_TX_BUF_CHANNEL_SIZE)
+	vrrpServer.vrrpRxPktCh = make(chan VrrpPktChannelInfo,
+		VRRP_RX_BUF_CHANNEL_SIZE)
+	vrrpServer.vrrpTxPktCh = make(chan VrrpTxChannelInfo,
+		VRRP_TX_BUF_CHANNEL_SIZE)
+	vrrpServer.VrrpUpdateIntfConfigCh = make(chan VrrpUpdateConfig,
+		VRRP_INTF_CONFIG_CH_SIZE)
 	vrrpServer.vrrpFsmCh = make(chan VrrpFsm, VRRP_FSM_CHANNEL_SIZE)
 	vrrpServer.vrrpSnapshotLen = 1024
 	vrrpServer.vrrpPromiscuous = false
@@ -333,6 +428,8 @@ func (svr *VrrpServer) VrrpDeAllocateMemoryToGlobalDS() {
 	svr.vrrpTxPktCh = nil
 	svr.VrrpDeleteIntfConfigCh = nil
 	svr.VrrpCreateIntfConfigCh = nil
+	svr.VrrpUpdateIntfConfigCh = nil
+	svr.vrrpFsmCh = nil
 }
 
 func (svr *VrrpServer) VrrpChannelHanlder() {
@@ -350,6 +447,9 @@ func (svr *VrrpServer) VrrpChannelHanlder() {
 		case rcvdInfo := <-svr.vrrpRxPktCh:
 			svr.VrrpCheckRcvdPkt(rcvdInfo.pkt, rcvdInfo.key,
 				rcvdInfo.IfIndex)
+		case updConfg := <-svr.VrrpUpdateIntfConfigCh:
+			svr.VrrpUpdateIntf(updConfg.OldConfig, updConfg.NewConfig,
+				updConfg.AttrSet)
 		}
 
 	}
@@ -418,12 +518,12 @@ func (svr *VrrpServer) VrrpChecknUpdateGblInfo(IfIndex int32, IpAddr string) {
 			continue
 		}
 		gblInfo.IpAddr = IpAddr
-		gblInfo.StateLock.Lock()
+		gblInfo.StateNameLock.Lock()
 		if gblInfo.StateName == VRRP_UNINTIALIZE_STATE {
 			startFsm = true
 			gblInfo.StateName = VRRP_INITIALIZE_STATE
 		}
-		gblInfo.StateLock.Unlock()
+		gblInfo.StateNameLock.Unlock()
 		svr.vrrpGblInfo[key] = gblInfo
 		// Create Pkt Listener if not created... This will handle a
 		// scneario when VRRP configs are done before IF Index is up

@@ -28,8 +28,9 @@ func NewBGPPktSrc(src string, msg *BGPMessage) *BGPPktSrc {
 }
 
 type BGPPeerAttrs struct {
-	ASSize        uint8
-	AddPathFamily map[AFI]map[SAFI]uint8
+	ASSize           uint8
+	AddPathFamily    map[AFI]map[SAFI]uint8
+	AddPathsRxActual bool
 }
 
 const BGPASTrans uint16 = 23456
@@ -2223,10 +2224,9 @@ func (msg *BGPUpdate) decodeIPPrefix(pkt []byte, ipPrefix *[]NLRI, length uint32
 
 	var ip NLRI
 	peerAttrs := data.(BGPPeerAttrs)
-	addPathFamily := peerAttrs.AddPathFamily
 
 	for ptr < length {
-		if _, ok := addPathFamily[AfiIP]; ok {
+		if peerAttrs.AddPathsRxActual {
 			ip = &ExtNLRI{}
 		} else {
 			ip = &IPPrefix{}
