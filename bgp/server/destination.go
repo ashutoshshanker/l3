@@ -104,11 +104,21 @@ func (d *Destination) releasePathId(pathId uint32) {
 	d.pathIds = append(d.pathIds, pathId)
 }
 
-func (d *Destination) updateAddPaths(addPaths []*Path) {
+func (d *Destination) updateAddPaths(addPaths []*Path) (modified bool) {
+	if len(d.addPaths) != len(addPaths) {
+		modified = true
+	} else {
+		for i := 0; i < len(d.addPaths); i++ {
+			if d.addPaths[i] != addPaths[i] {
+				modified = true
+			}
+		}
+	}
 	for i := 0; i < len(d.addPaths); i++ {
 		d.addPaths[i] = nil
 	}
 	d.addPaths = addPaths
+	return modified
 }
 
 func (d *Destination) getPathForIP(peerIP string, pathId uint32) (path *Path) {
@@ -307,7 +317,7 @@ func (d *Destination) removeAndPrepend(pathsList *[][]*Path, item *Path) {
 	(*pathsList)[0] = paths
 }
 
-func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, []*Route, []*Route, []*Route) {
+func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool, []*Route, []*Route, []*Route) {
 	updatedPaths := make([]*Path, 0)
 	removedPaths := make([]*Path, 0)
 	addedRoutes := make([]*Route, 0)
@@ -316,10 +326,11 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, []*Ro
 	maxPref := uint32(0)
 	routeSrc := RouteSrcUnknown
 	locRibAction := RouteActionNone
+	addPathsUpdated := false
 
 	d.logger.Info(fmt.Sprintf("Destination:SelectRouteForLocalRib - network %v, peer path map = %v\n", d.ipPrefix.Prefix.String(), d.peerPathMap))
 	if !d.recalculate {
-		return locRibAction, addedRoutes, updatedRoutes, deletedRoutes
+		return locRibAction, addPathsUpdated, addedRoutes, updatedRoutes, deletedRoutes
 	}
 	d.recalculate = false
 
@@ -417,7 +428,7 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, []*Ro
 			d.logger.Err(fmt.Sprintf("Have more than one route after the tie breaking rules... using the first one, routes[%s]\n", updatedPaths))
 		}
 
-		d.updateAddPaths(addPaths)
+		addPathsUpdated = d.updateAddPaths(addPaths)
 		d.removeAndPrepend(&ecmpPaths, updatedPaths[0])
 		d.logger.Info(fmt.Sprintln("ecmpPaths =", ecmpPaths))
 
@@ -532,7 +543,7 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, []*Ro
 			route.setAction(RouteActionNone)
 		}
 	}
-	return locRibAction, addedRoutes, updatedRoutes, deletedRoutes
+	return locRibAction, addPathsUpdated, addedRoutes, updatedRoutes, deletedRoutes
 }
 
 func (d *Destination) updateRoute(path *Path) {
