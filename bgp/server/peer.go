@@ -417,16 +417,19 @@ func (p *Peer) calculateAddPathsAdvertisements(dest *Destination, path *Path, ne
 
 	if p.isAdvertisable(path) {
 		route := dest.locRibPathRoute
-		pathId := route.outPathId
-		if _, ok := newUpdated[path]; !ok {
-			newUpdated[path] = make([]packet.NLRI, 0)
+		if path != nil { // Loc-RIB path changed
+			if _, ok := newUpdated[path]; !ok {
+				newUpdated[path] = make([]packet.NLRI, 0)
+			}
+			nlri := packet.NewExtNLRI(route.outPathId, *dest.ipPrefix)
+			newUpdated[path] = append(newUpdated[path], nlri)
+		} else {
+			path = dest.locRibPath
 		}
-		nlri := packet.NewExtNLRI(pathId, *dest.ipPrefix)
-		newUpdated[path] = append(newUpdated[path], nlri)
-		pathIdMap[pathId] = path
+		pathIdMap[route.outPathId] = path
 	}
 
-	for i := 0; i < len(dest.addPaths) && len(pathIdMap) < addPathsTx; i++ {
+	for i := 0; i < len(dest.addPaths) && len(pathIdMap) < (addPathsTx-1); i++ {
 		route := dest.GetPathRoute(dest.addPaths[i])
 		if route != nil && p.isAdvertisable(dest.addPaths[i]) {
 			pathIdMap[route.outPathId] = dest.addPaths[i]
@@ -465,7 +468,8 @@ func (p *Peer) calculateAddPathsAdvertisements(dest *Destination, path *Path, ne
 	return newUpdated, withdrawList
 }
 
-func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destination, withdrawPath *Path) {
+func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destination, withdrawPath *Path,
+	updatedAddPaths []*Destination) {
 	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%v, withdraw routes:%v",
 		p.Neighbor.NeighborAddress, updated, withdrawn))
 	if p.Neighbor.Transport.Config.LocalAddress == nil {
@@ -533,6 +537,12 @@ func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destina
 					}
 				}
 			}
+		}
+	}
+
+	if addPathsTx > 0 {
+		for _, dest := range updatedAddPaths {
+			newUpdated, withdrawList = p.calculateAddPathsAdvertisements(dest, nil, newUpdated, withdrawList, addPathsTx)
 		}
 	}
 
