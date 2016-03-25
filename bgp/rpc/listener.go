@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"l3/bgp/config"
-	"l3/bgp/policy"
 	"l3/bgp/server"
-	"log/syslog"
+	"models"
 	"net"
+	"strings"
+	"utils/logging"
+	utilspolicy "utils/policy"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -25,22 +27,22 @@ type PeerConfigCommands struct {
 type BGPHandler struct {
 	PeerCommandCh chan PeerConfigCommands
 	server        *server.BGPServer
-	policy        *policy.BGPPolicyEngine
-	logger        *syslog.Writer
+	bgpPE         *server.BGPPolicyEngine
+	logger        *logging.Writer
 }
 
-func NewBGPHandler(server *server.BGPServer, policy *policy.BGPPolicyEngine, logger *syslog.Writer, filePath string) *BGPHandler {
+func NewBGPHandler(server *server.BGPServer, policy *server.BGPPolicyEngine, logger *logging.Writer, filePath string) *BGPHandler {
 	h := new(BGPHandler)
 	h.PeerCommandCh = make(chan PeerConfigCommands)
 	h.server = server
-	h.policy = policy
+	h.bgpPE = policy
 	h.logger = logger
 	h.readConfigFromDB(filePath)
 	return h
 }
 
 func (h *BGPHandler) handleGlobalConfig(dbHdl *sql.DB) error {
-	dbCmd := "select * from BGPGlobalConfig"
+	dbCmd := "select * from BGPGlobal"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
 		h.logger.Err(fmt.Sprintf("DB method Query failed for %s with error %s", dbCmd, err))
@@ -54,7 +56,7 @@ func (h *BGPHandler) handleGlobalConfig(dbHdl *sql.DB) error {
 	for rows.Next() {
 		if err = rows.Scan(&gConf.AS, &routerIP, &gConf.UseMultiplePaths, &gConf.EBGPMaxPaths,
 			&gConf.EBGPAllowMultipleAS, &gConf.IBGPMaxPaths); err != nil {
-			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPGlobalConfig rows with error %s", err))
+			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPGlobal rows with error %s", err))
 			return err
 		}
 
@@ -84,7 +86,8 @@ func (h *BGPHandler) handlePeerGroup(dbHdl *sql.DB) error {
 	for rows.Next() {
 		if err = rows.Scan(&group.PeerAS, &group.LocalAS, &group.AuthPassword, &group.Description, &group.Name,
 			&group.RouteReflectorClusterId, &group.RouteReflectorClient, &group.MultiHopEnable, &group.MultiHopTTL,
-			&group.ConnectRetryTime, &group.HoldTime, &group.KeepaliveTime); err != nil {
+			&group.ConnectRetryTime, &group.HoldTime, &group.KeepaliveTime, &group.AddPathsRx,
+			&group.AddPathsMaxTx); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPPeerGroup rows with error %s", err))
 			return err
 		}
@@ -96,7 +99,7 @@ func (h *BGPHandler) handlePeerGroup(dbHdl *sql.DB) error {
 }
 
 func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
-	dbCmd := "select * from BGPNeighborConfig"
+	dbCmd := "select * from BGPNeighbor"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
 		h.logger.Err(fmt.Sprintf("DB method Query failed for '%s' with error %s", dbCmd, err))
@@ -107,19 +110,29 @@ func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
 
 	var nConf config.NeighborConfig
 	var neighborIP string
+	var neighborIfIndex int32
 	for rows.Next() {
 		if err = rows.Scan(&nConf.PeerAS, &nConf.LocalAS, &nConf.AuthPassword, &nConf.Description, &neighborIP,
-			&nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable, &nConf.MultiHopTTL,
-			&nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime, &nConf.PeerGroup, &nConf.BfdEnable); err != nil {
-			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighborConfig rows with error %s", err))
+			&neighborIfIndex, &nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable,
+			&nConf.MultiHopTTL, &nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime, &nConf.AddPathsRx,
+			&nConf.AddPathsMaxTx, &nConf.PeerGroup, &nConf.BfdEnable); err != nil {
+			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighbor rows with error %s", err))
 			return err
 		}
 
-		nConf.NeighborAddress = net.ParseIP(neighborIP)
-		if nConf.NeighborAddress == nil {
-			h.logger.Info(fmt.Sprintf("Can't create BGP neighbor - IP[%s] not valid", neighborIP))
-			return config.IPError{neighborIP}
+		ip, ifIndex, flag := h.getIPAndIfIndexForNeighbor(neighborIP, neighborIfIndex)
+		if !flag {
+			h.logger.Info(fmt.Sprintln("handleNeighborConfig: getIPAndIfIndexForNeighbor failed for neighbor address",
+				neighborIP, "and ifIndex", neighborIfIndex))
+			continue
 		}
+		if ip == nil {
+			h.logger.Info(fmt.Sprintln("Can't create BGP neighbor - IP[%s] not valid", neighborIP))
+			continue
+		}
+
+		nConf.NeighborAddress = ip
+		nConf.IfIndex = ifIndex
 
 		h.server.AddPeerCh <- server.PeerUpdate{config.NeighborConfig{}, nConf, make([]bool, 0)}
 	}
@@ -164,6 +177,124 @@ func (h *BGPHandler) handleBGPAggregate(dbHdl *sql.DB) error {
 	return nil
 }
 
+func convertModelToPolicyConditionConfig(cfg models.BGPPolicyCondition) *utilspolicy.PolicyConditionConfig {
+	destIPMatch := utilspolicy.PolicyDstIpMatchPrefixSetCondition{
+		Prefix: utilspolicy.PolicyPrefix{
+			IpPrefix:        cfg.IpPrefix,
+			MasklengthRange: cfg.MaskLengthRange,
+		},
+	}
+	return &utilspolicy.PolicyConditionConfig{
+		Name:                          cfg.Name,
+		ConditionType:                 cfg.ConditionType,
+		MatchDstIpPrefixConditionInfo: destIPMatch,
+	}
+}
+
+func (h *BGPHandler) handlePolicyConditions(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyConditions"))
+	conditionObj := models.BGPPolicyCondition{}
+	conditionList, err := conditionObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyConditions - Failed to create policy condition config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(conditionList); idx++ {
+		policyCondCfg := convertModelToPolicyConditionConfig(conditionList[idx].(models.BGPPolicyCondition))
+		h.logger.Info(fmt.Sprintln("handlePolicyConditions - create policy condition", policyCondCfg.Name))
+		h.bgpPE.ConditionCfgCh <- *policyCondCfg
+	}
+	return nil
+}
+
+func convertModelToPolicyActionConfig(cfg models.BGPPolicyAction) *utilspolicy.PolicyActionConfig {
+	return &utilspolicy.PolicyActionConfig{
+		Name:            cfg.Name,
+		ActionType:      cfg.ActionType,
+		GenerateASSet:   cfg.GenerateASSet,
+		SendSummaryOnly: cfg.SendSummaryOnly,
+	}
+}
+
+func (h *BGPHandler) handlePolicyActions(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyActions"))
+	actionObj := models.BGPPolicyAction{}
+	actionList, err := actionObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyActions - Failed to create policy action config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(actionList); idx++ {
+		policyActionCfg := convertModelToPolicyActionConfig(actionList[idx].(models.BGPPolicyAction))
+		h.logger.Info(fmt.Sprintln("handlePolicyActions - create policy action", policyActionCfg.Name))
+		h.bgpPE.ActionCfgCh <- *policyActionCfg
+	}
+	return nil
+}
+
+func convertModelToPolicyStmtConfig(cfg models.BGPPolicyStmt) *utilspolicy.PolicyStmtConfig {
+	return &utilspolicy.PolicyStmtConfig{
+		Name:            cfg.Name,
+		MatchConditions: cfg.MatchConditions,
+		Conditions:      cfg.Conditions,
+		Actions:         cfg.Actions,
+	}
+}
+
+func (h *BGPHandler) handlePolicyStmts(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyStmts"))
+	stmtObj := models.BGPPolicyStmt{}
+	stmtList, err := stmtObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyStmts - Failed to create policy statement config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(stmtList); idx++ {
+		policyStmtCfg := convertModelToPolicyStmtConfig(stmtList[idx].(models.BGPPolicyStmt))
+		h.logger.Info(fmt.Sprintln("handlePolicyStmts - create policy statement", policyStmtCfg.Name))
+		h.bgpPE.StmtCfgCh <- *policyStmtCfg
+	}
+	return nil
+}
+
+func convertModelToPolicyDefinitionConfig(cfg models.BGPPolicyDefinition) *utilspolicy.PolicyDefinitionConfig {
+	stmtPrecedenceList := make([]utilspolicy.PolicyDefinitionStmtPrecedence, 0)
+	for i := 0; i < len(cfg.StatementList); i++ {
+		stmtPrecedence := utilspolicy.PolicyDefinitionStmtPrecedence{
+			Precedence: int(cfg.StatementList[i].Precedence),
+			Statement:  cfg.StatementList[i].Statement,
+		}
+		stmtPrecedenceList = append(stmtPrecedenceList, stmtPrecedence)
+	}
+
+	return &utilspolicy.PolicyDefinitionConfig{
+		Name:                       cfg.Name,
+		Precedence:                 int(cfg.Precedence),
+		MatchType:                  cfg.MatchType,
+		PolicyDefinitionStatements: stmtPrecedenceList,
+	}
+}
+
+func (h *BGPHandler) handlePolicyDefinitions(dbHdl *sql.DB) error {
+	h.logger.Info(fmt.Sprintln("handlePolicyDefinitions"))
+	defObj := models.BGPPolicyDefinition{}
+	definitionList, err := defObj.GetAllObjFromDb(dbHdl)
+	if err != nil {
+		h.logger.Err(fmt.Sprintln("handlePolicyDefinitions - Failed to create policy definition config on restart with error", err))
+		return err
+	}
+
+	for idx := 0; idx < len(definitionList); idx++ {
+		policyDefCfg := convertModelToPolicyDefinitionConfig(definitionList[idx].(models.BGPPolicyDefinition))
+		h.logger.Info(fmt.Sprintln("handlePolicyDefinitions - create policy definition", policyDefCfg.Name))
+		h.bgpPE.DefinitionCfgCh <- *policyDefCfg
+	}
+	return nil
+}
+
 func (h *BGPHandler) readConfigFromDB(filePath string) error {
 	var dbPath string = filePath + DBName
 
@@ -174,6 +305,22 @@ func (h *BGPHandler) readConfigFromDB(filePath string) error {
 	}
 
 	defer dbHdl.Close()
+
+	if err = h.handlePolicyConditions(dbHdl); err != nil {
+		return err
+	}
+
+	if err = h.handlePolicyActions(dbHdl); err != nil {
+		return err
+	}
+
+	if err = h.handlePolicyStmts(dbHdl); err != nil {
+		return err
+	}
+
+	if err = h.handlePolicyDefinitions(dbHdl); err != nil {
+		return err
+	}
 
 	if err = h.handleGlobalConfig(dbHdl); err != nil {
 		return err
@@ -199,7 +346,7 @@ func (h *BGPHandler) convertStrIPToNetIP(ip string) net.IP {
 	return netIP
 }
 
-func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobalConfig) bool {
+func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) bool {
 	ip := h.convertStrIPToNetIP(bgpGlobal.RouterId)
 	if ip == nil {
 		h.logger.Info(fmt.Sprintln("SendBGPGlobal: IP", bgpGlobal.RouterId, "is not valid"))
@@ -218,7 +365,7 @@ func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobalConfig) bool {
 	return true
 }
 
-func (h *BGPHandler) CreateBGPGlobal(bgpGlobal *bgpd.BGPGlobalConfig) (bool, error) {
+func (h *BGPHandler) CreateBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create global config attrs:", bgpGlobal))
 	return h.SendBGPGlobal(bgpGlobal), nil
 }
@@ -236,25 +383,90 @@ func (h *BGPHandler) GetBGPGlobal() (*bgpd.BGPGlobalState, error) {
 	bgpGlobalResponse.TotalPrefixes = int32(bgpGlobal.TotalPrefixes)
 	return bgpGlobalResponse, nil
 }
+func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int, count bgpd.Int) (*bgpd.BGPGlobalStateGetInfo, error) {
+	bgpGlobalStateBulk := bgpd.NewBGPGlobalStateGetInfo()
+	bgpGlobalStateBulk.EndIdx = bgpd.Int(0)
+	bgpGlobalStateBulk.Count = bgpd.Int(1)
+	bgpGlobalStateBulk.More = false
+	bgpGlobalStateBulk.BGPGlobalStateList[0], _ = h.GetBGPGlobal()
 
-func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobalConfig, updatedG *bgpd.BGPGlobalConfig, attrSet []bool) (bool, error) {
+	return bgpGlobalStateBulk, nil
+}
+
+func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal, attrSet []bool) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update global config attrs:", updatedG, "old config:", origG))
 	return h.SendBGPGlobal(updatedG), nil
 }
 
-func (h *BGPHandler) DeleteBGPGlobal(bgpGlobal *bgpd.BGPGlobalConfig) (bool, error) {
+func (h *BGPHandler) DeleteBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Delete global config attrs:", bgpGlobal))
 	return true, nil
 }
 
-func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (config.NeighborConfig, bool) {
+func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string, neighborIfIndex int32) (ip net.IP, ifIndex int32,
+	flag bool) {
+	if strings.TrimSpace(neighborIP) != "" {
+		ip = net.ParseIP(strings.TrimSpace(neighborIP))
+		ifIndex = 0
+		flag = true
+	} else if neighborIfIndex != 0 {
+		//neighbor address is a ifIndex
+		ipv4Intf, err := h.server.AsicdClient.GetIPv4Intf(neighborIfIndex)
+		if err == nil {
+			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Call ASICd to get ip address for interface with ifIndex: ", neighborIfIndex))
+			ifIP, ipMask, err := net.ParseCIDR(ipv4Intf)
+			if err != nil {
+				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ipv4Intf, "of the interface", neighborIfIndex, "is not valid, error:", err))
+				return ip, ifIndex, flag
+			}
+			if ipMask.Mask[len(ipMask.Mask)-1] < 252 {
+				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ipv4Intf, "of the interface", neighborIfIndex, "is not /30 or /31 address"))
+				return ip, ifIndex, flag
+			}
+			/*
+				ifIpBytes := ifIp.To4()
+				if ifIpBytes == nil {
+					h.logger.Err("Invalid ip address")
+					return config.NeighborConfig{}, false
+				}
+				h.logger.Info(fmt.Sprintln("last byte = ", ifIpBytes[3]))
+				if ifIpBytes[3]%2 == 1 {
+					//odd number
+					ifIpBytes[3] = ifIpBytes[3] - 1
+				} else {
+					ifIpBytes[3] = ifIpBytes[3] + 1
+				}
+				//ifIpBytes[3][0] =  ifIpBytes[3][0] ^ 1 //toggle the last bit
+				h.logger.Info(fmt.Sprintln("last byte new ", ifIpBytes[3]))
+			*/
+			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP, "of the interface", neighborIfIndex))
+			ifIP[len(ifIP)-1] = ifIP[len(ifIP)-1] ^ (^ipMask.Mask[len(ipMask.Mask)-1])
+			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP, "of the neighbor interface"))
+			ip = ifIP
+			ifIndex = neighborIfIndex
+			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Neighbor IP:", ip.String()))
+			flag = true
+		} else {
+			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - Neighbor IP", neighborIP, "or interface",
+				neighborIfIndex, "not configured "))
+		}
+	}
+	return ip, ifIndex, flag
+}
+
+func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (config.NeighborConfig, bool) {
 	if bgpNeighbor == nil {
 		return config.NeighborConfig{}, true
 	}
 
-	ip := net.ParseIP(bgpNeighbor.NeighborAddress)
+	ip, ifIndex, flag := h.getIPAndIfIndexForNeighbor(bgpNeighbor.NeighborAddress, bgpNeighbor.IfIndex)
+	if !flag {
+		h.logger.Info(fmt.Sprintln("ValidateBGPNeighbor: getIPAndIfIndexForNeighbor failed for neighbor address",
+			bgpNeighbor.NeighborAddress, "and ifIndex", bgpNeighbor.IfIndex))
+		return config.NeighborConfig{}, false
+	}
 	if ip == nil {
-		h.logger.Info(fmt.Sprintf("ValidateBGPNeighbor: Address %s is not valid", bgpNeighbor.NeighborAddress))
+		h.logger.Info(fmt.Sprintln("ValidateBGPNeighbor: Neighbor IP address not valid", ip))
 		return config.NeighborConfig{}, false
 	}
 
@@ -272,14 +484,17 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (c
 			HoldTime:                uint32(bgpNeighbor.HoldTime),
 			KeepaliveTime:           uint32(bgpNeighbor.KeepaliveTime),
 			BfdEnable:               bgpNeighbor.BfdEnable,
+			AddPathsRx:              bgpNeighbor.AddPathsRx,
+			AddPathsMaxTx:           uint8(bgpNeighbor.AddPathsMaxTx),
 		},
 		NeighborAddress: ip,
+		IfIndex:         ifIndex,
 		PeerGroup:       bgpNeighbor.PeerGroup,
 	}
 	return pConf, true
 }
 
-func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighborConfig, newNeighbor *bgpd.BGPNeighborConfig, attrSet []bool) bool {
+func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighbor, newNeighbor *bgpd.BGPNeighbor, attrSet []bool) bool {
 	oldNeighConf, err := h.ValidateBGPNeighbor(oldNeighbor)
 	if !err {
 		return false
@@ -294,7 +509,7 @@ func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighborConfig, newNei
 	return true
 }
 
-func (h *BGPHandler) CreateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighborConfig) (bool, error) {
+func (h *BGPHandler) CreateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create BGP neighbor attrs:", bgpNeighbor))
 	return h.SendBGPNeighbor(nil, bgpNeighbor, make([]bool, 0)), nil
 }
@@ -304,9 +519,10 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.PeerAS = int32(neighborState.PeerAS)
 	bgpNeighborResponse.LocalAS = int32(neighborState.LocalAS)
 	bgpNeighborResponse.AuthPassword = neighborState.AuthPassword
-	bgpNeighborResponse.PeerType = bgpd.PeerType(neighborState.PeerType)
+	bgpNeighborResponse.PeerType = int8(neighborState.PeerType)
 	bgpNeighborResponse.Description = neighborState.Description
 	bgpNeighborResponse.NeighborAddress = neighborState.NeighborAddress.String()
+	bgpNeighborResponse.IfIndex = neighborState.IfIndex
 	bgpNeighborResponse.SessionState = int32(neighborState.SessionState)
 	bgpNeighborResponse.RouteReflectorClusterId = int32(neighborState.RouteReflectorClusterId)
 	bgpNeighborResponse.RouteReflectorClient = neighborState.RouteReflectorClient
@@ -317,11 +533,13 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.KeepaliveTime = int32(neighborState.KeepaliveTime)
 	bgpNeighborResponse.BfdNeighborState = neighborState.BfdNeighborState
 	bgpNeighborResponse.PeerGroup = neighborState.PeerGroup
+	bgpNeighborResponse.AddPathsRx = neighborState.AddPathsRx
+	bgpNeighborResponse.AddPathsMaxTx = int8(neighborState.AddPathsMaxTx)
 
-	received := bgpd.NewBgpCounters()
+	received := bgpd.NewBGPCounters()
 	received.Notification = int64(neighborState.Messages.Received.Notification)
 	received.Update = int64(neighborState.Messages.Received.Update)
-	sent := bgpd.NewBgpCounters()
+	sent := bgpd.NewBGPCounters()
 	sent.Notification = int64(neighborState.Messages.Sent.Notification)
 	sent.Update = int64(neighborState.Messages.Sent.Update)
 	messages := bgpd.NewBGPMessages()
@@ -343,35 +561,35 @@ func (h *BGPHandler) GetBGPNeighbor(neighborAddress string) (*bgpd.BGPNeighborSt
 	return bgpNeighborResponse, nil
 }
 
-func (h *BGPHandler) BulkGetBGPNeighbors(index int64, count int64) (*bgpd.BGPNeighborStateBulk, error) {
+func (h *BGPHandler) GetBulkBGPNeighborState(index bgpd.Int, count bgpd.Int) (*bgpd.BGPNeighborStateGetInfo, error) {
 	nextIdx, currCount, bgpNeighbors := h.server.BulkGetBGPNeighbors(int(index), int(count))
 	bgpNeighborsResponse := make([]*bgpd.BGPNeighborState, len(bgpNeighbors))
 	for idx, item := range bgpNeighbors {
 		bgpNeighborsResponse[idx] = h.convertToThriftNeighbor(item)
 	}
 
-	bgpNeighborStateBulk := bgpd.NewBGPNeighborStateBulk()
-	bgpNeighborStateBulk.NextIndex = int64(nextIdx)
-	bgpNeighborStateBulk.Count = int64(currCount)
+	bgpNeighborStateBulk := bgpd.NewBGPNeighborStateGetInfo()
+	bgpNeighborStateBulk.EndIdx = bgpd.Int(nextIdx)
+	bgpNeighborStateBulk.Count = bgpd.Int(currCount)
 	bgpNeighborStateBulk.More = (nextIdx != 0)
-	bgpNeighborStateBulk.StateList = bgpNeighborsResponse
+	bgpNeighborStateBulk.BGPNeighborStateList = bgpNeighborsResponse
 
 	return bgpNeighborStateBulk, nil
 }
 
-func (h *BGPHandler) UpdateBGPNeighbor(origN *bgpd.BGPNeighborConfig, updatedN *bgpd.BGPNeighborConfig, attrSet []bool) (bool, error) {
+func (h *BGPHandler) UpdateBGPNeighbor(origN *bgpd.BGPNeighbor, updatedN *bgpd.BGPNeighbor, attrSet []bool) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update peer attrs:", updatedN))
 	return h.SendBGPNeighbor(origN, updatedN, attrSet), nil
 }
 
-func (h *BGPHandler) DeleteBGPNeighbor(neighborAddress string) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Delete BGP neighbor:", neighborAddress))
-	ip := net.ParseIP(neighborAddress)
+func (h *BGPHandler) DeleteBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Delete BGP neighbor:", bgpNeighbor.NeighborAddress))
+	ip := net.ParseIP(bgpNeighbor.NeighborAddress)
 	if ip == nil {
-		h.logger.Info(fmt.Sprintf("Can't delete BGP neighbor - IP[%s] not valid", neighborAddress))
+		h.logger.Info(fmt.Sprintf("Can't delete BGP neighbor - IP[%s] not valid", bgpNeighbor.NeighborAddress))
 		return false, nil
 	}
-	h.server.RemPeerCh <- neighborAddress
+	h.server.RemPeerCh <- bgpNeighbor.NeighborAddress
 	return true, nil
 }
 
@@ -400,6 +618,8 @@ func (h *BGPHandler) ValidateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (config.
 			ConnectRetryTime:        uint32(peerGroup.ConnectRetryTime),
 			HoldTime:                uint32(peerGroup.HoldTime),
 			KeepaliveTime:           uint32(peerGroup.KeepaliveTime),
+			AddPathsRx:              peerGroup.AddPathsRx,
+			AddPathsMaxTx:           uint8(peerGroup.AddPathsMaxTx),
 		},
 		Name: peerGroup.Name,
 	}
@@ -431,9 +651,9 @@ func (h *BGPHandler) UpdateBGPPeerGroup(origG *bgpd.BGPPeerGroup, updatedG *bgpd
 	return h.SendBGPPeerGroup(origG, updatedG, attrSet), nil
 }
 
-func (h *BGPHandler) DeleteBGPPeerGroup(name string) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Delete BGP peer group:", name))
-	h.server.RemPeerGroupCh <- name
+func (h *BGPHandler) DeleteBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Delete BGP peer group:", peerGroup.Name))
+	h.server.RemPeerGroupCh <- peerGroup.Name
 	return true, nil
 }
 
@@ -442,79 +662,38 @@ func (h *BGPHandler) GetBGPRoute(prefix string) ([]*bgpd.BGPRoute, error) {
 	return bgpRoutes, nil
 }
 
-func (h *BGPHandler) BulkGetBGPRoutes(index int64, count int64) (*bgpd.BGPRouteBulk, error) {
+func (h *BGPHandler) GetBulkBGPRoute(index bgpd.Int, count bgpd.Int) (*bgpd.BGPRouteGetInfo, error) {
 	nextIdx, currCount, bgpRoutes := h.server.AdjRib.BulkGetBGPRoutes(int(index), int(count))
 
-	bgpRoutesBulk := bgpd.NewBGPRouteBulk()
-	bgpRoutesBulk.NextIndex = int64(nextIdx)
-	bgpRoutesBulk.Count = int64(currCount)
+	bgpRoutesBulk := bgpd.NewBGPRouteGetInfo()
+	bgpRoutesBulk.EndIdx = bgpd.Int(nextIdx)
+	bgpRoutesBulk.Count = bgpd.Int(currCount)
 	bgpRoutesBulk.More = (nextIdx != 0)
-	bgpRoutesBulk.RouteList = bgpRoutes
+	bgpRoutesBulk.BGPRouteList = bgpRoutes
 
 	return bgpRoutesBulk, nil
 }
 
-func (h *BGPHandler) validateBGPAgg(bgpAgg *bgpd.BGPAggregate) (config.BGPAggregate, error) {
-	if bgpAgg == nil {
-		return config.BGPAggregate{}, nil
+func convertThriftToPolicyConditionConfig(cfg *bgpd.BGPPolicyCondition) *utilspolicy.PolicyConditionConfig {
+	destIPMatch := utilspolicy.PolicyDstIpMatchPrefixSetCondition{
+		Prefix: utilspolicy.PolicyPrefix{
+			IpPrefix:        cfg.IpPrefix,
+			MasklengthRange: cfg.MaskLengthRange,
+		},
 	}
-
-	_, ipNet, err := net.ParseCIDR(bgpAgg.IPPrefix)
-	if err != nil {
-		h.logger.Info(fmt.Sprintln("SendBGPAggregate: ParseCIDR for IPPrefix", bgpAgg.IPPrefix, "failed with err", err))
-		return config.BGPAggregate{}, err
+	return &utilspolicy.PolicyConditionConfig{
+		Name:                          cfg.Name,
+		ConditionType:                 cfg.ConditionType,
+		MatchDstIpPrefixConditionInfo: destIPMatch,
 	}
-
-	ones, _ := ipNet.Mask.Size()
-	ipPrefix := config.IPPrefix{
-		Prefix: ipNet.IP,
-		Length: uint8(ones),
-	}
-
-	agg := config.BGPAggregate{
-		IPPrefix:        ipPrefix,
-		GenerateASSet:   bgpAgg.GenerateASSet,
-		SendSummaryOnly: bgpAgg.SendSummaryOnly,
-	}
-	return agg, nil
 }
 
-func (h *BGPHandler) SendBGPAggregate(oldAgg *bgpd.BGPAggregate, newAgg *bgpd.BGPAggregate, attrSet []bool) bool {
-	oldBGPAgg, err := h.validateBGPAgg(oldAgg)
-	if err != nil {
-		return false
-	}
-
-	newBGPAgg, err := h.validateBGPAgg(newAgg)
-	if err != nil {
-		return false
-	}
-
-	h.server.AddAggCh <- server.AggUpdate{oldBGPAgg, newBGPAgg, attrSet}
-	return true
-}
-
-func (h *BGPHandler) CreateBGPAggregate(bgpAgg *bgpd.BGPAggregate) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create BGP aggregate attrs:", bgpAgg))
-	return h.SendBGPAggregate(nil, bgpAgg, make([]bool, 0)), nil
-}
-
-func (h *BGPHandler) UpdateBGPAggregate(oldAgg *bgpd.BGPAggregate, newAgg *bgpd.BGPAggregate, attrSet []bool) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Update BGP aggregate attrs:", newAgg))
-	return h.SendBGPAggregate(oldAgg, newAgg, attrSet), nil
-}
-
-func (h *BGPHandler) DeleteBGPAggregate(name string) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Delete BGP aggregate:", name))
-	h.server.RemAggCh <- name
-	return true, nil
-}
-
-func (h *BGPHandler) CreateBGPPolicyConditionConfig(cfg *bgpd.BGPPolicyConditionConfig) (val bool, err error) {
+func (h *BGPHandler) CreateBGPPolicyCondition(cfg *bgpd.BGPPolicyCondition) (val bool, err error) {
 	h.logger.Info(fmt.Sprintln("CreatePolicyConditioncfg"))
 	switch cfg.ConditionType {
 	case "MatchDstIpPrefix":
-		h.policy.ConditionCfgCh <- cfg
+		policyCfg := convertThriftToPolicyConditionConfig(cfg)
+		h.bgpPE.ConditionCfgCh <- *policyCfg
 		break
 	default:
 		h.logger.Info(fmt.Sprintln("Unknown condition type ", cfg.ConditionType))
@@ -523,15 +702,37 @@ func (h *BGPHandler) CreateBGPPolicyConditionConfig(cfg *bgpd.BGPPolicyCondition
 	return val, err
 }
 
-func (h *BGPHandler) GetBulkBGPPolicyConditionState(fromIndex bgpd.Int, rcount bgpd.Int) (policyConditions *bgpd.BGPPolicyConditionStateGetInfo, err error) {
-	return policy.GetBulkBGPPolicyConditionState(fromIndex, rcount)
+func (h *BGPHandler) GetBulkBGPPolicyConditionState(fromIndex bgpd.Int, rcount bgpd.Int) (
+	policyConditions *bgpd.BGPPolicyConditionStateGetInfo, err error) {
+	//return policy.GetBulkBGPPolicyConditionState(fromIndex, rcount)
+	return nil, nil
 }
 
-func (h *BGPHandler) CreateBGPPolicyActionConfig(cfg *bgpd.BGPPolicyActionConfig) (val bool, err error) {
+func (h *BGPHandler) UpdateBGPPolicyCondition(origC *bgpd.BGPPolicyCondition, updatedC *bgpd.BGPPolicyCondition,
+	attrSet []bool) (val bool, err error) {
+	return val, err
+}
+
+func (h *BGPHandler) DeleteBGPPolicyCondition(cfg *bgpd.BGPPolicyCondition) (val bool, err error) {
+	h.bgpPE.ConditionDelCh <- cfg.Name
+	return val, err
+}
+
+func convertThriftToPolicyActionConfig(cfg *bgpd.BGPPolicyAction) *utilspolicy.PolicyActionConfig {
+	return &utilspolicy.PolicyActionConfig{
+		Name:            cfg.Name,
+		ActionType:      cfg.ActionType,
+		GenerateASSet:   cfg.GenerateASSet,
+		SendSummaryOnly: cfg.SendSummaryOnly,
+	}
+}
+
+func (h *BGPHandler) CreateBGPPolicyAction(cfg *bgpd.BGPPolicyAction) (val bool, err error) {
 	h.logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	switch cfg.ActionType {
 	case "Aggregate":
-		h.policy.ActionCfgCh <- cfg
+		actionCfg := convertThriftToPolicyActionConfig(cfg)
+		h.bgpPE.ActionCfgCh <- *actionCfg
 		break
 	default:
 		h.logger.Info(fmt.Sprintln("Unknown action type ", cfg.ActionType))
@@ -540,34 +741,92 @@ func (h *BGPHandler) CreateBGPPolicyActionConfig(cfg *bgpd.BGPPolicyActionConfig
 	return val, err
 }
 
-func (h *BGPHandler) GetBulkBGPPolicyActionState(fromIndex bgpd.Int, rcount bgpd.Int) (policyActions *bgpd.BGPPolicyActionStateGetInfo, err error) { //(routes []*bgpd.Routes, err error) {
-	return policy.GetBulkBGPPolicyActionState(fromIndex, rcount)
+func (h *BGPHandler) GetBulkBGPPolicyActionState(fromIndex bgpd.Int, rcount bgpd.Int) (
+	policyActions *bgpd.BGPPolicyActionStateGetInfo, err error) { //(routes []*bgpd.Routes, err error) {
+	//return policy.GetBulkBGPPolicyActionState(fromIndex, rcount)
+	return nil, nil
 }
 
-func (h *BGPHandler) CreateBGPPolicyStmtConfig(cfg *bgpd.BGPPolicyStmtConfig) (val bool, err error) {
+func (h *BGPHandler) UpdateBGPPolicyAction(origC *bgpd.BGPPolicyAction, updatedC *bgpd.BGPPolicyAction,
+	attrSet []bool) (val bool, err error) {
+	return val, err
+}
+
+func (h *BGPHandler) DeleteBGPPolicyAction(cfg *bgpd.BGPPolicyAction) (val bool, err error) {
+	h.bgpPE.ActionDelCh <- cfg.Name
+	return val, err
+}
+
+func convertThriftToPolicyStmtConfig(cfg *bgpd.BGPPolicyStmt) *utilspolicy.PolicyStmtConfig {
+	return &utilspolicy.PolicyStmtConfig{
+		Name:            cfg.Name,
+		MatchConditions: cfg.MatchConditions,
+		Conditions:      cfg.Conditions,
+		Actions:         cfg.Actions,
+	}
+}
+
+func (h *BGPHandler) CreateBGPPolicyStmt(cfg *bgpd.BGPPolicyStmt) (val bool, err error) {
 	h.logger.Info(fmt.Sprintln("CreatePolicyStmt"))
-	h.policy.StmtCfgCh <- cfg
+	stmtCfg := convertThriftToPolicyStmtConfig(cfg)
+	h.bgpPE.StmtCfgCh <- *stmtCfg
 	return val, err
 }
 
-func (h *BGPHandler) GetBulkBGPPolicyStmtState(fromIndex bgpd.Int, rcount bgpd.Int) (policyStmts *bgpd.BGPPolicyStmtStateGetInfo, err error) {
-	return policy.GetBulkBGPPolicyStmtState(fromIndex, rcount)
+func (h *BGPHandler) GetBulkBGPPolicyStmtState(fromIndex bgpd.Int, rcount bgpd.Int) (
+	policyStmts *bgpd.BGPPolicyStmtStateGetInfo, err error) {
+	//return policy.GetBulkBGPPolicyStmtState(fromIndex, rcount)
+	return nil, nil
 }
 
-func (h *BGPHandler) DeleteBGPPolicyStmtConfig(name string) (val bool, err error) {
-	return policy.DeleteBGPPolicyStmtConfig(name)
+func (h *BGPHandler) UpdateBGPPolicyStmt(origC *bgpd.BGPPolicyStmt, updatedC *bgpd.BGPPolicyStmt, attrSet []bool) (
+	val bool, err error) {
+	return val, err
 }
 
-func (h *BGPHandler) CreateBGPPolicyDefinitionConfig(cfg *bgpd.BGPPolicyDefinitionConfig) (val bool, err error) {
+func (h *BGPHandler) DeleteBGPPolicyStmt(cfg *bgpd.BGPPolicyStmt) (val bool, err error) {
+	//return policy.DeleteBGPPolicyStmt(name)
+	h.bgpPE.StmtDelCh <- cfg.Name
+	return true, nil
+}
+
+func convertThriftToPolicyDefintionConfig(cfg *bgpd.BGPPolicyDefinition) *utilspolicy.PolicyDefinitionConfig {
+	stmtPrecedenceList := make([]utilspolicy.PolicyDefinitionStmtPrecedence, 0)
+	for i := 0; i < len(cfg.StatementList); i++ {
+		stmtPrecedence := utilspolicy.PolicyDefinitionStmtPrecedence{
+			Precedence: int(cfg.StatementList[i].Precedence),
+			Statement:  cfg.StatementList[i].Statement,
+		}
+		stmtPrecedenceList = append(stmtPrecedenceList, stmtPrecedence)
+	}
+
+	return &utilspolicy.PolicyDefinitionConfig{
+		Name:                       cfg.Name,
+		Precedence:                 int(cfg.Precedence),
+		MatchType:                  cfg.MatchType,
+		PolicyDefinitionStatements: stmtPrecedenceList,
+	}
+}
+
+func (h *BGPHandler) CreateBGPPolicyDefinition(cfg *bgpd.BGPPolicyDefinition) (val bool, err error) {
 	h.logger.Info(fmt.Sprintln("CreatePolicyDefinition"))
-	h.policy.DefinitionCfgCh <- cfg
+	definitionCfg := convertThriftToPolicyDefintionConfig(cfg)
+	h.bgpPE.DefinitionCfgCh <- *definitionCfg
 	return val, err
 }
 
-func (h *BGPHandler) GetBulkBGPPolicyDefinitionState(fromIndex bgpd.Int, rcount bgpd.Int) (policyStmts *bgpd.BGPPolicyDefinitionStateGetInfo, err error) { //(routes []*bgpd.BGPRoute, err error) {
-	return policy.GetBulkBGPPolicyDefinitionState(fromIndex, rcount)
+func (h *BGPHandler) GetBulkBGPPolicyDefinitionState(fromIndex bgpd.Int, rcount bgpd.Int) (
+	policyStmts *bgpd.BGPPolicyDefinitionStateGetInfo, err error) { //(routes []*bgpd.BGPRoute, err error) {
+	//return policy.GetBulkBGPPolicyDefinitionState(fromIndex, rcount)
+	return nil, nil
 }
 
-func (h *BGPHandler) DeleteBGPPolicyDefinitionConfig(name string) (val bool, err error) {
-	return policy.DeleteBGPPolicyDefinitionConfig(name)
+func (h *BGPHandler) UpdateBGPPolicyDefinition(origC *bgpd.BGPPolicyDefinition, updatedC *bgpd.BGPPolicyDefinition,
+	attrSet []bool) (val bool, err error) {
+	return val, err
+}
+
+func (h *BGPHandler) DeleteBGPPolicyDefinition(cfg *bgpd.BGPPolicyDefinition) (val bool, err error) {
+	h.bgpPE.DefinitionDelCh <- cfg.Name
+	return val, err
 }

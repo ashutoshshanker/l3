@@ -9,6 +9,7 @@ type AreaConfKey struct {
         AreaId          config.AreaId
 }
 
+/* TODO - Add list of interfaces for this Area */
 type AreaConf struct {
         AuthType                                config.AuthType
         ImportAsExtern                          config.ImportAsExtern

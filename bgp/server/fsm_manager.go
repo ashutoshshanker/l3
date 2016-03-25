@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"net"
 	"sync"
+	"utils/logging"
 )
 
 type CONFIG int
@@ -24,7 +24,7 @@ type BgpPkt struct {
 
 type FSMManager struct {
 	Peer          *Peer
-	logger        *syslog.Writer
+	logger        *logging.Writer
 	gConf         *config.GlobalConfig
 	pConf         *config.NeighborConfig
 	fsms          map[uint8]*FSM
@@ -292,7 +292,8 @@ func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, 
 	}
 	if closeConnDir == config.ConnDirInvalid || closeConnDir != connDir {
 		asSize := packet.GetASSize(openMsg)
-		mgr.Peer.SetPeerAttrs(openMsg.BGPId, asSize, mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime)
+		addPathFamily := packet.GetAddPathFamily(openMsg)
+		mgr.Peer.SetPeerAttrs(openMsg.BGPId, asSize, mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime, addPathFamily)
 	}
 
 	if closeConnDir == connDir {

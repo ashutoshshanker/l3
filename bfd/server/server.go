@@ -43,7 +43,7 @@ type BfdClientBase struct {
 
 type RibdClient struct {
 	BfdClientBase
-	ClientHdl *ribd.RouteServiceClient
+	ClientHdl *ribd.RIBDServicesClient
 }
 
 type IpIntfProperty struct {
@@ -71,6 +71,7 @@ type BfdSession struct {
 	txInterval          int32
 	txTimer             *time.Timer
 	TxTimeoutCh         chan int32
+	txJitter            int32
 	SessionTimeoutCh    chan int32
 	bfdPacket           *BfdControlPacket
 	SessionStopClientCh chan bool
@@ -215,7 +216,7 @@ func (server *BFDServer) ConnectToServers(paramsFile string) {
 				}
 			}
 			if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {
-				server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
+				server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
 				server.ribdClient.IsConnected = true
 				server.logger.Info("Bfdd is connected to Ribd")
 			}
@@ -258,26 +259,26 @@ func (server *BFDServer) PublishSessionNotifications() {
 }
 
 func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
-	server.logger.Info("Reading BfdGlobalConfig")
-	dbCmd := "SELECT * FROM BfdGlobalConfig"
+	server.logger.Info("Reading BfdGlobal")
+	dbCmd := "SELECT * FROM BfdGlobal"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdGlobalConfig: ", err))
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdGlobal: ", err))
 		return err
 	}
 
 	for rows.Next() {
 		var rtrBfd string
-		var enable int
+		var enable string
 		err = rows.Scan(&rtrBfd, &enable)
 		if err != nil {
-			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdGlobalConfig: ", err))
+			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdGlobal: ", err))
 			return err
 		}
-		server.logger.Info(fmt.Sprintln("BfdGlobalConfig - Enable: ", enable))
-		if enable != 1 {
+		server.logger.Info(fmt.Sprintln("BfdGlobal - Enable: ", enable))
+		if enable == "false" {
 			gConf := GlobalConfig{
-				Enable: dbutils.ConvertIntToBool(enable),
+				Enable: dbutils.ConvertStringToBool(enable),
 			}
 			server.GlobalConfigCh <- gConf
 		}
@@ -286,11 +287,11 @@ func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
 }
 
 func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
-	server.logger.Info("Reading BfdIntfConfig")
-	dbCmd := "SELECT * FROM BfdIntfConfig"
+	server.logger.Info("Reading BfdInterface")
+	dbCmd := "SELECT * FROM BfdInterface"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdIntfConfig: ", err))
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdInterface: ", err))
 		return err
 	}
 
@@ -307,7 +308,7 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 		var authenticationData string
 		err = rows.Scan(&interfaceId, &localMultiplier, &desiredMinTxInterval, &requiredMinRxInterval, &requiredMinEchoRxInterval, &demandEnabled, &authenticationEnabled, &authenticationType, &authenticationKeyId, &authenticationData)
 		if err != nil {
-			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdIntfConfig: ", err))
+			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdInterface: ", err))
 			return err
 		}
 		ifConf := IntfConfig{
@@ -322,18 +323,18 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 			AuthenticationKeyId:       authenticationKeyId,
 			AuthenticationData:        authenticationData,
 		}
-		server.logger.Info(fmt.Sprintln("BfdIntfConfig - ", ifConf))
+		server.logger.Info(fmt.Sprintln("BfdInterface - ", ifConf))
 		server.IntfConfigCh <- ifConf
 	}
 	return nil
 }
 
 func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
-	server.logger.Info("Reading BfdSessionConfig")
-	dbCmd := "SELECT * FROM BfdSessionConfig"
+	server.logger.Info("Reading BfdSession")
+	dbCmd := "SELECT * FROM BfdSession"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdSessionConfig: ", err))
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdSession: ", err))
 		return err
 	}
 
@@ -343,7 +344,7 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 		var owner string
 		err = rows.Scan(&dstIp, &perLink, &owner)
 		if err != nil {
-			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSessionConfig: ", err))
+			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSession: ", err))
 			return err
 		}
 		sessionConf := SessionConfig{
@@ -352,30 +353,20 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 			Protocol:  bfddCommonDefs.USER,
 			Operation: bfddCommonDefs.CREATE,
 		}
-		server.logger.Info(fmt.Sprintln("BfdSessionConfig : ", sessionConf))
+		server.logger.Info(fmt.Sprintln("BfdSession : ", sessionConf))
 		server.SessionConfigCh <- sessionConf
 	}
 	return nil
 }
 
-func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB) error {
-	var err error
-	defer dbHdl.Close()
+func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB, done chan bool) error {
 	// BfdGlobalConfig
-	err = server.ReadGlobalConfigFromDB(dbHdl)
-	if err != nil {
-		return err
-	}
+	server.ReadGlobalConfigFromDB(dbHdl)
 	// BfdIntfConfig
-	err = server.ReadIntfConfigFromDB(dbHdl)
-	if err != nil {
-		return err
-	}
+	server.ReadIntfConfigFromDB(dbHdl)
 	// BfdSessionConfig
-	err = server.ReadSessionConfigFromDB(dbHdl)
-	if err != nil {
-		return err
-	}
+	server.ReadSessionConfigFromDB(dbHdl)
+	done <- true
 	return nil
 }
 
@@ -405,7 +396,9 @@ func (server *BFDServer) SigHandler() {
 		case signal := <-sigChan:
 			switch signal {
 			case syscall.SIGHUP:
-				server.logger.Info("Received SIGHUP signal. Exiting")
+				server.logger.Info("Received SIGHUP signal")
+				server.SendAdminDownToAllNeighbors()
+				server.logger.Info("Exiting!!!")
 				os.Exit(0)
 			default:
 				server.logger.Info(fmt.Sprintln("Unhandled signal : ", signal))
@@ -420,7 +413,8 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	// Initialize BFD server from params file
 	server.InitServer(paramFile)
 	// Read BFD configurations already present in DB
-	go server.ReadConfigFromDB(dbHdl)
+	dbReadCh := make(chan bool)
+	go server.ReadConfigFromDB(dbHdl, dbReadCh)
 	// Start subcriber for ASICd events
 	go server.CreateASICdSubscriber()
 	// Start session management handler
@@ -428,12 +422,14 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	// Initialize and run notification publisher
 	go server.PublishSessionNotifications()
 
-	// Server is up. Let rpc handler started now.
-	server.ServerUpCh <- true
-
 	// Now, wait on below channels to process
 	for {
 		select {
+		case dbRead := <-dbReadCh:
+			if dbRead == true {
+				// Server is up. Let rpc handler get started now.
+				server.ServerUpCh <- true
+			}
 		case gConf := <-server.GlobalConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Global Configuration", gConf))
 			server.processGlobalConfig(gConf)

@@ -2,15 +2,15 @@
 package main
 
 import (
+	"asicdServices"
 	"bfdd"
 	"flag"
 	"fmt"
-	"l3/bgp/policy"
 	"l3/bgp/rpc"
 	"l3/bgp/server"
 	"l3/bgp/utils"
-	"log/syslog"
 	"ribd"
+	"utils/logging"
 )
 
 const IP string = "localhost" //"10.0.2.15"
@@ -20,25 +20,38 @@ const BGPConfPort string = "4050"
 const RIBConfPort string = "5000"
 
 func main() {
-	fmt.Println("SR BGP: Start the logger")
-	logger, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "SR BGP")
-	if err != nil {
-		fmt.Println("SR BGP: Failed to start the logger. Exit!")
-		return
-	}
-
-	logger.Info("Started the logger successfully.")
-	utils.SetLogger(logger)
-
+	fmt.Println("Starting bgp daemon")
 	paramsDir := flag.String("params", "./params", "Params directory")
 	flag.Parse()
 	fileName := *paramsDir
 	if fileName[len(fileName)-1] != '/' {
 		fileName = fileName + "/"
 	}
+	fmt.Println("Start logger")
+	logger, err := logging.NewLogger(fileName, "bgpd", "BGP")
+	if err != nil {
+		fmt.Println("Failed to start the logger. Exiting!!")
+		return
+	}
+	go logger.ListenForSysdNotifications()
+	logger.Info("Started the logger successfully.")
+	utils.SetLogger(logger)
 
-	var ribdClient *ribd.RouteServiceClient = nil
-	ribdClientChan := make(chan *ribd.RouteServiceClient)
+	var asicdClient *asicdServices.ASICDServicesClient = nil
+	asicdClientChan := make(chan *asicdServices.ASICDServicesClient)
+
+	logger.Info("Connecting to ASICd")
+	go rpc.StartAsicdClient(logger, fileName, asicdClientChan)
+	asicdClient = <-asicdClientChan
+	if asicdClient == nil {
+		logger.Err("Failed to connect to ASICd")
+		return
+	} else {
+		logger.Info("Connected to ASICd")
+	}
+
+	var ribdClient *ribd.RIBDServicesClient = nil
+	ribdClientChan := make(chan *ribd.RIBDServicesClient)
 
 	logger.Info("Connecting to RIBd")
 	go rpc.StartRibdClient(logger, fileName, ribdClientChan)
@@ -64,11 +77,11 @@ func main() {
 	}
 
 	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
-	bgpPolicyEng := policy.NewBGPPolicyEngine(logger)
+	bgpPolicyEng := server.NewBGPPolicyEngine(logger)
 	go bgpPolicyEng.StartPolicyEngine()
 
 	logger.Info(fmt.Sprintln("Starting BGP Server..."))
-	bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient, bfddClient)
+	bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient, bfddClient, asicdClient)
 	go bgpServer.StartServer()
 
 	logger.Info(fmt.Sprintln("Starting config listener..."))

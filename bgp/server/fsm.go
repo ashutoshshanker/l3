@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"net"
+	"bytes"
 	"sync/atomic"
 	"time"
+	"utils/logging"
 )
 
 type BGPFSMState int
@@ -113,7 +114,7 @@ type BaseStateIface interface {
 
 type BaseState struct {
 	fsm                 *FSM
-	logger              *syslog.Writer
+	logger              *logging.Writer
 	connectRetryCounter int
 	connectRetryTimer   int
 }
@@ -156,6 +157,11 @@ func NewIdleState(fsm *FSM) *IdleState {
 }
 
 func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
+	if st.fsm.peer.Neighbor.State.BfdNeighborState == "down" {
+		st.logger.Info(fmt.Sprintln("Bfd is down for neighbor: ", st.fsm.pConf.NeighborAddress,
+			" do not process event: ", BGPEventTypeToStr[event]))
+		return
+	}
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "FSM:", st.fsm.id,
 		"State: Idle Event:", BGPEventTypeToStr[event]))
 	switch event {
@@ -765,7 +771,7 @@ type PeerFSMConnState struct {
 }
 
 type FSM struct {
-	logger   *syslog.Writer
+	logger   *logging.Writer
 	peer     *Peer
 	gConf    *config.GlobalConfig
 	pConf    *config.NeighborConfig
@@ -1140,7 +1146,8 @@ func (fsm *FSM) sendUpdateMessage(bgpMsg *packet.BGPMessage) {
 func (fsm *FSM) sendOpenMessage() {
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
 		"sendOpenMessage: send address family", fsm.peer.afiSafiMap))
-	optParams := packet.ConstructOptParams(uint32(fsm.pConf.LocalAS), fsm.peer.afiSafiMap)
+	optParams := packet.ConstructOptParams(uint32(fsm.pConf.LocalAS), fsm.peer.afiSafiMap, fsm.peer.PeerConf.AddPathsRx,
+		fsm.peer.PeerConf.AddPathsMaxTx)
 	bgpOpenMsg := packet.NewBGPOpenMessage(fsm.pConf.LocalAS, uint16(fsm.holdTime), fsm.gConf.RouterId.To4().String(), optParams)
 	packet, _ := bgpOpenMsg.Encode()
 	num, err := (*fsm.peerConn.conn).Write(packet)
@@ -1245,6 +1252,10 @@ func (fsm *FSM) RejectPeerConn() {
 
 func (fsm *FSM) InitiateConnToPeer() {
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "InitiateConnToPeer called"))
+    if bytes.Equal(fsm.pConf.NeighborAddress,net.IPv4bcast) {
+		fsm.logger.Info("Unknown neighbor address")
+		return
+	}
 	addr := net.JoinHostPort(fsm.pConf.NeighborAddress.String(), BGPPort)
 	if fsm.outTCPConn == nil {
 		fsm.outTCPConn = NewOutTCPConn(fsm, fsm.outConnCh, fsm.outConnErrCh)

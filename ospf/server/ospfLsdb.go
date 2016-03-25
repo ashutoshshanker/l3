@@ -161,7 +161,7 @@ func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
 }
 
 func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isDR bool, nbr_list []uint32) {
-        server.logger.Info(fmt.Sprintln("Calling generate Network LSA func", nbr_list))
+	server.logger.Info(fmt.Sprintln("Calling generate Network LSA func", nbr_list))
 
 	//routerId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
 	ent := server.IntfConfMap[key]
@@ -174,10 +174,7 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 	if ent.IfFSMState <= config.Waiting {
 		return
 	}
-	/*
-		if routerId != ent.IfDRtrId {
-			return
-		}*/
+
 	if !isDR {
 		server.sendLsdbToNeighborEvent(nbr_list[nbrListLen-1], areaId, 0,
 			0, LSAFLOOD)
@@ -193,19 +190,19 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 		attachedRtr = append(attachedRtr, key.RouterId)
 	}*/
 	for index := range nbr_list {
-                /* TODO: HACK Need to be removed */
-                flag := false
-                for i := 0; i < len(attachedRtr); i++ {
-                        if nbr_list[index] == attachedRtr[i] {
-                                flag = true
-                        }
-                }
-                if flag == false {
-                        attachedRtr = append(attachedRtr, nbr_list[index])
-                }
+		/* TODO: HACK Need to be removed */
+		flag := false
+		for i := 0; i < len(attachedRtr); i++ {
+			if nbr_list[index] == attachedRtr[i] {
+				flag = true
+			}
+		}
+		if flag == false {
+			attachedRtr = append(attachedRtr, nbr_list[index])
+		}
 	}
 	selfRtrId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
-        attachedRtr = append(attachedRtr, selfRtrId)
+	attachedRtr = append(attachedRtr, selfRtrId)
 
 	numOfAttachedRtr := len(attachedRtr)
 	if numOfAttachedRtr == 0 {
@@ -686,41 +683,41 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 				ret := server.processRecvdLsa(msg.Data, msg.AreaId)
 				server.logger.Info(fmt.Sprintln("Return Code:", ret))
 				//server.LsaUpdateRetCodeCh <- ret
-                                server.StartCalcSPFCh <- true
-                                spfStatus := <-server.DoneCalcSPFCh
-                                server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
+				server.StartCalcSPFCh <- true
+				spfStatus := <-server.DoneCalcSPFCh
+				server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
 			} else if msg.MsgType == LsdbDel {
 				server.logger.Info("Deleting LS in the Lsdb")
 				ret := server.processDeleteLsa(msg.Data, msg.AreaId)
 				//server.LsaUpdateRetCodeCh <- ret
 				server.logger.Info(fmt.Sprintln("Return Code:", ret))
-                                server.StartCalcSPFCh <- true
-                                spfStatus := <-server.DoneCalcSPFCh
-                                server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
+				server.StartCalcSPFCh <- true
+				spfStatus := <-server.DoneCalcSPFCh
+				server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
 			} else if msg.MsgType == LsdbUpdate {
 				server.logger.Info("Deleting LS in the Lsdb")
 				ret := server.processRecvdLsa(msg.Data, msg.AreaId)
 				//server.LsaUpdateRetCodeCh <- ret
 				server.logger.Info(fmt.Sprintln("Return Code:", ret))
-                                server.StartCalcSPFCh <- true
-                                spfStatus := <-server.DoneCalcSPFCh
-                                server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
+				server.StartCalcSPFCh <- true
+				spfStatus := <-server.DoneCalcSPFCh
+				server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
 			}
 		case msg := <-server.IntfStateChangeCh:
 			server.logger.Info(fmt.Sprintf("Interface State change msg", msg))
 			server.generateRouterLSA(msg.areaId)
 			server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
-                        server.StartCalcSPFCh <- true
-                        spfStatus := <-server.DoneCalcSPFCh
-                        server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
+			server.StartCalcSPFCh <- true
+			spfStatus := <-server.DoneCalcSPFCh
+			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
 		case msg := <-server.NetworkDRChangeCh:
 			server.logger.Info(fmt.Sprintf("Network DR change msg", msg))
 			// Create a new router LSA
 			server.generateRouterLSA(msg.areaId)
 			server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
-                        server.StartCalcSPFCh <- true
-                        spfStatus := <-server.DoneCalcSPFCh
-                        server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
+			server.StartCalcSPFCh <- true
+			spfStatus := <-server.DoneCalcSPFCh
+			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
 		case msg := <-server.CreateNetworkLSACh:
 			server.logger.Info(fmt.Sprintf("Create Network LSA msg", msg))
 			server.generateNetworkLSA(msg.areaId, msg.intf, msg.isDR, msg.nbrList)
@@ -729,17 +726,17 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 			// If link is broadcast
 			// Create Network LSA
 			server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
-                        server.StartCalcSPFCh <- true
-                        spfStatus := <-server.DoneCalcSPFCh
-                        server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
+			server.StartCalcSPFCh <- true
+			spfStatus := <-server.DoneCalcSPFCh
+			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
 		case msg := <-server.FlushNetworkLSACh:
 			server.logger.Info(fmt.Sprintf("Flush Network LSA msg", msg))
 			// Flush the old Network LSA
 			server.flushNetworkLSA(msg.areaId, msg.intfKey)
 			server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
-                        server.StartCalcSPFCh <- true
-                        spfStatus := <-server.DoneCalcSPFCh
-                        server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
+			server.StartCalcSPFCh <- true
+			spfStatus := <-server.DoneCalcSPFCh
+			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
 		}
 	}
 }

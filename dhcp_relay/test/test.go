@@ -15,7 +15,7 @@ import (
 	_ "golang.org/x/net/ipv4"
 )
 
-type DhcpRelayIntfConfig struct {
+type DhcpRelayIntf struct {
 	IpSubnet string `SNAPROUTE: "KEY"` // Ip Address of the interface
 	Netmask  string `SNAPROUTE: "KEY"` // NetMaks of the interface
 	IfIndex  string `SNAPROUTE: "KEY"` // Unique If Id of the interface
@@ -103,7 +103,7 @@ func executeSQL(dbCmd string, dbHdl *sql.DB) (driver.Result, error) {
 }
 
 func testDB() {
-	obj := DhcpRelayIntfConfig{
+	obj := DhcpRelayIntf{
 		IpSubnet:     "100.0.1.1",
 		Netmask:      "255.255.255.0",
 		IfIndex:      "9",

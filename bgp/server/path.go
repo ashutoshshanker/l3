@@ -5,9 +5,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"l3/bgp/packet"
-	"log/syslog"
 	"net"
 	"ribd"
+	"strconv"
+	"strings"
+	"utils/logging"
 )
 
 const (
@@ -43,7 +45,7 @@ func getRouteSource(routeType uint8) uint8 {
 
 type Path struct {
 	server          *BGPServer
-	logger          *syslog.Writer
+	logger          *logging.Writer
 	peer            *Peer
 	pathAttrs       []packet.BGPPathAttr
 	withdrawn       bool
@@ -164,8 +166,8 @@ func (p *Path) GetPreference() uint32 {
 	return p.Pref
 }
 
-func (p *Path) GetAS4ByteList() [][]int32 {
-	asList := make([][]int32, 0)
+func (p *Path) GetAS4ByteList() []string {
+	asList := make([]string, 0)
 	for _, attr := range p.pathAttrs {
 		if attr.GetCode() == packet.BGPPathAttrTypeASPath {
 			asPaths := attr.(*packet.BGPPathAttrASPath).Value
@@ -174,36 +176,45 @@ func (p *Path) GetAS4ByteList() [][]int32 {
 				if asSize == 4 {
 					seg := asSegment.(*packet.BGPAS4PathSegment)
 					if seg.Type == packet.BGPASPathSegmentSet {
-						asSetList := make([]int32, 0, len(seg.AS))
+						asSetList := make([]string, 0, len(seg.AS))
 						for _, as := range seg.AS {
-							asSetList = append(asSetList, int32(as))
+							asSetList = append(asSetList, strconv.Itoa(int(as)))
 						}
-						asList = append(asList, asSetList)
+						asSetStr := strings.Join(asSetList, ", ")
+						asSetStr = "{ " + asSetStr + " }"
+						//asSetStr = append(asSetStr, "}")
+						asList = append(asList, asSetStr)
 					} else if seg.Type == packet.BGPASPathSegmentSequence {
-						asSeqList := make([][]int32, 0, len(seg.AS))
+						//asSeqList := make([]string, 0, len(seg.AS))
 						for _, as := range seg.AS {
-							asSeq := make([]int32, 1)
-							asSeq[0] = int32(as)
-							asSeqList = append(asSeqList, asSeq)
+							//asSeq := make([]int32, 1)
+							//asSeq[0] = int32(as)
+							//asSeqList = append(asSeqList, asSeq)
+							asList = append(asList, strconv.Itoa(int(as)))
 						}
-						asList = append(asList, asSeqList...)
+						//asList = append(asList, asSeqList...)
 					}
 				} else {
 					seg := asSegment.(*packet.BGPAS2PathSegment)
 					if seg.Type == packet.BGPASPathSegmentSet {
-						asSetList := make([]int32, 0, len(seg.AS))
+						asSetList := make([]string, 0, len(seg.AS))
 						for _, as := range seg.AS {
-							asSetList = append(asSetList, int32(as))
+							asSetList = append(asSetList, strconv.Itoa(int(as)))
 						}
-						asList = append(asList, asSetList)
+						asSetStr := strings.Join(asSetList, ", ")
+						asSetStr = "{ " + asSetStr + " }"
+						//asSetStr = append("{", asSetStr...)
+						//asSetStr = append(asSetStr, "}")
+						asList = append(asList, asSetStr)
 					} else if seg.Type == packet.BGPASPathSegmentSequence {
-						asSeqList := make([][]int32, 0, len(seg.AS))
+						//asSeqList := make([][]int32, 0, len(seg.AS))
 						for _, as := range seg.AS {
-							asSeq := make([]int32, 1)
-							asSeq[0] = int32(as)
-							asSeqList = append(asSeqList, asSeq)
+							//asSeq := make([]int32, 1)
+							//asSeq[0] = int32(as)
+							//asSeqList = append(asSeqList, asSeq)
+							asList = append(asList, strconv.Itoa(int(as)))
 						}
-						asList = append(asList, asSeqList...)
+						//asList = append(asList, asSeqList...)
 					}
 				}
 			}
@@ -277,9 +288,9 @@ func (p *Path) GetReachabilityInfo() {
 		p.logger.Info(fmt.Sprintf("Next hop for %s is %s. Using %s as the next hop", ipStr, p.NextHop, ipStr))
 		p.NextHop = ipStr
 	}
-	p.NextHopIfType = reachabilityInfo.NextHopIfType
-	p.NextHopIfIdx = reachabilityInfo.NextHopIfIndex
-	p.Metric = reachabilityInfo.Metric
+	p.NextHopIfType = ribd.Int(reachabilityInfo.NextHopIfType)
+	p.NextHopIfIdx = ribd.Int(reachabilityInfo.NextHopIfIndex)
+	p.Metric = ribd.Int(reachabilityInfo.Metric)
 }
 
 func (p *Path) IsReachable() bool {

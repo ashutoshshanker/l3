@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
-	"log/syslog"
 	"math/rand"
 	"net"
 	"time"
+	"utils/logging"
 
 	"golang.org/x/net/ipv4"
 )
 
 type OutTCPConn struct {
 	fsm          *FSM
-	logger       *syslog.Writer
+	logger       *logging.Writer
 	fsmConnCh    chan net.Conn
 	fsmConnErrCh chan error
 	StopConnCh   chan bool
@@ -38,20 +38,27 @@ func NewOutTCPConn(fsm *FSM, fsmConnCh chan net.Conn, fsmConnErrCh chan error) *
 }
 
 func (o *OutTCPConn) Connect(seconds uint32, addr string, connCh chan net.Conn, errCh chan error) {
-	_, err := o.fsm.peer.Server.ribdClient.GetRouteReachabilityInfo(o.fsm.pConf.NeighborAddress.String())
-	if err != nil {
+	reachableCh := make(chan bool)
+	reachabilityInfo := ReachabilityInfo{
+		IP:          o.fsm.pConf.NeighborAddress.String(),
+		ReachableCh: reachableCh,
+	}
+	o.fsm.peer.Server.ReachabilityCh <- reachabilityInfo
+	reachable := <-reachableCh
+	if !reachable {
 		duration := uint32(3)
 		for {
 			select {
 			case <-time.After(time.Duration(duration) * time.Second):
-				_, err = o.fsm.peer.Server.ribdClient.GetRouteReachabilityInfo(o.fsm.pConf.NeighborAddress.String())
+				o.fsm.peer.Server.ReachabilityCh <- reachabilityInfo
+				reachable = <-reachableCh
 			}
 			seconds -= duration
-			if err == nil || seconds <= duration {
+			if reachable || seconds <= duration {
 				break
 			}
 		}
-		if err != nil {
+		if !reachable {
 			errCh <- config.AddressNotResolvedError{"Neighbor is not reachable"}
 			return
 		}
@@ -131,7 +138,7 @@ func (o *OutTCPConn) ConnectToPeer(seconds uint32, addr string) {
 
 type PeerConn struct {
 	fsm       *FSM
-	logger    *syslog.Writer
+	logger    *logging.Writer
 	dir       config.ConnDir
 	conn      *net.Conn
 	peerAttrs packet.BGPPeerAttrs
@@ -148,7 +155,8 @@ func NewPeerConn(fsm *FSM, dir config.ConnDir, conn *net.Conn) *PeerConn {
 		dir:    dir,
 		conn:   conn,
 		peerAttrs: packet.BGPPeerAttrs{
-			ASSize: 2,
+			ASSize:           2,
+			AddPathsRxActual: false,
 		},
 		readCh: make(chan bool),
 		stopCh: make(chan bool),
@@ -289,6 +297,14 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool)
 			} else if header.Type == packet.BGPMsgTypeOpen {
 				p.peerAttrs.ASSize = packet.GetASSize(msg.Body.(*packet.BGPOpen))
 				p.peerAttrs.AddPathFamily = packet.GetAddPathFamily(msg.Body.(*packet.BGPOpen))
+				addPathsTxFarEnd := packet.IsAddPathsTxEnabledForIPv4(p.peerAttrs.AddPathFamily)
+				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress,
+					"Far end can send add paths"))
+				if addPathsTxFarEnd && p.fsm.pConf.AddPathsRx {
+					p.peerAttrs.AddPathsRxActual = true
+					p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress,
+						"negotiated to recieve add paths from far end"))
+				}
 			}
 			p.fsm.pktRxCh <- packet.NewBGPPktInfo(msg, msgErr)
 			doneCh <- msgOk

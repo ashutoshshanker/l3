@@ -7,7 +7,19 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"net"
+	"time"
 )
+
+/*
+ *  VRRP TX INTERFACE
+ */
+type VrrpTxIntf interface {
+	VrrpSendPkt(key string, priority uint16)
+	VrrpEncodeHeader(hdr VrrpPktHeader) ([]byte, uint16)
+	VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uint16)
+	VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte, hdrLen uint16) []byte
+	VrrpCreateWriteBuf(eth *layers.Ethernet, arp *layers.ARP, ipv4 *layers.IPv4, payload []byte) []byte
+}
 
 /*
 Octet Offset--> 0                   1                   2                   3
@@ -61,7 +73,7 @@ func (svr *VrrpServer) VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uin
 	// @TODO: handle v6 packets.....
 	vrrpHeader := VrrpPktHeader{
 		Version:       VRRP_VERSION2,
-		Type:          VRRP_PKT_TYPE,
+		Type:          VRRP_PKT_TYPE_ADVERTISEMENT,
 		VirtualRtrId:  uint8(gblInfo.IntfConfig.VRID),
 		Priority:      uint8(gblInfo.IntfConfig.Priority),
 		CountIPv4Addr: 1, // FIXME for more than 1 vip
@@ -84,10 +96,36 @@ func (svr *VrrpServer) VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uin
 	return vrrpEncHdr, hdrLen
 }
 
+func (svr *VrrpServer) VrrpWritePacket(gblInfo VrrpGlobalInfo, vrrpTxPkt []byte) {
+	gblInfo.PcapHdlLock.Lock()
+	err := gblInfo.pHandle.WritePacketData(vrrpTxPkt)
+	gblInfo.PcapHdlLock.Unlock()
+	if err != nil {
+		svr.logger.Info(fmt.Sprintln("Sending Packet failed: ", err))
+	}
+}
+
+func (svr *VrrpServer) VrrpCreateWriteBuf(eth *layers.Ethernet,
+	arp *layers.ARP, ipv4 *layers.IPv4, payload []byte) []byte {
+
+	buffer := gopacket.NewSerializeBuffer()
+	options := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	if ipv4 != nil {
+		gopacket.SerializeLayers(buffer, options, eth, ipv4,
+			gopacket.Payload(payload))
+	} else {
+		gopacket.SerializeLayers(buffer, options, eth, arp)
+	}
+	return buffer.Bytes()
+}
+
 func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []byte,
 	hdrLen uint16) []byte {
 	// Ethernet Layer
-	srcMAC, _ := net.ParseMAC(gblInfo.IntfConfig.VirtualRouterMACAddress)
+	srcMAC, _ := net.ParseMAC(gblInfo.VirtualRouterMACAddress)
 	dstMAC, _ := net.ParseMAC(VRRP_PROTOCOL_MAC)
 	eth := &layers.Ethernet{
 		SrcMAC:       srcMAC,
@@ -106,38 +144,41 @@ func (svr *VrrpServer) VrrpCreateSendPkt(gblInfo VrrpGlobalInfo, vrrpEncHdr []by
 		SrcIP:    sip,
 		DstIP:    net.ParseIP(VRRP_GROUP_IP),
 	}
-
-	// Construct go Packet Buffer
-	buffer := gopacket.NewSerializeBuffer()
-	options := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
-	gopacket.SerializeLayers(buffer, options, eth, ipv4,
-		gopacket.Payload(vrrpEncHdr))
-	return buffer.Bytes()
+	return svr.VrrpCreateWriteBuf(eth, nil, ipv4, vrrpEncHdr)
 }
 
-func (svr *VrrpServer) VrrpSendPkt(rcvdCh <-chan VrrpPktChannelInfo) {
-	svr.logger.Info("started send packet routine")
-	for {
-		pktChannel := <-rcvdCh
-		key := pktChannel.key
-		gblInfo, found := svr.vrrpGblInfo[key]
-		if !found {
-			svr.logger.Err("No Entry for " + key)
-			continue
-		}
-		if gblInfo.pHandle == nil {
-			svr.logger.Info("Invalid Pcap Handle")
-			continue
-		}
-		vrrpEncHdr, hdrLen := svr.VrrpCreateVrrpHeader(gblInfo)
-		vrrpTxPkt := svr.VrrpCreateSendPkt(gblInfo, vrrpEncHdr, hdrLen)
-		svr.logger.Info(fmt.Sprintln("send pkt", vrrpTxPkt))
-		err := gblInfo.pHandle.WritePacketData(vrrpTxPkt)
-		if err != nil {
-			svr.logger.Info(fmt.Sprintln("Sending Packet failed", err))
-		}
+func (svr *VrrpServer) VrrpSendPkt(key string, priority uint16) {
+	gblInfo, found := svr.vrrpGblInfo[key]
+	if !found {
+		svr.logger.Err("No Entry for " + key)
+		return
 	}
+	svr.logger.Info(fmt.Sprintln("advertisement send by Master VRID",
+		gblInfo.IntfConfig.VRID))
+	gblInfo.PcapHdlLock.Lock()
+	if gblInfo.pHandle == nil {
+		svr.logger.Info("Invalid Pcap Handle")
+		gblInfo.PcapHdlLock.Unlock()
+		return
+	}
+	gblInfo.PcapHdlLock.Unlock()
+	configuredPriority := gblInfo.IntfConfig.Priority
+	// Because we do not update the gblInfo back into the map...
+	// we can overwrite the priority value if Master is down..
+	if priority == VRRP_MASTER_DOWN_PRIORITY {
+		gblInfo.IntfConfig.Priority = int32(priority)
+	}
+	vrrpEncHdr, hdrLen := svr.VrrpCreateVrrpHeader(gblInfo)
+	svr.VrrpWritePacket(gblInfo,
+		svr.VrrpCreateSendPkt(gblInfo, vrrpEncHdr, hdrLen))
+	svr.VrrpUpdateMasterTimerStateInfo(&gblInfo)
+	gblInfo.IntfConfig.Priority = configuredPriority
+	svr.vrrpGblInfo[key] = gblInfo
+}
+
+func (svr *VrrpServer) VrrpUpdateMasterTimerStateInfo(gblInfo *VrrpGlobalInfo) {
+	gblInfo.StateInfoLock.Lock()
+	gblInfo.StateInfo.LastAdverTx = time.Now().String()
+	gblInfo.StateInfo.AdverTx++
+	gblInfo.StateInfoLock.Unlock()
 }

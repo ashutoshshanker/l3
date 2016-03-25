@@ -483,18 +483,34 @@ func ConvertIPBytesToUint(bytes []byte) uint32 {
 	return uint32(bytes[0])<<24 | uint32(bytes[1]<<16) | uint32(bytes[2]<<8) | uint32(bytes[3])
 }
 
-func ConstructOptParams(as uint32, afiSAfiMap map[uint32]bool) []BGPOptParam {
+func ConstructOptParams(as uint32, afiSAfiMap map[uint32]bool, addPathsRx bool, addPathsMaxTx uint8) []BGPOptParam {
 	optParams := make([]BGPOptParam, 0)
 	capParams := make([]BGPCapability, 0)
 
 	cap4ByteASPath := NewBGPCap4ByteASPath(as)
 	capParams = append(capParams, cap4ByteASPath)
+	capAddPaths := NewBGPCapAddPath()
+	addPathFlags := uint8(0)
+	if addPathsRx {
+		addPathFlags |= BGPCapAddPathRx
+	}
+	if addPathsMaxTx > 0 {
+		addPathFlags |= BGPCapAddPathTx
+	}
 
 	for protoFamily, _ := range afiSAfiMap {
 		afi, safi := GetAfiSafi(protoFamily)
-		utils.Logger.Info(fmt.Sprintf("Advertising capability for afi %d safi %d", afi, safi))
+		utils.Logger.Info(fmt.Sprintf("Advertising capability for afi %d safi %d\n", afi, safi))
 		capAfiSafi := NewBGPCapMPExt(afi, safi)
 		capParams = append(capParams, capAfiSafi)
+
+		addPathAfiSafi := NewAddPathAFISAFI(afi, safi, addPathFlags)
+		capAddPaths.AddAddPathAFISAFI(addPathAfiSafi)
+	}
+
+	if addPathFlags != 0 {
+		utils.Logger.Info(fmt.Sprintf("Advertising capability for addPaths %+v\n", capAddPaths.Value))
+		capParams = append(capParams, capAddPaths)
 	}
 
 	optCapability := NewBGPOptParamCapability(capParams)
@@ -524,6 +540,7 @@ func GetAddPathFamily(openMsg *BGPOpen) map[AFI]map[SAFI]uint8 {
 		if capabilities, ok := optParam.(*BGPOptParamCapability); ok {
 			for _, capability := range capabilities.Value {
 				if addPathCap, ok := capability.(*BGPCapAddPath); ok {
+					utils.Logger.Info(fmt.Sprintf("add path capability = %+v\n", addPathCap))
 					for _, val := range addPathCap.Value {
 						if _, ok := addPathFamily[val.AFI]; !ok {
 							addPathFamily[val.AFI] = make(map[SAFI]uint8)
@@ -538,6 +555,19 @@ func GetAddPathFamily(openMsg *BGPOpen) map[AFI]map[SAFI]uint8 {
 		}
 	}
 	return addPathFamily
+}
+
+func IsAddPathsTxEnabledForIPv4(addPathFamily map[AFI]map[SAFI]uint8) bool {
+	enabled := false
+	if _, ok := addPathFamily[AfiIP]; ok {
+		for safi, flags := range addPathFamily[AfiIP] {
+			if (safi == SafiUnicast || safi == SafiMulticast) && (flags&BGPCapAddPathTx != 0) {
+				utils.Logger.Info(fmt.Sprintf("isAddPathsTxEnabledForIPv4 - add path Tx enabled for IPv4"))
+				enabled = true
+			}
+		}
+	}
+	return enabled
 }
 
 func GetNumASesByASType(updateMsg *BGPMessage, asType BGPPathAttrType) uint32 {

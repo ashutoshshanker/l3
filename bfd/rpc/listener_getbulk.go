@@ -38,8 +38,8 @@ func (h *BFDHandler) GetBulkBfdGlobalState(fromIdx bfdd.Int, count bfdd.Int) (*b
 	return bfdGlobalStateGetInfo, nil
 }
 
-func (h *BFDHandler) convertIntfStateToThrift(ent server.IntfState) *bfdd.BfdIntfState {
-	intfState := bfdd.NewBfdIntfState()
+func (h *BFDHandler) convertIntfStateToThrift(ent server.IntfState) *bfdd.BfdInterfaceState {
+	intfState := bfdd.NewBfdInterfaceState()
 	intfState.IfIndex = int32(ent.InterfaceId)
 	intfState.Enabled = ent.Enabled
 	intfState.NumSessions = int32(ent.NumSessions)
@@ -55,23 +55,23 @@ func (h *BFDHandler) convertIntfStateToThrift(ent server.IntfState) *bfdd.BfdInt
 	return intfState
 }
 
-func (h *BFDHandler) GetBulkBfdIntfState(fromIdx bfdd.Int, count bfdd.Int) (*bfdd.BfdIntfStateGetInfo, error) {
+func (h *BFDHandler) GetBulkBfdInterfaceState(fromIdx bfdd.Int, count bfdd.Int) (*bfdd.BfdInterfaceStateGetInfo, error) {
 	h.logger.Info(fmt.Sprintln("Get BFD interface state"))
 	nextIdx, currCount, bfdIntfStates := h.server.GetBulkBfdIntfStates(int(fromIdx), int(count))
 	if bfdIntfStates == nil {
 		err := errors.New("Bfd server is busy")
 		return nil, err
 	}
-	bfdIntfResponse := make([]*bfdd.BfdIntfState, len(bfdIntfStates))
+	bfdIntfResponse := make([]*bfdd.BfdInterfaceState, len(bfdIntfStates))
 	for idx, item := range bfdIntfStates {
 		bfdIntfResponse[idx] = h.convertIntfStateToThrift(item)
 	}
-	BfdIntfStateGetInfo := bfdd.NewBfdIntfStateGetInfo()
+	BfdIntfStateGetInfo := bfdd.NewBfdInterfaceStateGetInfo()
 	BfdIntfStateGetInfo.Count = bfdd.Int(currCount)
 	BfdIntfStateGetInfo.StartIdx = bfdd.Int(fromIdx)
 	BfdIntfStateGetInfo.EndIdx = bfdd.Int(nextIdx)
 	BfdIntfStateGetInfo.More = (nextIdx != 0)
-	BfdIntfStateGetInfo.BfdIntfStateList = bfdIntfResponse
+	BfdIntfStateGetInfo.BfdInterfaceStateList = bfdIntfResponse
 	return BfdIntfStateGetInfo, nil
 
 }

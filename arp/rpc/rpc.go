@@ -1,13 +1,13 @@
 package rpc
 
 import (
+	"arpd"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
-	"log/syslog"
-	"arpd"
 	"strconv"
+	"utils/logging"
 )
 
 type ClientJson struct {
@@ -15,12 +15,12 @@ type ClientJson struct {
 	Port int    `json:Port`
 }
 
-func getClient(logger *syslog.Writer, fileName string, process string) (*ClientJson, error) {
+func getClient(logger *logging.Writer, fileName string, process string) (*ClientJson, error) {
 	var allClients []ClientJson
 
 	data, err := ioutil.ReadFile(fileName)
 	if err != nil {
-		logger.Err(fmt.Sprintf("Failed to open OSPFd config file:%s, err:%s", fileName, err))
+		logger.Err(fmt.Sprintf("Failed to open ARPD config file:%s, err:%s", fileName, err))
 		return nil, err
 	}
 
@@ -35,12 +35,12 @@ func getClient(logger *syslog.Writer, fileName string, process string) (*ClientJ
 	return nil, nil
 }
 
-func StartServer(logger *syslog.Writer, handler *ARPHandler, paramDir string) {
-        fileName := paramDir
-        if fileName[len(fileName) - 1] != '/' {
-                fileName = fileName + "/"
-        }
-        fileName = fileName + "clients.json"
+func StartServer(logger *logging.Writer, handler *ARPHandler, paramDir string) {
+	fileName := paramDir
+	if fileName[len(fileName)-1] != '/' {
+		fileName = fileName + "/"
+	}
+	fileName = fileName + "clients.json"
 
 	clientJson, err := getClient(logger, fileName, "arpd")
 	if err != nil || clientJson == nil {
@@ -66,7 +66,7 @@ func StartServer(logger *syslog.Writer, handler *ARPHandler, paramDir string) {
 
 /*
 
-func createClientIPCHandles(logger *syslog.Writer, port string) (thrift.TTransport, thrift.TProtocolFactory, error) {
+func createClientIPCHandles(logger *logging.Writer, port string) (thrift.TTransport, thrift.TProtocolFactory, error) {
 	var clientTransport thrift.TTransport
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
@@ -82,12 +82,12 @@ func createClientIPCHandles(logger *syslog.Writer, port string) (thrift.TTranspo
 	return clientTransport, protocolFactory, err
 }
 
-func connectToClient(logger *syslog.Writer, clientTransport thrift.TTransport) error {
+func connectToClient(logger *logging.Writer, clientTransport thrift.TTransport) error {
 	return clientTransport.Open()
 }
 
 
-func StartClient(logger *syslog.Writer, fileName string, ribdClient chan *arpd.RouteServiceClient) {
+func StartClient(logger *logging.Writer, fileName string, ribdClient chan *arpd.RouteServiceClient) {
 	clientJson, err := getClient(logger, fileName, "asicd")
 	if err != nil || clientJson == nil {
 		ribdClient <- nil
