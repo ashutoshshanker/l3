@@ -541,8 +541,8 @@ func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destina
 	}
 
 	if addPathsTx > 0 {
-		for dest := range updatedAddPaths {
-			newUpdated, withdrawList = p.calculateAddPathsAdvertisements(dest, nil, newUpdated, withdrawList)
+		for _, dest := range updatedAddPaths {
+			newUpdated, withdrawList = p.calculateAddPathsAdvertisements(dest, nil, newUpdated, withdrawList, addPathsTx)
 		}
 	}
 
