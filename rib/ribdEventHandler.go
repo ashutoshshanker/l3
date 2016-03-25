@@ -2,14 +2,14 @@
 package main
 
 import (
-	"fmt"
-	"net"
-	"strconv"
-	"utils/commonDefs"
 	"asicd/asicdConstDefs"
 	"encoding/json"
+	"fmt"
 	"github.com/op/go-nanomsg"
+	"net"
 	"ribd"
+	"strconv"
+	"utils/commonDefs"
 )
 
 func processAsicdEvents(sub *nanomsg.SubSocket) {
@@ -72,7 +72,7 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				logger.Info(fmt.Sprintln("Error in reading msg ", err))
 				return
 			}
-			logger.Info(fmt.Sprintln("Received ipv4 intf create with ipAddr ", msg.IpAddr,  " ifIndex = ", msg.IfIndex, " ifType ",asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex), " ifId ", asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)))
+			logger.Info(fmt.Sprintln("Received ipv4 intf create with ipAddr ", msg.IpAddr, " ifIndex = ", msg.IfIndex, " ifType ", asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex), " ifId ", asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)))
 			var ipMask net.IP
 			ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
 			if err != nil {
@@ -83,28 +83,36 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			ipAddrStr := ip.String()
 			ipMaskStr := net.IP(ipMask).String()
 			logger.Info(fmt.Sprintln("Calling createv4Route with ipaddr ", ipAddrStr, " mask ", ipMaskStr))
-				nextHopIfTypeStr := ""
-				switch asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex) {
-					case commonDefs.L2RefTypePort:
-					    nextHopIfTypeStr = "PHY"
-						break
-					case commonDefs.L2RefTypeVlan:
-						nextHopIfTypeStr = "VLAN"
-						break
-					case commonDefs.IfTypeNull:
-						nextHopIfTypeStr = "NULL"
-						break
-					case commonDefs.IfTypeLoopback:
-					   nextHopIfTypeStr = "Loopback"
-			           if IntfIdNameMap == nil {
-				          IntfIdNameMap = make(map[int32]IntfEntry)
-			           }
-			           intfEntry := IntfEntry{}
-			           IntfIdNameMap[msg.IfIndex] = intfEntry
-					   break
+			nextHopIfTypeStr := ""
+			switch asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex) {
+			case commonDefs.L2RefTypePort:
+				nextHopIfTypeStr = "PHY"
+				break
+			case commonDefs.L2RefTypeVlan:
+				nextHopIfTypeStr = "VLAN"
+				break
+			case commonDefs.IfTypeNull:
+				nextHopIfTypeStr = "NULL"
+				break
+			case commonDefs.IfTypeLoopback:
+				nextHopIfTypeStr = "Loopback"
+				if IntfIdNameMap == nil {
+					IntfIdNameMap = make(map[int32]IntfEntry)
 				}
-            cfg := ribd.IPv4Route{nextHopIfTypeStr, "CONNECTED", strconv.Itoa(int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex))),ipAddrStr,0,ipMaskStr,"0.0.0.0"}
-			_, err = routeServiceHandler.CreateIPv4Route(&cfg)//ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
+				intfEntry := IntfEntry{}
+				IntfIdNameMap[msg.IfIndex] = intfEntry
+				break
+			}
+			cfg := ribd.IPv4Route{
+				DestinationNw:     ipAddrStr,
+				Protocol:          "CONNECTED",
+				OutgoingInterface: strconv.Itoa(int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex))),
+				OutgoingIntfType:  nextHopIfTypeStr,
+				Cost:              0,
+				NetworkMask:       ipMaskStr,
+				NextHopIp:         "0.0.0.0"}
+
+			_, err = routeServiceHandler.CreateIPv4Route(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
 			//_, err = createV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 			if err != nil {
 				logger.Info(fmt.Sprintln("Route create failed with err %s\n", err))

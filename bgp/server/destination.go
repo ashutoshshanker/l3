@@ -470,7 +470,14 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 						protocol = "EBGP"
 					}
 					nextHopIfTypeStr, _ := d.server.ribdClient.GetNextHopIfTypeStr(ribdInt.Int(paths[0].NextHopIfType))
-					cfg := ribd.IPv4Route{nextHopIfTypeStr, protocol, strconv.Itoa(int(paths[0].NextHopIfIdx)), d.ipPrefix.Prefix.String(), int32(paths[0].Metric), constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), paths[0].NextHop}
+					cfg := ribd.IPv4Route{
+						DestinationNw:     constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),
+						Protocol:          protocol,
+						OutgoingInterface: strconv.Itoa(int(paths[0].NextHopIfIdx)),
+						OutgoingIntfType:  d.ipPrefix.Prefix.String(),
+						Cost:              int32(paths[0].Metric),
+						NetworkMask:       nextHopIfTypeStr,
+						NextHopIp:         paths[0].NextHop}
 					ret, err := d.server.ribdClient.CreateIPv4Route(&cfg)
 					/*(d.ipPrefix.Prefix.String(),
 					constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),
@@ -502,7 +509,15 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 					if path.IsExternal() {
 						protocol = "EBGP"
 					}
-					cfg := ribd.IPv4Route{"", protocol, strconv.Itoa(int(path.NextHopIfIdx)), d.ipPrefix.Prefix.String(), int32(path.Metric), constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), path.NextHop}
+					cfg := ribd.IPv4Route{
+						DestinationNw:     d.ipPrefix.Prefix.String(),
+						Protocol:          protocol,
+						OutgoingInterface: strconv.Itoa(int(path.NextHopIfIdx)),
+						OutgoingIntfType:  "",
+						Cost:              int32(path.Metric),
+						NetworkMask:       constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),
+						NextHopIp:         path.NextHop}
+
 					ret, err := d.server.ribdClient.DeleteIPv4Route(&cfg)
 					//d.ipPrefix.Prefix.String(),
 					//constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), protocol, path.NextHop)
@@ -527,7 +542,15 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 				if path.IsExternal() {
 					protocol = "EBGP"
 				}
-				cfg := ribd.IPv4Route{"", protocol, strconv.Itoa(int(path.NextHopIfIdx)), d.ipPrefix.Prefix.String(), int32(path.Metric), constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), path.NextHop}
+				cfg := ribd.IPv4Route{
+					DestinationNw:     d.ipPrefix.Prefix.String(),
+					Protocol:          protocol,
+					OutgoingInterface: strconv.Itoa(int(path.NextHopIfIdx)),
+					OutgoingIntfType:  "",
+					Cost:              int32(path.Metric),
+					NetworkMask:       constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),
+					NextHopIp:         path.NextHop}
+
 				ret, err := d.server.ribdClient.DeleteIPv4Route(&cfg)
 				//d.ipPrefix.Prefix.String(),
 				//constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), protocol, path.NextHop)
@@ -553,7 +576,15 @@ func (d *Destination) updateRoute(path *Path) {
 	if path.IsExternal() {
 		protocol = "EBGP"
 	}
-	cfg := ribd.IPv4Route{"", protocol, strconv.Itoa(int(path.NextHopIfIdx)), d.ipPrefix.Prefix.String(), int32(path.Metric), constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), path.NextHop}
+	cfg := ribd.IPv4Route{
+		DestinationNw:     d.ipPrefix.Prefix.String(),
+		Protocol:          protocol,
+		OutgoingInterface: strconv.Itoa(int(path.NextHopIfIdx)),
+		OutgoingIntfType:  "",
+		Cost:              int32(path.Metric),
+		NetworkMask:       constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),
+		NextHopIp:         path.NextHop}
+
 	ret, err := d.server.ribdClient.DeleteIPv4Route(&cfg)
 	//d.ipPrefix.Prefix.String(),
 	//constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), protocol, path.NextHop)
@@ -573,7 +604,15 @@ func (d *Destination) updateRoute(path *Path) {
 		d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s\n", d.ipPrefix.Prefix.String(),
 			constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), nextHop))
 		nextHopIfTypeStr, _ := d.server.ribdClient.GetNextHopIfTypeStr(ribdInt.Int(path.NextHopIfType))
-		cfg := ribd.IPv4Route{nextHopIfTypeStr, protocol, strconv.Itoa(int(path.NextHopIfIdx)), d.ipPrefix.Prefix.String(), int32(path.Metric), constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(), nextHop}
+		cfg := ribd.IPv4Route{
+			DestinationNw:     d.ipPrefix.Prefix.String(),
+			Protocol:          protocol,
+			OutgoingInterface: strconv.Itoa(int(path.NextHopIfIdx)),
+			OutgoingIntfType:  nextHopIfTypeStr,
+			Cost:              int32(path.Metric),
+			NetworkMask:       constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),
+			NextHopIp:         nextHop}
+
 		ret, err = d.server.ribdClient.CreateIPv4Route(&cfg)
 		/*d.ipPrefix.Prefix.String(),
 		constructNetmaskFromLen(int(d.ipPrefix.Length), 32).String(),
