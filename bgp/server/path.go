@@ -7,6 +7,7 @@ import (
 	"l3/bgp/packet"
 	"net"
 	"ribd"
+	"strconv"
 	"strings"
 	"utils/logging"
 )
@@ -177,7 +178,7 @@ func (p *Path) GetAS4ByteList() []string {
 					if seg.Type == packet.BGPASPathSegmentSet {
 						asSetList := make([]string, 0, len(seg.AS))
 						for _, as := range seg.AS {
-							asSetList = append(asSetList, string(as))
+							asSetList = append(asSetList, strconv.Itoa(int(as)))
 						}
 						asSetStr := strings.Join(asSetList, ", ")
 						asSetStr = "{ " + asSetStr + " }"
@@ -189,7 +190,7 @@ func (p *Path) GetAS4ByteList() []string {
 							//asSeq := make([]int32, 1)
 							//asSeq[0] = int32(as)
 							//asSeqList = append(asSeqList, asSeq)
-							asList = append(asList, string(as))
+							asList = append(asList, strconv.Itoa(int(as)))
 						}
 						//asList = append(asList, asSeqList...)
 					}
@@ -198,7 +199,7 @@ func (p *Path) GetAS4ByteList() []string {
 					if seg.Type == packet.BGPASPathSegmentSet {
 						asSetList := make([]string, 0, len(seg.AS))
 						for _, as := range seg.AS {
-							asSetList = append(asSetList, string(as))
+							asSetList = append(asSetList, strconv.Itoa(int(as)))
 						}
 						asSetStr := strings.Join(asSetList, ", ")
 						asSetStr = "{ " + asSetStr + " }"
@@ -211,7 +212,7 @@ func (p *Path) GetAS4ByteList() []string {
 							//asSeq := make([]int32, 1)
 							//asSeq[0] = int32(as)
 							//asSeqList = append(asSeqList, asSeq)
-							asList = append(asList, string(as))
+							asList = append(asList, strconv.Itoa(int(as)))
 						}
 						//asList = append(asList, asSeqList...)
 					}

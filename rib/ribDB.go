@@ -10,8 +10,10 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
+func UpdateRoutesFromDB() (err error) {
 	logger.Info(fmt.Sprintln("UpdateRoutesFromDB"))
+	dbHdl := routeServiceHandler.DbHdl
+	defer dbHdl.Close()
 	dbCmd := "select * from IPv4Route"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
@@ -24,17 +26,15 @@ func UpdateRoutesFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over IPV4Route rows with error %s\n", err))
 			return err
 		}
-/*		outIntf, _ := strconv.Atoi(ipRoute.OutgoingInterface)
-		var outIntfType ribd.Int
-		if ipRoute.OutgoingIntfType == "VLAN" {
-			outIntfType = commonDefs.L2RefTypeVlan
-		} else if ipRoute.OutgoingIntfType == "PHY" {
-			outIntfType = commonDefs.L2RefTypePort
-		} else if ipRoute.OutgoingIntfType == "NULL" {
-			outIntfType = commonDefs.IfTypeNull
-		}*/
-        cfg := ribd.IPv4Route {ipRoute.OutgoingIntfType, ipRoute.Protocol, ipRoute.OutgoingInterface,ipRoute.DestinationNw,int32(ipRoute.Cost),ipRoute.NetworkMask,ipRoute.NextHopIp}
-		_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg)//ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
+		cfg := ribd.IPv4Route{
+			DestinationNw:     ipRoute.DestinationNw,
+			Protocol:          ipRoute.Protocol,
+			OutgoingInterface: ipRoute.OutgoingInterface,
+			OutgoingIntfType:  ipRoute.OutgoingIntfType,
+			Cost:              int32(ipRoute.Cost),
+			NetworkMask:       ipRoute.NetworkMask,
+			NextHopIp:         ipRoute.NextHopIp}
+		_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg) //ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
 		//_,err = createV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto),  FIBAndRIB,ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 		if err != nil {
 			logger.Info(fmt.Sprintf("Route create failed with err %s\n", err))
@@ -111,7 +111,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
-		logger.Info(fmt.Sprintln("Scanning stmt ", stmt.Name, "MatchConditions:",stmt.MatchConditions))
+		logger.Info(fmt.Sprintln("Scanning stmt ", stmt.Name, "MatchConditions:", stmt.MatchConditions))
 		dbCmdCond := "select * from PolicyStmtConditions"
 		conditionrows, err := dbHdl.Query(dbCmdCond)
 		if err != nil {
@@ -186,7 +186,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 		var stmt, policyName string
 		var precedence int32
 		for conditionrows.Next() {
-			if err = conditionrows.Scan(&policyName, &stmt, &precedence); err != nil {
+			if err = conditionrows.Scan(&policyName, &precedence, &stmt); err != nil {
 				logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionConfigStatementList rows with error %s\n", err))
 				return err
 			}
@@ -194,7 +194,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 				logger.Info(fmt.Sprintln("Not a stmt for this policy, policyName: ", policyName))
 				continue
 			}
-			logger.Info(fmt.Sprintln("Fetching stmt ", stmt,"Precedence:",precedence))
+			logger.Info(fmt.Sprintln("Fetching stmt ", stmt, "Precedence:", precedence))
 			policyStmtPrecedence := ribd.PolicyDefinitionStmtPrecedence{Precedence: int32(precedence), Statement: stmt}
 			policy.StatementList = append(policy.StatementList, &policyStmtPrecedence)
 		}
@@ -207,21 +207,9 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 	}
 	return err
 }
-func UpdateFromDB() { //(paramsDir string) (err error) {
+func UpdatePolicyObjectsFromDB() { //(paramsDir string) (err error) {
 	logger.Info(fmt.Sprintln("UpdateFromDB"))
-	DbName := PARAMSDIR + "/UsrConfDb.db"
-	logger.Info(fmt.Sprintln("DB Location: ", DbName))
-	dbHdl, err := sql.Open("sqlite3", DbName)
-	if err != nil {
-		logger.Info(fmt.Sprintln("Failed to create the handle with err ", err))
-		return
-	}
-
-	if err = dbHdl.Ping(); err != nil {
-		logger.Info(fmt.Sprintln("Failed to keep DB connection alive"))
-		return
-	}
-	UpdateRoutesFromDB(dbHdl)           //paramsDir, dbHdl)
+	dbHdl := routeServiceHandler.DbHdl
 	UpdatePolicyConditionsFromDB(dbHdl) //paramsDir, dbHdl)
 	UpdatePolicyActionsFromDB(dbHdl)    //paramsDir, dbHdl)
 	UpdatePolicyStmtsFromDB(dbHdl)
