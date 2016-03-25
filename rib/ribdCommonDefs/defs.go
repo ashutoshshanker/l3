@@ -28,7 +28,15 @@ type RibdNotifyMsg struct {
 type RoutelistInfo struct {
     RouteInfo ribdInt.Routes
 }
+<<<<<<< HEAD
 type RouteReachabilityStatusMsgInfo struct {
 	Network string
 	IsReachable bool
 }
+=======
+
+type RouteReachabilityStatusMsgInfo struct {
+	Network string
+	IsReachable bool
+}
+>>>>>>> a20394e65a65e6cddce82b196c2ea09b0fc9fac3
