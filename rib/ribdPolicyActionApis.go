@@ -8,7 +8,8 @@ import (
 )
 func (m RIBDServicesHandler) CreatePolicyAction(cfg *ribd.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
-	m.PolicyActionCreateConfCh <- cfg
+	//m.PolicyActionCreateConfCh <- cfg
+	m.ProcessPolicyActionConfigCreate(cfg)
 	return val, err
 }
 
@@ -21,7 +22,8 @@ func (m RIBDServicesHandler) ProcessPolicyActionConfigCreate(cfg *ribd.PolicyAct
 
 func (m RIBDServicesHandler) DeletePolicyAction(cfg *ribd.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
-	m.PolicyActionDeleteConfCh <- cfg
+	//m.PolicyActionDeleteConfCh <- cfg
+	m.ProcessPolicyActionConfigDelete(cfg)
 	return val, err
 }
 
@@ -32,7 +34,8 @@ func (m RIBDServicesHandler) ProcessPolicyActionConfigDelete(cfg *ribd.PolicyAct
 	return val, err
 }
 func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribd.PolicyAction , newconfig *ribd.PolicyAction , attrset []bool) (val bool, err error) {
-	return val,err
+	logger.Info(fmt.Sprintln("UpdatePolicyAction"))
+	return true,err
 }
 func (m RIBDServicesHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyActionState"))

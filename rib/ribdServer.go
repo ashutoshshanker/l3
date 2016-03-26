@@ -123,7 +123,7 @@ var count int
 var ConnectedRoutes []*ribdInt.Routes
 var AsicdSub *nanomsg.SubSocket
 var RIBD_PUB *nanomsg.PubSocket
-var RIBD_BGPD_PUB *nanomsg.PubSocket
+//var RIBD_BGPD_PUB *nanomsg.PubSocket
 var IntfIdNameMap map[int32]IntfEntry
 
 
@@ -518,6 +518,11 @@ func InitializePolicyDB() {
 func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
     RouteInfoMap = patriciaDB.NewTrie()
 	ribdServicesHandler := &RIBDServicesHandler{}
+    RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
+    RouteProtocolTypeMapDB = make(map[string]int)
+    ReverseRouteProtoTypeMapDB = make(map[int]string)
+    ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
+    PublisherInfoMap = make(map[string]PublisherMapInfo)
 	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteDeleteConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteUpdateConfCh = make(chan UpdateRouteInfo)
@@ -546,8 +551,8 @@ func (ribdServiceHandler *RIBDServicesHandler) StartServer(paramsDir string) {
 	logger.Info(fmt.Sprintln("configfile = ", configFile))
 	BuildRouteProtocolTypeMapDB()
 	BuildProtocolAdminDistanceMapDB()
-	RIBD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_ADDR)
-	RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
+	BuildPublisherMap()
+	//RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	//CreateRoutes("RouteSetup.json")
 	InitializePolicyDB()
 	UpdatePolicyObjectsFromDB() //(paramsDir)
