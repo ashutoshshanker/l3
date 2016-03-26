@@ -52,6 +52,7 @@ type OspfNeighborEntry struct {
 	nbrEvent               config.NbrEvent
 	isSeqNumUpdate         bool
 	isMaster               bool
+	isMasterUpdate         bool
 	ospfNbrDBDTickerCh     *time.Ticker
 
 	ospfNbrLsaIndex        uint8       // db_summary list index
@@ -98,6 +99,7 @@ type ospfNeighborConfMsg struct {
 
 type ospfNeighborDBDMsg struct {
 	ospfNbrConfKey NeighborConfKey
+	nbrFull        bool
 	ospfNbrDBDData ospfDatabaseDescriptionData
 }
 
@@ -168,15 +170,17 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				nbrConf = server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId]
 			}
 			if nbrMsg.ospfNbrEntry.isStateUpdate {
-			nbrConf.OspfNbrState = nbrMsg.ospfNbrEntry.OspfNbrState
+				nbrConf.OspfNbrState = nbrMsg.ospfNbrEntry.OspfNbrState
 			}
 			nbrConf.OspfNbrDeadTimer = nbrMsg.ospfNbrEntry.OspfNbrDeadTimer
 			nbrConf.OspfNbrInactivityTimer = time.Now()
 			if nbrMsg.ospfNbrEntry.isSeqNumUpdate {
 				nbrConf.ospfNbrSeqNum = nbrMsg.ospfNbrEntry.ospfNbrSeqNum
 			}
+			if nbrMsg.ospfNbrEntry.isMasterUpdate {
+				nbrConf.isMaster = nbrMsg.ospfNbrEntry.isMaster
+			}
 			nbrConf.ospfNbrDBDTickerCh = nbrMsg.ospfNbrEntry.ospfNbrDBDTickerCh
-			nbrConf.isMaster = nbrMsg.ospfNbrEntry.isMaster
 			nbrConf.ospfNbrLsaReqIndex = nbrMsg.ospfNbrEntry.ospfNbrLsaReqIndex
 			nbrConf.nbrEvent = nbrMsg.ospfNbrEntry.nbrEvent
 
@@ -185,6 +189,9 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				nbrConf.OspfRtrPrio = nbrMsg.ospfNbrEntry.OspfRtrPrio
 				nbrConf.intfConfKey = nbrMsg.ospfNbrEntry.intfConfKey
 				nbrConf.OspfNbrOptions = 0
+				if nbrMsg.ospfNbrEntry.isMasterUpdate {
+					nbrConf.isMaster = nbrMsg.ospfNbrEntry.isMaster
+				}
 				server.neighborBulkSlice = append(server.neighborBulkSlice, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
 				nbrConf.req_list_mutex = &sync.Mutex{}
 				nbrConf.db_summary_list_mutex = &sync.Mutex{}
@@ -196,7 +203,7 @@ func (server *OSPFServer) UpdateNeighborConf() {
 						INTF_OPTIONS, uint32(time.Now().Nanosecond()), false, false)
 					nbrConf.OspfNbrState = config.NbrExchangeStart
 					nbrConf.nbrEvent = config.Nbr2WayReceived
-				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
+					server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				}
 				server.neighborDeadTimerEvent(nbrMsg.ospfNbrConfKey)
 
@@ -217,8 +224,8 @@ func (server *OSPFServer) UpdateNeighborConf() {
 			}
 
 			rtr_id := convertUint32ToIPv4(nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
-			server.logger.Info(fmt.Sprintln("NBR UPDATE: Nbr , state ", rtr_id, " : ",  nbrConf.OspfNbrState))
-	
+			server.logger.Info(fmt.Sprintln("NBR UPDATE: Nbr , state ", rtr_id, " : ", nbrConf.OspfNbrState))
+
 		case state := <-(server.neighborConfStopCh):
 			server.logger.Info("Exiting update neighbor config thread..")
 			if state == true {
@@ -248,6 +255,7 @@ func (server *OSPFServer) sendNeighborConf(nbrKey uint32, nbr OspfNeighborEntry,
 			OspfNbrState:           nbr.OspfNbrState,
 			OspfNbrInactivityTimer: time.Now(),
 			OspfNbrDeadTimer:       nbr.OspfNbrDeadTimer,
+			isMasterUpdate:         false,
 		},
 		nbrMsgType: op,
 	}

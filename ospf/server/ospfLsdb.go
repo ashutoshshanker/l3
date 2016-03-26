@@ -432,7 +432,8 @@ func (server *OSPFServer) processRecvdRouterLsa(data []byte, areaId uint32) bool
 		val.AdvRtr = lsakey.AdvRouter
 		server.LsdbSlice = append(server.LsdbSlice, val)
 	}
-
+	server.logger.Info(fmt.Sprintln("Router LSA: added to LSDB lsid ",
+		lsakey.LSId, " adv_router ", lsakey.AdvRouter, " lstype ", lsakey.LSType))
 	return true
 }
 
@@ -498,6 +499,8 @@ func (server *OSPFServer) processRecvdNetworkLsa(data []byte, areaId uint32) boo
 		val.AdvRtr = lsakey.AdvRouter
 		server.LsdbSlice = append(server.LsdbSlice, val)
 	}
+	server.logger.Info(fmt.Sprintln("Network LSA: added to LSDB lsid ",
+		lsakey.LSId, " adv_router ", lsakey.AdvRouter, " lstype ", lsakey.LSType))
 	return true
 }
 
@@ -760,34 +763,47 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 }
 
 /* @fn processNeighborFullEvent
-	Generate network LSA if the router is DR.
-	Send message for LSAFLOOD which will flood
-	router (and network) LSA 
+Generate network LSA if the router is DR.
+Send message for LSAFLOOD which will flood
+router (and network) LSA
 */
 func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
-	server.logger.Info(fmt.Sprintln("LSDB: Nbr full. Generate router and network LSA  area id  ", 
-		           msg.areaId, " intf ", msg.intf, " isDr ", msg.isDR, " nbrList ", msg.nbrList))
-	server.generateNetworkLSA(msg.areaId, msg.intf, msg.isDR)
+	server.logger.Info(fmt.Sprintln("LSDB: Nbr full. Generate router and network LSA  area id  ",
+		msg.areaId, " intf ", msg.intf, " isDr ", msg.isDR, " nbrList ", msg.nbrList))
+	if msg.isDR {
+		server.generateNetworkLSA(msg.areaId, msg.intf, msg.isDR)
+	}
 	server.generateRouterLSA(msg.areaId)
 	server.sendLsdbToNeighborEvent(msg.intf, 0, msg.areaId, 0, 0, LSAFLOOD)
 }
 
 /* @fn processDrBdrChangeMsg
-	when DR changes 
-	generate network and router LSA if I am DR. 
-	generate router LSA if I am not DR. Also flush 
-	network LSA is I am become DR to no DR.
+when DR changes
+generate network and router LSA if I am DR.
+generate router LSA if I am not DR. Also flush
+network LSA is I am become DR to no DR.
 */
 func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
+	/* check if any nbr attached to the intf if not dont generate network LSA
+	 */
+	intf, _ := server.IntfConfMap[msg.intfKey]
+	nbrExists := false
+	for range intf.NeighborMap {
+		nbrExists = true
+		break
+	}
+	if !nbrExists {
+		return
+	}
 	if msg.oldstate != msg.newstate {
 		if msg.newstate == config.DesignatedRouter {
 			server.logger.Info("Generate network and router LSA")
-			server.generateRouterLSA(msg.areaId)
+			//server.generateRouterLSA(msg.areaId)
 			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
 		} else if msg.oldstate == config.DesignatedRouter {
 			server.logger.Info("Flush network LSA . Generate router LSA")
 			server.flushNetworkLSA(msg.areaId, msg.intfKey)
-			server.generateRouterLSA(msg.areaId)
+			//server.generateRouterLSA(msg.areaId)
 			/* send flush message to neighbor followed by flood for
 			   router LSAs */
 			flood_pkt := ospfFloodMsg{
@@ -796,20 +812,21 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 			server.ospfNbrLsaUpdSendCh <- flood_pkt
 		}
 	} else {
-		if  msg.newstate == config.DesignatedRouter {
-			 server.logger.Info("Generate network LSA")
-			 server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
+		if msg.newstate == config.DesignatedRouter {
+			server.logger.Info("Generate network LSA")
+			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
 		}
 		server.logger.Info("Generate router LSA")
-		server.generateRouterLSA(msg.areaId)
+		//server.generateRouterLSA(msg.areaId)
 	}
+	server.generateRouterLSA(msg.areaId)
 	server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)
 }
 
 /* @processLSDatabaseTicker
-	Visited every time ticker is fired to 
-	check expired LSAs and send message to 
-	flood LSA 
+Visited every time ticker is fired to
+check expired LSAs and send message to
+flood LSA
 */
 func (server *OSPFServer) processLSDatabaseTicker() {
 	/* scan through LSDB. Flood expired LSAs and

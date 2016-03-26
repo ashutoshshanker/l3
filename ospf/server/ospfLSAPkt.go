@@ -133,8 +133,8 @@ func encodeLSAReq(lsa_data []ospfLSAReq) []byte {
 	pkt := make([]byte, len(lsa_data)*3*8)
 	for i := 0; i < len(lsa_data); i++ {
 		binary.BigEndian.PutUint32(pkt[i:i+4], lsa_data[i].ls_type)
-		binary.BigEndian.PutUint32(pkt[i:i+4], lsa_data[i].link_state_id)
-		binary.BigEndian.PutUint32(pkt[i:i+4], lsa_data[i].adv_router_id)
+		binary.BigEndian.PutUint32(pkt[i+4:i+8], lsa_data[i].link_state_id)
+		binary.BigEndian.PutUint32(pkt[i+8:i+12], lsa_data[i].adv_router_id)
 	}
 	return pkt
 }
@@ -852,9 +852,9 @@ func (server *OSPFServer) DecodeLSAReq(msg ospfNeighborLSAreqMsg) {
 			if !isDiscard {
 				areaid := convertIPv4ToUint32(intf.IfAreaId)
 				server.generateLsaUpdUnicast(req, msg.nbrKey, areaid)
-				server.logger.Info(fmt.Sprintf("LSAREQ: Flood . adv_router  ", adv_router, " lsid ", lsid, " discard ", isDiscard))
+				server.logger.Info(fmt.Sprintln("LSAREQ: Flood . adv_router  ", adv_router, " lsid ", lsid, " discard ", isDiscard))
 			} else {
-				server.logger.Info(fmt.Sprintf("LSAREQ: DONT flood . adv_router  ", adv_router, " lsid ", lsid, " discard ", isDiscard))
+				server.logger.Info(fmt.Sprintln("LSAREQ: DONT flood . adv_router  ", adv_router, " lsid ", lsid, " discard ", isDiscard))
 			}
 		} // enf of for slice
 	} // end of exists
@@ -865,10 +865,12 @@ func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey uint32, a
 	nbrConf := server.NeighborConfigMap[nbrKey]
 	var lsa_pkt []byte
 	flood := false
+
 	lsa_key.AdvRouter = req.adv_router_id
-	lsa_key.LSId = uint32(req.link_state_id)
+	lsa_key.LSId = req.link_state_id
 	lsa_key.LSType = uint8(req.ls_type)
-	server.logger.Info(fmt.Sprintf("LSAREQ: Generate LSA unicast for LSA type ", lsa_key.LSType, " linkid ", req.link_state_id))
+	server.logger.Info(fmt.Sprintln("LSAREQ: Generate LSA unicast for LSA type ",
+		req.ls_type, " linkid ", req.link_state_id, " areaid ", areaid))
 	switch lsa_key.LSType {
 	case RouterLSA:
 		drlsa, ret := server.getRouterLsaFromLsdb(areaid, *lsa_key)
@@ -876,7 +878,7 @@ func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey uint32, a
 			lsa_pkt = encodeRouterLsa(drlsa, *lsa_key)
 			flood = true
 		} else {
-			server.logger.Info(fmt.Sprintln("LSAREQ: router lsa not found. lsaid ", lsa_key.LSId, " lstype ", lsa_key.LSType))
+			server.logger.Info(fmt.Sprintln("LSAREQ: router lsa not found. lsaid ", req.link_state_id, " lstype ", lsa_key.LSType))
 		}
 	case NetworkLSA:
 		dnlsa, ret := server.getNetworkLsaFromLsdb(areaid, *lsa_key)
@@ -884,7 +886,7 @@ func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey uint32, a
 			lsa_pkt = encodeNetworkLsa(dnlsa, *lsa_key)
 			flood = true
 		} else {
-			server.logger.Info(fmt.Sprintln("LSAREQ: Network lsa not found. lsaid ", lsa_key.LSId, " lstype ", lsa_key.LSType))
+			server.logger.Info(fmt.Sprintln("LSAREQ: Network lsa not found. lsaid ", req.link_state_id, " lstype ", lsa_key.LSType))
 		}
 	case Summary3LSA:
 	case Summary4LSA:

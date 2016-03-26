@@ -222,7 +222,7 @@ func (server *OSPFServer) processFloodMsg(lsa_data ospfFloodMsg) {
 			pkt := server.BuildLsaUpdPkt(key, intf,
 				dstMac, dstIp, lsa_pkt_len, lsa_upd_pkt)
 			server.SendOspfPkt(key, pkt)
-			//server.logger.Info(fmt.Sprintln("FLOOD: Nbr FULL ", nbrConf.OspfNbrIPAddr, " out interface ", intf.IfIpAddr))
+			server.logger.Info(fmt.Sprintln("FLOOD: Nbr FULL intf ", intf.IfIpAddr))
 		}
 
 	case LSASELFLOOD: //Flood received LSA on selective interfaces.
