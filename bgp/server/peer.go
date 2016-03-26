@@ -278,11 +278,11 @@ func (p *Peer) SetPeerAttrs(bgpId net.IP, asSize uint8, holdTime uint32, keepali
 		if afi == packet.AfiIP {
 			for _, val := range safiMap {
 				if (val & packet.BGPCapAddPathRx) != 0 {
-					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set addpathsmaxtx to %d\n", p.Neighbor.NeighborAddress, p.PeerConf.AddPathsMaxTx))
+					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set add paths maxtx to %d\n", p.Neighbor.NeighborAddress, p.PeerConf.AddPathsMaxTx))
 					p.Neighbor.State.AddPathsMaxTx = p.PeerConf.AddPathsMaxTx
 				}
 				if (val & packet.BGPCapAddPathTx) != 0 {
-					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set addpathsrx to %s\n", p.Neighbor.NeighborAddress, p.PeerConf.AddPathsRx))
+					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set add paths rx to %s\n", p.Neighbor.NeighborAddress, p.PeerConf.AddPathsRx))
 					p.Neighbor.State.AddPathsRx = true
 				}
 			}
@@ -386,7 +386,90 @@ func (p *Peer) sendUpdateMsg(msg *packet.BGPMessage, path *Path) {
 
 }
 
-func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destination, withdrawPath *Path) {
+func (p *Peer) isAdvertisable(path *Path) bool {
+	if path != nil && path.peer != nil {
+		if path.peer.IsInternal() {
+
+			if p.IsInternal() && !path.peer.IsRouteReflectorClient() && !p.IsRouteReflectorClient() {
+				return false
+			}
+		}
+
+		// Don't send the update to the peer that sent the update.
+		if p.PeerConf.NeighborAddress.String() == path.peer.PeerConf.NeighborAddress.String() {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (p *Peer) calculateAddPathsAdvertisements(dest *Destination, path *Path, newUpdated map[*Path][]packet.NLRI,
+	withdrawList []packet.NLRI, addPathsTx int) (map[*Path][]packet.NLRI, []packet.NLRI) {
+	pathIdMap := make(map[uint32]*Path)
+	ip := dest.ipPrefix.Prefix.String()
+
+	if _, ok := p.ribOut[ip]; !ok {
+		p.logger.Info(fmt.Sprintf("Neighbor %s: calculateAddPathsAdvertisements - processing updates, dest %s not found in rib out",
+			p.Neighbor.NeighborAddress, ip))
+		p.ribOut[ip] = make(map[uint32]*Path)
+	}
+
+	if p.isAdvertisable(path) {
+		route := dest.locRibPathRoute
+		if path != nil { // Loc-RIB path changed
+			if _, ok := newUpdated[path]; !ok {
+				newUpdated[path] = make([]packet.NLRI, 0)
+			}
+			nlri := packet.NewExtNLRI(route.outPathId, *dest.ipPrefix)
+			newUpdated[path] = append(newUpdated[path], nlri)
+		} else {
+			path = dest.locRibPath
+		}
+		pathIdMap[route.outPathId] = path
+	}
+
+	for i := 0; i < len(dest.addPaths) && len(pathIdMap) < (addPathsTx-1); i++ {
+		route := dest.GetPathRoute(dest.addPaths[i])
+		if route != nil && p.isAdvertisable(dest.addPaths[i]) {
+			pathIdMap[route.outPathId] = dest.addPaths[i]
+		}
+	}
+
+	ribPathMap, _ := p.ribOut[ip]
+	for ribPathId, ribPath := range ribPathMap {
+		if path, ok := pathIdMap[ribPathId]; !ok {
+			nlri := packet.NewExtNLRI(ribPathId, *dest.ipPrefix)
+			withdrawList = append(withdrawList, nlri)
+			delete(p.ribOut[ip], ribPathId)
+		} else if ribPath == path {
+			delete(pathIdMap, ribPathId)
+		} else if ribPath != path {
+			if _, ok := newUpdated[path]; !ok {
+				newUpdated[path] = make([]packet.NLRI, 0)
+			}
+			nlri := packet.NewExtNLRI(ribPathId, *dest.ipPrefix)
+			newUpdated[path] = append(newUpdated[path], nlri)
+			p.ribOut[ip][ribPathId] = path
+			delete(pathIdMap, ribPathId)
+		}
+	}
+
+	for pathId, path := range pathIdMap {
+		if _, ok := newUpdated[path]; !ok {
+			newUpdated[path] = make([]packet.NLRI, 0)
+		}
+		nlri := packet.NewExtNLRI(pathId, *dest.ipPrefix)
+		newUpdated[path] = append(newUpdated[path], nlri)
+		p.ribOut[ip][pathId] = path
+		delete(pathIdMap, pathId)
+	}
+
+	return newUpdated, withdrawList
+}
+
+func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destination, withdrawPath *Path,
+	updatedAddPaths []*Destination) {
 	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%v, withdraw routes:%v",
 		p.Neighbor.NeighborAddress, updated, withdrawn))
 	if p.Neighbor.Transport.Config.LocalAddress == nil {
@@ -401,11 +484,11 @@ func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destina
 	if len(withdrawn) > 0 {
 		for _, dest := range withdrawn {
 			if dest != nil {
+				ip := dest.ipPrefix.Prefix.String()
 				if addPathsTx > 0 {
-					ip := dest.ipPrefix.Prefix.String()
 					pathIdMap, ok := p.ribOut[ip]
 					if !ok {
-						p.logger.Err(fmt.Sprintf("Neighbor %s: SendUpdate - processing withdraes, dest %s not found in rib out",
+						p.logger.Err(fmt.Sprintf("Neighbor %s: SendUpdate - processing withdraws, dest %s not found in rib out",
 							p.Neighbor.NeighborAddress, ip))
 						continue
 					}
@@ -413,8 +496,10 @@ func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destina
 						nlri := packet.NewExtNLRI(pathId, *dest.ipPrefix)
 						withdrawList = append(withdrawList, nlri)
 					}
+					delete(p.ribOut, ip)
 				} else {
 					withdrawList = append(withdrawList, dest.ipPrefix)
+					delete(p.ribOut, ip)
 				}
 			}
 		}
@@ -423,97 +508,55 @@ func (p *Peer) SendUpdate(updated map[*Path][]*Destination, withdrawn []*Destina
 	for path, destinations := range updated {
 		for _, dest := range destinations {
 			if dest != nil {
-				pathIdMap := make(map[uint32]*Path)
 				ip := dest.ipPrefix.Prefix.String()
 				if addPathsTx > 0 {
-					route := dest.locRibPathRoute
-					pathId := route.outPathId
-					nlri := packet.NewExtNLRI(pathId, *dest.ipPrefix)
-					if _, ok := newUpdated[path]; !ok {
-						newUpdated[path] = make([]packet.NLRI, 0)
-					}
-					newUpdated[path] = append(newUpdated[path], nlri)
-					pathIdMap[pathId] = path
-
-					for i := 0; i < len(dest.addPaths) && i < addPathsTx; i++ {
-						if len(pathIdMap) == addPathsTx {
-							break
+					newUpdated, withdrawList = p.calculateAddPathsAdvertisements(dest, path, newUpdated, withdrawList,
+						addPathsTx)
+				} else {
+					if !p.isAdvertisable(path) {
+						withdrawList = append(withdrawList, dest.ipPrefix)
+						delete(p.ribOut, ip)
+					} else {
+						route := dest.locRibPathRoute
+						pathId := route.outPathId
+						if _, ok := p.ribOut[ip]; !ok {
+							p.ribOut[ip] = make(map[uint32]*Path)
 						}
-						route = dest.GetPathRoute(dest.addPaths[i])
-						if route == nil {
-							continue
+						for ribPathId, _ := range p.ribOut[ip] {
+							if pathId != ribPathId {
+								delete(p.ribOut[ip], ribPathId)
+							}
 						}
-						nlri = packet.NewExtNLRI(route.outPathId, *dest.ipPrefix)
-						if _, ok := newUpdated[dest.addPaths[i]]; !ok {
-							newUpdated[dest.addPaths[i]] = make([]packet.NLRI, 0)
-						}
-						pathIdMap[route.outPathId] = path
-						newUpdated[dest.addPaths[i]] = append(newUpdated[dest.addPaths[i]], nlri)
-					}
-
-					if _, ok := p.ribOut[ip]; !ok {
-						p.logger.Info(fmt.Sprintf("Neighbor %s: SendUpdate - processing updates, dest %s not found in rib out",
-							p.Neighbor.NeighborAddress, ip))
-						p.ribOut[ip] = make(map[uint32]*Path)
-					}
-					ribPathMap, _ := p.ribOut[ip]
-					for ribPathId, ribPath := range ribPathMap {
-						if path, ok := pathIdMap[ribPathId]; !ok {
-							nlri = packet.NewExtNLRI(ribPathId, *dest.ipPrefix)
-							withdrawList = append(withdrawList, nlri)
-							delete(p.ribOut[ip], ribPathId)
-						} else if ribPath == path {
-							delete(pathIdMap, ribPathId)
-						} else if ribPath != path {
-							nlri = packet.NewExtNLRI(ribPathId, *dest.ipPrefix)
+						if ribPath, ok := p.ribOut[ip][pathId]; !ok || ribPath != path {
 							if _, ok := newUpdated[path]; !ok {
 								newUpdated[path] = make([]packet.NLRI, 0)
 							}
-							newUpdated[path] = append(newUpdated[path], nlri)
-							p.ribOut[ip][ribPathId] = path
-							delete(pathIdMap, ribPathId)
+							newUpdated[path] = append(newUpdated[path], dest.ipPrefix)
 						}
-					}
-
-					for pathId, path := range pathIdMap {
-						nlri = packet.NewExtNLRI(pathId, *dest.ipPrefix)
-						if _, ok := newUpdated[path]; !ok {
-							newUpdated[path] = make([]packet.NLRI, 0)
-						}
-						newUpdated[path] = append(newUpdated[path], nlri)
 						p.ribOut[ip][pathId] = path
-						delete(pathIdMap, pathId)
 					}
-				} else {
-					route := dest.locRibPathRoute
-					pathId := route.outPathId
-					if _, ok := p.ribOut[ip]; !ok {
-						p.ribOut[ip] = make(map[uint32]*Path)
-					}
-					for ribPathId, _ := range p.ribOut[ip] {
-						if pathId != ribPathId {
-							delete(p.ribOut[ip], ribPathId)
-						}
-					}
-					if ribPath, ok := p.ribOut[ip][pathId]; !ok || ribPath != path {
-						if _, ok := newUpdated[path]; !ok {
-							newUpdated[path] = make([]packet.NLRI, 0)
-						}
-						newUpdated[path] = append(newUpdated[path], dest.ipPrefix)
-					}
-					p.ribOut[ip][pathId] = path
 				}
 			}
 		}
 	}
 
+	if addPathsTx > 0 {
+		for _, dest := range updatedAddPaths {
+			newUpdated, withdrawList = p.calculateAddPathsAdvertisements(dest, nil, newUpdated, withdrawList, addPathsTx)
+		}
+	}
+
 	if len(withdrawList) > 0 {
+		p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message withdraw routes:%+v",
+			p.Neighbor.NeighborAddress, withdrawList))
 		updateMsg := packet.NewBGPUpdateMessage(withdrawList, nil, nil)
 		p.sendUpdateMsg(updateMsg.Clone(), withdrawPath)
 		withdrawList = withdrawList[:0]
 	}
 
 	for path, nlriList := range newUpdated {
+		p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%+v",
+			p.Neighbor.NeighborAddress, nlriList))
 		updateMsg := packet.NewBGPUpdateMessage(make([]packet.NLRI, 0), path.pathAttrs, nlriList)
 		p.sendUpdateMsg(updateMsg.Clone(), path)
 	}

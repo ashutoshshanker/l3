@@ -123,8 +123,8 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                 destNet := destIpAddr.Mask(mask)
                 if myNet.Equal(srcNet) !=  true ||
                         myNet.Equal(destNet) != true {
-                        server.logger.Info(fmt.Sprintln("Received Arp Request but srcIp:", srcIp, " and destIp:", destIp, "are not in same network. Hence, not processing it"))
-                        server.logger.Info(fmt.Sprintln("Ip and Netmask on the recvd interface is", myIP, mask))
+                        //server.logger.Info(fmt.Sprintln("Received Arp Request but srcIp:", srcIp, " and destIp:", destIp, "are not in same network. Hence, not processing it"))
+                        //server.logger.Info(fmt.Sprintln("Ip and Netmask on the recvd interface is", myIP, mask))
                         //server.logger.Info(fmt.Sprintln("SrcIP:", srcIp, "DstIP:", destIp, "SrcMac:", srcMac, "DstMac:", dstMac, "intfIP:", myIP, "intfPort:", port, "intfMask:", mask, "srcNet:", srcNet, "dstNet:", destNet, "myNet:", myNet))
                         return
                 }
