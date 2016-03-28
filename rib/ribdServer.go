@@ -2,50 +2,51 @@ package main
 
 import (
 	"arpd"
-	"asicdServices"
-	"encoding/json"
-	"l3/rib/ribdCommonDefs"
-	"ribd"
-	"ribdInt"
-	"utils/patriciaDB"
-	"utils/policy"
-	"utils/policy/policyCommonDefs"
 	"asicd/asicdConstDefs"
+	"asicdServices"
+	"database/sql"
+	"encoding/json"
+	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/op/go-nanomsg"
 	"io/ioutil"
+	"l3/rib/ribdCommonDefs"
 	"net"
+	"ribd"
+	"ribdInt"
 	"strconv"
 	"time"
 	"utils/commonDefs"
-	"fmt"
 	"utils/ipcutils"
-	"database/sql"
+	"utils/patriciaDB"
+	"utils/policy"
+	"utils/policy/policyCommonDefs"
 )
+
 type UpdateRouteInfo struct {
 	origRoute *ribd.IPv4Route
-	newRoute  *ribd.IPv4Route 
+	newRoute  *ribd.IPv4Route
 	attrset   []bool
 }
 type RIBDServicesHandler struct {
-	RouteCreateConfCh              chan *ribd.IPv4Route
-	RouteDeleteConfCh              chan *ribd.IPv4Route
-	RouteUpdateConfCh               chan UpdateRouteInfo
-	PolicyConditionCreateConfCh    chan *ribd.PolicyCondition
-	PolicyConditionDeleteConfCh    chan *ribd.PolicyCondition
-	PolicyConditionUpdateConfCh     chan *ribd.PolicyCondition
-	PolicyActionCreateConfCh       chan *ribd.PolicyAction
-	PolicyActionDeleteConfCh       chan *ribd.PolicyAction
-	PolicyActionUpdateConfCh        chan *ribd.PolicyAction
-	PolicyStmtCreateConfCh         chan *ribd.PolicyStmt
-	PolicyStmtDeleteConfCh         chan *ribd.PolicyStmt
-	PolicyStmtUpdateConfCh          chan *ribd.PolicyStmt
-	PolicyDefinitionCreateConfCh   chan *ribd.PolicyDefinition
-	PolicyDefinitionDeleteConfCh   chan *ribd.PolicyDefinition
-	PolicyDefinitionUpdateConfCh   chan *ribd.PolicyDefinition
-	AcceptConfig                   bool
-	ServerUpCh                     chan bool
-	DbHdl                          *sql.DB
+	RouteCreateConfCh            chan *ribd.IPv4Route
+	RouteDeleteConfCh            chan *ribd.IPv4Route
+	RouteUpdateConfCh            chan UpdateRouteInfo
+	PolicyConditionCreateConfCh  chan *ribd.PolicyCondition
+	PolicyConditionDeleteConfCh  chan *ribd.PolicyCondition
+	PolicyConditionUpdateConfCh  chan *ribd.PolicyCondition
+	PolicyActionCreateConfCh     chan *ribd.PolicyAction
+	PolicyActionDeleteConfCh     chan *ribd.PolicyAction
+	PolicyActionUpdateConfCh     chan *ribd.PolicyAction
+	PolicyStmtCreateConfCh       chan *ribd.PolicyStmt
+	PolicyStmtDeleteConfCh       chan *ribd.PolicyStmt
+	PolicyStmtUpdateConfCh       chan *ribd.PolicyStmt
+	PolicyDefinitionCreateConfCh chan *ribd.PolicyDefinition
+	PolicyDefinitionDeleteConfCh chan *ribd.PolicyDefinition
+	PolicyDefinitionUpdateConfCh chan *ribd.PolicyDefinition
+	AcceptConfig                 bool
+	ServerUpCh                   chan bool
+	DbHdl                        *sql.DB
 	//RouteInstallCh                 chan RouteParams
 }
 
@@ -125,7 +126,6 @@ var AsicdSub *nanomsg.SubSocket
 var RIBD_PUB *nanomsg.PubSocket
 //var RIBD_BGPD_PUB *nanomsg.PubSocket
 var IntfIdNameMap map[int32]IntfEntry
-
 
 func processL3IntfDownEvent(ipAddr string) {
 	logger.Println("processL3IntfDownEvent")
@@ -244,6 +244,7 @@ func (m RIBDServicesHandler) IntfUp(ipAddr string) (err error) {
 	processL3IntfUpEvent(ipAddr)
 	return nil
 }
+
 //used at init time after connecting to ASICD so as to install any routes (static) read from DB in ASICd
 func installRoutesInASIC() {
 	logger.Println("installRoutesinASIC")
@@ -251,7 +252,7 @@ func installRoutesInASIC() {
 		logger.Println("No routes installed in RIB")
 		return
 	}
-	for i:=0;i<len(destNetSlice);i++ {
+	for i := 0; i < len(destNetSlice); i++ {
 		if destNetSlice[i].isValid == false {
 			logger.Println("Invalid route")
 			continue
@@ -266,7 +267,7 @@ func installRoutesInASIC() {
 			routeInfoList := prefixNodeRouteList.routeInfoProtocolMap[prefixNodeRouteList.selectedRouteProtocol]
 			for sel := 0; sel < len(routeInfoList); sel++ {
 				routeInfoRecord := routeInfoList[sel]
-			    asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String(), int32(routeInfoRecord.nextHopIfType))
+				asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String(), int32(routeInfoRecord.nextHopIfType))
 			}
 		}
 
@@ -278,7 +279,7 @@ func getLogicalIntfInfo() {
 	var count asicdServices.Int
 	count = 100
 	for {
-		logger.Info(fmt.Sprintln("Getting ", count, "GetBulkLogicalIntf objects from currMarker:",currMarker))
+		logger.Info(fmt.Sprintln("Getting ", count, "GetBulkLogicalIntf objects from currMarker:", currMarker))
 		bulkInfo, err := asicdclnt.ClientHdl.GetBulkLogicalIntfState(currMarker, count)
 		if err != nil {
 			logger.Info(fmt.Sprintln("GetBulkLogicalIntfState with err ", err))
@@ -290,7 +291,7 @@ func getLogicalIntfInfo() {
 		}
 		logger.Info(fmt.Sprintln("len(bulkInfo.GetBulkLogicalIntfState)  = %d, num objects returned = %d\n", len(bulkInfo.LogicalIntfStateList), bulkInfo.Count))
 		for i := 0; i < int(bulkInfo.Count); i++ {
-            ifId := (bulkInfo.LogicalIntfStateList[i].IfIndex)
+			ifId := (bulkInfo.LogicalIntfStateList[i].IfIndex)
 			logger.Info(fmt.Sprintln("logical interface = ", bulkInfo.LogicalIntfStateList[i].Name, "ifId = ", ifId))
 			if IntfIdNameMap == nil {
 				IntfIdNameMap = make(map[int32]IntfEntry)
@@ -311,8 +312,8 @@ func getVlanInfo() {
 	var count asicdServices.Int
 	count = 100
 	for {
-		logger.Info(fmt.Sprintln("Getting ", count, "GetBulkVlan objects from currMarker:",currMarker))
-		bulkInfo, err := asicdclnt.ClientHdl.GetBulkVlan(currMarker, count)
+		logger.Info(fmt.Sprintln("Getting ", count, "GetBulkVlan objects from currMarker:", currMarker))
+		bulkInfo, err := asicdclnt.ClientHdl.GetBulkVlanState(currMarker, count)
 		if err != nil {
 			logger.Info(fmt.Sprintln("GetBulkVlan with err ", err))
 			return
@@ -321,14 +322,14 @@ func getVlanInfo() {
 			logger.Println("0 objects returned from GetBulkVlan")
 			return
 		}
-		logger.Info(fmt.Sprintln("len(bulkInfo.GetBulkVlan)  = %d, num objects returned = %d\n", len(bulkInfo.VlanList), bulkInfo.Count))
+		logger.Info(fmt.Sprintln("len(bulkInfo.GetBulkVlan)  = %d, num objects returned = %d\n", len(bulkInfo.VlanStateList), bulkInfo.Count))
 		for i := 0; i < int(bulkInfo.Count); i++ {
-            ifId := (bulkInfo.VlanList[i].IfIndex)
-			logger.Info(fmt.Sprintln("vlan = ", bulkInfo.VlanList[i].VlanId, "ifId = ", ifId))
+			ifId := (bulkInfo.VlanStateList[i].IfIndex)
+			logger.Info(fmt.Sprintln("vlan = ", bulkInfo.VlanStateList[i].VlanId, "ifId = ", ifId))
 			if IntfIdNameMap == nil {
 				IntfIdNameMap = make(map[int32]IntfEntry)
 			}
-			intfEntry := IntfEntry{name: bulkInfo.VlanList[i].VlanName}
+			intfEntry := IntfEntry{name: bulkInfo.VlanStateList[i].VlanName}
 			IntfIdNameMap[ifId] = intfEntry
 		}
 		if bulkInfo.More == false {
@@ -344,7 +345,7 @@ func getPortInfo() {
 	var count asicdServices.Int
 	count = 100
 	for {
-		logger.Info(fmt.Sprintln("Getting ", count, "objects from currMarker:",currMarker))
+		logger.Info(fmt.Sprintln("Getting ", count, "objects from currMarker:", currMarker))
 		bulkInfo, err := asicdclnt.ClientHdl.GetBulkPortState(currMarker, count)
 		if err != nil {
 			logger.Info(fmt.Sprintln("GetBulkPortState with err ", err))
@@ -375,15 +376,15 @@ func getPortInfo() {
 func getIntfInfo() {
 	getPortInfo()
 	getVlanInfo()
-    getLogicalIntfInfo()
+	getLogicalIntfInfo()
 }
 func AcceptConfigActions() {
 	logger.Println("AcceptConfigActions: Setting AcceptConfig to true")
 	routeServiceHandler.AcceptConfig = true
-    getIntfInfo()
+	getIntfInfo()
 	getConnectedRoutes()
 	UpdateRoutesFromDB()
-    go SetupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
+	go SetupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	routeServiceHandler.ServerUpCh <- true
 }
 func connectToClient(client ClientJson) {
@@ -397,7 +398,7 @@ func connectToClient(client ClientJson) {
 			asicdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
 			asicdclnt.Transport, asicdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
-				logger.Info(fmt.Sprintln("connecting to asicd,arpdclnt.IsConnected:",arpdclnt.IsConnected))
+				logger.Info(fmt.Sprintln("connecting to asicd,arpdclnt.IsConnected:", arpdclnt.IsConnected))
 				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
 				if arpdclnt.IsConnected == true {
@@ -413,7 +414,7 @@ func connectToClient(client ClientJson) {
 			arpdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
 			arpdclnt.Transport, arpdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
-				logger.Info(fmt.Sprintln("connecting to arpd,asicdclnt.IsConnected:",asicdclnt.IsConnected))
+				logger.Info(fmt.Sprintln("connecting to arpd,asicdclnt.IsConnected:", asicdclnt.IsConnected))
 				arpdclnt.ClientHdl = arpd.NewARPDServicesClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
 				if asicdclnt.IsConnected == true {
@@ -448,7 +449,7 @@ func ConnectToClients(paramsFile string) {
 			asicdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
 			asicdclnt.Transport, asicdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(asicdclnt.Address)
 			if asicdclnt.Transport != nil && asicdclnt.PtrProtocolFactory != nil {
-				logger.Info(fmt.Sprintln("connecting to asicd,arpdclnt.IsConnected:",arpdclnt.IsConnected))
+				logger.Info(fmt.Sprintln("connecting to asicd,arpdclnt.IsConnected:", arpdclnt.IsConnected))
 				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
 				if arpdclnt.IsConnected == true {
@@ -464,7 +465,7 @@ func ConnectToClients(paramsFile string) {
 			arpdclnt.Address = "localhost:" + strconv.Itoa(client.Port)
 			arpdclnt.Transport, arpdclnt.PtrProtocolFactory, _ = ipcutils.CreateIPCHandles(arpdclnt.Address)
 			if arpdclnt.Transport != nil && arpdclnt.PtrProtocolFactory != nil {
-				logger.Info(fmt.Sprintln("connecting to arpd,asicdclnt.IsConnected:",asicdclnt.IsConnected))
+				logger.Info(fmt.Sprintln("connecting to arpd,asicdclnt.IsConnected:", asicdclnt.IsConnected))
 				arpdclnt.ClientHdl = arpd.NewARPDServicesClientFactory(arpdclnt.Transport, arpdclnt.PtrProtocolFactory)
 				arpdclnt.IsConnected = true
 				if asicdclnt.IsConnected == true {
@@ -516,7 +517,7 @@ func InitializePolicyDB() {
 	PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
 }
 func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
-    RouteInfoMap = patriciaDB.NewTrie()
+	RouteInfoMap = patriciaDB.NewTrie()
 	ribdServicesHandler := &RIBDServicesHandler{}
     RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
     RouteProtocolTypeMapDB = make(map[string]int)
@@ -560,45 +561,45 @@ func (ribdServiceHandler *RIBDServicesHandler) StartServer(paramsDir string) {
 	logger.Println("Starting the server loop")
 	for {
 		if !routeServiceHandler.AcceptConfig {
-		    logger.Println("Not ready to accept config")
-		    continue
-	    }
+			logger.Println("Not ready to accept config")
+			continue
+		}
 		select {
 		case routeCreateConf := <-ribdServiceHandler.RouteCreateConfCh:
-		    logger.Println("received message on RouteCreateConfCh channel")
+			logger.Println("received message on RouteCreateConfCh channel")
 			ribdServiceHandler.ProcessRouteCreateConfig(routeCreateConf)
 		case routeDeleteConf := <-ribdServiceHandler.RouteDeleteConfCh:
-		    logger.Println("received message on RouteDeleteConfCh channel")
+			logger.Println("received message on RouteDeleteConfCh channel")
 			ribdServiceHandler.ProcessRouteDeleteConfig(routeDeleteConf)
 		case routeUpdateConf := <-ribdServiceHandler.RouteUpdateConfCh:
-		    logger.Println("received message on RouteUpdateConfCh channel")
-			ribdServiceHandler.ProcessRouteUpdateConfig(routeUpdateConf.origRoute,routeUpdateConf.newRoute,routeUpdateConf.attrset)
-/*		case routeInfo := <-ribdServiceHandler.RouteInstallCh:
-		    logger.Println("received message on RouteInstallConfCh channel")
-			ribdServiceHandler.ProcessRouteInstall(routeInfo)*/
+			logger.Println("received message on RouteUpdateConfCh channel")
+			ribdServiceHandler.ProcessRouteUpdateConfig(routeUpdateConf.origRoute, routeUpdateConf.newRoute, routeUpdateConf.attrset)
+			/*		case routeInfo := <-ribdServiceHandler.RouteInstallCh:
+			    logger.Println("received message on RouteInstallConfCh channel")
+				ribdServiceHandler.ProcessRouteInstall(routeInfo)*/
 		case condCreateConf := <-ribdServiceHandler.PolicyConditionCreateConfCh:
-		    logger.Println("received message on PolicyConditionCreateConfCh channel")
+			logger.Println("received message on PolicyConditionCreateConfCh channel")
 			ribdServiceHandler.ProcessPolicyConditionConfigCreate(condCreateConf)
 		case condDeleteConf := <-ribdServiceHandler.PolicyConditionDeleteConfCh:
-		    logger.Println("received message on PolicyConditionDeleteConfCh channel")
+			logger.Println("received message on PolicyConditionDeleteConfCh channel")
 			ribdServiceHandler.ProcessPolicyConditionConfigDelete(condDeleteConf)
 		case actionCreateConf := <-ribdServiceHandler.PolicyActionCreateConfCh:
-		    logger.Println("received message on PolicyActionCreateConfCh channel")
+			logger.Println("received message on PolicyActionCreateConfCh channel")
 			ribdServiceHandler.ProcessPolicyActionConfigCreate(actionCreateConf)
 		case actionDeleteConf := <-ribdServiceHandler.PolicyActionDeleteConfCh:
-		    logger.Println("received message on PolicyActionDeleteConfCh channel")
+			logger.Println("received message on PolicyActionDeleteConfCh channel")
 			ribdServiceHandler.ProcessPolicyActionConfigDelete(actionDeleteConf)
 		case stmtCreateConf := <-ribdServiceHandler.PolicyStmtCreateConfCh:
-		    logger.Println("received message on PolicyStmtCreateConfCh channel")
+			logger.Println("received message on PolicyStmtCreateConfCh channel")
 			ribdServiceHandler.ProcessPolicyStmtConfigCreate(stmtCreateConf)
 		case stmtDeleteConf := <-ribdServiceHandler.PolicyStmtDeleteConfCh:
-		    logger.Println("received message on PolicyStmtDeleteConfCh channel")
+			logger.Println("received message on PolicyStmtDeleteConfCh channel")
 			ribdServiceHandler.ProcessPolicyStmtConfigDelete(stmtDeleteConf)
 		case policyCreateConf := <-ribdServiceHandler.PolicyDefinitionCreateConfCh:
-		    logger.Println("received message on PolicyDefinitionCreateConfCh channel")
+			logger.Println("received message on PolicyDefinitionCreateConfCh channel")
 			ribdServiceHandler.ProcessPolicyDefinitionConfigCreate(policyCreateConf)
 		case policyDeleteConf := <-ribdServiceHandler.PolicyDefinitionDeleteConfCh:
-		    logger.Println("received message on PolicyDefinitionDeleteConfCh channel")
+			logger.Println("received message on PolicyDefinitionDeleteConfCh channel")
 			ribdServiceHandler.ProcessPolicyDefinitionConfigDelete(policyDeleteConf)
 		}
 	}

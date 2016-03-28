@@ -389,17 +389,22 @@ func (server *ARPServer) constructVlanInfra() {
 	server.logger.Info("Calling Asicd for getting Vlan Property")
 	count := 100
 	for {
-		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkVlan(asicdServices.Int(curMark), asicdServices.Int(count))
-		if bulkInfo == nil {
+		bulkVlanInfo, _ := server.asicdClient.ClientHdl.GetBulkVlan(asicdServices.Int(curMark), asicdServices.Int(count))
+		if bulkVlanInfo == nil {
 			break
 		}
-		objCnt := int(bulkInfo.Count)
-		more := bool(bulkInfo.More)
-		curMark = int(bulkInfo.EndIdx)
+		/* Get bulk on vlan state can re-use curMark and count used by get bulk vlan, as there is a 1:1 mapping in terms of cfg/state objs */
+		bulkVlanStateInfo, _ := server.asicdClient.ClientHdl.GetBulkVlanState(asicdServices.Int(curMark), asicdServices.Int(count))
+		if bulkVlanStateInfo == nil {
+			break
+		}
+		objCnt := int(bulkVlanInfo.Count)
+		more := bool(bulkVlanInfo.More)
+		curMark = int(bulkVlanInfo.EndIdx)
 		for i := 0; i < objCnt; i++ {
-			ifIndex := int(bulkInfo.VlanList[i].IfIndex)
+			ifIndex := int(bulkVlanStateInfo.VlanStateList[i].IfIndex)
 			ent := server.vlanPropMap[ifIndex]
-			untaggedIfIndexList, _ := ParseUsrPortStrToPortList(bulkInfo.VlanList[i].UntagIfIndexList)
+			untaggedIfIndexList, _ := ParseUsrPortStrToPortList(bulkVlanInfo.VlanList[i].UntagIfIndexList)
 			ent.UntagPortMap = make(map[int]bool)
 			for i := 0; i < len(untaggedIfIndexList); i++ {
 				ent.UntagPortMap[int(untaggedIfIndexList[i])] = true
