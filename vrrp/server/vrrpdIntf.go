@@ -85,7 +85,7 @@ func (svr *VrrpServer) VrrpGetVlanList() {
 	more := false
 	count := 10
 	for {
-		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkVlan(
+		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkVlanState(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
 			svr.logger.Err(fmt.Sprintln("DRA: getting bulk vlan config",
@@ -96,8 +96,8 @@ func (svr *VrrpServer) VrrpGetVlanList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			svr.VrrpCreateVlanEntry(int(bulkInfo.VlanList[i].VlanId),
-				bulkInfo.VlanList[i].VlanName)
+			svr.VrrpCreateVlanEntry(int(bulkInfo.VlanStateList[i].VlanId),
+				bulkInfo.VlanStateList[i].VlanName)
 		}
 		if more == false {
 			break
