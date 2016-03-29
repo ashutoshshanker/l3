@@ -37,6 +37,11 @@ func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribd.PolicyAction , 
 	logger.Info(fmt.Sprintln("UpdatePolicyAction"))
 	return true,err
 }
+func (m RIBDServicesHandler) GetPolicyActionState(state *ribd.PolicyActionState) (*ribd.PolicyActionState, error) {
+	logger.Info("Get state for Policy Action")
+	retState := ribd.NewPolicyActionState()
+	return retState,nil
+}
 func (m RIBDServicesHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyActionState"))
 	PolicyActionsDB := PolicyEngineDB.PolicyActionsDB
