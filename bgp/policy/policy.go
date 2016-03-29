@@ -3,6 +3,7 @@ package server
 
 import (
 	"fmt"
+	bgprib "l3/bgp/rib"
 	"utils/logging"
 	utilspolicy "utils/policy"
 )
@@ -17,7 +18,7 @@ type PolicyActionFunc struct {
 type PolicyExtensions struct {
 	HitCounter    int
 	RouteList     []string
-	RouteInfoList []*Route
+	RouteInfoList []*bgprib.Route
 }
 
 type BGPPolicyEngine struct {

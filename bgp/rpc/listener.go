@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"l3/bgp/config"
+	bgppolicy "l3/bgp/policy"
 	"l3/bgp/server"
 	"models"
 	"net"
@@ -27,11 +28,11 @@ type PeerConfigCommands struct {
 type BGPHandler struct {
 	PeerCommandCh chan PeerConfigCommands
 	server        *server.BGPServer
-	bgpPE         *server.BGPPolicyEngine
+	bgpPE         *bgppolicy.BGPPolicyEngine
 	logger        *logging.Writer
 }
 
-func NewBGPHandler(server *server.BGPServer, policy *server.BGPPolicyEngine, logger *logging.Writer, filePath string) *BGPHandler {
+func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, logger *logging.Writer, filePath string) *BGPHandler {
 	h := new(BGPHandler)
 	h.PeerCommandCh = make(chan PeerConfigCommands)
 	h.server = server

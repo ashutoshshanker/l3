@@ -86,14 +86,14 @@ type ByLowestPeerAddress struct {
 }
 
 func (b ByLowestPeerAddress) Less(i, j int) bool {
-	if b.Paths[i].peer == nil {
+	if b.Paths[i].NeighborConf == nil {
 		return true
-	} else if b.Paths[j].peer == nil {
+	} else if b.Paths[j].NeighborConf == nil {
 		return false
 	}
 
-	iNetIP := b.Paths[i].peer.Neighbor.NeighborAddress
-	jNetIP := b.Paths[j].peer.Neighbor.NeighborAddress
+	iNetIP := b.Paths[i].NeighborConf.Neighbor.NeighborAddress
+	jNetIP := b.Paths[j].NeighborConf.Neighbor.NeighborAddress
 
 	if len(iNetIP) < len(jNetIP) {
 		return true
