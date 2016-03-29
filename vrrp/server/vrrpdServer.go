@@ -268,6 +268,7 @@ func (svr *VrrpServer) VrrpGetBulkVrrpVridStates(idx int, cnt int) (int, int, []
 }
 
 func (svr *VrrpServer) VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
+	// @TODO: jgheewala need to add support for secondary/virtual interface
 	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
 	vlanName, ok := svr.vrrpVlanId2Name[vlanId]
 	if ok == false {
