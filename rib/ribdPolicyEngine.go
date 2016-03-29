@@ -223,7 +223,10 @@ func policyEngineActionUndoNetworkStatemenAdvertiseAction(actionItem interface{}
 		logger.Info(fmt.Sprintln("Undo network statement advertise to BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
 		route.NetworkStatement = true
-		RouteNotificationSend(RIBD_BGPD_PUB, route, evt)
+		publisherInfo,ok := PublisherInfoMap["BGP"]
+		if ok {
+		   RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+		}
 		break
 	default:
 		logger.Info(fmt.Sprintln("Unknown target protocol"))
@@ -250,7 +253,10 @@ func policyEngineActionUndoRedistribute(actionItem interface{}, conditionsList [
 		logger.Info(fmt.Sprintln("Redistribute to BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
 		route.RouteOrigin = ReverseRouteProtoTypeMapDB[int(RouteInfo.routeType)]
-		RouteNotificationSend(RIBD_BGPD_PUB, route, evt)
+		publisherInfo,ok := PublisherInfoMap["BGP"]
+		if ok {
+		   RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+		}
 		break
 	default:
 		logger.Info(fmt.Sprintln("Unknown target protocol"))
@@ -404,7 +410,10 @@ func policyEngineActionNetworkStatementAdvertise(actionInfo interface{}, conditi
 		logger.Info(fmt.Sprintln("NetworkStatemtnAdvertise to BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
 		route.NetworkStatement = true
-		RouteNotificationSend(RIBD_BGPD_PUB, route, evt)
+		publisherInfo,ok := PublisherInfoMap["BGP"]
+		if ok {
+		   RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+		}
 		break
 	default:
 		logger.Info(fmt.Sprintln("Unknown target protocol"))
@@ -443,7 +452,10 @@ func policyEngineActionRedistribute(actionInfo interface{}, conditionInfo []inte
 		logger.Info(fmt.Sprintln("Redistribute to BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
 		route.RouteOrigin = ReverseRouteProtoTypeMapDB[int(RouteInfo.routeType)]
-		RouteNotificationSend(RIBD_BGPD_PUB, route, evt)
+		publisherInfo,ok := PublisherInfoMap["BGP"]
+		if ok {
+		   RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+		}
 		break
 	default:
 		logger.Info(fmt.Sprintln("Unknown target protocol"))
@@ -525,6 +537,10 @@ func PolicyEngineFilter(route ribdInt.Routes, policyPath int, params interface{}
 	routeInfo := params.(RouteParams)
 	logger.Info(fmt.Sprintln("PolicyEngineFilter for policypath ", policyPath_Str, "createType = ", routeInfo.createType, " deleteType = ", routeInfo.deleteType, " route: ", route.Ipaddr, ":", route.Mask, " protocol type: ", route.Prototype))
 	entity := buildPolicyEntityFromRoute(route, params)
+	entity.PolicyList = make([]string, 0)
+	for j := 0; j < len(route.PolicyList); j++ {
+		entity.PolicyList = append(entity.PolicyList, route.PolicyList[j])
+	}
 	PolicyEngineDB.PolicyEngineFilter(entity, policyPath, params)
 	var op int
 	if routeInfo.deleteType != Invalid {

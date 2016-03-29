@@ -178,7 +178,7 @@ func DhcpRelayAgentInitIntfState(IntfId int32) {
 }
 
 func DhcpRelayAgentInitGblHandling(ifNum int32, enable bool) {
-	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(int(ifNum)))
+	//logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(int(ifNum)))
 	// Created a global Entry for Interface
 	gblEntry := dhcprelayGblInfo[ifNum]
 	// Setting up default values for globalEntry

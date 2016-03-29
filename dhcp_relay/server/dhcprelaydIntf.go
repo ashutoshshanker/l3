@@ -195,11 +195,8 @@ func DhcpRelayAgentGetPortList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			var ifName string
 			var portNum int32
 			portNum = bulkInfo.PortStateList[i].IfIndex
-			ifName = bulkInfo.PortStateList[i].Name
-			logger.Info("DRA: interface global init for " + ifName)
 			DhcpRelayAgentInitGblHandling(portNum, false)
 			DhcpRelayAgentInitIntfState(portNum)
 		}
@@ -215,7 +212,7 @@ func DhcpRelayAgentGetVlanList() {
 	more := false
 	count := 10
 	for {
-		bulkInfo, err := asicdClient.ClientHdl.GetBulkVlan(
+		bulkInfo, err := asicdClient.ClientHdl.GetBulkVlanState(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
 			logger.Err(fmt.Sprintln("DRA: getting bulk vlan config",
@@ -226,8 +223,8 @@ func DhcpRelayAgentGetVlanList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			DhcpRelayAgentInitVlanInfo(bulkInfo.VlanList[i].VlanName,
-				bulkInfo.VlanList[i].VlanId)
+			DhcpRelayAgentInitVlanInfo(bulkInfo.VlanStateList[i].VlanName,
+				bulkInfo.VlanStateList[i].VlanId)
 		}
 		if more == false {
 			break

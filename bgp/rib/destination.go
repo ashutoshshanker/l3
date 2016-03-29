@@ -474,12 +474,12 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 					}
 					nextHopIfTypeStr, _ := d.rib.ribdClient.GetNextHopIfTypeStr(ribdInt.Int(paths[0].NextHopIfType))
 					cfg := ribd.IPv4Route{
-						DestinationNw:     constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
+						DestinationNw:     d.IPPrefix.Prefix.String(),
 						Protocol:          protocol,
 						OutgoingInterface: strconv.Itoa(int(paths[0].NextHopIfIdx)),
-						OutgoingIntfType:  d.IPPrefix.Prefix.String(),
+						OutgoingIntfType:  nextHopIfTypeStr,
 						Cost:              int32(paths[0].Metric),
-						NetworkMask:       nextHopIfTypeStr,
+						NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
 						NextHopIp:         paths[0].NextHop}
 					ret, err := d.rib.ribdClient.CreateIPv4Route(&cfg)
 					/*(d.ipPrefix.Prefix.String(),
