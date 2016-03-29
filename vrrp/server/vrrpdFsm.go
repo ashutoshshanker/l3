@@ -1,6 +1,7 @@
 package vrrpServer
 
 import (
+	"asicdServices"
 	"bytes"
 	"fmt"
 	"github.com/google/gopacket"
@@ -56,31 +57,47 @@ func (svr *VrrpServer) VrrpCreateObject(gblInfo VrrpGlobalInfo) (fsmObj VrrpFsm)
 	}
 }
 
-func (svr *VrrpServer) VrrpUpdateSecIp(gblInfo VrrpGlobalInfo, configure bool) {
-	// @TODO: this api will send create secondary ip address... By doing so
-	// we are in-directly blocking ping to the host
-
-	// JGHEEWALA: commented out the below code as arp will be handled by creating sec ip
-	// (115) + If the protected IPvX address is an IPv4 address, then:
-	//ip, _, _ := net.ParseCIDR(gblInfo.IpAddr)
-	//if ip.To4() != nil { // If not nill then its ipv4
+/*
+ * This API will create config object with MacAddr and configure....
+ * Configure will enable/disable the link...
+ */
+func (svr *VrrpServer) VrrpUpdateSubIntf(gblInfo VrrpGlobalInfo, configure bool) {
+	vip := gblInfo.IntfConfig.VirtualIPv4Addr
+	if !strings.Contains(vip, "/") {
+		vip = vip + "/32"
+	}
+	config := asicdServices.SubIPv4Intf{
+		IpAddr:  vip,
+		IfIndex: gblInfo.IntfConfig.IfIndex,
+		Enable:  configure,
+		MacAddr: gblInfo.VirtualRouterMACAddress,
+	}
+	svr.logger.Info(fmt.Sprintln("updating sub interface config obj is", config))
 	/*
-	   (120) * Broadcast a gratuitous ARP request containing the
-	   virtual router MAC address for each IP address associated
-	   with the virtual router.
+		struct SubIPv4Intf {
+			0 1 : string IpAddr
+			1 2 : i32 IfIndex
+			2 3 : string Type
+			3 4 : string MacAddr
+			4 5 : bool Enable
+		}
 	*/
-	//svr.VrrpSendGratuitousArp(gblInfo)
-	//} else { // @TODO: ipv6 implementation
-	// (125) + else // IPv6
-	/*
-	   (130) * For each IPv6 address associated with the virtual
-	   router, send an unsolicited ND Neighbor Advertisement with
-	   the Router Flag (R) set, the Solicited Flag (S) unset, the
-	   Override flag (O) set, the target address set to the IPv6
-	   address of the virtual router, and the target link-layer
-	   address set to the virtual router MAC address.
-	*/
-	//}
+	var attrset []bool
+	// The len of attrset is set to 5 for 5 elements in the object...
+	// if no.of elements changes then index for mac address and enable needs
+	// to change..
+	attrset = make([]bool, 5)
+	elems := len(attrset)
+	attrset[elems-1] = true
+	if configure {
+		attrset[elems-2] = true
+	}
+	_, err := svr.asicdClient.ClientHdl.UpdateSubIPv4Intf(&config, &config,
+		attrset)
+	if err != nil {
+		svr.logger.Err(fmt.Sprintln("updating sub interface config failed",
+			"Error:", err))
+	}
 	return
 }
 
@@ -151,7 +168,7 @@ func (svr *VrrpServer) VrrpTransitionToMaster(key string, reason string) {
 	}
 	svr.logger.Info(fmt.Sprintln("adver sent for vrid", gblInfo.IntfConfig.VRID))
 	// Configure secondary interface with VMAC and VIP
-	svr.VrrpUpdateSecIp(gblInfo, true /*configure or set*/)
+	svr.VrrpUpdateSubIntf(gblInfo, true /*configure or set*/)
 	// (140) + Set the Adver_Timer to Advertisement_Interval
 	// Start Advertisement Timer
 	svr.VrrpHandleMasterAdverTimer(key)
@@ -234,7 +251,7 @@ func (svr *VrrpServer) VrrpInitState(key string) {
 		svr.VrrpTransitionToMaster(key, "Priority is 255")
 	} else {
 		svr.logger.Info("Transitioning to Backup State")
-		svr.VrrpUpdateSecIp(gblInfo, false /*configure or set*/)
+		svr.VrrpUpdateSubIntf(gblInfo, false /*configure or set*/)
 		// Transition to backup state first
 		svr.VrrpTransitionToBackup(key,
 			gblInfo.IntfConfig.AdvertisementInterval,
