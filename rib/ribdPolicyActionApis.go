@@ -9,29 +9,29 @@ import (
 func (m RIBDServicesHandler) CreatePolicyAction(cfg *ribd.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	//m.PolicyActionCreateConfCh <- cfg
-	m.ProcessPolicyActionConfigCreate(cfg)
-	return val, err
+	err=m.ProcessPolicyActionConfigCreate(cfg)
+	return true, err
 }
 
-func (m RIBDServicesHandler) ProcessPolicyActionConfigCreate(cfg *ribd.PolicyAction) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyActionConfigCreate(cfg *ribd.PolicyAction) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigCreate:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name, ActionType: cfg.ActionType, SetAdminDistanceValue: int(cfg.SetAdminDistanceValue), Accept: cfg.Accept, Reject: cfg.Reject, RedistributeAction: cfg.RedistributeAction, RedistributeTargetProtocol: cfg.RedistributeTargetProtocol, NetworkStatementTargetProtocol: cfg.NetworkStatementTargetProtocol}
 	err = PolicyEngineDB.CreatePolicyAction(newAction)
-	return val, err
+	return err
 }
 
 func (m RIBDServicesHandler) DeletePolicyAction(cfg *ribd.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	//m.PolicyActionDeleteConfCh <- cfg
-	m.ProcessPolicyActionConfigDelete(cfg)
-	return val, err
+	err=m.ProcessPolicyActionConfigDelete(cfg)
+	return true, err
 }
 
-func (m RIBDServicesHandler) ProcessPolicyActionConfigDelete(cfg *ribd.PolicyAction) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyActionConfigDelete(cfg *ribd.PolicyAction) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigDelete:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name}
 	err = PolicyEngineDB.DeletePolicyAction(newAction)
-	return val, err
+	return err
 }
 func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribd.PolicyAction , newconfig *ribd.PolicyAction , attrset []bool) (val bool, err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyAction"))
