@@ -151,6 +151,8 @@ func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
 	if ent.IfFSMState <= config.Waiting {
 		return
 	}
+	server.logger.Info(fmt.Sprintln("FLUSH: Network lsa lsid ",
+		ent.IfIpAddr, " adv_router ", server.ospfGlobalConf.RouterId))
 
 	LSType := NetworkLSA
 	LSId := convertAreaOrRouterIdUint32(ent.IfIpAddr.String())
@@ -169,6 +171,7 @@ func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
 	lsa, _ := server.getNetworkLsaFromLsdb(areaId, lsaKey)
 	lsa.LsaMd.LSAge = config.MaxAge
 	lsa_pkt := encodeNetworkLsa(lsa, lsaKey)
+	// Add entry to the flush map which will be flooded to all neighbors
 	maxAgeLsaMap[lsaKey] = lsa_pkt
 	// Need to Flush these entries
 	delete(lsDbEnt.NetworkLsaMap, lsaKey)
@@ -305,6 +308,8 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 				/* Todo: Need to handle IfMetricConf */
 				linkDetail.NumOfTOS = 0
 				linkDetail.LinkMetric = 10
+				server.logger.Info(fmt.Sprintln("LinkDetail: linkid ", ent.IfDRIp,
+					" linkdata ", ent.IfIpAddr))
 			}
 		} else if ent.IfType == config.PointToPoint {
 			// linkDetial.LinkId = NBRs Router ID
@@ -771,6 +776,7 @@ func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
 	server.logger.Info(fmt.Sprintln("LSDB: Nbr full. Generate router and network LSA  area id  ",
 		msg.areaId, " intf ", msg.intf, " isDr ", msg.isDR, " nbrList ", msg.nbrList))
 	if msg.isDR {
+		server.logger.Info(fmt.Sprintln("Generate network LSA ", msg.intf))
 		server.generateNetworkLSA(msg.areaId, msg.intf, msg.isDR)
 	}
 	server.generateRouterLSA(msg.areaId)
@@ -786,7 +792,10 @@ network LSA is I am become DR to no DR.
 func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 	/* check if any nbr attached to the intf if not dont generate network LSA
 	 */
+
 	intf, _ := server.IntfConfMap[msg.intfKey]
+	server.logger.Info(fmt.Sprintln("LSDB: received DR BDR change message ",
+		intf.IfIpAddr, "dr ip ", intf.IfDRIp, " bdr ip ", intf.IfBDRIp))
 	nbrExists := false
 	for range intf.NeighborMap {
 		nbrExists = true
@@ -797,11 +806,11 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 	}
 	if msg.oldstate != msg.newstate {
 		if msg.newstate == config.DesignatedRouter {
-			server.logger.Info("Generate network and router LSA")
+			server.logger.Info(fmt.Sprintln("Generate network and/or router LSA ", intf.IfIpAddr))
 			//server.generateRouterLSA(msg.areaId)
 			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
 		} else if msg.oldstate == config.DesignatedRouter {
-			server.logger.Info("Flush network LSA . Generate router LSA")
+			server.logger.Info(fmt.Sprintln("Flush network LSA . Generate router LSA ", intf.IfIpAddr))
 			server.flushNetworkLSA(msg.areaId, msg.intfKey)
 			//server.generateRouterLSA(msg.areaId)
 			/* send flush message to neighbor followed by flood for
@@ -813,10 +822,10 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 		}
 	} else {
 		if msg.newstate == config.DesignatedRouter {
-			server.logger.Info("Generate network LSA")
+			server.logger.Info(fmt.Sprintln("Generate network LSA ", intf.IfIpAddr))
 			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
 		}
-		server.logger.Info("Generate router LSA")
+		server.logger.Info(fmt.Sprintln("Generate router LSA ", intf.IfIpAddr))
 		//server.generateRouterLSA(msg.areaId)
 	}
 	server.generateRouterLSA(msg.areaId)

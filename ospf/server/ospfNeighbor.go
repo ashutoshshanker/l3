@@ -238,24 +238,8 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 						server.ospfNbrDBDSendCh <- data
 					}*/
 
-					/* 1) get lsa headers update in req_list */
-					headers_len := len(nbrDbPkt.lsa_headers)
-					//server.logger.Info(fmt.Sprintln("DBD: (Exchange) Received . nbr,total_lsa ", nbrKey.OspfNbrRtrId, headers_len))
-					req_list := ospfNeighborRequest_list[nbrKey.OspfNbrRtrId]
-					for i := 0; i < headers_len; i++ {
-						var lsaheader ospfLSAHeader
-						lsaheader = nbrDbPkt.lsa_headers[i]
-						result := server.lsaAddCheck(lsaheader, nbrConf) // check lsdb
-						if result {
-							req := newospfNeighborReq()
-							req.lsa_headers = lsaheader
-							req.valid = true
-							nbrConf.req_list_mutex.Lock()
-							req_list = append(req_list, req)
-							nbrConf.req_list_mutex.Unlock()
-						}
-					}
-					ospfNeighborRequest_list[nbrKey.OspfNbrRtrId] = req_list
+					// Genrate request list
+					server.generateRequestList(nbrKey, nbrConf, nbrDbPkt)
 					server.logger.Info(fmt.Sprintln("DBD:(Exchange) Total elements in req_list ", len(ospfNeighborRequest_list[nbrKey.OspfNbrRtrId])))
 
 				} else { // i am slave
@@ -264,6 +248,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					 if mbit is 0 && last_exchange == true generate NbrExchangeDone*/
 					if nbrDbPkt.dd_sequence_number == nbrConf.ospfNbrSeqNum {
 						server.logger.Info(fmt.Sprintln("DBD: (slave/Exchange) Send next packet in the exchange  to nbr ", nbrKey.OspfNbrRtrId))
+						server.generateRequestList(nbrKey, nbrConf, nbrDbPkt)
 						dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, nbrDbPkt.mbit, false,
 							nbrDbPkt.options, nbrDbPkt.dd_sequence_number, true, false)
 						OspfNeighborLastDbd[nbrKey] = dbd_mdata
@@ -290,6 +275,11 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					server.logger.Info(fmt.Sprintln("DBD: Exchange done with nbr ", nbrKey.OspfNbrRtrId))
 					nbrState = config.NbrLoading
 					server.lsaReTxTimerCheck(nbrKey.OspfNbrRtrId)
+					if !nbrConf.isMaster {
+						server.updateNeighborMdata(nbrConf.intfConfKey, nbrKey.OspfNbrRtrId)
+						server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
+
+					}
 				}
 				if !nbrDbPkt.mbit && last_exchange {
 					nbrState = config.NbrLoading
@@ -328,9 +318,9 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 			server.logger.Info(fmt.Sprintln("DBD: Loading . Nbr ", nbrKey.OspfNbrRtrId))
 			isDiscard := server.exchangePacketDiscardCheck(nbrConf, nbrDbPkt)
 			isDuplicate := server.verifyDuplicatePacket(nbrConf, nbrDbPkt)
-			if isDuplicate {
+			/*if isDuplicate {
 				return
-			}
+			} */
 			if isDiscard {
 				server.logger.Info(fmt.Sprintln("NBRDBD:Loading  Discard packet. nbr", nbrKey.OspfNbrRtrId,
 					" nbr state ", nbrConf.OspfNbrState))
@@ -342,10 +332,10 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, true, true, true,
 					nbrDbPkt.options, nbrConf.ospfNbrSeqNum+1, false, false)
 				seq_num = dbd_mdata.dd_sequence_number
-			} else {
-				/* dbd received in this stage is duplicate.
-				    slave - Send the old dbd packet.
-					master - discard
+			} else if !isDuplicate {
+				/*
+					    slave - Send the old dbd packet.
+						master - discard
 				*/
 				if nbrConf.isMaster {
 					dbd_mdata, _ := server.ConstructAndSendDbdPacket(nbrKey, false, nbrDbPkt.mbit, false,
@@ -355,6 +345,13 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				nbrConf.ospfNbrLsaReqIndex = server.BuildAndSendLSAReq(nbrKey.OspfNbrRtrId, nbrConf)
 				seq_num = OspfNeighborLastDbd[nbrKey].dd_sequence_number
 				nbrConf.OspfNbrState = config.NbrFull
+			} else {
+
+				nbrConf.ospfNbrLsaReqIndex = server.BuildAndSendLSAReq(nbrKey.OspfNbrRtrId, nbrConf)
+				seq_num = OspfNeighborLastDbd[nbrKey].dd_sequence_number
+				nbrConf.OspfNbrState = config.NbrFull
+				server.updateNeighborMdata(nbrConf.intfConfKey, nbrKey.OspfNbrRtrId)
+				server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
 			}
 
 			nbrConfMsg := ospfNeighborConfMsg{
@@ -607,10 +604,10 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 					server.SendOspfPkt(nbrConf.intfConfKey, data)
 				}
 				/* This ensures Flood packet is sent only after last DBD.  */
+
 				if nbrConf.OspfNbrState == config.NbrLoading || nbrConf.OspfNbrState == config.NbrFull {
 					server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
 				}
-
 			}
 
 		case lsa_data := <-server.ospfNbrLsaReqSendCh:
@@ -619,7 +616,7 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 				intConf, exist := server.IntfConfMap[nbrConf.intfConfKey]
 				if exist {
 					dstMac, _ := ospfNeighborIPToMAC[lsa_data.nbrKey]
-					server.logger.Info(fmt.Sprintln("Send LSA: nbrconf ,  lsa_data", nbrConf, lsa_data))
+					server.logger.Info(fmt.Sprintln("Send LSAREQ: nbrconf ,  lsa_data", nbrConf, lsa_data.lsa_slice))
 					data := server.EncodeLSAReqPkt(nbrConf.intfConfKey, intConf, nbrConf, lsa_data.lsa_slice, dstMac)
 					server.SendOspfPkt(nbrConf.intfConfKey, data)
 				}
@@ -710,6 +707,30 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 	nbrConf.db_summary_list_mutex.Lock()
 	ospfNeighborDBSummary_list[nbrConfKey.OspfNbrRtrId] = db_list
 	nbrConf.db_summary_list_mutex.Unlock()
+}
+
+func (server *OSPFServer) generateRequestList(nbrKey NeighborConfKey, nbrConf OspfNeighborEntry, nbrDbPkt ospfDatabaseDescriptionData) {
+	/* 1) get lsa headers update in req_list */
+	headers_len := len(nbrDbPkt.lsa_headers)
+	server.logger.Info(fmt.Sprintln("REQ_LIST: Received lsa headers for nbr ", nbrKey,
+		" no of header ", headers_len))
+	req_list := ospfNeighborRequest_list[nbrKey.OspfNbrRtrId]
+	for i := 0; i < headers_len; i++ {
+		var lsaheader ospfLSAHeader
+		lsaheader = nbrDbPkt.lsa_headers[i]
+		result := server.lsaAddCheck(lsaheader, nbrConf) // check lsdb
+		if result {
+			req := newospfNeighborReq()
+			req.lsa_headers = lsaheader
+			req.valid = true
+			nbrConf.req_list_mutex.Lock()
+			req_list = append(req_list, req)
+			nbrConf.req_list_mutex.Unlock()
+		}
+	}
+	ospfNeighborRequest_list[nbrKey.OspfNbrRtrId] = req_list
+	server.logger.Info(fmt.Sprintln("REQ_LIST: updated req_list for nbr ",
+		nbrKey, " req_list ", req_list))
 }
 
 func (server *OSPFServer) neighborDeadTimerEvent(nbrConfKey NeighborConfKey) {

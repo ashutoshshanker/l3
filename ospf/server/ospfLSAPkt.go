@@ -130,20 +130,23 @@ func decodeLSAReqPkt(data []byte, pktlen uint16) []ospfLSAReq {
 }
 
 func encodeLSAReq(lsa_data []ospfLSAReq) []byte {
-	pkt := make([]byte, len(lsa_data)*3*8)
+	lsa_pkt := []byte{}
 	for i := 0; i < len(lsa_data); i++ {
-		binary.BigEndian.PutUint32(pkt[i:i+4], lsa_data[i].ls_type)
-		binary.BigEndian.PutUint32(pkt[i+4:i+8], lsa_data[i].link_state_id)
-		binary.BigEndian.PutUint32(pkt[i+8:i+12], lsa_data[i].adv_router_id)
+		pkt := make([]byte, OSPF_LSA_REQ_SIZE)
+		binary.BigEndian.PutUint32(pkt[0:4], lsa_data[i].ls_type)
+		binary.BigEndian.PutUint32(pkt[4:8], lsa_data[i].link_state_id)
+		binary.BigEndian.PutUint32(pkt[8:12], lsa_data[i].adv_router_id)
+		//start += OSPF_LSA_REQ_SIZE
+		lsa_pkt = append(pkt, lsa_pkt...)
 	}
-	return pkt
+	return lsa_pkt
 }
 
 func (server *OSPFServer) EncodeLSAReqPkt(intfKey IntfConfKey, ent IntfConf,
 	nbrConf OspfNeighborEntry, lsa_req_pkt []ospfLSAReq, dstMAC net.HardwareAddr) (data []byte) {
 	ospfHdr := OSPFHeader{
 		ver:      OSPF_VERSION_2,
-		pktType:  uint8(DBDescriptionType),
+		pktType:  uint8(LSRequestType),
 		pktlen:   0,
 		routerId: server.ospfGlobalConf.RouterId,
 		areaId:   ent.IfAreaId,
@@ -151,14 +154,14 @@ func (server *OSPFServer) EncodeLSAReqPkt(intfKey IntfConfKey, ent IntfConf,
 		authType: ent.IfAuthType,
 	}
 
+	lsaDataEnc := encodeLSAReq(lsa_req_pkt)
 	ospfPktlen := OSPF_HEADER_SIZE
-	ospfPktlen = ospfPktlen + len(lsa_req_pkt)
+	ospfPktlen = ospfPktlen + len(lsaDataEnc)
 
 	ospfHdr.pktlen = uint16(ospfPktlen)
 
 	ospfEncHdr := encodeOspfHdr(ospfHdr)
 	server.logger.Info(fmt.Sprintln("ospfEncHdr:", ospfEncHdr))
-	lsaDataEnc := encodeLSAReq(lsa_req_pkt)
 	server.logger.Info(fmt.Sprintln("lsa Pkt:", lsaDataEnc))
 
 	ospf := append(ospfEncHdr, lsaDataEnc...)
@@ -239,9 +242,13 @@ func (server *OSPFServer) BuildAndSendLSAReq(nbrId uint32, nbrConf OspfNeighborE
 		reTxList = append(reTxList, reTxNbr)
 		nbrConf.retx_list_mutex.Unlock()
 
+		lsid := convertUint32ToIPv4(req.link_state_id)
+		adv_rtr := convertUint32ToIPv4(req.adv_router_id)
+		server.logger.Info(fmt.Sprintln("LSA request: Appended to nbr ", nbrId,
+			" lsid ", lsid, " rtrid ", adv_rtr, " lstype ", req.ls_type))
 	}
 	server.logger.Info(fmt.Sprintln("LSA request: total requests out, req_list_len, current req_list_index ", add_items, len(msg.lsa_slice), nbrConf.ospfNbrLsaReqIndex))
-	//server.logger.Info(fmt.Sprintln("LSA request: lsa_req", msg.lsa_slice))
+	server.logger.Info(fmt.Sprintln("LSA request: lsa_req", msg.lsa_slice))
 
 	if len(msg.lsa_slice) != 0 {
 		server.ospfNbrLsaReqSendCh <- msg

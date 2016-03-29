@@ -301,6 +301,8 @@ func (server *OSPFServer) constructAndSendLsaAgeFlood() {
 			binary.BigEndian.PutUint16(lsaPkt[18:20], uint16(pktLen))
 			lsaEncPkt = append(lsaEncPkt, lsaPkt...)
 			total_len += pktLen
+			server.logger.Info(fmt.Sprintln("FLUSH: Added to flush list lsakey",
+				lsaKey.AdvRouter, lsaKey.LSId, lsaKey.LSId))
 		}
 		msg := maxAgeLsaMsg{
 			lsaKey:   lsaKey,
@@ -319,6 +321,7 @@ func (server *OSPFServer) constructAndSendLsaAgeFlood() {
 
 	/* flood on all eligible interfaces */
 	for key, intConf := range server.IntfConfMap {
+		server.logger.Info(fmt.Sprintln("FLUSH: Send flush message ", intConf.IfIpAddr))
 		pkt := server.BuildLsaUpdPkt(key, intConf,
 			dstMac, dstIp, lsa_pkt_len, lsasWithHeader)
 		server.SendOspfPkt(key, pkt)
