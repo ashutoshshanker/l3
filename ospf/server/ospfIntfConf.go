@@ -312,6 +312,7 @@ func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 			server.logger.Err("Invalid areaId")
 			return
 		}
+		areaId = server.updateIntfToAreaMap(intfConfKey, ifConf.IfAreaId)
 		ent.IfAreaId = areaId
 		ent.IfType = ifConf.IfType
 		ent.IfAdminStat = ifConf.IfAdminStat

@@ -659,7 +659,6 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 	}
 	router_lsdb := area_lsa.RouterLsaMap
 	network_lsa := area_lsa.NetworkLsaMap
-
 	ospfNeighborDBSummary_list[nbrConfKey.OspfNbrRtrId] = nil
 	db_list := []*ospfNeighborDBSummary{}
 	for lsaKey, _ := range router_lsdb {
@@ -700,6 +699,13 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 		//}
 	} // end of for
 
+	/*   attach summary list */
+	if server.ospfGlobalConf.isABR {
+		summary_list := server.generateDbsummaryLsaList()
+		if summary_list != nil {
+			db_list = append(db_list, summary_list...)
+		}
+	}
 	for lsa := range db_list {
 		rtr_id := convertUint32ToIPv4(db_list[lsa].lsa_headers.adv_router_id)
 		server.logger.Info(fmt.Sprintln(lsa, ": ", rtr_id, " lsatype ", db_list[lsa].lsa_headers.ls_type))
@@ -707,6 +713,45 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 	nbrConf.db_summary_list_mutex.Lock()
 	ospfNeighborDBSummary_list[nbrConfKey.OspfNbrRtrId] = db_list
 	nbrConf.db_summary_list_mutex.Unlock()
+}
+
+/* @fn generateDbsummaryLsaList
+This function will attach summary LSAs if the router is ABR
+*/
+func (server *OSPFServer) generateDbsummaryLsaList() []*ospfNeighborDBSummary {
+	db_list := []*ospfNeighborDBSummary{}
+	for areaid, _ := range server.AreaConfMap {
+		areaId := convertIPv4ToUint32(areaid.AreaId)
+		lsdbKey := LsdbKey{
+			AreaId: areaId,
+		}
+		area_lsa, exist := server.AreaLsdb[lsdbKey]
+		if !exist {
+			server.logger.Err(fmt.Sprintln("negotiation: Summary LSA doesnt exist"))
+			return nil
+		}
+		summary_lsdb := area_lsa.Summary3LsaMap
+		for lsaKey, _ := range summary_lsdb {
+			// check if lsa instance is marked true
+			db_summary := newospfNeighborDBSummary()
+			drlsa, ret := server.getSummaryLsaFromLsdb(areaid, lsaKey)
+			if ret == LsdbEntryNotFound {
+				continue
+			}
+			db_summary.lsa_headers = getLsaHeaderFromLsa(drlsa.LsaMd.LSAge, drlsa.LsaMd.Options,
+				Summary3LSA, lsaKey.LSId, lsaKey.AdvRouter,
+				uint32(drlsa.LsaMd.LSSequenceNum), drlsa.LsaMd.LSChecksum,
+				drlsa.LsaMd.LSLen)
+			db_summary.valid = true
+			/* add entry to the db summary list  */
+			db_list = append(db_list, db_summary)
+			//lsid := convertUint32ToIPv4(lsaKey.LSId)
+			//server.logger.Info(fmt.Sprintln("negotiation: db_list append router lsid  ", lsid))
+		} // end of for
+
+		/*  TODO - check if we want to add Summary4 LSA */
+	}
+	return db_list
 }
 
 func (server *OSPFServer) generateRequestList(nbrKey NeighborConfKey, nbrConf OspfNeighborEntry, nbrDbPkt ospfDatabaseDescriptionData) {
