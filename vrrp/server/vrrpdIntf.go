@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
+	"utils/commonDefs"
 )
 
 func (svr *VrrpServer) VrrpCreateIfIndexEntry(IfIndex int32, IpAddr string) {
@@ -85,7 +86,7 @@ func (svr *VrrpServer) VrrpGetVlanList() {
 	more := false
 	count := 10
 	for {
-		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkVlan(
+		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkVlanState(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
 			svr.logger.Err(fmt.Sprintln("DRA: getting bulk vlan config",
@@ -96,8 +97,8 @@ func (svr *VrrpServer) VrrpGetVlanList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			svr.VrrpCreateVlanEntry(int(bulkInfo.VlanList[i].VlanId),
-				bulkInfo.VlanList[i].VlanName)
+			svr.VrrpCreateVlanEntry(int(bulkInfo.VlanStateList[i].VlanId),
+				bulkInfo.VlanStateList[i].VlanName)
 		}
 		if more == false {
 			break
@@ -116,6 +117,11 @@ func (svr *VrrpServer) VrrpUpdateVlanGblInfo(vlanNotifyMsg asicdConstDefs.VlanNo
 }
 
 func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
+	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
+	if ifType == commonDefs.IfTypeVirtual || ifType == commonDefs.IfTypeSecondary {
+		svr.logger.Info("Ignoring ipv4 interface notifcation for sub interface")
+		return
+	}
 	switch msgType {
 	case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
 		svr.VrrpCreateIfIndexEntry(msg.IfIndex, msg.IpAddr)
@@ -128,6 +134,11 @@ func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMs
 }
 
 func (svr *VrrpServer) VrrpUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
+	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
+	if ifType == commonDefs.IfTypeVirtual || ifType == commonDefs.IfTypeSecondary {
+		svr.logger.Info("Ignoring ipv4 interface notifcation for sub interface")
+		return
+	}
 	switch msg.IfState {
 	case asicdConstDefs.INTF_STATE_UP:
 		svr.VrrpHandleIntfUpEvent(msg.IfIndex)
