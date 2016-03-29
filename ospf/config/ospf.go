@@ -14,6 +14,9 @@ type TosType int                  // 0x0 to 30
 type IpAddress string
 type InterfaceIndexOrZero int
 
+const (
+  MaxAge uint16 = 3600
+)
 type Status int
 
 const (

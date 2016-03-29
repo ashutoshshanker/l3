@@ -196,8 +196,14 @@ func (server *OSPFServer) processNbrDownEvent(msg NbrStateChangeMsg,
 		if p2p == false {
 			if ent.IfFSMState > config.Waiting {
 				// RFC2328 Section 9.2 (Neighbor Change Event)
+				/* Investigate - if neighbor goes to dead from full 
+				   to dead status oldTwoWayStatus is not true */
+				oldTwoWayStatus = true // temp fix 
 				if oldTwoWayStatus == true {
+					server.logger.Info(fmt.Sprintln("deleting nbr, call dr/bdr election."))
 					server.ElectBDRAndDR(key)
+				} else {
+					server.logger.Info("Dont call elect DR/BDR as neighbr was not in 2 way")
 				}
 			}
 		}
@@ -443,30 +449,36 @@ func (server *OSPFServer) createAndSendEventsIntfFSM(key IntfConfKey,
 	server.logger.Info(fmt.Sprintln("Final Election of BDR:", ent.IfBDRIp, " and DR:", ent.IfDRIp, "new State:", newState))
 
 	areaId := convertIPv4ToUint32(ent.IfAreaId)
+	/*
 	msg := LSAChangeMsg{
 		areaId: areaId,
-	}
+	} */
 
-	msg1 := NetworkLSAChangeMsg{
+	msg1 := DrChangeMsg{
 		areaId:  areaId,
 		intfKey: key,
+		oldstate: oldState,
+		newstate: newState,
 	}
 
+	/*
 	server.logger.Info("1. Sending msg for router LSA generation")
 	server.IntfStateChangeCh <- msg
-
+	*/
+	/*
 	if oldState != newState {
 		if newState == config.DesignatedRouter {
 			// Construct Network LSA
 			server.logger.Info("1. Sending msg for Network LSA generation")
-			//server.CreateNetworkLSACh <- msg1
 		} else if oldState == config.DesignatedRouter {
 			// Flush Network LSA
 			server.logger.Info("2. Sending msg for Network LSA generation")
-			server.FlushNetworkLSACh <- msg1
 		}
+		server.NetworkDRChangeCh<-msg1
 		server.logger.Info(fmt.Sprintln("oldState", oldState, " != newState", newState))
-	}
+	} */
+	server.logger.Info("DRBDR changed. Sending message for router/network LSA generation")
+	server.NetworkDRChangeCh<-msg1
 	server.logger.Info(fmt.Sprintln("oldState", oldState, " newState", newState))
 
 	/*
