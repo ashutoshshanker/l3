@@ -101,7 +101,8 @@ func (svr *VrrpServer) VrrpUpdateSubIntf(gblInfo VrrpGlobalInfo, configure bool)
 	return
 }
 
-func (svr *VrrpServer) VrrpUpdateStateInfo(key string, reason string, currentSt string) {
+func (svr *VrrpServer) VrrpUpdateStateInfo(key string, reason string,
+	currentSt string) {
 	gblInfo, exists := svr.vrrpGblInfo[key]
 	if !exists {
 		svr.logger.Err("No entry found ending fsm")
@@ -133,7 +134,8 @@ func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 		}
 		svr.logger.Info("resetting advertisement timer")
 		gblInfo.AdverTimer.Reset(
-			time.Duration(gblInfo.IntfConfig.AdvertisementInterval) * time.Second)
+			time.Duration(gblInfo.IntfConfig.AdvertisementInterval) *
+				time.Second)
 		svr.vrrpGblInfo[key] = gblInfo
 	}
 	gblInfo, exists := svr.vrrpGblInfo[key]
@@ -183,18 +185,21 @@ func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
 	if gblInfo.MasterDownTimer != nil {
 		svr.logger.Info("Resetting down timer")
 		gblInfo.MasterDownLock.Lock()
-		gblInfo.MasterDownTimer.Reset(time.Duration(gblInfo.MasterDownValue) * time.Second)
+		gblInfo.MasterDownTimer.Reset(time.Duration(gblInfo.MasterDownValue) *
+			time.Second)
 		gblInfo.MasterDownLock.Unlock()
 	} else {
 		var timerCheck_func func()
 		// On Timer expiration we will transition to master
 		timerCheck_func = func() {
-			svr.logger.Info(fmt.Sprintln("master down timer expired..transition to Master"))
+			svr.logger.Info(fmt.Sprintln("master down timer",
+				"expired..transition to Master"))
 			// do timer expiry handling here
 			svr.VrrpTransitionToMaster(key, "Master Down Timer expired")
 		}
 		svr.logger.Info("initiating master down timer")
-		svr.logger.Info(fmt.Sprintln("setting down timer to", gblInfo.MasterDownValue))
+		svr.logger.Info(fmt.Sprintln("setting down timer to",
+			gblInfo.MasterDownValue))
 		// Set Timer expire func...
 		gblInfo.MasterDownLock.Lock()
 		gblInfo.MasterDownTimer = time.AfterFunc(

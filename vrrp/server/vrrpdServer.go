@@ -143,6 +143,10 @@ func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 
 func (svr *VrrpServer) VrrpDeleteGblInfo(config vrrpd.VrrpIntf) {
 	key := strconv.Itoa(int(config.IfIndex)) + "_" + strconv.Itoa(int(config.VRID))
+	gblInfo, found := svr.vrrpGblInfo[key]
+	if found {
+		svr.VrrpUpdateSubIntf(gblInfo, false /*disable*/)
+	}
 	delete(svr.vrrpGblInfo, key)
 	for i := 0; i < len(svr.vrrpIntfStateSlice); i++ {
 		if svr.vrrpIntfStateSlice[i] == key {
