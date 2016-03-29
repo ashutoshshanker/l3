@@ -10,7 +10,10 @@ func (m RIBDServicesHandler) CreatePolicyAction(cfg *ribd.PolicyAction) (val boo
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	//m.PolicyActionCreateConfCh <- cfg
 	err=m.ProcessPolicyActionConfigCreate(cfg)
-	return true, err
+	if err == nil {
+		val=true
+	}
+	return val, err
 }
 
 func (m RIBDServicesHandler) ProcessPolicyActionConfigCreate(cfg *ribd.PolicyAction) (err error) {
@@ -24,7 +27,10 @@ func (m RIBDServicesHandler) DeletePolicyAction(cfg *ribd.PolicyAction) (val boo
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	//m.PolicyActionDeleteConfCh <- cfg
 	err=m.ProcessPolicyActionConfigDelete(cfg)
-	return true, err
+	if err == nil {
+		val=true
+	}
+	return val, err
 }
 
 func (m RIBDServicesHandler) ProcessPolicyActionConfigDelete(cfg *ribd.PolicyAction) (err error) {

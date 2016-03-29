@@ -10,7 +10,10 @@ func (m RIBDServicesHandler) CreatePolicyCondition(cfg *ribd.PolicyCondition) (v
 	logger.Info(fmt.Sprintln("CreatePolicyConditioncfg: ",cfg.Name))
 	//m.PolicyConditionCreateConfCh <- cfg
 	err = m.ProcessPolicyConditionConfigCreate(cfg)
-	return true,err
+	if err == nil {
+		val=true
+	}
+	return val,err
 }
 func (m RIBDServicesHandler) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg: ",cfg.Name))
@@ -28,7 +31,10 @@ func (m RIBDServicesHandler) DeletePolicyCondition(cfg *ribd.PolicyCondition) (v
 	logger.Info(fmt.Sprintln("DeletePolicyConditionConfig: ",cfg.Name))
 	//m.PolicyConditionDeleteConfCh <- cfg
 	err = m.ProcessPolicyConditionConfigDelete(cfg)
-	return true,err
+	if err == nil {
+		val=true
+	}
+	return val,err
 }
 func (m RIBDServicesHandler) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyCondition) ( err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition: ",cfg.Name))
