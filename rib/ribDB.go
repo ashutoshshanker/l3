@@ -89,7 +89,7 @@ func UpdatePolicyActionsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
-		_, err = routeServiceHandler.ProcessPolicyActionConfigCreate(&action)
+		err = routeServiceHandler.ProcessPolicyActionConfigCreate(&action)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -153,7 +153,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintln("Fetching action ", Actions))
 			stmt.Actions = append(stmt.Actions, Actions)
 		}
-		_, err = routeServiceHandler.ProcessPolicyStmtConfigCreate(&stmt)
+		err = routeServiceHandler.ProcessPolicyStmtConfigCreate(&stmt)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -199,7 +199,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 			policy.StatementList = append(policy.StatementList, &policyStmtPrecedence)
 		}
 
-		_, err = routeServiceHandler.ProcessPolicyDefinitionConfigCreate(&policy)
+		err = routeServiceHandler.ProcessPolicyDefinitionConfigCreate(&policy)
 		if err != nil {
 			logger.Info(fmt.Sprintf("policy create failed with err %s\n", err))
 			return err
