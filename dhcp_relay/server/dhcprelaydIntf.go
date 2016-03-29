@@ -195,11 +195,8 @@ func DhcpRelayAgentGetPortList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			var ifName string
 			var portNum int32
 			portNum = bulkInfo.PortStateList[i].IfIndex
-			ifName = bulkInfo.PortStateList[i].Name
-			logger.Info("DRA: interface global init for " + ifName)
 			DhcpRelayAgentInitGblHandling(portNum, false)
 			DhcpRelayAgentInitIntfState(portNum)
 		}
