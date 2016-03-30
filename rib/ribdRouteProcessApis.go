@@ -75,6 +75,7 @@ type PolicyRouteIndex struct {
 type RouteReachabilityStatusInfo struct {
 	destNet string
 	status string
+	nextHopIntf ribdInt.NextHopInfo
 }
 var RouteInfoMap *patriciaDB.Trie
 var DummyRouteInfoRecord RouteInfoRecord //{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
@@ -574,6 +575,40 @@ func (m RIBDServicesHandler) GetConnectedRoutesInfo() (routes []*ribdInt.Routes,
 	routes = returnRoutes
 	return routes, err
 }*/
+func (m RIBDServicesHandler) TrackReachabilityStatus(ipAddr string,  protocol string, op string) ( error){
+	logger.Info(fmt.Sprintln("TrackReachabilityStatus for ipAddr: ", ipAddr, " by protocol ", protocol, " op = ", op))
+	if op != "add" && op != "del" {
+		logger.Err(fmt.Sprintln("Invalid operation ", op))
+		return errors.New("Invalid operation")
+	}
+	protocolList,ok := TrackReachabilityMap[ipAddr]
+	if !ok {
+		if op == "del" {
+			logger.Err(fmt.Sprintln("ipAddr ", ipAddr, " not being tracked currently"))
+			return errors.New("ipAddr not being tracked currently")
+		} 
+		protocolList = make([]string,0)
+	}
+	index := -1
+	index = findElement(protocolList,protocol)
+	if index != -1 {
+		if op == "del" {
+			protocolList = append(protocolList[:index],protocolList[index:]...)
+		} else if op == "add" {
+		    logger.Info(fmt.Sprintln(protocol, " already tracking ip ", ipAddr))
+		    return nil
+		}
+	} else {	//index = -1, protocol not tracking the ipAddr
+		if op == "del" {
+			logger.Err(fmt.Sprintln(protocol, " not tracking ipAddr ", ipAddr))
+			return errors.New(" ipAddr not being tracked by the protocol")
+		} else if op == "add"{
+            protocolList = append(protocolList, protocol)
+		}
+	}
+	TrackReachabilityMap[ipAddr] = protocolList
+	return nil
+}
 func (m RIBDServicesHandler) GetRouteReachabilityInfo(destNet string) (nextHopIntf *ribdInt.NextHopInfo, err error) {
 	logger.Info(fmt.Sprintln("GetRouteReachabilityInfo of ", destNet))
 	t1 := time.Now()
@@ -685,22 +720,27 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 		        logger.Err(fmt.Sprintln("Error getting ip prefix for v[i].nextHopIp:", v[i].nextHopIp.String(), " mask:", ipMaskStr))
 				return err
 	        }
+			nextHopIntf := ribdInt.NextHopInfo {
+					        NextHopIfType :ribdInt.Int(v[i].nextHopIfType),
+                            NextHopIp : v[i].nextHopIp.String(),
+                            NextHopIfIndex : ribdInt.Int(v[i].nextHopIfIndex),
+			            }
            // if v[i].nextHopIp.String() == ip.String() {
 			if bytes.Equal(vPrefix,destIpPrefix) {
 				if routeReachabilityStatusInfo.status == "Down" &&  v[i].resolvedNextHopIpIntf.IsReachable == true {
 				    v[i].resolvedNextHopIpIntf.IsReachable = false
 					rmapInfoRecordList.routeInfoProtocolMap[k] = v
 					RouteInfoMap.Set(prefix,rmapInfoRecordList)
-					RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus,RouteReachabilityStatusInfo{v[i].networkAddr,"Down"})
+					RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus,RouteReachabilityStatusInfo{v[i].networkAddr,"Down",nextHopIntf})
 				    logger.Info(fmt.Sprintln("Bringing down route : ip: ", v[i].networkAddr))
-				    RouteReachabilityStatusNotificationSend(k,RouteReachabilityStatusInfo{v[i].networkAddr,"Down"})
+				    RouteReachabilityStatusUpdate(k,RouteReachabilityStatusInfo{v[i].networkAddr,"Down",nextHopIntf})
 			    } else if routeReachabilityStatusInfo.status == "Up" && v[i].resolvedNextHopIpIntf.IsReachable == false{
 				    logger.Info(fmt.Sprintln("Bringing up route : ip: ", v[i].networkAddr))
 				    v[i].resolvedNextHopIpIntf.IsReachable = true
 					rmapInfoRecordList.routeInfoProtocolMap[k] = v
 					RouteInfoMap.Set(prefix,rmapInfoRecordList)
-					RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus,RouteReachabilityStatusInfo{v[i].networkAddr,"Up"})
-				    RouteReachabilityStatusNotificationSend(k,RouteReachabilityStatusInfo{v[i].networkAddr,"Up"})
+					RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus,RouteReachabilityStatusInfo{v[i].networkAddr,"Up",nextHopIntf})
+				    RouteReachabilityStatusUpdate(k,RouteReachabilityStatusInfo{v[i].networkAddr,"Up",nextHopIntf})
 				}
 			}
 		}
@@ -942,7 +982,12 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		addLinuxRoute(routeInfoRecord)
 		if routeInfoRecord.resolvedNextHopIpIntf.IsReachable {
 			logger.Info(fmt.Sprintln("Mark this network reachable"))
-			routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up"}
+			nextHopIntf := ribdInt.NextHopInfo {
+					        NextHopIfType :ribdInt.Int(routeInfoRecord.nextHopIfType),
+                            NextHopIp : routeInfoRecord.nextHopIp.String(),
+                            NextHopIfIndex : ribdInt.Int(routeInfoRecord.nextHopIfIndex),
+			            }
+			routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up",nextHopIntf}
 			RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 		}
 		//update in the event log
@@ -1006,7 +1051,8 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 			if deleteNode == true {
 				logger.Info("No routes to this destination , delete node")
                 logger.Info(fmt.Sprintln("Route deleted for this destination, traverse dependent routes to update routeReachability status"))
-                routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Down"}
+			    nextHopIntf := ribdInt.NextHopInfo {}
+                routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Down",nextHopIntf}
 	            RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 				RouteInfoMap.Delete(destNetPrefix)
 			} else {
@@ -1192,7 +1238,12 @@ func createV4Route(destNetIp string,
 		addLinuxRoute(routeInfoRecord)
 		if routeInfoRecord.resolvedNextHopIpIntf.IsReachable {
 			logger.Info(fmt.Sprintln("Mark this network reachable"))
-			routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up"}
+			nextHopIntf := ribdInt.NextHopInfo {
+					        NextHopIfType :ribdInt.Int(routeInfoRecord.nextHopIfType),
+                            NextHopIp : routeInfoRecord.nextHopIp.String(),
+                            NextHopIfIndex : ribdInt.Int(routeInfoRecord.nextHopIfIndex),
+			            }
+			routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up",nextHopIntf}
 			RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 		}
 		//update in the event log

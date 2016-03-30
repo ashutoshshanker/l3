@@ -36,6 +36,7 @@ type PublisherMapInfo struct {
 	pub_socket *nanomsg.PubSocket
 }
 var RedistributeRouteMap map[string][]RedistributeRouteInfo
+var TrackReachabilityMap map[string][]string //map[ipAddr][]protocols
 var RouteProtocolTypeMapDB map[string]int
 var ReverseRouteProtoTypeMapDB map[int]string
 var ProtocolAdminDistanceMapDB map[string]RouteDistanceConfig
@@ -60,6 +61,7 @@ func BuildPublisherMap() {
 	}
 	PublisherInfoMap["EBGP"] = PublisherInfoMap["BGP"]
 	PublisherInfoMap["IBGP"] = PublisherInfoMap["BGP"]
+	PublisherInfoMap["BFDD"] = PublisherMapInfo{ribdCommonDefs.PUB_SOCKET_BFDD_ADDR,InitPublisher(ribdCommonDefs.PUB_SOCKET_BFDD_ADDR)}
 }
 func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["CONNECTED"] = ribdCommonDefs.CONNECTED
@@ -128,6 +130,17 @@ func BuildProtocolAdminDistanceSlice() {
    }
    return isBetter
 }*/
+func findElement(list []string, element string) (int) {
+	index := -1
+	for i :=0 ;i<len(list);i++ {
+		if list[i]==element {
+			logger.Info(fmt.Sprintln("Found element ", element, " at index ",i))
+			return i
+		}
+	}
+	logger.Info(fmt.Sprintln("Element ", element, " not added to the list"))
+	return index
+}
 func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entity policy.PolicyEngineFilterEntityParams) {
 	routeInfo := params.(RouteParams)
 	destNetIp, err := netUtils.GetCIDR(route.Ipaddr, route.Mask)
@@ -432,13 +445,13 @@ func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes
 	}
 	var evtStr string
 	if evt == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
-		evtStr = "NOTIFY_ROUTE_CREATED"
+		evtStr = " NOTIFY_ROUTE_CREATED "
 	} else if evt == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-		evtStr = "NOTIFY_ROUTE_DELETED"
+		evtStr = " NOTIFY_ROUTE_DELETED "
 	}
 	eventInfo := "Redistribute "
 	if route.NetworkStatement == true {
-		eventInfo = "Advertise Network Statement "
+		eventInfo = " Advertise Network Statement "
 	}
 	eventInfo = eventInfo + evtStr + " for route " + route.Ipaddr + " " + route.Mask + " type" + ReverseRouteProtoTypeMapDB[int(route.Prototype)]
 	logger.Info(fmt.Sprintln("Sending ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " ", buf))
@@ -448,7 +461,7 @@ func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes
 	PUB.Send(buf, nanomsg.DontWait)
 }
 func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteReachabilityStatusInfo) {
-	logger.Info(fmt.Sprintln("RouteReachabilityStatusNotificationSend"))
+	logger.Info(fmt.Sprintln("RouteReachabilityStatusNotificationSend for protocol ", targetProtocol))
 	evt := ribdCommonDefs.NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE
 	publisherInfo,ok := PublisherInfoMap[targetProtocol]
 	if !ok {
@@ -458,9 +471,10 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 	PUB := publisherInfo.pub_socket
 	msgInfo := ribdCommonDefs.RouteReachabilityStatusMsgInfo{}
 	msgInfo.Network = info.destNet
-	if info.status == "Up" {
+	if info.status == "Up" || info.status == "Updated"{
 		msgInfo.IsReachable = true
 	}
+	msgInfo.NextHopIntf = info.nextHopIntf
 	msgBuf := msgInfo
 	msgbufbytes, err := json.Marshal(msgBuf)
 	msg := ribdCommonDefs.RibdNotifyMsg{MsgType: uint16(evt), MsgBuf: msgbufbytes}
@@ -471,9 +485,11 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 	}
 	var evtStr string
 	if info.status == "Down" {
-		evtStr = "to Down"
+		evtStr = " to Down "
 	} else if info.status == "Up" {
-		evtStr = "to Up"
+		evtStr = " to Up "
+	} else if info.status == "Updated" {
+		evtStr = " Updated "
 	}
 	eventInfo := "Update Route Reachability status " + evtStr + " for network " + info.destNet + "for protocol " + targetProtocol
 	logger.Info(fmt.Sprintln("Sending ", evtStr, " for network ", info.destNet))
@@ -481,8 +497,23 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
 	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
 	PUB.Send(buf, nanomsg.DontWait)
-	//for non-subscriber protocols like BFD
-	RIBD_PUB.Send(buf, nanomsg.DontWait)
+}
+func RouteReachabilityStatusUpdate(targetProtocol string, info RouteReachabilityStatusInfo) {
+	logger.Info(fmt.Sprintln("TrackReachabilityStatusNotificationSend targetProtocol ", targetProtocol))
+    if targetProtocol != "NONE" {
+	    RouteReachabilityStatusNotificationSend(targetProtocol,info)
+	}
+	//check the TrackReachabilityMap to see if any other protocols are interested in receiving updates for this ipAddr 
+    list,ok := TrackReachabilityMap[info.destNet]
+	if !ok {
+		logger.Info(fmt.Sprintln("No protocol tracking this ipAddr ", info.destNet))
+		return
+	}
+	for idx := 0;idx <len(list);idx++{
+		logger.Info(fmt.Sprintln(" protocol ", list[idx], " interested in receving reachability updates for ipAddr ", info.destNet))
+		RouteReachabilityStatusNotificationSend(list[idx],info)
+	}
+	return
 }
 func delLinuxRoute(route RouteInfoRecord) {
 	logger.Println("delLinuxRoute")
