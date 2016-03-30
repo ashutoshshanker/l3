@@ -721,7 +721,7 @@ This function will attach summary LSAs if the router is ABR
 func (server *OSPFServer) generateDbsummaryLsaList() []*ospfNeighborDBSummary {
 	db_list := []*ospfNeighborDBSummary{}
 	for areaid, _ := range server.AreaConfMap {
-		areaId := convertIPv4ToUint32(areaid.AreaId)
+		areaId := convertAreaOrRouterIdUint32(string(areaid.AreaId))
 		lsdbKey := LsdbKey{
 			AreaId: areaId,
 		}
@@ -734,7 +734,7 @@ func (server *OSPFServer) generateDbsummaryLsaList() []*ospfNeighborDBSummary {
 		for lsaKey, _ := range summary_lsdb {
 			// check if lsa instance is marked true
 			db_summary := newospfNeighborDBSummary()
-			drlsa, ret := server.getSummaryLsaFromLsdb(areaid, lsaKey)
+			drlsa, ret := server.getSummaryLsaFromLsdb(areaId, lsaKey)
 			if ret == LsdbEntryNotFound {
 				continue
 			}

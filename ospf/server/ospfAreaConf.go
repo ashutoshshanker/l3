@@ -3,6 +3,7 @@ package server
 import (
 	"l3/ospf/config"
 	"time"
+	"fmt"
 )
 
 type AreaConfKey struct {
@@ -41,10 +42,10 @@ func (server *OSPFServer) processAreaConfig(areaConf config.AreaConf) {
 	ent.AreaSummary = areaConf.AreaSummary
 	ent.AreaNssaTranslatorRole = areaConf.AreaNssaTranslatorRole
 	ent.AreaNssaTranslatorStabilityInterval = areaConf.AreaNssaTranslatorStabilityInterval
+	ent.IntfListMap = make(map[IntfConfKey]bool)
 	server.AreaConfMap[areaConfKey] = ent
 	server.initAreaStateSlice(areaConfKey)
 	areaId := convertAreaOrRouterIdUint32(string(areaConf.AreaId))
-	server.AreaConfMap = make(map[IntfConfKey]bool)
 	server.initLSDatabase(areaId)
 }
 
@@ -60,7 +61,7 @@ func (server *OSPFServer) initAreaConfDefault() {
 		ent.AreaSummary = config.NoAreaSummary
 		ent.AreaNssaTranslatorRole = config.Candidate
 		ent.AreaNssaTranslatorStabilityInterval = config.PositiveInteger(40)
-		server.AreaConfMap = make(map[IntfConfKey]bool)
+		ent.IntfListMap = make(map[IntfConfKey]bool)
 		server.AreaConfMap[areaConfKey] = ent
 	}
 	server.initAreaStateSlice(areaConfKey)
@@ -104,8 +105,10 @@ func (server *OSPFServer) areaStateRefresh() {
 	server.AreaStateTimer = time.AfterFunc(server.RefreshDuration, areaStateRefFunc)
 }
 
-func (server *OSPFServer) updateIntfToAreaMap(key IntfConfKey, areaId config.AreaId) uint32 {
-	area := convertAreaOrRouterIdUint32("0.0.0.0")
+func (server *OSPFServer) updateIntfToAreaMap(key IntfConfKey, areaId config.AreaId) config.AreaId {
+	def_key := AreaConfKey{ 
+		AreaId: "0.0.0.0",
+	}
 	areaConfKey := AreaConfKey{
 		AreaId: areaId,
 	}
@@ -113,13 +116,10 @@ func (server *OSPFServer) updateIntfToAreaMap(key IntfConfKey, areaId config.Are
 	if exist {
 		// update the intf list
 		ent.IntfListMap[key] = true
-		server.AreaConfMap[AreaConfKey] = ent
-		area = convertAreaOrRouterIdUint32((string)areaId)
+		server.AreaConfMap[areaConfKey] = ent
+		def_key = areaConfKey
 	} else {
 		server.logger.Info(fmt.Sprintln("Add interface to the default area 0 . Intf - ", key.IPAddr))
-		def_key := AreaConfKey{
-			AreaId: "0.0.0.0",
-		}
 		def_ent, exists := server.AreaConfMap[def_key]
 		if !exists {
 			server.initAreaConfDefault()
@@ -131,12 +131,12 @@ func (server *OSPFServer) updateIntfToAreaMap(key IntfConfKey, areaId config.Are
 	if !server.ospfGlobalConf.isABR {
 		server.updateIfABR()
 	} 
-	return area
+return def_key.AreaId
 }
 
 func (server *OSPFServer) updateIfABR() {
 	index := 0
-	for _, _ := range server.AreaConfMap {
+	for _, _ = range server.AreaConfMap {
 		index++
 	}
 	if index > 1 {

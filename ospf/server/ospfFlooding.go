@@ -89,10 +89,7 @@ func (server *OSPFServer) SendSelfOrigLSA(areaId uint32, intfKey IntfConfKey) []
 				}
 
 			case Summary3LSA:
-				entry, exst := server.getSummaryLsaFromLsdb(areaId, key)
-				if !exst {
-					continue
-				}
+				entry, _ := server.getSummaryLsaFromLsdb(areaId, key)
 				LsaEnc = encodeSummaryLsa(entry, key)
 				checksumOffset := uint16(14)
 				checkSum := computeFletcherChecksum(LsaEnc[2:], checksumOffset)
