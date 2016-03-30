@@ -6,44 +6,45 @@ import (
 	"ribd"
 	"utils/policy"
 )
+
 func (m RIBDServicesHandler) CreatePolicyCondition(cfg *ribd.PolicyCondition) (val bool, err error) {
-	logger.Info(fmt.Sprintln("CreatePolicyConditioncfg: ",cfg.Name))
+	logger.Info(fmt.Sprintln("CreatePolicyConditioncfg: ", cfg.Name))
 	//m.PolicyConditionCreateConfCh <- cfg
-	val,err = m.ProcessPolicyConditionConfigCreate(cfg)
-	return val,err
+	val, err = m.ProcessPolicyConditionConfigCreate(cfg)
+	return val, err
 }
 func (m RIBDServicesHandler) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition) (val bool, err error) {
-	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg: ",cfg.Name))
+	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg: ", cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.MatchProtocol}
 	matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.IpPrefix, MasklengthRange: cfg.MaskLengthRange}
-	newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{ Prefix: matchPrefix}
-/*	if cfg.MatchDstIpPrefixConditionInfo != nil {
+	newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{Prefix: matchPrefix}
+	/*	if cfg.MatchDstIpPrefixConditionInfo != nil {
 		matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.MatchDstIpPrefixConditionInfo.Prefix.IpPrefix, MasklengthRange: cfg.MatchDstIpPrefixConditionInfo.Prefix.MasklengthRange}
 		newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{PrefixSet: cfg.MatchDstIpPrefixConditionInfo.PrefixSet, Prefix: matchPrefix}
 	}*/
-	val,err = PolicyEngineDB.CreatePolicyCondition(newPolicy)
-	return val,err
+	val, err = PolicyEngineDB.CreatePolicyCondition(newPolicy)
+	return val, err
 }
 func (m RIBDServicesHandler) DeletePolicyCondition(cfg *ribd.PolicyCondition) (val bool, err error) {
-	logger.Info(fmt.Sprintln("DeletePolicyConditionConfig: ",cfg.Name))
+	logger.Info(fmt.Sprintln("DeletePolicyConditionConfig: ", cfg.Name))
 	//m.PolicyConditionDeleteConfCh <- cfg
-	val,err = m.ProcessPolicyConditionConfigDelete(cfg)
-	return val,err
+	val, err = m.ProcessPolicyConditionConfigDelete(cfg)
+	return val, err
 }
-func (m RIBDServicesHandler) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyCondition) (val bool,  err error) {
-	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition: ",cfg.Name))
+func (m RIBDServicesHandler) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyCondition) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition: ", cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name}
-	val,err = PolicyEngineDB.DeletePolicyCondition(newPolicy)
-	return val,err
+	val, err = PolicyEngineDB.DeletePolicyCondition(newPolicy)
+	return val, err
 }
-func (m RIBDServicesHandler) UpdatePolicyCondition(origconfig *ribd.PolicyCondition , newconfig *ribd.PolicyCondition , attrset []bool) (val bool, err error) {
-	logger.Info(fmt.Sprintln("UpdatePolicyConditionConfig:UpdatePolicyCondition: ",newconfig.Name))
-	return true,err
+func (m RIBDServicesHandler) UpdatePolicyCondition(origconfig *ribd.PolicyCondition, newconfig *ribd.PolicyCondition, attrset []bool) (val bool, err error) {
+	logger.Info(fmt.Sprintln("UpdatePolicyConditionConfig:UpdatePolicyCondition: ", newconfig.Name))
+	return true, err
 }
-func (m RIBDServicesHandler) GetPolicyConditionState(state *ribd.PolicyConditionState) (*ribd.PolicyConditionState, error) {
+func (m RIBDServicesHandler) GetPolicyConditionState(name string) (*ribd.PolicyConditionState, error) {
 	logger.Info("Get state for Policy Condition")
 	retState := ribd.NewPolicyConditionState()
-	return retState,nil
+	return retState, nil
 }
 func (m RIBDServicesHandler) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyConditionState"))

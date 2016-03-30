@@ -51,13 +51,13 @@ func (m RIBDServicesHandler) ProcessPolicyStmtConfigDelete(cfg *ribd.PolicyStmt)
 	err = PolicyEngineDB.DeletePolicyStatement(stmt)
 	return err
 }
-func (m RIBDServicesHandler) UpdatePolicyStmt(origconfig *ribd.PolicyStmt , newconfig *ribd.PolicyStmt , attrset []bool) (val bool, err error) {
-	return true,err
+func (m RIBDServicesHandler) UpdatePolicyStmt(origconfig *ribd.PolicyStmt, newconfig *ribd.PolicyStmt, attrset []bool) (val bool, err error) {
+	return true, err
 }
-func (m RIBDServicesHandler) GetPolicyStmtState(state *ribd.PolicyStmtState) (*ribd.PolicyStmtState, error) {
+func (m RIBDServicesHandler) GetPolicyStmtState(name string) (*ribd.PolicyStmtState, error) {
 	logger.Info("Get state for Policy Stmt")
 	retState := ribd.NewPolicyStmtState()
-	return retState,nil
+	return retState, nil
 }
 func (m RIBDServicesHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyStmtStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyStmtState"))
@@ -152,13 +152,13 @@ func (m RIBDServicesHandler) ProcessPolicyDefinitionConfigDelete(cfg *ribd.Polic
 	err = PolicyEngineDB.DeletePolicyDefinition(policy)
 	return err
 }
-func (m RIBDServicesHandler) UpdatePolicyDefinition(origconfig *ribd.PolicyDefinition , newconfig *ribd.PolicyDefinition , attrset []bool) (val bool, err error) {
-	return true,err
+func (m RIBDServicesHandler) UpdatePolicyDefinition(origconfig *ribd.PolicyDefinition, newconfig *ribd.PolicyDefinition, attrset []bool) (val bool, err error) {
+	return true, err
 }
-func (m RIBDServicesHandler) GetPolicyDefinitionState(state *ribd.PolicyDefinitionState) (*ribd.PolicyDefinitionState, error) {
+func (m RIBDServicesHandler) GetPolicyDefinitionState(name string) (*ribd.PolicyDefinitionState, error) {
 	logger.Info("Get state for Policy Definition")
 	retState := ribd.NewPolicyDefinitionState()
-	return retState,nil
+	return retState, nil
 }
 func (m RIBDServicesHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyDefinitionState"))
