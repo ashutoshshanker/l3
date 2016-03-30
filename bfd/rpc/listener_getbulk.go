@@ -97,7 +97,7 @@ func (h *BFDHandler) convertSessionStateToThrift(ent server.SessionState) *bfdd.
 	sessionState := bfdd.NewBfdSessionState()
 	sessionState.SessionId = int32(ent.SessionId)
 	sessionState.LocalIpAddr = string(ent.LocalIpAddr)
-	sessionState.RemoteIpAddr = string(ent.RemoteIpAddr)
+	sessionState.IpAddr = string(ent.IpAddr)
 	sessionState.IfIndex = int32(ent.InterfaceId)
 	sessionState.PerLinkSession = ent.PerLinkSession
 	sessionState.LocalMacAddr = string(ent.LocalMacAddr.String())
