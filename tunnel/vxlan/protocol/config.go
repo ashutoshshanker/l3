@@ -3,6 +3,7 @@
 package vxlan
 
 import (
+	"errors"
 	"l3/tunnel/vxlan/vxlan_linux"
 	"net"
 	"reflect"
@@ -66,23 +67,25 @@ func ConvertInt32ToBool(val int32) bool {
 	return true
 }
 
-func (s *VXLANServer) ConvertVxlanInstanceToVxlanConfig(c *vxland.VxlanInstance) *VxlanConfig {
+func (s *VXLANServer) ConvertVxlanInstanceToVxlanConfig(c *vxland.VxlanInstance) (*VxlanConfig, error) {
 
 	return &VxlanConfig{
 		VNI:    uint32(c.VxlanId),
 		VlanId: uint16(c.VlanId),
 		Group:  net.ParseIP(c.McDestIp),
 		MTU:    uint32(c.Mtu),
-	}
+	}, nil
 }
 
-func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepInstances) *VtepConfig {
+func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepInstances) (*VtepConfig, error) {
 
 	DstNetMac, _ := net.ParseMAC(c.DstMac)
 
 	ok, mac, ip := s.getLoopbackInfo()
 	if !ok {
-		s.logger.Info("VTEP: Src Tunnel Info not provisioned yet, loopback intf needed")
+		errorstr := "VTEP: Src Tunnel Info not provisioned yet, loopback intf needed"
+		s.logger.Info(errorstr)
+		return &VtepConfig{}, errors.New(errorstr)
 	}
 
 	return &VtepConfig{
@@ -103,7 +106,7 @@ func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepIn
 		VlanId:                uint16(c.VlanId),
 		TunnelSrcMac:          mac,
 		TunnelDstMac:          DstNetMac,
-	}
+	}, nil
 }
 
 func (s *VXLANServer) updateThriftVxLAN(c *VxlanUpdate) {
