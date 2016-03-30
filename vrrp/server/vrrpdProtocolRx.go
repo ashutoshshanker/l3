@@ -78,7 +78,6 @@ func (svr *VrrpServer) VrrpCheckHeader(hdr *VrrpPktHeader, layerContent []byte, 
 	if hdr.Version != VRRP_VERSION2 && hdr.Version != VRRP_VERSION3 {
 		return errors.New(VRRP_INCORRECT_VERSION)
 	}
-	svr.logger.Info(fmt.Sprintln("vrrp rx hdr is", hdr))
 	// Set Checksum to 0 for verifying checksum
 	binary.BigEndian.PutUint16(layerContent[6:8], 0)
 	// Verify checksum
@@ -192,7 +191,6 @@ func (svr *VrrpServer) VrrpInitPacketListener(key string, IfIndex int32) {
 	gblInfo.pHandle = handle
 	gblInfo.PcapHdlLock.Unlock()
 	svr.vrrpGblInfo[key] = gblInfo
-	svr.logger.Info(fmt.Sprintln("VRRP listener started for", IfIndex))
 	go svr.VrrpReceivePackets(handle, key, IfIndex)
 }
 
@@ -211,7 +209,7 @@ func (svr *VrrpServer) VrrpUpdateProtocolMacEntry(add bool) {
 	} else {
 		deleted, _ := svr.asicdClient.ClientHdl.DisablePacketReception(&macConfig)
 		if !deleted {
-			svr.logger.Info("Adding reserved mac failed")
+			svr.logger.Info("Deleting reserved mac failed")
 			return
 		}
 		svr.vrrpMacConfigAdded = false
