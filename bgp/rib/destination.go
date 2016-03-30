@@ -63,13 +63,12 @@ func (d *Destination) GetLocRibPathRoute() *Route {
 	return d.LocRibPathRoute
 }
 
-func (d *Destination) GetBGPRoutes() []*bgpd.BGPRoute {
-	routes := make([]*bgpd.BGPRoute, 0)
-	for _, route := range d.ecmpPaths {
-		routes = append(routes, route.GetBGPRoute())
+func (d *Destination) GetBGPRoute() (route *bgpd.BGPRoute) {
+	if d.LocRibPathRoute != nil {
+		route = d.LocRibPathRoute.GetBGPRoute()
 	}
 
-	return routes
+	return route
 }
 
 func (d *Destination) GetPathRoute(path *Path) *Route {
