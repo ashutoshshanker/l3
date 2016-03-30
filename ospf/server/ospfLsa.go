@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/binary"
+	"fmt"
+	"l3/ospf/config"
 )
 
 const (
@@ -132,6 +134,16 @@ type LSDatabase struct {
 	ASExternalLsaMap map[LsaKey]ASExternalLsa
 }
 
+type maxAgeLsaMsg struct {
+	lsaKey LsaKey
+	msg_type    uint8
+	pkt    []byte
+}
+
+const (
+	addMaxAgeLsa uint8 = 0
+	delMaxAgeLsa uint8 = 1
+)
 type SelfOrigLsa map[LsaKey]bool
 
 var InitialSequenceNumber int = 0x80000001
@@ -343,6 +355,9 @@ func encodeRouterLsa(lsa RouterLsa, lsakey LsaKey) []byte {
 */
 
 func encodeNetworkLsa(lsa NetworkLsa, lsakey LsaKey) []byte {
+	if lsa.LsaMd.LSLen == 0 {
+		return nil
+	}
 	nLsa := make([]byte, lsa.LsaMd.LSLen)
 	lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
 	copy(nLsa[0:20], lsaHdr)
@@ -605,4 +620,113 @@ func (server *OSPFServer) getASExternalLsaFromLsdb(areaId uint32, lsaKey LsaKey)
 		return lsa, LsdbEntryNotFound
 	}
 	return lsa, LsdbEntryFound
+}
+
+func (server *OSPFServer) processMaxAgeLSA(lsdbKey LsdbKey, lsdbEnt LSDatabase) {
+	flood_lsa := false
+	/* Router LSA */
+	for lsakey, lsa := range lsdbEnt.RouterLsaMap {
+		if lsa.LsaMd.LSAge == config.MaxAge {
+			// add to flood list
+			lsa_pkt := encodeRouterLsa(lsa, lsakey)
+			maxAgeLsaMap[lsakey] = lsa_pkt
+
+			// delete LSA
+			advRouter := convertUint32ToIPv4(lsakey.AdvRouter)
+			lsid := convertUint32ToIPv4(lsakey.LSId)
+			server.logger.Info(fmt.Sprintln("DELETE: Max age reached. adv_router ",
+				advRouter, " lstype ", lsakey.LSType, " lsid ", lsid))
+			delete(lsdbEnt.RouterLsaMap, lsakey)
+			flood_lsa = true
+		} else {
+			lsa.LsaMd.LSAge++
+			lsa.LsaMd.LSSequenceNum++
+			lsdbEnt.RouterLsaMap[lsakey] = lsa
+		}
+	}
+	/* NetworkLSA */
+	for lsakey, lsa_net := range lsdbEnt.NetworkLsaMap {
+		if lsa_net.LsaMd.LSAge == config.MaxAge {
+			// add to flood list
+			lsa_pkt := encodeNetworkLsa(lsa_net, lsakey)
+			maxAgeLsaMap[lsakey] = lsa_pkt
+			// delete LSA
+			delete(lsdbEnt.NetworkLsaMap, lsakey)
+			advRouter := convertUint32ToIPv4(lsakey.AdvRouter)
+			lsid := convertUint32ToIPv4(lsakey.LSId)
+			server.logger.Info(fmt.Sprintln("DELETE: Max age reached. adv_router ",
+				advRouter, " lstype ", lsakey.LSType, " lsid ", lsid))
+			flood_lsa = true
+
+		} else {
+			lsa_net.LsaMd.LSAge++
+			lsa_net.LsaMd.LSSequenceNum++
+			lsdbEnt.NetworkLsaMap[lsakey] = lsa_net
+		}
+	}
+	/*ASExt LSA */
+	for lsakey, lsa_ex := range lsdbEnt.ASExternalLsaMap {
+		if lsa_ex.LsaMd.LSAge == config.MaxAge {
+			// add to flood list
+			lsa_pkt := encodeASExternalLsa(lsa_ex, lsakey)
+			maxAgeLsaMap[lsakey] = lsa_pkt
+			// delete LSA
+			delete(lsdbEnt.ASExternalLsaMap, lsakey)
+			advRouter := convertUint32ToIPv4(lsakey.AdvRouter)
+			lsid := convertUint32ToIPv4(lsakey.LSId)
+			server.logger.Info(fmt.Sprintln("DELETE: Max age reached. adv_router ",
+				advRouter, " lstype ", lsakey.LSType, " lsid ", lsid))
+			flood_lsa = true
+
+		} else {
+			lsa_ex.LsaMd.LSAge++
+			lsa_ex.LsaMd.LSSequenceNum++
+			lsdbEnt.ASExternalLsaMap[lsakey] = lsa_ex
+		}
+	}
+	/* Summary 3 */
+	for lsakey, lsa_sum := range lsdbEnt.Summary3LsaMap {
+		if lsa_sum.LsaMd.LSAge == config.MaxAge {
+			// add to flood list
+			lsa_pkt := encodeSummaryLsa(lsa_sum, lsakey)
+			maxAgeLsaMap[lsakey] = lsa_pkt // delete LSA
+			delete(lsdbEnt.Summary3LsaMap, lsakey)
+			advRouter := convertUint32ToIPv4(lsakey.AdvRouter)
+			lsid := convertUint32ToIPv4(lsakey.LSId)
+			server.logger.Info(fmt.Sprintln("DELETE: Max age reached. adv_router ",
+				advRouter, " lstype ", lsakey.LSType, " lsid ", lsid))
+			flood_lsa = true
+
+		} else {
+			lsa_sum.LsaMd.LSAge++
+			lsa_sum.LsaMd.LSSequenceNum++
+			lsdbEnt.Summary3LsaMap[lsakey] = lsa_sum
+		}
+	}
+
+	/* Summary 4 */
+	for lsakey, lsa_sum4 := range lsdbEnt.Summary4LsaMap {
+		if lsa_sum4.LsaMd.LSAge == config.MaxAge {
+			// add to flood list
+			lsa_pkt := encodeSummaryLsa(lsa_sum4, lsakey)
+			maxAgeLsaMap[lsakey] = lsa_pkt // delete LSA
+			delete(lsdbEnt.Summary4LsaMap, lsakey)
+			advRouter := convertUint32ToIPv4(lsakey.AdvRouter)
+			lsid := convertUint32ToIPv4(lsakey.LSId)
+			server.logger.Info(fmt.Sprintln("DELETE: Max age reached. adv_router ",
+				advRouter, " lstype ", lsakey.LSType, " lsid ", lsid))
+			flood_lsa = true
+
+		} else {
+			lsa_sum4.LsaMd.LSAge++
+			lsdbEnt.Summary4LsaMap[lsakey] = lsa_sum4
+		}
+	}
+	if flood_lsa {
+		/* send msg to ospfNbrLsaUpdSendCh */
+		flood_pkt := ospfFloodMsg{
+			lsOp: LSAAGE,
+		}
+		server.ospfNbrLsaUpdSendCh <- flood_pkt
+	}
 }

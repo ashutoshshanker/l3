@@ -1,5 +1,5 @@
 // conn.go
-package server
+package fsm
 
 import (
 	"fmt"
@@ -39,18 +39,18 @@ func NewOutTCPConn(fsm *FSM, fsmConnCh chan net.Conn, fsmConnErrCh chan error) *
 
 func (o *OutTCPConn) Connect(seconds uint32, addr string, connCh chan net.Conn, errCh chan error) {
 	reachableCh := make(chan bool)
-	reachabilityInfo := ReachabilityInfo{
+	reachabilityInfo := config.ReachabilityInfo{
 		IP:          o.fsm.pConf.NeighborAddress.String(),
 		ReachableCh: reachableCh,
 	}
-	o.fsm.peer.Server.ReachabilityCh <- reachabilityInfo
+	o.fsm.Manager.reachabilityCh <- reachabilityInfo
 	reachable := <-reachableCh
 	if !reachable {
 		duration := uint32(3)
 		for {
 			select {
 			case <-time.After(time.Duration(duration) * time.Second):
-				o.fsm.peer.Server.ReachabilityCh <- reachabilityInfo
+				o.fsm.Manager.reachabilityCh <- reachabilityInfo
 				reachable = <-reachableCh
 			}
 			seconds -= duration

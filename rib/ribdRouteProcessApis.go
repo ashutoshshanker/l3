@@ -660,17 +660,33 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 		return err
 	}
 	routeReachabilityStatusInfo := item.(RouteReachabilityStatusInfo)
-	ip,_,err := net.ParseCIDR(routeReachabilityStatusInfo.destNet)
+	var ipMask net.IP
+	ip,ipNet,err := net.ParseCIDR(routeReachabilityStatusInfo.destNet)
 	if err != nil {
 		logger.Err(fmt.Sprintln("Error getting IP from cidr: ", routeReachabilityStatusInfo.destNet))
 		return err
 	}
-	logger.Info(fmt.Sprintln("UpdateRouteReachabilityStatus network: ", routeReachabilityStatusInfo.destNet, " status:", routeReachabilityStatusInfo.status, "ip: ", ip.String()))
+	ipMask = make(net.IP, 4)
+	copy(ipMask, ipNet.Mask)
+	ipAddrStr := ip.String()
+	ipMaskStr := net.IP(ipMask).String()
+	destIpPrefix,err := getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
+	if err != nil {
+		logger.Err(fmt.Sprintln("Error getting ip prefix for ip:", ipAddrStr, " mask:", ipMaskStr))
+		return err
+	}
+	logger.Info(fmt.Sprintln("UpdateRouteReachabilityStatus network: ", routeReachabilityStatusInfo.destNet, " status:", routeReachabilityStatusInfo.status, "ip: ", ip.String(), " destIPPrefix: ", destIpPrefix, " ipMaskStr:", ipMaskStr))
 	rmapInfoRecordList := handle.(RouteInfoRecordList)
 	for k,v := range rmapInfoRecordList.routeInfoProtocolMap {
 		logger.Info(fmt.Sprintln("UpdateRouteReachabilityStatus - protocol: ", k))
 		for i:=0;i<len(v);i++ {
-            if v[i].nextHopIp.String() == ip.String() {
+			vPrefix,err := getNetowrkPrefixFromStrings(v[i].nextHopIp.String(),ipMaskStr)
+	        if err != nil {
+		        logger.Err(fmt.Sprintln("Error getting ip prefix for v[i].nextHopIp:", v[i].nextHopIp.String(), " mask:", ipMaskStr))
+				return err
+	        }
+           // if v[i].nextHopIp.String() == ip.String() {
+			if bytes.Equal(vPrefix,destIpPrefix) {
 				if routeReachabilityStatusInfo.status == "Down" &&  v[i].resolvedNextHopIpIntf.IsReachable == true {
 				    v[i].resolvedNextHopIpIntf.IsReachable = false
 					rmapInfoRecordList.routeInfoProtocolMap[k] = v
@@ -708,7 +724,7 @@ func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, err error) 
 		logger.Info(fmt.Sprintln("intf.nextHopIp ", intf.NextHopIp, " intf.Ipaddr:", intf.Ipaddr))
 		if intf.NextHopIp == "0.0.0.0" {
 			logger.Info(fmt.Sprintln("Marking ip ", ip, " as reachable"))
-			intf.NextHopIp = ip
+			intf.NextHopIp = intf.Ipaddr
 			intf.IsReachable = true
 			return *intf,err
 		}
@@ -988,16 +1004,16 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 				}
 			}
 			if deleteNode == true {
-				logger.Println("No routes to this destination , delete node")
+				logger.Info("No routes to this destination , delete node")
+                logger.Info(fmt.Sprintln("Route deleted for this destination, traverse dependent routes to update routeReachability status"))
+                routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Down"}
+	            RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 				RouteInfoMap.Delete(destNetPrefix)
 			} else {
 				RouteInfoMap.Set(destNetPrefix, routeInfoRecordList)
 			}
 		}
 	}
-    logger.Info(fmt.Sprintln("Route deleted for this destination, traverse dependent routes to update routeReachability status"))
-    routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Down"}
-	RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 	if routeInfoRecordList.selectedRouteProtocol != ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)] {
 		logger.Println("This is not the selected protocol, nothing more to do here")
 		return

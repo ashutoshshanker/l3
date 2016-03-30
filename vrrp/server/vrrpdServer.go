@@ -143,6 +143,10 @@ func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 
 func (svr *VrrpServer) VrrpDeleteGblInfo(config vrrpd.VrrpIntf) {
 	key := strconv.Itoa(int(config.IfIndex)) + "_" + strconv.Itoa(int(config.VRID))
+	gblInfo, found := svr.vrrpGblInfo[key]
+	if found {
+		svr.VrrpUpdateSubIntf(gblInfo, false /*disable*/)
+	}
 	delete(svr.vrrpGblInfo, key)
 	for i := 0; i < len(svr.vrrpIntfStateSlice); i++ {
 		if svr.vrrpIntfStateSlice[i] == key {
@@ -167,15 +171,14 @@ func (svr *VrrpServer) VrrpUpdateIntf(origconfig vrrpd.VrrpIntf,
 		svr.logger.Err("No object for " + key)
 		return
 	}
-	svr.logger.Info(fmt.Sprintln("old config info is", gblInfo))
 	/*
-		1 : bool PreemptMode
-		2 : i32 VRID
-		3 : i32 Priority
-		4 : i32 AdvertisementInterval
-		5 : bool AcceptMode
-		6 : string VirtualIPv4Addr
-		7 : i32 IfIndex
+		0	1 : i32 IfIndex
+		1	2 : i32 VRID
+		2	3 : i32 Priority
+		3	4 : string VirtualIPv4Addr
+		4	5 : i32 AdvertisementInterval
+		5	6 : bool PreemptMode
+		6	7 : bool AcceptMode
 	*/
 	updDownTimer := false
 	for elem, _ := range attrset {
@@ -185,26 +188,25 @@ func (svr *VrrpServer) VrrpUpdateIntf(origconfig vrrpd.VrrpIntf,
 		} else {
 			switch elem {
 			case 0:
-				gblInfo.IntfConfig.PreemptMode = newconfig.PreemptMode
+				// Cannot change IfIndex
 			case 1:
 				// Cannot change VRID
 			case 2:
 				gblInfo.IntfConfig.Priority = newconfig.Priority
 			case 3:
+				gblInfo.IntfConfig.VirtualIPv4Addr =
+					newconfig.VirtualIPv4Addr
+			case 4:
 				gblInfo.IntfConfig.AdvertisementInterval =
 					newconfig.AdvertisementInterval
 				updDownTimer = true
-			case 4:
-				gblInfo.IntfConfig.AcceptMode = newconfig.AcceptMode
 			case 5:
-				gblInfo.IntfConfig.VirtualIPv4Addr =
-					newconfig.VirtualIPv4Addr
+				gblInfo.IntfConfig.PreemptMode = newconfig.PreemptMode
 			case 6:
-				// Cannot change IfIndex
+				gblInfo.IntfConfig.AcceptMode = newconfig.AcceptMode
 			}
 		}
 	}
-	svr.logger.Info(fmt.Sprintln("new config info is", gblInfo))
 
 	// If Advertisment value changed then we need to update master down timer
 	if updDownTimer {
@@ -268,6 +270,7 @@ func (svr *VrrpServer) VrrpGetBulkVrrpVridStates(idx int, cnt int) (int, int, []
 }
 
 func (svr *VrrpServer) VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
+	// @TODO: jgheewala need to add support for secondary/virtual interface
 	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
 	vlanName, ok := svr.vrrpVlanId2Name[vlanId]
 	if ok == false {

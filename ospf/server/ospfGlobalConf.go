@@ -118,8 +118,8 @@ func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {
 	if server.ospfGlobalConf.AdminStat == config.Enabled {
 		//server.NeighborListMap = make(map[IntfConfKey]list.List)
 		server.InitNeighborStateMachine()
-		go server.ProcessNbrStateMachine()
 		go server.UpdateNeighborConf()
+		go server.ProcessNbrStateMachine()
 		go server.ProcessTxNbrPkt()
 		go server.ProcessRxNbrPkt()
 		server.StartLSDatabase()

@@ -1,8 +1,9 @@
 // peer.go
-package server
+package fsm
 
 import (
 	"fmt"
+	"l3/bgp/baseobjects"
 	"l3/bgp/config"
 	"l3/bgp/packet"
 	"net"
@@ -10,49 +11,69 @@ import (
 	"utils/logging"
 )
 
-type CONFIG int
+type PeerFSMConn struct {
+	PeerIP      string
+	Established bool
+	Conn        *net.Conn
+}
 
-const (
-	START CONFIG = iota
-	STOP
-)
+type PeerFSMState struct {
+	PeerIP string
+	State  BGPFSMState
+}
 
-type BgpPkt struct {
-	connDir config.ConnDir
-	pkt     *packet.BGPMessage
+type PeerAttrs struct {
+	PeerIP        string
+	BGPId         net.IP
+	ASSize        uint8
+	HoldTime      uint32
+	KeepaliveTime uint32
+	AddPathFamily map[packet.AFI]map[packet.SAFI]uint8
 }
 
 type FSMManager struct {
-	Peer          *Peer
-	logger        *logging.Writer
-	gConf         *config.GlobalConfig
-	pConf         *config.NeighborConfig
-	fsms          map[uint8]*FSM
-	acceptCh      chan net.Conn
-	tcpConnFailCh chan uint8
-	closeCh       chan bool
-	stopFSMCh     chan string
-	acceptConn    bool
-	commandCh     chan int
-	activeFSM     uint8
-	newConnCh     chan PeerFSMConnState
-	fsmMutex      sync.RWMutex
+	logger         *logging.Writer
+	neighborConf   *base.NeighborConf
+	gConf          *config.GlobalConfig
+	pConf          *config.NeighborConfig
+	fsmConnCh      chan PeerFSMConn
+	fsmStateCh     chan PeerFSMState
+	peerAttrsCh    chan PeerAttrs
+	bgpPktSrcCh    chan *packet.BGPPktSrc
+	reachabilityCh chan config.ReachabilityInfo
+	fsms           map[uint8]*FSM
+	AcceptCh       chan net.Conn
+	tcpConnFailCh  chan uint8
+	CloseCh        chan bool
+	StopFSMCh      chan string
+	acceptConn     bool
+	CommandCh      chan int
+	activeFSM      uint8
+	newConnCh      chan PeerFSMConnState
+	fsmMutex       sync.RWMutex
 }
 
-func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config.NeighborConfig) *FSMManager {
+func NewFSMManager(logger *logging.Writer, neighborConf *base.NeighborConf, bgpPktSrcCh chan *packet.BGPPktSrc,
+	fsmConnCh chan PeerFSMConn, fsmStateCh chan PeerFSMState, peerAttrsCh chan PeerAttrs,
+	reachabilityCh chan config.ReachabilityInfo) *FSMManager {
 	mgr := FSMManager{
-		Peer:   peer,
-		logger: peer.logger,
-		gConf:  globalConf,
-		pConf:  peerConf,
+		logger:         logger,
+		neighborConf:   neighborConf,
+		gConf:          neighborConf.Global,
+		pConf:          &neighborConf.RunningConf,
+		fsmConnCh:      fsmConnCh,
+		fsmStateCh:     fsmStateCh,
+		peerAttrsCh:    peerAttrsCh,
+		bgpPktSrcCh:    bgpPktSrcCh,
+		reachabilityCh: reachabilityCh,
 	}
 	mgr.fsms = make(map[uint8]*FSM)
-	mgr.acceptCh = make(chan net.Conn)
+	mgr.AcceptCh = make(chan net.Conn)
 	mgr.tcpConnFailCh = make(chan uint8)
 	mgr.acceptConn = false
-	mgr.closeCh = make(chan bool)
-	mgr.stopFSMCh = make(chan string)
-	mgr.commandCh = make(chan int)
+	mgr.CloseCh = make(chan bool)
+	mgr.StopFSMCh = make(chan string)
+	mgr.CommandCh = make(chan int)
 	mgr.activeFSM = uint8(config.ConnDirInvalid)
 	mgr.newConnCh = make(chan PeerFSMConnState)
 	mgr.fsmMutex = sync.RWMutex{}
@@ -61,14 +82,14 @@ func NewFSMManager(peer *Peer, globalConf *config.GlobalConfig, peerConf *config
 
 func (mgr *FSMManager) Init() {
 	fsmId := uint8(config.ConnDirOut)
-	fsm := NewFSM(mgr, fsmId, mgr.Peer)
+	fsm := NewFSM(mgr, fsmId, mgr.neighborConf)
 	go fsm.StartFSM(NewIdleState(fsm))
 	mgr.fsms[fsmId] = fsm
 	fsm.passiveTcpEstCh <- true
 
 	for {
 		select {
-		case inConn := <-mgr.acceptCh:
+		case inConn := <-mgr.AcceptCh:
 			mgr.logger.Info(fmt.Sprintf("Neighbor %s: Received a connection OPEN from far end",
 				mgr.pConf.NeighborAddress))
 			if !mgr.acceptConn {
@@ -105,14 +126,14 @@ func (mgr *FSMManager) Init() {
 			newId := mgr.getNewId(newConn.id)
 			mgr.handleAnotherConnection(newId, newConn.connDir, newConn.conn)
 
-		case stopMsg := <-mgr.stopFSMCh:
+		case stopMsg := <-mgr.StopFSMCh:
 			mgr.StopFSM(stopMsg)
 
-		case <-mgr.closeCh:
+		case <-mgr.CloseCh:
 			mgr.Cleanup()
 			return
 
-		case command := <-mgr.commandCh:
+		case command := <-mgr.CommandCh:
 			event := BGPFSMEvent(command)
 			if (event == BGPEventManualStart) || (event == BGPEventManualStop) ||
 				(event == BGPEventManualStartPassTcpEst) {
@@ -161,7 +182,7 @@ func (mgr *FSMManager) fsmClose(id uint8) {
 func (mgr *FSMManager) fsmEstablished(id uint8, conn *net.Conn) {
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d connection established", mgr.pConf.NeighborAddress.String(), id))
 	mgr.activeFSM = id
-	mgr.Peer.Server.PeerFSMConnCh <- PeerFSMConn{mgr.Peer.Neighbor.NeighborAddress.String(), true, conn}
+	mgr.fsmConnCh <- PeerFSMConn{mgr.neighborConf.Neighbor.NeighborAddress.String(), true, conn}
 	//mgr.Peer.PeerConnEstablished(conn)
 }
 
@@ -169,14 +190,15 @@ func (mgr *FSMManager) fsmBroken(id uint8, fsmDelete bool) {
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d connection broken", mgr.pConf.NeighborAddress.String(), id))
 	if mgr.activeFSM == id {
 		mgr.activeFSM = uint8(config.ConnDirInvalid)
-		mgr.Peer.Server.PeerFSMConnCh <- PeerFSMConn{mgr.Peer.Neighbor.NeighborAddress.String(), false, nil}
+		mgr.fsmConnCh <- PeerFSMConn{mgr.neighborConf.Neighbor.NeighborAddress.String(), false, nil}
 		//mgr.Peer.PeerConnBroken(fsmDelete)
 	}
 }
 
 func (mgr *FSMManager) fsmStateChange(id uint8, state BGPFSMState) {
 	if mgr.activeFSM == id || mgr.activeFSM == uint8(config.ConnDirInvalid) {
-		mgr.Peer.FSMStateChange(state)
+		mgr.fsmStateCh <- PeerFSMState{mgr.neighborConf.Neighbor.NeighborAddress.String(), state}
+		//mgr.Peer.FSMStateChange(state)
 	}
 }
 
@@ -238,7 +260,7 @@ func (mgr *FSMManager) createFSMForNewConnection(id uint8, connDir config.ConnDi
 	}
 
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s Creating new FSM with id %d", mgr.pConf.NeighborAddress, id))
-	fsm := NewFSM(mgr, id, mgr.Peer)
+	fsm := NewFSM(mgr, id, mgr.neighborConf)
 
 	state = NewActiveState(fsm)
 	connCh := fsm.inConnCh
@@ -293,7 +315,9 @@ func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, 
 	if closeConnDir == config.ConnDirInvalid || closeConnDir != connDir {
 		asSize := packet.GetASSize(openMsg)
 		addPathFamily := packet.GetAddPathFamily(openMsg)
-		mgr.Peer.SetPeerAttrs(openMsg.BGPId, asSize, mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime, addPathFamily)
+		//mgr.Peer.SetPeerAttrs(openMsg.BGPId, asSize, mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime, addPathFamily)
+		mgr.peerAttrsCh <- PeerAttrs{mgr.neighborConf.Neighbor.NeighborAddress.String(), openMsg.BGPId, asSize,
+			mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime, addPathFamily}
 	}
 
 	if closeConnDir == connDir {
