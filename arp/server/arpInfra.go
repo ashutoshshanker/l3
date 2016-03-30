@@ -203,6 +203,10 @@ func (server *ARPServer) processL3StateChange(msg asicdConstDefs.L3IntfStateNoti
 	}
 }
 
+func (server *ARPServer) processIPv4NbrMacMove(msg asicdConstDefs.IPv4NbrMacMoveNotifyMsg) {
+	server.arpEntryMacMoveCh <- msg
+}
+
 /*
 
 func (server *ARPServer)processL2StateChange(msg asicdConstDefs.L2IntfStateNotifyMsg) {

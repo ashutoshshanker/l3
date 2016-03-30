@@ -1,8 +1,11 @@
 package server
 
 import (
+	"asicd/asicdConstDefs"
 	"encoding/json"
 	"fmt"
+	"git.apache.org/thrift.git/lib/go/thrift"
+	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -11,10 +14,6 @@ import (
 	"time"
 	"utils/ipcutils"
 	"utils/logging"
-	//"asicd/asicdConstDefs"
-	"asicd/pluginManager/pluginCommon"
-	"git.apache.org/thrift.git/lib/go/thrift"
-	nanomsg "github.com/op/go-nanomsg"
 	//"github.com/google/gopacket/pcap"
 	"asicdServices"
 	//"utils/commonDefs"
@@ -95,6 +94,7 @@ type ARPServer struct {
 	arpEntryUpdateCh        chan UpdateArpEntryMsg
 	arpEntryDeleteCh        chan DeleteArpEntryMsg
 	//arpEntryCreateCh        chan CreateArpEntryMsg
+	arpEntryMacMoveCh      chan asicdConstDefs.IPv4NbrMacMoveNotifyMsg
 	arpEntryCntUpdateCh    chan int
 	arpSliceRefreshStartCh chan bool
 	arpSliceRefreshDoneCh  chan bool
@@ -223,7 +223,7 @@ func (server *ARPServer) InitServer(paramDir string) {
 	server.logger.Info("Starting Arp Server")
 	server.connectToClients(fileName)
 	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
+	server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
 	server.buildArpInfra()
 
