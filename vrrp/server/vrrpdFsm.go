@@ -121,7 +121,6 @@ func (svr *VrrpServer) VrrpUpdateStateInfo(key string, reason string,
 func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 	var timerCheck_func func()
 	timerCheck_func = func() {
-		svr.logger.Info(fmt.Sprintln("time to send advertisement to backup"))
 		// Send advertisment every time interval expiration
 		svr.vrrpTxPktCh <- VrrpTxChannelInfo{
 			key:      key,
@@ -132,7 +131,6 @@ func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 			svr.logger.Err("Gbl Config for " + key + " doesn't exists")
 			return
 		}
-		svr.logger.Info("resetting advertisement timer")
 		gblInfo.AdverTimer.Reset(
 			time.Duration(gblInfo.IntfConfig.AdvertisementInterval) *
 				time.Second)

@@ -1001,6 +1001,10 @@ func (server *BGPServer) UpdatePeerGroupInPeers(groupName string, peerGroup *con
 func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.AS = gConf.AS
 	server.BgpConfig.Global.Config.RouterId = gConf.RouterId
+	server.BgpConfig.Global.Config.UseMultiplePaths = gConf.UseMultiplePaths
+	server.BgpConfig.Global.Config.EBGPMaxPaths = gConf.EBGPMaxPaths
+	server.BgpConfig.Global.Config.EBGPAllowMultipleAS = gConf.EBGPAllowMultipleAS
+	server.BgpConfig.Global.Config.IBGPMaxPaths = gConf.IBGPMaxPaths
 }
 
 func (server *BGPServer) ProcessBfd(peer *Peer) {
@@ -1081,10 +1085,20 @@ func (server *BGPServer) clearInterfaceMapForPeer(peerIP string, peer *Peer) {
 	peer.setIfIdx(-1)
 }
 
+func (server *BGPServer) constructBGPGlobalState(gConf *config.GlobalConfig) {
+	server.BgpConfig.Global.State.AS = gConf.AS
+	server.BgpConfig.Global.State.RouterId = gConf.RouterId
+	server.BgpConfig.Global.State.UseMultiplePaths = gConf.UseMultiplePaths
+	server.BgpConfig.Global.State.EBGPMaxPaths = gConf.EBGPMaxPaths
+	server.BgpConfig.Global.State.EBGPAllowMultipleAS = gConf.EBGPAllowMultipleAS
+	server.BgpConfig.Global.State.IBGPMaxPaths = gConf.IBGPMaxPaths
+}
+
 func (server *BGPServer) StartServer() {
 	gConf := <-server.GlobalConfigCh
 	server.logger.Info(fmt.Sprintln("Recieved global conf:", gConf))
 	server.BgpConfig.Global.Config = gConf
+	server.constructBGPGlobalState(&gConf)
 	server.BgpConfig.PeerGroups = make(map[string]*config.PeerGroup)
 
 	pathAttrs := packet.ConstructPathAttrForConnRoutes(gConf.RouterId, gConf.AS)
@@ -1130,6 +1144,7 @@ func (server *BGPServer) StartServer() {
 			packet.SetNextHopPathAttrs(server.connRoutesPath.PathAttrs, gConf.RouterId)
 			server.RemoveRoutesFromAllNeighbor()
 			server.copyGlobalConf(gConf)
+			server.constructBGPGlobalState(&gConf)
 			for _, peer := range server.PeerMap {
 				peer.Init()
 			}
