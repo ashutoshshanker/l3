@@ -3,137 +3,111 @@ package rpc
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"git.apache.org/thrift.git/lib/go/thrift"
 	_ "github.com/mattn/go-sqlite3"
+	vxlan "l3/tunnel/vxlan/protocol"
+	"utils/logging"
 	"vxland"
-	//"time"
-	//"errors"
 )
 
 const DBName string = "UsrConfDb.db"
 
 type VXLANDServiceHandler struct {
+	server *vxlan.VXLANServer
+	logger *logging.Writer
 }
 
-func NewVXLANDServiceHandler() *VXLANDServiceHandler {
+func NewVXLANDServiceHandler(server *vxlan.VXLANServer, logger *logging.Writer) *VXLANDServiceHandler {
 	//lacp.LacpStartTime = time.Now()
 	// link up/down events for now
 	//startEvtHandler()
-	return &VXLANDServiceHandler{}
+	handler := &VXLANDServiceHandler{
+		server: server,
+		logger: logger,
+	}
+
+	// lets read the current config and re-play the config
+	handler.ReadConfigFromDB()
+
+	return handler
 }
 
-func (v *VXLANDServiceHandler) CreateVxlanVxlanInstanceAccessTypeL3interfaceL3interface(config *vxland.VxlanVxlanInstanceAccessTypeL3interfaceL3interface) (bool, error) {
-	fmt.Println("CreateVxlanVxlanInstanceAccessTypeL3interfaceL3interface %#v", config)
+func (v *VXLANDServiceHandler) StartThriftServer() {
+
+	var transport thrift.TServerTransport
+	var err error
+
+	fileName := v.server.Paramspath + "clients.json"
+	port := vxlan.GetClientPort(fileName, "vxland")
+	if port != 0 {
+		addr := fmt.Sprintf("localhost:%d", port)
+		transport, err = thrift.NewTServerSocket(addr)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to create Socket with:", addr))
+		}
+
+		processor := vxland.NewVXLANDServicesProcessor(v)
+		transportFactory := thrift.NewTBufferedTransportFactory(8192)
+		protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
+		thriftserver := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)
+
+		err = thriftserver.Serve()
+		panic(err)
+	}
+	panic(errors.New("Unable to find vxland port"))
+}
+
+func (v *VXLANDServiceHandler) CreateVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
+	v.logger.Info(fmt.Sprintf("CreateVxlanConfigInstance %#v", config))
+
+	v.server.Configchans.Vxlancreate <- *(v.server.ConvertVxlanInstanceToVxlanConfig(config))
 	return true, nil
 }
 
-func (v *VXLANDServiceHandler) DeleteVxlanVxlanInstanceAccessTypeL3interfaceL3interface(config *vxland.VxlanVxlanInstanceAccessTypeL3interfaceL3interface) (bool, error) {
-	fmt.Println("DeleteVxlanVxlanInstanceAccessTypeL3interfaceL3interface %#v", config)
+func (v *VXLANDServiceHandler) DeleteVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
+	v.logger.Info(fmt.Sprintf("DeleteVxlanConfigInstance %#v", config))
+	v.server.Configchans.Vxlandelete <- *(v.server.ConvertVxlanInstanceToVxlanConfig(config))
 	return true, nil
 }
 
-func (v *VXLANDServiceHandler) UpdateVxlanVxlanInstanceAccessTypeL3interfaceL3interface(origconfig *vxland.VxlanVxlanInstanceAccessTypeL3interfaceL3interface, newconfig *vxland.VxlanVxlanInstanceAccessTypeL3interfaceL3interface, attrset []bool) (bool, error) {
-	fmt.Println("UpdateVxlanVxlanInstanceAccessTypeL3interfaceL3interface orig[%#v] new[%#v]", origconfig, newconfig)
+func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInstance, newconfig *vxland.VxlanInstance, attrset []bool) (bool, error) {
+	v.logger.Info(fmt.Sprintf("UpdateVxlanConfigInstance orig[%#v] new[%#v]", origconfig, newconfig))
+	update := vxlan.VxlanUpdate{
+		Oldconfig: *(v.server.ConvertVxlanInstanceToVxlanConfig(origconfig)),
+		Newconfig: *(v.server.ConvertVxlanInstanceToVxlanConfig(newconfig)),
+		Attr:      attrset,
+	}
+	v.server.Configchans.Vxlanupdate <- update
 	return true, nil
 }
 
-func (v *VXLANDServiceHandler) CreateVxlanVxlanInstanceVxlanEvpnVpnTargets(config *vxland.VxlanVxlanInstanceVxlanEvpnVpnTargets) (bool, error) {
-	fmt.Println("CreateVxlanVxlanInstanceVxlanEvpnVpnTargets %#v", config)
+func (v *VXLANDServiceHandler) CreateVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
+	v.logger.Info(fmt.Sprintf("CreateVxlanVtepInstances %#v", config))
+	v.server.Configchans.Vtepcreate <- *(v.server.ConvertVxlanVtepInstanceToVtepConfig(config))
 	return true, nil
 }
 
-func (v *VXLANDServiceHandler) DeleteVxlanVxlanInstanceVxlanEvpnVpnTargets(config *vxland.VxlanVxlanInstanceVxlanEvpnVpnTargets) (bool, error) {
-	fmt.Println("DeleteVxlanVxlanInstanceVxlanEvpnVpnTargets %#v", config)
+func (v *VXLANDServiceHandler) DeleteVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
+	v.logger.Info(fmt.Sprintf("DeleteVxlanVtepInstances %#v", config))
+	v.server.Configchans.Vtepdelete <- *(v.server.ConvertVxlanVtepInstanceToVtepConfig(config))
 	return true, nil
 }
 
-func (v *VXLANDServiceHandler) UpdateVxlanVxlanInstanceVxlanEvpnVpnTargets(origconfig *vxland.VxlanVxlanInstanceVxlanEvpnVpnTargets, newconfig *vxland.VxlanVxlanInstanceVxlanEvpnVpnTargets, attrset []bool) (bool, error) {
-	fmt.Println("UpdateVxlanVxlanInstanceVxlanEvpnVpnTargets orig[%#v] new[%#v]", origconfig, newconfig)
+func (v *VXLANDServiceHandler) UpdateVxlanVtepInstances(origconfig *vxland.VxlanVtepInstances, newconfig *vxland.VxlanVtepInstances, attrset []bool) (bool, error) {
+	v.logger.Info(fmt.Sprintf("UpdateVxlanVtepInstances orig[%#v] new[%#v]", origconfig, newconfig))
+	update := vxlan.VtepUpdate{
+		Oldconfig: *(v.server.ConvertVxlanVtepInstanceToVtepConfig(origconfig)),
+		Newconfig: *(v.server.ConvertVxlanVtepInstanceToVtepConfig(newconfig)),
+		Attr:      attrset,
+	}
+	v.server.Configchans.Vtepupdate <- update
 	return true, nil
 }
 
-func (v *VXLANDServiceHandler) CreateVxlanVxlanInstanceAccessTypeMac(config *vxland.VxlanVxlanInstanceAccessTypeMac) (bool, error) {
-	fmt.Println("CreateVxlanVxlanInstanceAccessTypeMac %#v", config)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) DeleteVxlanVxlanInstanceAccessTypeMac(config *vxland.VxlanVxlanInstanceAccessTypeMac) (bool, error) {
-	fmt.Println("DeleteVxlanVxlanInstanceAccessTypeMac %#v", config)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) UpdateVxlanVxlanInstanceAccessTypeMac(origconfig *vxland.VxlanVxlanInstanceAccessTypeMac, newconfig *vxland.VxlanVxlanInstanceAccessTypeMac, attrset []bool) (bool, error) {
-	fmt.Println("UpdateVxlanVxlanInstanceAccessTypeMac orig[%#v] new[%#v]", origconfig, newconfig)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) CreateVxlanInterfacesInterfaceStaticVxlanTunnelAddressFamilyBindVxlanId(config *vxland.VxlanInterfacesInterfaceStaticVxlanTunnelAddressFamilyBindVxlanId) (bool, error) {
-	fmt.Println("CreateVxlanInterfacesInterfaceStaticVxlanTunnelAddressFamilyBindVxlanId %#v", config)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) DeleteVxlanInterfacesInterfaceStaticVxlanTunnelAddressFamilyBindVxlanId(config *vxland.VxlanInterfacesInterfaceStaticVxlanTunnelAddressFamilyBindVxlanId) (bool, error) {
-	fmt.Println("DeleteVxlanInterfacesInterfaceStaticVxlanTunnelAddressFamilyBindVxlanId %#v", config)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) UpdateVxlanInterfacesInterfaceStaticVxlanTunnelAddressFamilyBindVxlanId(origconfig *vxland.VxlanInterfacesInterfaceStaticVxlanTunnelAddressFamilyBindVxlanId, newconfig *vxland.VxlanInterfacesInterfaceStaticVxlanTunnelAddressFamilyBindVxlanId, attrset []bool) (bool, error) {
-	fmt.Println("UpdateVxlanInterfacesInterfaceStaticVxlanTunnelAddressFamilyBindVxlanId orig[%#v] new[%#v]", origconfig, newconfig)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) CreateVxlanInterfacesInterfaceVtepInstancesBindVxlanId(config *vxland.VxlanInterfacesInterfaceVtepInstancesBindVxlanId) (bool, error) {
-	fmt.Println("CreateVxlanInterfacesInterfaceVtepInstancesBindVxlanId %#v", config)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) DeleteVxlanInterfacesInterfaceVtepInstancesBindVxlanId(config *vxland.VxlanInterfacesInterfaceVtepInstancesBindVxlanId) (bool, error) {
-	fmt.Println("DeleteVxlanInterfacesInterfaceVtepInstancesBindVxlanId %#v", config)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) UpdateVxlanInterfacesInterfaceVtepInstancesBindVxlanId(origconfig *vxland.VxlanInterfacesInterfaceVtepInstancesBindVxlanId, newconfig *vxland.VxlanInterfacesInterfaceVtepInstancesBindVxlanId, attrset []bool) (bool, error) {
-	fmt.Println("UpdateVxlanInterfacesInterfaceVtepInstancesBindVxlanId orig[%#v] new[%#v]", origconfig, newconfig)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) CreateVxlanVxlanInstanceAccessTypeVlanVlanList(config *vxland.VxlanVxlanInstanceAccessTypeVlanVlanList) (bool, error) {
-	fmt.Println("CreateVxlanVxlanInstanceAccessTypeVlanVlanList %#v", config)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) DeleteVxlanVxlanInstanceAccessTypeVlanVlanList(config *vxland.VxlanVxlanInstanceAccessTypeVlanVlanList) (bool, error) {
-	fmt.Println("DeleteVxlanVxlanInstanceAccessTypeVlanVlanList %#v", config)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) UpdateVxlanVxlanInstanceAccessTypeVlanVlanList(origconfig *vxland.VxlanVxlanInstanceAccessTypeVlanVlanList, newconfig *vxland.VxlanVxlanInstanceAccessTypeVlanVlanList, attrset []bool) (bool, error) {
-	fmt.Println("UpdateVxlanVxlanInstanceAccessTypeVlanVlanList orig[%#v] new[%#v]", origconfig, newconfig)
-	return true, nil
-}
-
-func (v *VXLANDServiceHandler) GetBulkVxlanStateVxlanInstanceVxlanEvpnVpnTargets(fromIndex vxland.Int, count vxland.Int) (obj *vxland.VxlanStateVxlanInstanceVxlanEvpnVpnTargetsGetInfo, err error) {
-	return obj, err
-}
-
-func (v *VXLANDServiceHandler) GetBulkVxlanStateStaticVxlanTunnelAddressFamilyBindVxlanId(fromIndex vxland.Int, count vxland.Int) (obj *vxland.VxlanStateStaticVxlanTunnelAddressFamilyBindVxlanIdGetInfo, err error) {
-	return obj, err
-}
-
-func (v *VXLANDServiceHandler) GetBulkVxlanStateVxlanInstanceAccessVlan(fromIndex vxland.Int, count vxland.Int) (obj *vxland.VxlanStateVxlanInstanceAccessVlanGetInfo, err error) {
-	return obj, err
-}
-
-func (v *VXLANDServiceHandler) GetBulkVxlanStateVxlanInstanceMapL3interface(fromIndex vxland.Int, count vxland.Int) (obj *vxland.VxlanStateVxlanInstanceMapL3interfaceGetInfo, err error) {
-	return obj, err
-}
-
-func (v *VXLANDServiceHandler) GetBulkVxlanStateVtepInstanceBindVxlanId(fromIndex vxland.Int, count vxland.Int) (obj *vxland.VxlanStateVtepInstanceBindVxlanIdGetInfo, err error) {
-	return obj, err
-}
-
-func (s *VXLANDServiceHandler) ReadConfigFromDB(filePath string) error {
-	var dbPath string = filePath + DBName
+func (v *VXLANDServiceHandler) ReadConfigFromDB() error {
+	var dbPath string = v.server.Paramspath + DBName
 
 	dbHdl, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
