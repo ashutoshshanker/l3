@@ -381,7 +381,7 @@ func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string, neighborIfInd
 	} else if neighborIfIndex != 0 {
 		//neighbor address is a ifIndex
 		var ipv4Intf string
-		ipv4Intf, err = h.server.AsicdClient.GetIPv4Intf(neighborIfIndex)
+		ipv4Intf, err = h.server.AsicdClient.GetIPv4IntfByIfIndex(neighborIfIndex)
 		if err == nil {
 			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Call ASICd to get ip address for interface with ifIndex: ", neighborIfIndex))
 			ifIP, ipMask, err := net.ParseCIDR(ipv4Intf)
