@@ -9,33 +9,38 @@ import (
 func (m RIBDServicesHandler) CreatePolicyAction(cfg *ribd.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	//m.PolicyActionCreateConfCh <- cfg
-	m.ProcessPolicyActionConfigCreate(cfg)
+	val,err=m.ProcessPolicyActionConfigCreate(cfg)
 	return val, err
 }
 
 func (m RIBDServicesHandler) ProcessPolicyActionConfigCreate(cfg *ribd.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigCreate:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name, ActionType: cfg.ActionType, SetAdminDistanceValue: int(cfg.SetAdminDistanceValue), Accept: cfg.Accept, Reject: cfg.Reject, RedistributeAction: cfg.RedistributeAction, RedistributeTargetProtocol: cfg.RedistributeTargetProtocol, NetworkStatementTargetProtocol: cfg.NetworkStatementTargetProtocol}
-	err = PolicyEngineDB.CreatePolicyAction(newAction)
-	return val, err
+	val,err = PolicyEngineDB.CreatePolicyAction(newAction)
+	return val,err
 }
 
 func (m RIBDServicesHandler) DeletePolicyAction(cfg *ribd.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	//m.PolicyActionDeleteConfCh <- cfg
-	m.ProcessPolicyActionConfigDelete(cfg)
+	val,err=m.ProcessPolicyActionConfigDelete(cfg)
 	return val, err
 }
 
 func (m RIBDServicesHandler) ProcessPolicyActionConfigDelete(cfg *ribd.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigDelete:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name}
-	err = PolicyEngineDB.DeletePolicyAction(newAction)
-	return val, err
+	val,err = PolicyEngineDB.DeletePolicyAction(newAction)
+	return val,err
 }
 func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribd.PolicyAction , newconfig *ribd.PolicyAction , attrset []bool) (val bool, err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyAction"))
 	return true,err
+}
+func (m RIBDServicesHandler) GetPolicyActionState(state *ribd.PolicyActionState) (*ribd.PolicyActionState, error) {
+	logger.Info("Get state for Policy Action")
+	retState := ribd.NewPolicyActionState()
+	return retState,nil
 }
 func (m RIBDServicesHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyActionState"))

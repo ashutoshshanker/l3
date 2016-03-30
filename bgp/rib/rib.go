@@ -4,9 +4,11 @@ package server
 import (
 	"bgpd"
 	"fmt"
+	"l3/bgp/baseobjects"
 	"l3/bgp/config"
 	"l3/bgp/packet"
 	"net"
+	"ribd"
 	"sync"
 	"time"
 	"utils/logging"
@@ -16,8 +18,9 @@ const ResetTime int = 120
 const AggregatePathId uint32 = 0
 
 type AdjRib struct {
-	server         *BGPServer
 	logger         *logging.Writer
+	gConf          *config.GlobalConfig
+	ribdClient     *ribd.RIBDServicesClient
 	destPathMap    map[string]*Destination
 	routeList      []*Route
 	routeMutex     sync.RWMutex
@@ -26,10 +29,11 @@ type AdjRib struct {
 	timer          *time.Timer
 }
 
-func NewAdjRib(server *BGPServer) *AdjRib {
+func NewAdjRib(logger *logging.Writer, ribdClient *ribd.RIBDServicesClient, gConf *config.GlobalConfig) *AdjRib {
 	rib := &AdjRib{
-		server:         server,
-		logger:         server.logger,
+		logger:         logger,
+		gConf:          gConf,
+		ribdClient:     ribdClient,
 		destPathMap:    make(map[string]*Destination),
 		routeList:      make([]*Route, 0),
 		routeListDirty: false,
@@ -51,7 +55,7 @@ func isIpInList(prefixes []packet.NLRI, ip packet.NLRI) bool {
 	return false
 }
 
-func (adjRib *AdjRib) getDestFromIPAndLen(ip string, cidrLen uint32) *Destination {
+func (adjRib *AdjRib) GetDestFromIPAndLen(ip string, cidrLen uint32) *Destination {
 	if dest, ok := adjRib.destPathMap[ip]; ok {
 		return dest
 	}
@@ -59,10 +63,10 @@ func (adjRib *AdjRib) getDestFromIPAndLen(ip string, cidrLen uint32) *Destinatio
 	return nil
 }
 
-func (adjRib *AdjRib) getDest(nlri packet.NLRI, createIfNotExist bool) (*Destination, bool) {
+func (adjRib *AdjRib) GetDest(nlri packet.NLRI, createIfNotExist bool) (*Destination, bool) {
 	dest, ok := adjRib.destPathMap[nlri.GetPrefix().Prefix.String()]
 	if !ok && createIfNotExist {
-		dest = NewDestination(adjRib.server, nlri.GetPrefix())
+		dest = NewDestination(adjRib, nlri.GetPrefix(), adjRib.gConf)
 		adjRib.destPathMap[nlri.GetPrefix().Prefix.String()] = dest
 	}
 
@@ -83,7 +87,7 @@ func (adjRib *AdjRib) updateRibOutInfo(action RouteAction, addPathsMod bool, add
 	dest *Destination, withdrawn []*Destination, updated map[*Path][]*Destination, updatedAddPaths []*Destination) (
 	[]*Destination, map[*Path][]*Destination, []*Destination) {
 	if action == RouteActionAdd || action == RouteActionReplace {
-		updated[dest.locRibPath] = append(updated[dest.locRibPath], dest)
+		updated[dest.LocRibPath] = append(updated[dest.LocRibPath], dest)
 	} else if action == RouteActionDelete {
 		withdrawn = append(withdrawn, dest)
 	} else if addPathsMod {
@@ -104,7 +108,7 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 	for _, nlri := range rem {
 		if !isIpInList(add, nlri) {
 			adjRib.logger.Info(fmt.Sprintln("Processing withdraw destination", nlri.GetPrefix().Prefix.String()))
-			dest, ok := adjRib.getDest(nlri, false)
+			dest, ok := adjRib.GetDest(nlri, false)
 			if !ok {
 				adjRib.logger.Warning(fmt.Sprintln("Can't process withdraw field. Destination does not exist, Dest:",
 					nlri.GetPrefix().Prefix.String()))
@@ -127,7 +131,7 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 
 	for _, nlri := range add {
 		adjRib.logger.Info(fmt.Sprintln("Processing nlri", nlri.GetPrefix().Prefix.String()))
-		dest, _ := adjRib.getDest(nlri, true)
+		dest, _ := adjRib.GetDest(nlri, true)
 		dest.AddOrUpdatePath(peerIP, nlri.GetPathId(), addPath)
 		action, addPathsMod, addRoutes, updRoutes, delRoutes := dest.SelectRouteForLocRib(addPathCount)
 		withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes,
@@ -137,15 +141,16 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 	return updated, withdrawn, updatedAddPaths
 }
 
-func (adjRib *AdjRib) ProcessUpdate(peer *Peer, pktInfo *packet.BGPPktSrc, addPathCount int) (map[*Path][]*Destination,
-	[]*Destination, *Path, []*Destination) {
+func (adjRib *AdjRib) ProcessUpdate(neighborConf *base.NeighborConf, pktInfo *packet.BGPPktSrc, addPathCount int) (
+	map[*Path][]*Destination, []*Destination, *Path, []*Destination) {
 	body := pktInfo.Msg.Body.(*packet.BGPUpdate)
 
-	remPath := NewPath(adjRib.server, peer, body.PathAttributes, true, false, RouteTypeEGP)
-	addPath := NewPath(adjRib.server, peer, body.PathAttributes, false, true, RouteTypeEGP)
+	remPath := NewPath(adjRib, neighborConf, body.PathAttributes, true, false, RouteTypeEGP)
+	addPath := NewPath(adjRib, neighborConf, body.PathAttributes, false, true, RouteTypeEGP)
 	//addPath.GetReachabilityInfo()
 	if !addPath.IsValid() {
-		adjRib.logger.Info(fmt.Sprintf("Received a update with our cluster id %d. Discarding the update.", addPath.peer.PeerConf.RouteReflectorClusterId))
+		adjRib.logger.Info(fmt.Sprintf("Received a update with our cluster id %d. Discarding the update.",
+			addPath.NeighborConf.RunningConf.RouteReflectorClusterId))
 		return nil, nil, nil, nil
 	}
 
@@ -166,9 +171,9 @@ func (adjRib *AdjRib) ProcessConnectedRoutes(src string, path *Path, add []packe
 	return updated, withdrawn, removePath, updatedAddPaths
 }
 
-func (adjRib *AdjRib) RemoveUpdatesFromNeighbor(peerIP string, peer *Peer, addPathCount int) (map[*Path][]*Destination,
-	[]*Destination, *Path, []*Destination) {
-	remPath := NewPath(adjRib.server, peer, nil, true, false, RouteTypeEGP)
+func (adjRib *AdjRib) RemoveUpdatesFromNeighbor(peerIP string, neighborConf *base.NeighborConf, addPathCount int) (
+	map[*Path][]*Destination, []*Destination, *Path, []*Destination) {
+	remPath := NewPath(adjRib, neighborConf, nil, true, false, RouteTypeEGP)
 	withdrawn := make([]*Destination, 0)
 	updated := make(map[*Path][]*Destination)
 	updatedAddPaths := make([]*Destination, 0)
@@ -176,13 +181,13 @@ func (adjRib *AdjRib) RemoveUpdatesFromNeighbor(peerIP string, peer *Peer, addPa
 	for destIP, dest := range adjRib.destPathMap {
 		dest.RemoveAllPaths(peerIP, remPath)
 		action, addPathsMod, addRoutes, updRoutes, delRoutes := dest.SelectRouteForLocRib(addPathCount)
-		adjRib.logger.Info(fmt.Sprintln("RemoveUpdatesFromNeighbor - dest", dest.ipPrefix.Prefix.String(),
+		adjRib.logger.Info(fmt.Sprintln("RemoveUpdatesFromNeighbor - dest", dest.IPPrefix.Prefix.String(),
 			"SelectRouteForLocRib returned action", action, "addRoutes", addRoutes, "updRoutes", updRoutes,
 			"delRoutes", delRoutes))
 		withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes,
 			delRoutes, dest, withdrawn, updated, updatedAddPaths)
 		if action == RouteActionDelete && dest.IsEmpty() {
-			adjRib.logger.Info(fmt.Sprintln("All routes removed for dest", dest.ipPrefix.Prefix.String()))
+			adjRib.logger.Info(fmt.Sprintln("All routes removed for dest", dest.IPPrefix.Prefix.String()))
 			delete(adjRib.destPathMap, destIP)
 		}
 	}
@@ -209,8 +214,8 @@ func (adjRib *AdjRib) RemoveUpdatesFromAllNeighbors(addPathCount int) {
 func (adjRib *AdjRib) GetLocRib() map[*Path][]*Destination {
 	updated := make(map[*Path][]*Destination)
 	for _, dest := range adjRib.destPathMap {
-		if dest.locRibPath != nil {
-			updated[dest.locRibPath] = append(updated[dest.locRibPath], dest)
+		if dest.LocRibPath != nil {
+			updated[dest.LocRibPath] = append(updated[dest.LocRibPath], dest)
 		}
 	}
 
@@ -229,18 +234,18 @@ func (adjRib *AdjRib) RemoveRouteFromAggregate(ip *packet.IPPrefix, aggIP *packe
 	updatedAddPaths := make([]*Destination, 0)
 
 	adjRib.logger.Info(fmt.Sprintf("AdjRib:RemoveRouteFromAggregate - ip %v, aggIP %v", ip, aggIP))
-	if dest, ok = adjRib.getDest(ip, false); !ok {
+	if dest, ok = adjRib.GetDest(ip, false); !ok {
 		if ipDest == nil {
 			adjRib.logger.Info(fmt.Sprintln("RemoveRouteFromAggregate: routes ip", ip, "not found"))
 			return updated, withdrawn, nil, nil
 		}
 		dest = ipDest
 	}
-	adjRib.logger.Info(fmt.Sprintln("RemoveRouteFromAggregate: locRibPath", dest.locRibPath, "locRibRoutePath", dest.locRibPathRoute.path))
-	path = dest.locRibPathRoute.path
-	remPath := NewPath(adjRib.server, nil, path.pathAttrs, true, false, path.routeType)
+	adjRib.logger.Info(fmt.Sprintln("RemoveRouteFromAggregate: locRibPath", dest.LocRibPath, "locRibRoutePath", dest.LocRibPathRoute.path))
+	path = dest.LocRibPathRoute.path
+	remPath := NewPath(adjRib, nil, path.PathAttrs, true, false, path.routeType)
 
-	if aggDest, ok = adjRib.getDest(aggIP, false); !ok {
+	if aggDest, ok = adjRib.GetDest(aggIP, false); !ok {
 		adjRib.logger.Info(fmt.Sprintf("AdjRib:RemoveRouteFromAggregate - dest not found for aggIP %v", aggIP))
 		return updated, withdrawn, nil, nil
 	}
@@ -281,14 +286,14 @@ func (adjRib *AdjRib) AddRouteToAggregate(ip *packet.IPPrefix, aggIP *packet.IPP
 	updatedAddPaths := make([]*Destination, 0)
 
 	adjRib.logger.Info(fmt.Sprintf("AdjRib:AddRouteToAggregate - ip %v, aggIP %v", ip, aggIP))
-	if dest, ok = adjRib.getDest(ip, false); !ok {
+	if dest, ok = adjRib.GetDest(ip, false); !ok {
 		adjRib.logger.Info(fmt.Sprintln("AddRouteToAggregate: routes ip", ip, "not found"))
 		return updated, withdrawn, nil, nil
 	}
-	path = dest.locRibPath
-	remPath := NewPath(adjRib.server, nil, path.pathAttrs, true, false, path.routeType)
+	path = dest.LocRibPath
+	remPath := NewPath(adjRib, nil, path.PathAttrs, true, false, path.routeType)
 
-	if aggDest, ok = adjRib.getDest(aggIP, true); ok {
+	if aggDest, ok = adjRib.GetDest(aggIP, true); ok {
 		aggPath = aggDest.getPathForIP(srcIP, AggregatePathId)
 		adjRib.logger.Info(fmt.Sprintf("AdjRib:AddRouteToAggregate - aggIP %v found in dest, agg path %v", aggIP, aggPath))
 	}
@@ -306,12 +311,12 @@ func (adjRib *AdjRib) AddRouteToAggregate(ip *packet.IPPrefix, aggIP *packet.IPP
 		}
 	} else {
 		adjRib.logger.Info(fmt.Sprintf("AdjRib:AddRouteToAggregate - aggIP %v, agg path NOT found, create new path", aggIP))
-		pathAttrs := packet.ConstructPathAttrForAggRoutes(path.pathAttrs, bgpAgg.GenerateASSet)
+		pathAttrs := packet.ConstructPathAttrForAggRoutes(path.PathAttrs, bgpAgg.GenerateASSet)
 		packet.SetNextHopPathAttrs(pathAttrs, ifaceIP)
-		packet.SetPathAttrAggregator(pathAttrs, adjRib.server.BgpConfig.Global.Config.AS, adjRib.server.BgpConfig.Global.Config.RouterId)
-		aggPath = NewPath(path.server, nil, pathAttrs, false, true, RouteTypeAgg)
+		packet.SetPathAttrAggregator(pathAttrs, adjRib.gConf.AS, adjRib.gConf.RouterId)
+		aggPath = NewPath(path.rib, nil, pathAttrs, false, true, RouteTypeAgg)
 		aggPath.setAggregatedPath(ip.Prefix.String(), path)
-		aggDest, _ := adjRib.getDest(aggIP, true)
+		aggDest, _ := adjRib.GetDest(aggIP, true)
 		aggDest.AddOrUpdatePath(srcIP, AggregatePathId, aggPath)
 		aggDest.addAggregatedDests(ip.Prefix.String(), dest)
 		action, addPathsMod, addRoutes, updRoutes, delRoutes := aggDest.SelectRouteForLocRib(addPathCount)
@@ -389,12 +394,12 @@ func (adjRib *AdjRib) ResetRouteList() {
 	adjRib.routeListDirty = false
 }
 
-func (adjRib *AdjRib) GetBGPRoutes(prefix string) []*bgpd.BGPRoute {
+func (adjRib *AdjRib) GetBGPRoute(prefix string) *bgpd.BGPRoute {
 	defer adjRib.routeMutex.RUnlock()
 	adjRib.routeMutex.RLock()
 
 	if dest, ok := adjRib.destPathMap[prefix]; ok {
-		return dest.GetBGPRoutes()
+		return dest.GetBGPRoute()
 	}
 
 	return nil

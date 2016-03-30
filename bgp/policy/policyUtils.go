@@ -4,6 +4,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	bgprib "l3/bgp/rib"
 	"l3/bgp/utils"
 	"net"
 	"strconv"
@@ -152,7 +153,7 @@ func GetNetworkPrefixFromCIDR(ipAddr string) (ipPrefix patriciaDB.Prefix, err er
 	return patriciaDB.Prefix(destNet), err
 }
 
-func (eng *BGPPolicyEngine) DeleteRoutePolicyState(route *Route, policyName string) {
+func (eng *BGPPolicyEngine) DeleteRoutePolicyState(route *bgprib.Route, policyName string) {
 	utils.Logger.Info(fmt.Sprintln("deleteRoutePolicyState"))
 	found := false
 	idx := 0
@@ -174,32 +175,32 @@ func (eng *BGPPolicyEngine) DeleteRoutePolicyState(route *Route, policyName stri
 	route.PolicyList = append(route.PolicyList[:idx], route.PolicyList[idx+1:]...)
 }
 
-func deleteRoutePolicyStateAll(route *Route) {
+func deleteRoutePolicyStateAll(route *bgprib.Route) {
 	utils.Logger.Info(fmt.Sprintln("deleteRoutePolicyStateAll"))
 	route.PolicyList = nil
 	return
 }
 
-func deletePolicyRouteMapEntry(route *Route, policy string) {
-	utils.Logger.Info(fmt.Sprintln("deletePolicyRouteMapEntry for policy ", policy, "route ", route.bgpRoute.Network, "/",
-		route.bgpRoute.CIDRLen))
+func deletePolicyRouteMapEntry(route *bgprib.Route, policy string) {
+	utils.Logger.Info(fmt.Sprintln("deletePolicyRouteMapEntry for policy ", policy, "route ", route.BGPRoute.Network, "/",
+		route.BGPRoute.CIDRLen))
 	if PolicyRouteMap == nil {
 		utils.Logger.Info(fmt.Sprintln("PolicyRouteMap empty"))
 		return
 	}
-	destNetIP := route.bgpRoute.Network + "/" + strconv.Itoa(int(route.bgpRoute.CIDRLen))
+	destNetIP := route.BGPRoute.Network + "/" + strconv.Itoa(int(route.BGPRoute.CIDRLen))
 	policyRouteIndex := PolicyRouteIndex{DestNetIP: destNetIP, Policy: policy}
 	//PolicyRouteMap[policyRouteIndex].policyStmtMap=nil
 	delete(PolicyRouteMap, policyRouteIndex)
 }
 
-func addRoutePolicyState(route *Route, policy string, policyStmt string) {
+func addRoutePolicyState(route *bgprib.Route, policy string, policyStmt string) {
 	utils.Logger.Info(fmt.Sprintln("addRoutePolicyState"))
 	route.PolicyList = append(route.PolicyList, policy)
 	return
 }
 
-func UpdateRoutePolicyState(route *Route, op int, policy string, policyStmt string) {
+func UpdateRoutePolicyState(route *bgprib.Route, op int, policy string, policyStmt string) {
 	utils.Logger.Info(fmt.Sprintln("updateRoutePolicyState"))
 	if op == DelAll {
 		deleteRoutePolicyStateAll(route)
@@ -209,12 +210,12 @@ func UpdateRoutePolicyState(route *Route, op int, policy string, policyStmt stri
 	}
 }
 
-func (eng *BGPPolicyEngine) addPolicyRouteMap(route *Route, policy string) {
+func (eng *BGPPolicyEngine) addPolicyRouteMap(route *bgprib.Route, policy string) {
 	utils.Logger.Info(fmt.Sprintln("addPolicyRouteMap"))
 	//policy.hitCounter++
 	//ipPrefix, err := getNetowrkPrefixFromStrings(route.Network, route.Mask)
 	var newRoute string
-	newRoute = route.bgpRoute.Network + "/" + strconv.Itoa(int(route.bgpRoute.CIDRLen))
+	newRoute = route.BGPRoute.Network + "/" + strconv.Itoa(int(route.BGPRoute.CIDRLen))
 	ipPrefix, err := GetNetworkPrefixFromCIDR(newRoute)
 	if err != nil {
 		utils.Logger.Info(fmt.Sprintln("Invalid ip prefix"))
@@ -247,12 +248,12 @@ func (eng *BGPPolicyEngine) addPolicyRouteMap(route *Route, policy string) {
 	found = false
 	utils.Logger.Info(fmt.Sprintln("routeInfoList details"))
 	for i := 0; i < len(policyExtensions.RouteInfoList); i++ {
-		utils.Logger.Info(fmt.Sprintln("IP: ", policyExtensions.RouteInfoList[i].bgpRoute.Network, "/",
-			policyExtensions.RouteInfoList[i].bgpRoute.CIDRLen, " nextHop: ",
-			policyExtensions.RouteInfoList[i].bgpRoute.NextHop))
-		if policyExtensions.RouteInfoList[i].bgpRoute.Network == route.bgpRoute.Network &&
-			policyExtensions.RouteInfoList[i].bgpRoute.CIDRLen == route.bgpRoute.CIDRLen &&
-			policyExtensions.RouteInfoList[i].bgpRoute.NextHop == route.bgpRoute.NextHop {
+		utils.Logger.Info(fmt.Sprintln("IP: ", policyExtensions.RouteInfoList[i].BGPRoute.Network, "/",
+			policyExtensions.RouteInfoList[i].BGPRoute.CIDRLen, " nextHop: ",
+			policyExtensions.RouteInfoList[i].BGPRoute.NextHop))
+		if policyExtensions.RouteInfoList[i].BGPRoute.Network == route.BGPRoute.Network &&
+			policyExtensions.RouteInfoList[i].BGPRoute.CIDRLen == route.BGPRoute.CIDRLen &&
+			policyExtensions.RouteInfoList[i].BGPRoute.NextHop == route.BGPRoute.NextHop {
 			utils.Logger.Info(fmt.Sprintln("route already is a part of ", policy, "'s routeInfolist"))
 			found = true
 		}
@@ -263,11 +264,11 @@ func (eng *BGPPolicyEngine) addPolicyRouteMap(route *Route, policy string) {
 	eng.PolicyEngine.PolicyDB.Set(patriciaDB.Prefix(policy), tempPolicy)
 }
 
-func deletePolicyRouteMap(route *Route, policy string) {
+func deletePolicyRouteMap(route *bgprib.Route, policy string) {
 	fmt.Println("deletePolicyRouteMap")
 }
 
-func (eng *BGPPolicyEngine) UpdatePolicyRouteMap(route *Route, policy string, op int) {
+func (eng *BGPPolicyEngine) UpdatePolicyRouteMap(route *bgprib.Route, policy string, op int) {
 	utils.Logger.Info(fmt.Sprintln("updatePolicyRouteMap"))
 	if op == Add {
 		eng.addPolicyRouteMap(route, policy)

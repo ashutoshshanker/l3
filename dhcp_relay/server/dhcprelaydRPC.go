@@ -289,3 +289,27 @@ func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayIntfServerState(fromIndex dhcp
 
 	return intfServerEntry, err
 }
+
+func (h *DhcpRelayServiceHandler) GetDhcpRelayHostDhcpState(
+	state *dhcprelayd.DhcpRelayHostDhcpState) (*dhcprelayd.DhcpRelayHostDhcpState,
+	error) {
+	logger.Info("Get State Info for host")
+	response := dhcprelayd.NewDhcpRelayHostDhcpState()
+	return response, nil
+}
+
+func (h *DhcpRelayServiceHandler) GetDhcpRelayIntfServerState(
+	state *dhcprelayd.DhcpRelayIntfServerState) (*dhcprelayd.DhcpRelayIntfServerState,
+	error) {
+	logger.Info("Get State Info for interface server")
+	response := dhcprelayd.NewDhcpRelayIntfServerState()
+	return response, nil
+}
+
+func (h *DhcpRelayServiceHandler) GetDhcpRelayIntfState(
+	state *dhcprelayd.DhcpRelayIntfState) (*dhcprelayd.DhcpRelayIntfState,
+	error) {
+	logger.Info("Get State Info for interface")
+	response := dhcprelayd.NewDhcpRelayIntfState()
+	return response, nil
+}
