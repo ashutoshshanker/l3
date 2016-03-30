@@ -92,3 +92,8 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
 	m.RouteUpdateConfCh <- routeUpdateConfig
 	return true, nil
 }
+func (m RIBDServicesHandler) GetIPv4RouteState(state *ribd.IPv4RouteState) (*ribd.IPv4RouteState, error) {
+	logger.Info("Get state for IPv4Route")
+	route := ribd.NewIPv4RouteState()
+	return route,nil
+}

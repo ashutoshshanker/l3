@@ -214,3 +214,15 @@ func (h *VrrpHandler) GetBulkVrrpVridState(fromIndex vrrpd.Int,
 	vridEntryBulk.More = (nextIdx != 0)
 	return vridEntryBulk, nil
 }
+
+func (h *VrrpHandler) GetVrrpIntfState(state *vrrpd.VrrpIntfState) (*vrrpd.VrrpIntfState, error) {
+	h.logger.Info("Get State Info for vrrp interface")
+	response := vrrpd.NewVrrpIntfState()
+	return response, nil
+}
+
+func (h *VrrpHandler) GetVrrpVridState(state *vrrpd.VrrpVridState) (*vrrpd.VrrpVridState, error) {
+	h.logger.Info("Get State Info for vrrp vrid")
+	response := vrrpd.NewVrrpVridState()
+	return response, nil
+}
