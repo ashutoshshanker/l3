@@ -394,12 +394,12 @@ func (adjRib *AdjRib) ResetRouteList() {
 	adjRib.routeListDirty = false
 }
 
-func (adjRib *AdjRib) GetBGPRoutes(prefix string) []*bgpd.BGPRoute {
+func (adjRib *AdjRib) GetBGPRoute(prefix string) *bgpd.BGPRoute {
 	defer adjRib.routeMutex.RUnlock()
 	adjRib.routeMutex.RLock()
 
 	if dest, ok := adjRib.destPathMap[prefix]; ok {
-		return dest.GetBGPRoutes()
+		return dest.GetBGPRoute()
 	}
 
 	return nil
