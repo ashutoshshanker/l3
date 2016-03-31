@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"bytes"
 	"time"
 	"utils/netUtils"
 	"utils/patriciaDB"
@@ -61,7 +62,7 @@ func BuildPublisherMap() {
 	}
 	PublisherInfoMap["EBGP"] = PublisherInfoMap["BGP"]
 	PublisherInfoMap["IBGP"] = PublisherInfoMap["BGP"]
-	PublisherInfoMap["BFDD"] = PublisherMapInfo{ribdCommonDefs.PUB_SOCKET_BFDD_ADDR,InitPublisher(ribdCommonDefs.PUB_SOCKET_BFDD_ADDR)}
+	PublisherInfoMap["BFD"] = PublisherMapInfo{ribdCommonDefs.PUB_SOCKET_BFDD_ADDR,InitPublisher(ribdCommonDefs.PUB_SOCKET_BFDD_ADDR)}
 }
 func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["CONNECTED"] = ribdCommonDefs.CONNECTED
@@ -499,19 +500,39 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 	PUB.Send(buf, nanomsg.DontWait)
 }
 func RouteReachabilityStatusUpdate(targetProtocol string, info RouteReachabilityStatusInfo) {
-	logger.Info(fmt.Sprintln("TrackReachabilityStatusNotificationSend targetProtocol ", targetProtocol))
+	logger.Info(fmt.Sprintln("RouteReachabilityStatusUpdate targetProtocol ", targetProtocol))
     if targetProtocol != "NONE" {
 	    RouteReachabilityStatusNotificationSend(targetProtocol,info)
 	}
-	//check the TrackReachabilityMap to see if any other protocols are interested in receiving updates for this ipAddr 
-    list,ok := TrackReachabilityMap[info.destNet]
-	if !ok {
-		logger.Info(fmt.Sprintln("No protocol tracking this ipAddr ", info.destNet))
-		return
+	var ipMask net.IP
+	ip,ipNet,err := net.ParseCIDR(info.destNet)
+	if err != nil {
+		logger.Err(fmt.Sprintln("Error getting IP from cidr: ", info.destNet))
+		return 
 	}
-	for idx := 0;idx <len(list);idx++{
-		logger.Info(fmt.Sprintln(" protocol ", list[idx], " interested in receving reachability updates for ipAddr ", info.destNet))
-		RouteReachabilityStatusNotificationSend(list[idx],info)
+	ipMask = make(net.IP, 4)
+	copy(ipMask, ipNet.Mask)
+	ipAddrStr := ip.String()
+	ipMaskStr := net.IP(ipMask).String()
+	destIpPrefix,err := getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
+	if err != nil {
+		logger.Err(fmt.Sprintln("Error getting ip prefix for ip:", ipAddrStr, " mask:", ipMaskStr))
+		return 
+	}
+	//check the TrackReachabilityMap to see if any other protocols are interested in receiving updates for this ipAddr 
+	for k,list := range TrackReachabilityMap {
+		prefix,err := getNetowrkPrefixFromStrings(k,ipMaskStr)
+	    if err != nil {
+		    logger.Err(fmt.Sprintln("Error getting ip prefix for ip:", k, " mask:", ipMaskStr))
+		    return 
+	    }
+		if bytes.Equal(destIpPrefix,prefix) {
+	        for idx := 0;idx <len(list);idx++{
+		        logger.Info(fmt.Sprintln(" protocol ", list[idx], " interested in receving reachability updates for ipAddr ", info.destNet))
+				info.destNet = k
+		        RouteReachabilityStatusNotificationSend(list[idx],info)
+	        }
+		}
 	}
 	return
 }
