@@ -24,6 +24,7 @@ type VrrpClientJson struct {
 const (
 	VRRP_RPC_NO_PORT      = "could not find port and hence not starting rpc"
 	VRRP_NEED_UNIQUE_INFO = "Original IfIndex & new IfIndex have different ifindex or VRID, hence cannot do an update"
+	VRRP_SVR_NO_ENTRY     = "Cannot find entry in db"
 )
 
 func VrrpCheckConfig(config *vrrpd.VrrpIntf, h *VrrpHandler) (bool, error) {
@@ -216,13 +217,23 @@ func (h *VrrpHandler) GetBulkVrrpVridState(fromIndex vrrpd.Int,
 }
 
 func (h *VrrpHandler) GetVrrpIntfState(ifIndex int32, vrId int32) (*vrrpd.VrrpIntfState, error) {
-	h.logger.Info("Get State Info for vrrp interface")
 	response := vrrpd.NewVrrpIntfState()
+	key := strconv.Itoa(int(ifIndex)) + "_" + strconv.Itoa(int(vrId))
+	rv := h.server.VrrpPopulateIntfState(key, response)
+	if !rv {
+		return nil, errors.New(VRRP_SVR_NO_ENTRY + strconv.Itoa(int(ifIndex)) +
+			" and Virtual Router Id:" + strconv.Itoa(int(vrId)))
+	}
 	return response, nil
 }
 
 func (h *VrrpHandler) GetVrrpVridState(ifIndex int32, vrId int32) (*vrrpd.VrrpVridState, error) {
-	h.logger.Info("Get State Info for vrrp vrid")
 	response := vrrpd.NewVrrpVridState()
+	key := strconv.Itoa(int(ifIndex)) + "_" + strconv.Itoa(int(vrId))
+	rv := h.server.VrrpPopulateVridState(key, response)
+	if !rv {
+		return nil, errors.New(VRRP_SVR_NO_ENTRY + strconv.Itoa(int(ifIndex)) +
+			" and Virtual Router Id:" + strconv.Itoa(int(vrId)))
+	}
 	return response, nil
 }
