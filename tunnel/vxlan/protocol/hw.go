@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 	"utils/commonDefs"
 	"utils/ipcutils"
@@ -107,7 +108,7 @@ func (s *VXLANServer) getLoopbackInfo() (success bool, lbname string, mac net.Ha
 						for j := 0; j < ipV4ObjCount; j++ {
 							if ipV4BulkInfo.IPv4IntfList[j].IfIndex == ifindex {
 								success = true
-								ip = net.ParseIP(ipV4BulkInfo.IPv4IntfList[j].IpAddr)
+								ip = net.ParseIP(strings.Split(ipV4BulkInfo.IPv4IntfList[j].IpAddr, "/")[0])
 								return success, lbname, mac, ip
 							}
 						}
