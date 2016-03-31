@@ -45,7 +45,7 @@ type VtepConfig struct {
 	VtepId                uint32           `SNAPROUTE: KEY` //VTEP ID.
 	VxlanId               uint32           `SNAPROUTE: KEY` //VxLAN ID.
 	VtepName              string           //VTEP instance name.
-	SrcIfIndex            int32            //Source interface ifIndex.
+	SrcIfName             string           //Source interface ifIndex.
 	UDP                   uint16           //vxlan udp port.  Deafult is the iana default udp port
 	TTL                   uint16           //TTL of the Vxlan tunnel
 	TOS                   uint16           //Type of Service
@@ -88,15 +88,17 @@ func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepIn
 		s.logger.Info(errorstr)
 		return &VtepConfig{}, errors.New(errorstr)
 	}
+	srcName := s.getLinuxIfName(c.SrcIfIndex)
+
 	s.logger.Info(fmt.Sprintf("Forcing Vtep %s to use Lb %s SrcMac %s Ip %s", c.VtepName, name, mac, ip))
 	return &VtepConfig{
-		VtepId:     uint32(c.VtepId),
-		VxlanId:    uint32(c.VxlanId),
-		VtepName:   string(c.VtepName),
-		SrcIfIndex: int32(c.SrcIfIndex),
-		UDP:        uint16(c.UDP),
-		TTL:        uint16(c.TTL),
-		TOS:        uint16(c.TOS),
+		VtepId:    uint32(c.VtepId),
+		VxlanId:   uint32(c.VxlanId),
+		VtepName:  string(c.VtepName),
+		SrcIfName: srcName,
+		UDP:       uint16(c.UDP),
+		TTL:       uint16(c.TTL),
+		TOS:       uint16(c.TOS),
 		InnerVlanHandlingMode: ConvertInt32ToBool(c.InnerVlanHandlingMode),
 		Learning:              ConvertInt32ToBool(c.Learning),
 		Rsc:                   ConvertInt32ToBool(c.Rsc),

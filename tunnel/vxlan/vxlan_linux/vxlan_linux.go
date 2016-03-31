@@ -39,7 +39,7 @@ type VtepConfig struct {
 	VtepId                uint32           `SNAPROUTE: KEY` //VTEP ID.
 	VxlanId               uint32           `SNAPROUTE: KEY` //VxLAN ID.
 	VtepName              string           //VTEP instance name.
-	SrcIfIndex            int32            //Source interface ifIndex.
+	SrcIfName             string           //Source interface ifIndex.
 	UDP                   uint16           //vxlan udp port.  Deafult is the iana default udp port
 	TTL                   uint16           //TTL of the Vxlan tunnel
 	TOS                   uint16           //Type of Service
@@ -148,6 +148,11 @@ func (v *VxlanLinux) DeleteVxLAN(c *VxlanConfig) {
 
 func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 
+	link, err := netlink.LinkByName(c.SrcIfName)
+	if err != nil {
+		v.logger.Err(err.Error())
+	}
+
 	vtep := &netlink.Vxlan{
 		LinkAttrs: netlink.LinkAttrs{
 			Name: c.VtepName,
@@ -155,7 +160,7 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 			MTU: VxlanDB[c.VxlanId].Brg.Attrs().MTU,
 		},
 		VxlanId:      int(c.VxlanId),
-		VtepDevIndex: int(c.SrcIfIndex),
+		VtepDevIndex: link.Attrs().Index,
 		SrcAddr:      c.TunnelSrcIp,
 		Group:        VxlanDB[c.VxlanId].Group,
 		TTL:          int(c.TTL),
@@ -183,7 +188,7 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		v.logger.Err(err.Error())
 	}
 
-	link, err := netlink.LinkByName(vtep.Name)
+	link, err = netlink.LinkByName(vtep.Name)
 	if err != nil {
 		v.logger.Err(err.Error())
 	}
