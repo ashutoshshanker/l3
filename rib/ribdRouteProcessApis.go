@@ -78,6 +78,7 @@ type RouteReachabilityStatusInfo struct {
 	protocol string
 	nextHopIntf ribdInt.NextHopInfo
 }
+
 var RouteInfoMap *patriciaDB.Trie
 var DummyRouteInfoRecord RouteInfoRecord //{destNet:0, prefixLen:0, protocol:0, nextHop:0, nextHopIfIndex:0, metric:0, selected:false}
 var destNetSlice []localDB
@@ -229,6 +230,12 @@ func getConnectedRoutes() {
 	}
 }
 
+func (m RIBDServicesHandler) GetRouteDistanceState(protocol string) (*ribd.RouteDistanceState, error) {
+	logger.Info("Get state for RouteDistanceState")
+	route := ribd.NewRouteDistanceState()
+	return route, nil
+}
+
 //thrift API definitions
 func (m RIBDServicesHandler) GetBulkRouteDistanceState(fromIndex ribd.Int, rcount ribd.Int) (routeDistanceStates *ribd.RouteDistanceStateGetInfo, err error) {
 	logger.Println("GetBulkRouteDistanceState")
@@ -274,6 +281,12 @@ func (m RIBDServicesHandler) GetBulkRouteDistanceState(fromIndex ribd.Int, rcoun
 	routeDistanceStates.More = more
 	routeDistanceStates.Count = validCount
 	return routeDistanceStates, err
+}
+
+func (m RIBDServicesHandler) GetIPv4EventState(index int32) (*ribd.IPv4EventState, error) {
+	logger.Info("Get state for IPv4EventState")
+	route := ribd.NewIPv4EventState()
+	return route, nil
 }
 
 func (m RIBDServicesHandler) GetBulkIPv4EventState(fromIndex ribd.Int, rcount ribd.Int) (events *ribd.IPv4EventStateGetInfo, err error) {
@@ -697,7 +710,7 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 	}
 	routeReachabilityStatusInfo := item.(RouteReachabilityStatusInfo)
 	var ipMask net.IP
-	ip,ipNet,err := net.ParseCIDR(routeReachabilityStatusInfo.destNet)
+	ip, ipNet, err := net.ParseCIDR(routeReachabilityStatusInfo.destNet)
 	if err != nil {
 		logger.Err(fmt.Sprintln("Error getting IP from cidr: ", routeReachabilityStatusInfo.destNet))
 		return err
@@ -706,7 +719,7 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 	copy(ipMask, ipNet.Mask)
 	ipAddrStr := ip.String()
 	ipMaskStr := net.IP(ipMask).String()
-	destIpPrefix,err := getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
+	destIpPrefix, err := getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
 	if err != nil {
 		logger.Err(fmt.Sprintln("Error getting ip prefix for ip:", ipAddrStr, " mask:", ipMaskStr))
 		return err
@@ -714,12 +727,12 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 	logger.Info(fmt.Sprintln("UpdateRouteReachabilityStatus network: ", routeReachabilityStatusInfo.destNet, " status:", routeReachabilityStatusInfo.status, "ip: ", ip.String(), " destIPPrefix: ", destIpPrefix, " ipMaskStr:", ipMaskStr))
 	RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
 	rmapInfoRecordList := handle.(RouteInfoRecordList)
-	for k,v := range rmapInfoRecordList.routeInfoProtocolMap {
+	for k, v := range rmapInfoRecordList.routeInfoProtocolMap {
 		logger.Info(fmt.Sprintln("UpdateRouteReachabilityStatus - protocol: ", k))
-		for i:=0;i<len(v);i++ {
-			vPrefix,err := getNetowrkPrefixFromStrings(v[i].nextHopIp.String(),ipMaskStr)
-	        if err != nil {
-		        logger.Err(fmt.Sprintln("Error getting ip prefix for v[i].nextHopIp:", v[i].nextHopIp.String(), " mask:", ipMaskStr))
+		for i := 0; i < len(v); i++ {
+			vPrefix, err := getNetowrkPrefixFromStrings(v[i].nextHopIp.String(), ipMaskStr)
+			if err != nil {
+				logger.Err(fmt.Sprintln("Error getting ip prefix for v[i].nextHopIp:", v[i].nextHopIp.String(), " mask:", ipMaskStr))
 				return err
 	        }
 			nextHopIntf := ribdInt.NextHopInfo {
@@ -746,7 +759,7 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 				}
 			}
 		}
-	}	
+	}
 	return err
 }
 func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, err error) {
@@ -756,14 +769,14 @@ func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, err error) 
 	prev_intf.NextHopIp = ipAddr
 	if ipAddr == "0.0.0.0" {
 		nextHopIntf.IsReachable = true
-		return nextHopIntf,err
+		return nextHopIntf, err
 	}
 	ip := ipAddr
 	for {
 		intf, err := routeServiceHandler.GetRouteReachabilityInfo(ip)
 		if err != nil {
 			logger.Err(fmt.Sprintln("next hop ", ip, " not reachable"))
-			return nextHopIntf,err
+			return nextHopIntf, err
 		}
 		logger.Info(fmt.Sprintln("intf.nextHopIp ", intf.NextHopIp, " intf.Ipaddr:", intf.Ipaddr))
 		if intf.NextHopIp == "0.0.0.0" {
@@ -973,7 +986,7 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIp = routeInfoRecord.nextHopIp.String()
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType = ribdInt.Int(routeInfoRecord.nextHopIfType)
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex = ribdInt.Int(routeInfoRecord.nextHopIfIndex)
-	    //routeInfoRecord.resolvedNextHopIpIntf,_ = ResolveNextHop(routeInfoRecord.nextHopIp.String())
+	    routeInfoRecord.resolvedNextHopIpIntf,_ = ResolveNextHop(routeInfoRecord.nextHopIp.String())
 		//call asicd to add
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
@@ -1205,11 +1218,11 @@ func createV4Route(destNetIp string,
 	logger.Info(fmt.Sprintln("prefixLen= ", prefixLen))
 	nwAddr := destNetIp + "/" + strconv.Itoa(prefixLen)
 	routeInfoRecord := RouteInfoRecord{destNetIp: destNetIpAddr, networkMask: networkMaskAddr, protocol: routePrototype, nextHopIp: nextHopIpAddr, networkAddr: nwAddr, nextHopIfType: int8(nextHopIfType), nextHopIfIndex: nextHopIfIndex, metric: metric, sliceIdx: int(sliceIdx)}
-	//TO-DO: Update this when resolveNextHop is tested 
+	//TO-DO: Update this when resolveNextHop is tested
 	routeInfoRecord.resolvedNextHopIpIntf.NextHopIp = routeInfoRecord.nextHopIp.String()
 	routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType = ribdInt.Int(routeInfoRecord.nextHopIfType)
 	routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex = ribdInt.Int(routeInfoRecord.nextHopIfIndex)
-	//routeInfoRecord.resolvedNextHopIpIntf,_ = ResolveNextHop(routeInfoRecord.nextHopIp.String())
+	routeInfoRecord.resolvedNextHopIpIntf,_ = ResolveNextHop(routeInfoRecord.nextHopIp.String())
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
 	if routeInfoRecordListItem == nil {
 		if addType == FIBOnly {

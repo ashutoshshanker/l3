@@ -30,3 +30,21 @@ func (server *BFDServer) GetBulkBfdIntfStates(idx int, cnt int) (int, int, []Int
 	}
 	return nextIdx, count, result
 }
+
+func (server *BFDServer) GetBfdIntfState(intfId int32) *IntfState {
+	intfState := new(IntfState)
+	intfState.InterfaceId = server.bfdGlobal.Interfaces[intfId].conf.InterfaceId
+	intfState.Enabled = server.bfdGlobal.Interfaces[intfId].Enabled
+	intfState.NumSessions = server.bfdGlobal.Interfaces[intfId].NumSessions
+	intfState.LocalMultiplier = server.bfdGlobal.Interfaces[intfId].conf.LocalMultiplier
+	intfState.DesiredMinTxInterval = server.bfdGlobal.Interfaces[intfId].conf.DesiredMinTxInterval
+	intfState.RequiredMinRxInterval = server.bfdGlobal.Interfaces[intfId].conf.RequiredMinRxInterval
+	intfState.RequiredMinEchoRxInterval = server.bfdGlobal.Interfaces[intfId].conf.RequiredMinEchoRxInterval
+	intfState.DemandEnabled = server.bfdGlobal.Interfaces[intfId].conf.DemandEnabled
+	intfState.AuthenticationEnabled = server.bfdGlobal.Interfaces[intfId].conf.AuthenticationEnabled
+	intfState.AuthenticationType = server.bfdGlobal.Interfaces[intfId].conf.AuthenticationType
+	intfState.AuthenticationKeyId = server.bfdGlobal.Interfaces[intfId].conf.AuthenticationKeyId
+	intfState.AuthenticationData = server.bfdGlobal.Interfaces[intfId].conf.AuthenticationData
+
+	return intfState
+}

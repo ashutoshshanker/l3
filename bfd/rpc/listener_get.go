@@ -5,20 +5,29 @@ import (
 	"fmt"
 )
 
-func (h *BFDHandler) GetBfdGlobalState() (*bfdd.BfdGlobalState, error) {
+func (h *BFDHandler) GetBfdGlobalState(bfd string) (*bfdd.BfdGlobalState, error) {
 	h.logger.Info(fmt.Sprintln("Get Global attrs"))
-	bfdGlobalResponse := bfdd.NewBfdGlobalState()
-	return bfdGlobalResponse, nil
+	bfdGlobalStateResponse := bfdd.NewBfdGlobalState()
+	gState := h.server.GetBfdGlobalState()
+	bfdGlobalState := h.convertGlobalStateToThrift(*gState)
+	bfdGlobalStateResponse = bfdGlobalState
+	return bfdGlobalStateResponse, nil
 }
 
-func (h *BFDHandler) GetBfdInterfaceState() (*bfdd.BfdInterfaceState, error) {
-	h.logger.Info(fmt.Sprintln("Get Interface attrs"))
-	bfdGlobalResponse := bfdd.NewBfdInterfaceState()
-	return bfdGlobalResponse, nil
+func (h *BFDHandler) GetBfdInterfaceState(ifIndex int32) (*bfdd.BfdInterfaceState, error) {
+	h.logger.Info(fmt.Sprintln("Get Interface attrs for IfIndex ", ifIndex))
+	bfdInterfaceStateResponse := bfdd.NewBfdInterfaceState()
+	intfState := h.server.GetBfdIntfState(ifIndex)
+	bfdInterfaceState := h.convertIntfStateToThrift(*intfState)
+	bfdInterfaceStateResponse = bfdInterfaceState
+	return bfdInterfaceStateResponse, nil
 }
 
-func (h *BFDHandler) GetBfdSessionState(ifIpAddress string, addressLessIf int32) (*bfdd.BfdSessionState, error) {
-	h.logger.Info(fmt.Sprintln("Get Session attrs"))
-	bfdSessionResponse := bfdd.NewBfdSessionState()
-	return bfdSessionResponse, nil
+func (h *BFDHandler) GetBfdSessionState(ipAddr string) (*bfdd.BfdSessionState, error) {
+	h.logger.Info(fmt.Sprintln("Get Session attrs for neighbor ", ipAddr))
+	bfdSessionStateResponse := bfdd.NewBfdSessionState()
+	sessionState := h.server.GetBfdSessionState(ipAddr)
+	bfdSessionState := h.convertSessionStateToThrift(*sessionState)
+	bfdSessionStateResponse = bfdSessionState
+	return bfdSessionStateResponse, nil
 }
