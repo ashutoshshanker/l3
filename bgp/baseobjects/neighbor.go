@@ -189,3 +189,32 @@ func (n *NeighborConf) IsExternal() bool {
 func (n *NeighborConf) IsRouteReflectorClient() bool {
 	return n.RunningConf.RouteReflectorClient
 }
+
+func (n *NeighborConf) FSMStateChange(state uint32) {
+	n.logger.Info(fmt.Sprintf("Neighbor %s: FSMStateChange %d", n.Neighbor.NeighborAddress, state))
+	n.Neighbor.State.SessionState = uint32(state)
+}
+
+func (n *NeighborConf) SetPeerAttrs(bgpId net.IP, asSize uint8, holdTime uint32, keepaliveTime uint32,
+	addPathFamily map[packet.AFI]map[packet.SAFI]uint8) {
+	n.BGPId = bgpId
+	n.ASSize = asSize
+	n.Neighbor.State.HoldTime = holdTime
+	n.Neighbor.State.KeepaliveTime = keepaliveTime
+	for afi, safiMap := range addPathFamily {
+		if afi == packet.AfiIP {
+			for _, val := range safiMap {
+				if (val & packet.BGPCapAddPathRx) != 0 {
+					n.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set add paths maxtx to %d\n",
+						n.Neighbor.NeighborAddress, n.RunningConf.AddPathsMaxTx))
+					n.Neighbor.State.AddPathsMaxTx = n.RunningConf.AddPathsMaxTx
+				}
+				if (val & packet.BGPCapAddPathTx) != 0 {
+					n.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set add paths rx to %s\n",
+						n.Neighbor.NeighborAddress, n.RunningConf.AddPathsRx))
+					n.Neighbor.State.AddPathsRx = true
+				}
+			}
+		}
+	}
+}
