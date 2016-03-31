@@ -3,6 +3,8 @@
 package vxlan
 
 import (
+	"errors"
+	"fmt"
 	"l3/tunnel/vxlan/vxlan_linux"
 	"net"
 	"reflect"
@@ -43,7 +45,7 @@ type VtepConfig struct {
 	VtepId                uint32           `SNAPROUTE: KEY` //VTEP ID.
 	VxlanId               uint32           `SNAPROUTE: KEY` //VxLAN ID.
 	VtepName              string           //VTEP instance name.
-	SrcIfIndex            int32            //Source interface ifIndex.
+	SrcIfName             string           //Source interface ifIndex.
 	UDP                   uint16           //vxlan udp port.  Deafult is the iana default udp port
 	TTL                   uint16           //TTL of the Vxlan tunnel
 	TOS                   uint16           //Type of Service
@@ -66,33 +68,37 @@ func ConvertInt32ToBool(val int32) bool {
 	return true
 }
 
-func (s *VXLANServer) ConvertVxlanInstanceToVxlanConfig(c *vxland.VxlanInstance) *VxlanConfig {
+func (s *VXLANServer) ConvertVxlanInstanceToVxlanConfig(c *vxland.VxlanInstance) (*VxlanConfig, error) {
 
 	return &VxlanConfig{
 		VNI:    uint32(c.VxlanId),
 		VlanId: uint16(c.VlanId),
 		Group:  net.ParseIP(c.McDestIp),
 		MTU:    uint32(c.Mtu),
-	}
+	}, nil
 }
 
-func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepInstances) *VtepConfig {
+func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepInstances) (*VtepConfig, error) {
 
 	DstNetMac, _ := net.ParseMAC(c.DstMac)
 
-	ok, mac, ip := s.getLoopbackInfo()
+	ok, name, mac, ip := s.getLoopbackInfo()
 	if !ok {
-		s.logger.Info("VTEP: Src Tunnel Info not provisioned yet, loopback intf needed")
+		errorstr := "VTEP: Src Tunnel Info not provisioned yet, loopback intf needed"
+		s.logger.Info(errorstr)
+		return &VtepConfig{}, errors.New(errorstr)
 	}
+	srcName := s.getLinuxIfName(c.SrcIfIndex)
 
+	s.logger.Info(fmt.Sprintf("Forcing Vtep %s to use Lb %s SrcMac %s Ip %s", c.VtepName, name, mac, ip))
 	return &VtepConfig{
-		VtepId:     uint32(c.VtepId),
-		VxlanId:    uint32(c.VxlanId),
-		VtepName:   string(c.VtepName),
-		SrcIfIndex: int32(c.SrcIfIndex),
-		UDP:        uint16(c.UDP),
-		TTL:        uint16(c.TTL),
-		TOS:        uint16(c.TOS),
+		VtepId:    uint32(c.VtepId),
+		VxlanId:   uint32(c.VxlanId),
+		VtepName:  string(c.VtepName),
+		SrcIfName: srcName,
+		UDP:       uint16(c.UDP),
+		TTL:       uint16(c.TTL),
+		TOS:       uint16(c.TOS),
 		InnerVlanHandlingMode: ConvertInt32ToBool(c.InnerVlanHandlingMode),
 		Learning:              ConvertInt32ToBool(c.Learning),
 		Rsc:                   ConvertInt32ToBool(c.Rsc),
@@ -103,7 +109,7 @@ func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepIn
 		VlanId:                uint16(c.VlanId),
 		TunnelSrcMac:          mac,
 		TunnelDstMac:          DstNetMac,
-	}
+	}, nil
 }
 
 func (s *VXLANServer) updateThriftVxLAN(c *VxlanUpdate) {

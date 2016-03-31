@@ -3,7 +3,6 @@
 package vxlan_linux
 
 import (
-	"errors"
 	"fmt"
 	"github.com/vishvananda/netlink"
 	"net"
@@ -40,7 +39,7 @@ type VtepConfig struct {
 	VtepId                uint32           `SNAPROUTE: KEY` //VTEP ID.
 	VxlanId               uint32           `SNAPROUTE: KEY` //VxLAN ID.
 	VtepName              string           //VTEP instance name.
-	SrcIfIndex            int32            //Source interface ifIndex.
+	SrcIfName             string           //Source interface ifIndex.
 	UDP                   uint16           //vxlan udp port.  Deafult is the iana default udp port
 	TTL                   uint16           //TTL of the Vxlan tunnel
 	TOS                   uint16           //Type of Service
@@ -95,12 +94,12 @@ func (v *VxlanLinux) CreateVxLAN(c *VxlanConfig) {
 		}
 
 		if err := netlink.LinkAdd(bridge); err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		}
 
 		link, err := netlink.LinkByName(bridge.Attrs().Name)
 		if err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		}
 
 		vxlanDbEntry := VxlanDB[c.VNI]
@@ -108,7 +107,7 @@ func (v *VxlanLinux) CreateVxLAN(c *VxlanConfig) {
 		VxlanDB[c.VNI] = vxlanDbEntry
 		// lets set the vtep interface to up
 		if err := netlink.LinkSetUp(bridge); err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		}
 	}
 }
@@ -119,10 +118,10 @@ func (v *VxlanLinux) DeleteVxLAN(c *VxlanConfig) {
 		for i, link := range vxlan.Links {
 			// lets set the vtep interface to up
 			if err := netlink.LinkSetDown(*link); err != nil {
-				panic(err)
+				v.logger.Err(err.Error())
 			}
 			if err := netlink.LinkDel(*link); err != nil {
-				panic(err)
+				v.logger.Err(err.Error())
 			}
 
 			vxlanDbEntry := VxlanDB[c.VNI]
@@ -132,15 +131,15 @@ func (v *VxlanLinux) DeleteVxLAN(c *VxlanConfig) {
 
 		link, err := netlink.LinkByName(vxlan.Brg.Name)
 		if err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		}
 
 		// lets set the vtep interface to up
 		if err := netlink.LinkSetDown(link); err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		}
 		if err := netlink.LinkDel(link); err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		}
 
 		delete(VxlanDB, c.VNI)
@@ -149,6 +148,11 @@ func (v *VxlanLinux) DeleteVxLAN(c *VxlanConfig) {
 
 func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 
+	link, err := netlink.LinkByName(c.SrcIfName)
+	if err != nil {
+		v.logger.Err(err.Error())
+	}
+
 	vtep := &netlink.Vxlan{
 		LinkAttrs: netlink.LinkAttrs{
 			Name: c.VtepName,
@@ -156,7 +160,7 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 			MTU: VxlanDB[c.VxlanId].Brg.Attrs().MTU,
 		},
 		VxlanId:      int(c.VxlanId),
-		VtepDevIndex: int(c.SrcIfIndex),
+		VtepDevIndex: link.Attrs().Index,
 		SrcAddr:      c.TunnelSrcIp,
 		Group:        VxlanDB[c.VxlanId].Group,
 		TTL:          int(c.TTL),
@@ -181,12 +185,12 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 	//          port MIN MAX ] [ [no]learning ] [ [no]proxy ] [ [no]rsc ] [
 	//          [no]l2miss ] [ [no]l3miss ]
 	if err := netlink.LinkAdd(vtep); err != nil {
-		panic(err)
+		v.logger.Err(err.Error())
 	}
 
-	link, err := netlink.LinkByName(vtep.Name)
+	link, err = netlink.LinkByName(vtep.Name)
 	if err != nil {
-		panic(err)
+		v.logger.Err(err.Error())
 	}
 
 	// equivalent to linux command:
@@ -228,30 +232,29 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 
 
 			// values taken from linux/neighbour.h
-
-	if c.TunnelDestinationIp != nil &&
-		c.DestHostMac != nil {
-		neigh := netlink.Neigh{
+	*/
+	if c.TunnelDstIp != nil &&
+		c.TunnelDstMac != nil {
+		neigh := &netlink.Neigh{
 			LinkIndex:    link.Attrs().Index,
-			Family:       7,   // NDA_VNI
-			State:        192, // NUD_NOARP (0x40) | NUD_PERMANENT (0x80)
+			Family:       netlink.NDA_VNI,                           // NDA_VNI
+			State:        netlink.NUD_NOARP | netlink.NUD_PERMANENT, // NUD_NOARP (0x40) | NUD_PERMANENT (0x80)
 			Type:         1,
-			Flags:        2, // NTF_SELF
-			IP:           c.TunnelDestinationIp,
-			HardwareAddr: c.DestHostMac,
+			Flags:        netlink.NTF_SELF, // NTF_SELF
+			IP:           c.TunnelDstIp,
+			HardwareAddr: c.TunnelDstMac,
 		}
 		if err := netlink.NeighAppend(neigh); err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		}
 	}
-	*/
 
 	vxlanDbEntry := VxlanDB[uint32(vtep.VxlanId)]
 	vxlanDbEntry.Links = append(vxlanDbEntry.Links, &link)
 	VxlanDB[uint32(vtep.VxlanId)] = vxlanDbEntry
 
 	if err := netlink.LinkSetMaster(link, vxlanDbEntry.Brg); err != nil {
-		panic(err)
+		v.logger.Err(err.Error())
 	}
 
 	/* ON RECREATE - Link up is failing with reason:
@@ -264,7 +267,7 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 			v.logger.Info(fmt.Sprintf("createVtep: %s link not connected yet waiting 5ms", vtep.Name))
 			time.Sleep(time.Millisecond * 5)
 		} else if err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		} else {
 			break
 		}
@@ -291,16 +294,16 @@ func (v *VxlanLinux) DeleteVtep(c *VtepConfig) {
 	if foundEntry {
 		link, err := netlink.LinkByName(c.VtepName)
 		if err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		}
 		if err := netlink.LinkSetDown(link); err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		}
 
 		if err := netlink.LinkDel(link); err != nil {
-			panic(err)
+			v.logger.Err(err.Error())
 		}
 	} else {
-		panic(errors.New("Unable to find vtep in vxlan db"))
+		v.logger.Err("Unable to find vtep in vxlan db")
 	}
 }
