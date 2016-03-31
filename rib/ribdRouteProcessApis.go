@@ -647,8 +647,7 @@ func (m RIBDServicesHandler) GetRouteReachabilityInfo(destNet string) (nextHopIn
 		err = errors.New("dest ip address not reachable")
 	}
 	duration := time.Since(t1)
-	logger.Info(fmt.Sprintln("time to get longestPrefixLen = ", duration.Nanoseconds()))
-	logger.Info(fmt.Sprintln("next hop ip of the route = ", nextHopIntf.NextHopIp, " index: ", nextHopIntf.NextHopIfIndex, " nextHopIfType: ", nextHopIntf.NextHopIfType))
+	logger.Info(fmt.Sprintln("time to get longestPrefixLen = ", duration.Nanoseconds(), " ipAddr of the route: ", nextHopIntf.Ipaddr, " next hop ip of the route = ", nextHopIntf.NextHopIp, " index: ", nextHopIntf.NextHopIfIndex, " nextHopIfType: ", nextHopIntf.NextHopIfType))
 	return nextHopIntf, err
 }
 func (m RIBDServicesHandler) GetRoute(destNetIp string, networkMask string) (route *ribdInt.Routes, err error) {
@@ -752,7 +751,9 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 }
 func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, err error) {
 	logger.Info(fmt.Sprintln("ResolveNextHop for ", ipAddr))
+	var prev_intf ribdInt.NextHopInfo
 	nextHopIntf.NextHopIp = ipAddr
+	prev_intf.NextHopIp = ipAddr
 	if ipAddr == "0.0.0.0" {
 		nextHopIntf.IsReachable = true
 		return nextHopIntf,err
@@ -769,9 +770,10 @@ func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, err error) 
 			logger.Info(fmt.Sprintln("Marking ip ", ip, " as reachable"))
 			intf.NextHopIp = intf.Ipaddr
 			intf.IsReachable = true
-			return *intf,err
+			return prev_intf,err//*intf,err
 		}
 		ip = intf.NextHopIp
+		prev_intf = *intf
 	}
 	return nextHopIntf, err
 }
@@ -1076,7 +1078,8 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	logger.Println("This is the selected protocol")
 	//delete in asicd
 	if asicdclnt.IsConnected {
-		if deleteNode == true {
+		//In case of delType == RIBAndFIB, the reachability status will already have been updated
+		if delType == FIBOnly {
 			logger.Info("No routes to this destination , delete node")
             logger.Info(fmt.Sprintln("Route deleted for this destination, traverse dependent routes to update routeReachability status"))
 			nextHopIntf := ribdInt.NextHopInfo {}
