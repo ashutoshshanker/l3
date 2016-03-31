@@ -78,8 +78,6 @@ type BGPServer struct {
 	AddAggCh         chan AggUpdate
 	RemAggCh         chan string
 	PeerFSMConnCh    chan fsm.PeerFSMConn
-	PeerFSMStateCh   chan fsm.PeerFSMState
-	PeerAttrsCh      chan fsm.PeerAttrs
 	PeerConnEstCh    chan string
 	PeerConnBrokenCh chan string
 	PeerCommandCh    chan config.PeerCommand
@@ -114,8 +112,6 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.AddAggCh = make(chan AggUpdate)
 	bgpServer.RemAggCh = make(chan string)
 	bgpServer.PeerFSMConnCh = make(chan fsm.PeerFSMConn, 50)
-	bgpServer.PeerFSMStateCh = make(chan fsm.PeerFSMState)
-	bgpServer.PeerAttrsCh = make(chan fsm.PeerAttrs)
 	bgpServer.PeerConnEstCh = make(chan string)
 	bgpServer.PeerConnBrokenCh = make(chan string)
 	bgpServer.PeerCommandCh = make(chan config.PeerCommand)
@@ -1261,29 +1257,6 @@ func (server *BGPServer) StartServer() {
 					peerCommand.Command, peerCommand.IP))
 			}
 			peer.Command(peerCommand.Command)
-
-		case peerFSMSt := <-server.PeerFSMStateCh:
-			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM state changed %d\n", peerFSMSt.PeerIP, peerFSMSt.State))
-			peer, ok := server.PeerMap[peerFSMSt.PeerIP]
-			if !ok {
-				server.logger.Info(fmt.Sprintf("Failed to process FSM connection success, Peer %s does not exist",
-					peerFSMSt.PeerIP))
-				break
-			}
-
-			peer.FSMStateChange(peerFSMSt.State)
-
-		case peerAttrs := <-server.PeerAttrsCh:
-			server.logger.Info(fmt.Sprintf("Server: Peer %s Neighbor attrs changed\n", peerAttrs.PeerIP))
-			peer, ok := server.PeerMap[peerAttrs.PeerIP]
-			if !ok {
-				server.logger.Info(fmt.Sprintf("Failed to process FSM connection success, Peer %s does not exist",
-					peerAttrs.PeerIP))
-				break
-			}
-
-			peer.SetPeerAttrs(peerAttrs.BGPId, peerAttrs.ASSize, peerAttrs.HoldTime, peerAttrs.KeepaliveTime,
-				peerAttrs.AddPathFamily)
 
 		case peerFSMConn := <-server.PeerFSMConnCh:
 			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM established/broken channel\n", peerFSMConn.PeerIP))
