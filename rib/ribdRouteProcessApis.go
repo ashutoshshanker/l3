@@ -725,7 +725,6 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 		return err
 	}
 	logger.Info(fmt.Sprintln("UpdateRouteReachabilityStatus network: ", routeReachabilityStatusInfo.destNet, " status:", routeReachabilityStatusInfo.status, "ip: ", ip.String(), " destIPPrefix: ", destIpPrefix, " ipMaskStr:", ipMaskStr))
-	RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
 	rmapInfoRecordList := handle.(RouteInfoRecordList)
 	for k, v := range rmapInfoRecordList.routeInfoProtocolMap {
 		logger.Info(fmt.Sprintln("UpdateRouteReachabilityStatus - protocol: ", k))
@@ -783,6 +782,7 @@ func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, err error) 
 			logger.Info(fmt.Sprintln("Marking ip ", ip, " as reachable"))
 			intf.NextHopIp = intf.Ipaddr
 			intf.IsReachable = true
+			prev_intf.IsReachable = true
 			return prev_intf,err//*intf,err
 		}
 		ip = intf.NextHopIp
@@ -998,6 +998,11 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType), arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex))
 		}
 		addLinuxRoute(routeInfoRecord)
+		//update in the event log
+		eventInfo := "Installed " + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)] + " route " + policyRoute.Ipaddr + ":" + policyRoute.Mask + " in Hardware and RIB " 
+		t1 := time.Now()
+		routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
+		localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
 		if routeInfoRecord.resolvedNextHopIpIntf.IsReachable {
 			logger.Info(fmt.Sprintln("Mark this network reachable"))
 			nextHopIntf := ribdInt.NextHopInfo {
@@ -1006,13 +1011,9 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
                             NextHopIfIndex : ribdInt.Int(routeInfoRecord.nextHopIfIndex),
 			            }
 			routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up",ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)],nextHopIntf}
+	        RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
 			RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 		}
-		//update in the event log
-		eventInfo := "Created route " + policyRoute.Ipaddr + " " + policyRoute.Mask + " type" + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)]
-		t1 := time.Now()
-		routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
-		localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
 	}
 	params.deleteType = Invalid
 	PolicyEngineFilter(policyRoute, policyPath, params)
@@ -1071,6 +1072,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
                 logger.Info(fmt.Sprintln("Route deleted for this destination, traverse dependent routes to update routeReachability status"))
 			    nextHopIntf := ribdInt.NextHopInfo {}
                 routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Down",ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)],nextHopIntf}
+	            RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
 	            RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 				RouteInfoMap.Delete(destNetPrefix)
 			} else {
@@ -1091,20 +1093,16 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	logger.Println("This is the selected protocol")
 	//delete in asicd
 	if asicdclnt.IsConnected {
-		//In case of delType == RIBAndFIB, the reachability status will already have been updated
-		if delType == FIBOnly {
-			logger.Info("No routes to this destination , delete node")
-            logger.Info(fmt.Sprintln("Route deleted for this destination, traverse dependent routes to update routeReachability status"))
-			nextHopIntf := ribdInt.NextHopInfo {}
-            routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Down",ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)],nextHopIntf}
-	        RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
-		}
 		logger.Info(fmt.Sprintln("Calling asicd to delete this route- ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
 		asicdclnt.ClientHdl.DeleteIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType))
 	}
 	delLinuxRoute(routeInfoRecord)
 	//update in the event log
-	eventInfo := "Deleted route " + policyRoute.Ipaddr + " " + policyRoute.Mask + " type" + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)]
+	delStr := "Route Uninstalled in Hardware "
+	if delType == FIBAndRIB {
+		delStr = delStr	+ " and deleted from RIB "
+	}
+	eventInfo := delStr + ":" + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)] + " " + policyRoute.Ipaddr + ":" + policyRoute.Mask
 	t1 := time.Now()
 	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
 	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
@@ -1262,6 +1260,12 @@ func createV4Route(destNetIp string,
 			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType), arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex))
 		}
 		addLinuxRoute(routeInfoRecord)
+		//update in the event log
+		eventInfo := "Installed " + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)] + " route " + policyRoute.Ipaddr + ":" + policyRoute.Mask + " in Hardware and RIB " 
+		t1 = time.Now()
+		routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
+		localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
+
 		if routeInfoRecord.resolvedNextHopIpIntf.IsReachable {
 			logger.Info(fmt.Sprintln("Mark this network reachable"))
 			nextHopIntf := ribdInt.NextHopInfo {
@@ -1270,13 +1274,9 @@ func createV4Route(destNetIp string,
                             NextHopIfIndex : ribdInt.Int(routeInfoRecord.nextHopIfIndex),
 			            }
 			routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up",ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)],nextHopIntf}
+	        RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
 			RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
 		}
-		//update in the event log
-		eventInfo := "Created route " + policyRoute.Ipaddr + " " + policyRoute.Mask + " type" + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)]
-		t1 = time.Now()
-		routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
-		localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
 
 		var params RouteParams
 		params.destNetIp = destNetIp

@@ -492,7 +492,10 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 	} else if info.status == "Updated" {
 		evtStr = " Updated "
 	}
-	eventInfo := "Update Route Reachability status " + evtStr + " for network " + info.destNet + "for protocol " + targetProtocol
+	eventInfo := "Update Route Reachability status " + evtStr + " for network " + info.destNet + " for protocol " + targetProtocol
+	if info.status == "Up" {
+		eventInfo = eventInfo + " NextHop IP: " + info.nextHopIntf.NextHopIp + " IfType/Index: " + strconv.Itoa(int(info.nextHopIntf.NextHopIfType)) + "/" + strconv.Itoa(int(info.nextHopIntf.NextHopIfIndex ))
+	}
 	logger.Info(fmt.Sprintln("Sending ", evtStr, " for network ", info.destNet))
 	t1 := time.Now()
 	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
