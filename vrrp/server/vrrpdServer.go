@@ -33,11 +33,11 @@ func (svr *VrrpServer) VrrpUpdateIntfIpAddr(gblInfo *VrrpGlobalInfo) bool {
 	return true
 }
 
-func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfState) {
+func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfState) bool {
 	gblInfo, ok := svr.vrrpGblInfo[key]
 	if ok == false {
 		svr.logger.Err(fmt.Sprintln("Entry not found for", key))
-		return
+		return ok
 	}
 	entry.IfIndex = gblInfo.IntfConfig.IfIndex
 	entry.VRID = gblInfo.IntfConfig.VRID
@@ -52,13 +52,14 @@ func (svr *VrrpServer) VrrpPopulateIntfState(key string, entry *vrrpd.VrrpIntfSt
 	gblInfo.StateNameLock.Lock()
 	entry.VrrpState = gblInfo.StateName
 	gblInfo.StateNameLock.Unlock()
+	return ok
 }
 
-func (svr *VrrpServer) VrrpPopulateVridState(key string, entry *vrrpd.VrrpVridState) {
+func (svr *VrrpServer) VrrpPopulateVridState(key string, entry *vrrpd.VrrpVridState) bool {
 	gblInfo, ok := svr.vrrpGblInfo[key]
 	if ok == false {
 		svr.logger.Err(fmt.Sprintln("Entry not found for", key))
-		return
+		return ok
 	}
 	entry.IfIndex = gblInfo.IntfConfig.IfIndex
 	entry.VRID = gblInfo.IntfConfig.VRID
@@ -72,6 +73,7 @@ func (svr *VrrpServer) VrrpPopulateVridState(key string, entry *vrrpd.VrrpVridSt
 	entry.MasterIp = gblInfo.StateInfo.MasterIp
 	entry.TransitionReason = gblInfo.StateInfo.ReasonForTransition
 	gblInfo.StateInfoLock.Unlock()
+	return ok
 }
 
 func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) {
@@ -235,7 +237,7 @@ func (svr *VrrpServer) VrrpGetBulkVrrpIntfStates(idx int, cnt int) (int, int, []
 
 	for i, j = 0, idx; i < cnt && j < length; j++ {
 		key := svr.vrrpIntfStateSlice[j]
-		svr.VrrpPopulateIntfState(key, &result[i])
+		_ = svr.VrrpPopulateIntfState(key, &result[i])
 		i++
 	}
 	if j == length {
@@ -259,7 +261,7 @@ func (svr *VrrpServer) VrrpGetBulkVrrpVridStates(idx int, cnt int) (int, int, []
 
 	for i, j = 0, idx; i < cnt && j < length; j++ {
 		key := svr.vrrpIntfStateSlice[j]
-		svr.VrrpPopulateVridState(key, &result[i])
+		_ = svr.VrrpPopulateVridState(key, &result[i])
 		i++
 	}
 	if j == length {

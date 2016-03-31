@@ -307,12 +307,13 @@ func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 	ent, exist := server.IntfConfMap[intfConfKey]
 	//  we can update only when we already have entry
 	if exist {
-		areaId := convertAreaOrRouterId(string(ifConf.IfAreaId))
-		if areaId == nil {
+		areaId_check := convertAreaOrRouterId(string(ifConf.IfAreaId))
+		if areaId_check == nil {
 			server.logger.Err("Invalid areaId")
 			return
 		}
-		ent.IfAreaId = areaId
+		areaId := server.updateIntfToAreaMap(intfConfKey, ifConf.IfAreaId)
+		ent.IfAreaId =  convertAreaOrRouterId(string(areaId))
 		ent.IfType = ifConf.IfType
 		ent.IfAdminStat = ifConf.IfAdminStat
 		ent.IfRtrPriority = uint8(ifConf.IfRtrPriority)

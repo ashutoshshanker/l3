@@ -35,6 +35,7 @@ type GlobalConf struct {
 	StubRouterSupport        bool
 	//DiscontinuityTime        string
 	DiscontinuityTime int32 // This should be string
+	isABR             bool
 }
 
 func (server *OSPFServer) updateGlobalConf(gConf config.GlobalConf) {
@@ -93,6 +94,7 @@ func (server *OSPFServer) initOspfGlobalConfDefault() {
 	server.ospfGlobalConf.StubRouterSupport = false
 	//server.ospfGlobalConf.DiscontinuityTime = "0"
 	server.ospfGlobalConf.DiscontinuityTime = 0 //This should be string
+	server.ospfGlobalConf.isABR = false
 	server.logger.Err("Global configuration initialized")
 }
 
