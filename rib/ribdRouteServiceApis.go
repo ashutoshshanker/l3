@@ -2,17 +2,17 @@
 package main
 
 import (
-	"fmt"
-	"ribd"
+	"asicd/asicdConstDefs"
 	"errors"
+	"fmt"
 	"reflect"
+	"ribd"
 	"strconv"
 	"utils/commonDefs"
-	"asicd/asicdConstDefs"
 )
 
 func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
-	logger.Info(fmt.Sprintln("Received create route request for ip",  cfg.DestinationNw, " mask ", cfg.NetworkMask, "cfg.OutgoingIntfType: ", cfg.OutgoingIntfType, "cfg.OutgoingInterface: ", cfg.OutgoingInterface))
+	logger.Info(fmt.Sprintln("Received create route request for ip", cfg.DestinationNw, " mask ", cfg.NetworkMask, "cfg.OutgoingIntfType: ", cfg.OutgoingIntfType, "cfg.OutgoingInterface: ", cfg.OutgoingInterface))
 	_, ok := RouteProtocolTypeMapDB[cfg.Protocol]
 	if !ok {
 		logger.Info(fmt.Sprintln("route type ", cfg.Protocol, " invalid"))
@@ -30,7 +30,7 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 	} else if cfg.OutgoingIntfType == "Loopback" {
 		nextHopIfType = commonDefs.IfTypeLoopback
 	}
-	nextHopIf,_ = strconv.Atoi(cfg.OutgoingInterface)
+	nextHopIf, _ = strconv.Atoi(cfg.OutgoingInterface)
 	ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(nextHopIf, nextHopIfType)
 	logger.Info(fmt.Sprintln("IfId = ", ifId))
 	_, ok = IntfIdNameMap[ifId]
@@ -38,10 +38,10 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 		logger.Err(fmt.Sprintln("Cannot create ip route on a unknown L3 interface"))
 		return false, errors.New("Cannot create ip route on a unknown L3 interface")
 	}
-    m.RouteCreateConfCh <- cfg
-	return true,nil	
+	m.RouteCreateConfCh <- cfg
+	return true, nil
 }
-func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err error){
+func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeleteIPv4:RouteReceived Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHopIp, "Protocol ", cfg.Protocol))
 	destNet, err := getNetowrkPrefixFromStrings(cfg.DestinationNw, cfg.NetworkMask)
 	if err != nil {
@@ -74,26 +74,26 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
 		return false, errors.New("No route for destination network")
 	}
 	objTyp := reflect.TypeOf(*origconfig)
-	for i:=0;i<objTyp.NumField(); i++ {
-	    objName := objTyp.Field(i).Name
-	    if objName == "OutgoingIntfType" {
-            if newconfig.OutgoingIntfType == "NULL" {
-		        logger.Err("Cannot update the type to NULL interface: delete and create the route")
-			    return false,errors.New("Cannot update the type to NULL interface: delete and create the route")
-		    }
-            if origconfig.OutgoingIntfType == "NULL" {
-			    logger.Err("Cannot update NULL interface type with another type: delete and create the route")
-			    return false,errors.New("Cannot update NULL interface type with another type: delete and create the route")
-		    }
-	        break
-	    }
+	for i := 0; i < objTyp.NumField(); i++ {
+		objName := objTyp.Field(i).Name
+		if objName == "OutgoingIntfType" {
+			if newconfig.OutgoingIntfType == "NULL" {
+				logger.Err("Cannot update the type to NULL interface: delete and create the route")
+				return false, errors.New("Cannot update the type to NULL interface: delete and create the route")
+			}
+			if origconfig.OutgoingIntfType == "NULL" {
+				logger.Err("Cannot update NULL interface type with another type: delete and create the route")
+				return false, errors.New("Cannot update NULL interface type with another type: delete and create the route")
+			}
+			break
+		}
 	}
-	routeUpdateConfig := UpdateRouteInfo{origconfig,newconfig,attrset}
+	routeUpdateConfig := UpdateRouteInfo{origconfig, newconfig, attrset}
 	m.RouteUpdateConfCh <- routeUpdateConfig
 	return true, nil
 }
-func (m RIBDServicesHandler) GetIPv4RouteState(state *ribd.IPv4RouteState) (*ribd.IPv4RouteState, error) {
+func (m RIBDServicesHandler) GetIPv4RouteState(destNw string, nextHop string) (*ribd.IPv4RouteState, error) {
 	logger.Info("Get state for IPv4Route")
 	route := ribd.NewIPv4RouteState()
-	return route,nil
+	return route, nil
 }
