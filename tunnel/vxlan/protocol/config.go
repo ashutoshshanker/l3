@@ -4,6 +4,7 @@ package vxlan
 
 import (
 	"errors"
+	"fmt"
 	"l3/tunnel/vxlan/vxlan_linux"
 	"net"
 	"reflect"
@@ -81,13 +82,13 @@ func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepIn
 
 	DstNetMac, _ := net.ParseMAC(c.DstMac)
 
-	ok, mac, ip := s.getLoopbackInfo()
+	ok, name, mac, ip := s.getLoopbackInfo()
 	if !ok {
 		errorstr := "VTEP: Src Tunnel Info not provisioned yet, loopback intf needed"
 		s.logger.Info(errorstr)
 		return &VtepConfig{}, errors.New(errorstr)
 	}
-
+	s.logger.Info(fmt.Sprintf("Forcing Vtep %s to use Lb %s SrcMac %s Ip %s", c.VtepName, name, mac, ip))
 	return &VtepConfig{
 		VtepId:     uint32(c.VtepId),
 		VxlanId:    uint32(c.VxlanId),

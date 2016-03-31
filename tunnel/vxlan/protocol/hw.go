@@ -80,7 +80,7 @@ func ConnectToClients(paramsFile string) {
 	}
 }
 
-func (s *VXLANServer) getLoopbackInfo() (success bool, mac net.HardwareAddr, ip net.IP) {
+func (s *VXLANServer) getLoopbackInfo() (success bool, lbname string, mac net.HardwareAddr, ip net.IP) {
 	// TODO this logic only assumes one loopback interface.  More logic is needed
 	// to handle multiple  loopbacks configured.  The idea should be
 	// that the lowest IP address is used.
@@ -94,6 +94,7 @@ func (s *VXLANServer) getLoopbackInfo() (success bool, mac net.HardwareAddr, ip 
 			currMarker = asicdServices.Int(bulkInfo.EndIdx)
 			for i := 0; i < objCount; i++ {
 				ifindex := bulkInfo.LogicalIntfStateList[i].IfIndex
+				lbname = bulkInfo.LogicalIntfStateList[i].Name
 				if pluginCommon.GetTypeFromIfIndex(ifindex) == commonDefs.IfTypeLoopback {
 					mac, _ = net.ParseMAC(bulkInfo.LogicalIntfStateList[i].SrcMac)
 					ipV4ObjMore := true
@@ -107,7 +108,7 @@ func (s *VXLANServer) getLoopbackInfo() (success bool, mac net.HardwareAddr, ip 
 							if ipV4BulkInfo.IPv4IntfList[j].IfIndex == ifindex {
 								success = true
 								ip = net.ParseIP(ipV4BulkInfo.IPv4IntfList[j].IpAddr)
-								return success, mac, ip
+								return success, lbname, mac, ip
 							}
 						}
 					}
@@ -115,5 +116,5 @@ func (s *VXLANServer) getLoopbackInfo() (success bool, mac net.HardwareAddr, ip 
 			}
 		}
 	}
-	return success, mac, ip
+	return success, lbname, mac, ip
 }

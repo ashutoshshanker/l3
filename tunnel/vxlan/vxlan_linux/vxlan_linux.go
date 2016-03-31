@@ -232,10 +232,10 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		c.TunnelDstMac != nil {
 		neigh := &netlink.Neigh{
 			LinkIndex:    link.Attrs().Index,
-			Family:       7,   // NDA_VNI
-			State:        192, // NUD_NOARP (0x40) | NUD_PERMANENT (0x80)
+			Family:       netlink.NDA_VNI,                           // NDA_VNI
+			State:        netlink.NUD_NOARP | netlink.NUD_PERMANENT, // NUD_NOARP (0x40) | NUD_PERMANENT (0x80)
 			Type:         1,
-			Flags:        2, // NTF_SELF
+			Flags:        netlink.NTF_SELF, // NTF_SELF
 			IP:           c.TunnelDstIp,
 			HardwareAddr: c.TunnelDstMac,
 		}
