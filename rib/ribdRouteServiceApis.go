@@ -38,6 +38,29 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 		logger.Err(fmt.Sprintln("Cannot create ip route on a unknown L3 interface"))
 		return false, errors.New("Cannot create ip route on a unknown L3 interface")
 	}
+	destNetIpAddr, err := getIP(cfg.DestinationNw)
+	if err != nil {
+		logger.Println("destNetIpAddr invalid")
+		return false, errors.New("Invalid destination IP address")
+	}
+	networkMaskAddr,err := getIP(cfg.NetworkMask)
+	if err != nil {
+		logger.Println("networkMaskAddr invalid")
+		return false, errors.New("Invalid mask")
+	}
+	_, err = getIP(cfg.NextHopIp)
+	if err != nil {
+		logger.Println("nextHopIpAddr invalid")
+		return false,errors.New("Invalid next hop ip address")
+	}
+	_, err = getPrefixLen(networkMaskAddr)
+	if err != nil {
+		return false, errors.New("Invalid networkMask")
+	}
+	_, err = getNetworkPrefix(destNetIpAddr, networkMaskAddr)
+	if err != nil {
+		return false,errors.New("Invalid destination ip/network Mask")
+	}
 	m.RouteCreateConfCh <- cfg
 	return true, nil
 }

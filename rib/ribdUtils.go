@@ -142,12 +142,13 @@ func findElement(list []string, element string) (int) {
 	logger.Info(fmt.Sprintln("Element ", element, " not added to the list"))
 	return index
 }
-func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entity policy.PolicyEngineFilterEntityParams) {
+func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entity policy.PolicyEngineFilterEntityParams, err error) {
 	routeInfo := params.(RouteParams)
+    logger.Info(fmt.Sprintln("buildPolicyEntityFromRoute: createType: ", routeInfo.createType, " delete type: ", routeInfo.deleteType))
 	destNetIp, err := netUtils.GetCIDR(route.Ipaddr, route.Mask)
 	if err != nil {
 		logger.Info(fmt.Sprintln("error getting CIDR address for ", route.Ipaddr, ":", route.Mask))
-		return
+		return entity,err
 	}
 	entity.DestNetIp = destNetIp
 	entity.NextHopIp = route.NextHopIp
@@ -158,7 +159,7 @@ func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entit
 	if routeInfo.deleteType != Invalid {
 		entity.DeletePath = true
 	}
-	return entity
+	return entity,err
 }
 func findRouteWithNextHop(routeInfoList []RouteInfoRecord, nextHopIP string) (found bool, routeInfoRecord RouteInfoRecord, index int) {
 	logger.Println("findRouteWithNextHop")
@@ -484,19 +485,11 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 		logger.Println("Error in marshalling Json")
 		return
 	}
-	var evtStr string
-	if info.status == "Down" {
-		evtStr = " to Down "
-	} else if info.status == "Up" {
-		evtStr = " to Up "
-	} else if info.status == "Updated" {
-		evtStr = " Updated "
-	}
-	eventInfo := "Update Route Reachability status " + evtStr + " for network " + info.destNet + " for protocol " + targetProtocol
+	eventInfo := "Update Route Reachability status " + info.status + " for network " + info.destNet + " for protocol " + targetProtocol
 	if info.status == "Up" {
 		eventInfo = eventInfo + " NextHop IP: " + info.nextHopIntf.NextHopIp + " IfType/Index: " + strconv.Itoa(int(info.nextHopIntf.NextHopIfType)) + "/" + strconv.Itoa(int(info.nextHopIntf.NextHopIfIndex ))
 	}
-	logger.Info(fmt.Sprintln("Sending ", evtStr, " for network ", info.destNet))
+	logger.Info(fmt.Sprintln("Sending  NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE with status ",info.status, " for network ", info.destNet))
 	t1 := time.Now()
 	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
 	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
