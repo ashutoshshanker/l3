@@ -6,6 +6,7 @@ IPC_GEN_CMD=thrift
 SRCS=ribdServer.go  ribdEventHandler.go ribmain.go ribDB.go ribdUtils.go ribdRouteServiceApis.go ribdRouteProcessApis.go ribdPolicyEngine.go ribdPolicyApis.go ribdPolicyConditionApis.go ribdPolicyActionApis.go
 IPC_SRCS=ribd.thrift
 COMP_NAME=ribd
+GOLDFLAGS=-r /opt/flexswitch/sharedlib
 all:ipc exe
 ipc:
 	 $(IPC_GEN_CMD) -r --gen go -out $(GENERATED_IPC) $(IPC_SRCS)
