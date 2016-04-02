@@ -62,48 +62,125 @@ func (v *VXLANDServiceHandler) StartThriftServer() {
 func (v *VXLANDServiceHandler) CreateVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
 	v.logger.Info(fmt.Sprintf("CreateVxlanConfigInstance %#v", config))
 
-	v.server.Configchans.Vxlancreate <- *(v.server.ConvertVxlanInstanceToVxlanConfig(config))
-	return true, nil
+	c, err := v.server.ConvertVxlanInstanceToVxlanConfig(config)
+	if err == nil {
+		v.server.Configchans.Vxlancreate <- *c
+		return true, nil
+	}
+	return false, err
 }
 
 func (v *VXLANDServiceHandler) DeleteVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
 	v.logger.Info(fmt.Sprintf("DeleteVxlanConfigInstance %#v", config))
-	v.server.Configchans.Vxlandelete <- *(v.server.ConvertVxlanInstanceToVxlanConfig(config))
-	return true, nil
+	c, err := v.server.ConvertVxlanInstanceToVxlanConfig(config)
+	if err == nil {
+		v.server.Configchans.Vxlandelete <- *c
+		return true, nil
+	}
+	return false, err
 }
 
 func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInstance, newconfig *vxland.VxlanInstance, attrset []bool) (bool, error) {
 	v.logger.Info(fmt.Sprintf("UpdateVxlanConfigInstance orig[%#v] new[%#v]", origconfig, newconfig))
-	update := vxlan.VxlanUpdate{
-		Oldconfig: *(v.server.ConvertVxlanInstanceToVxlanConfig(origconfig)),
-		Newconfig: *(v.server.ConvertVxlanInstanceToVxlanConfig(newconfig)),
-		Attr:      attrset,
+	oc, _ := v.server.ConvertVxlanInstanceToVxlanConfig(origconfig)
+	nc, err := v.server.ConvertVxlanInstanceToVxlanConfig(newconfig)
+	if err == nil {
+		update := vxlan.VxlanUpdate{
+			Oldconfig: *oc,
+			Newconfig: *nc,
+			Attr:      attrset,
+		}
+		v.server.Configchans.Vxlanupdate <- update
+		return true, nil
 	}
-	v.server.Configchans.Vxlanupdate <- update
-	return true, nil
+	return false, err
 }
 
 func (v *VXLANDServiceHandler) CreateVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
 	v.logger.Info(fmt.Sprintf("CreateVxlanVtepInstances %#v", config))
-	v.server.Configchans.Vtepcreate <- *(v.server.ConvertVxlanVtepInstanceToVtepConfig(config))
-	return true, nil
+	c, err := v.server.ConvertVxlanVtepInstanceToVtepConfig(config)
+	if err == nil {
+		v.server.Configchans.Vtepcreate <- *c
+		return true, err
+	}
+	return false, err
 }
 
 func (v *VXLANDServiceHandler) DeleteVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
 	v.logger.Info(fmt.Sprintf("DeleteVxlanVtepInstances %#v", config))
-	v.server.Configchans.Vtepdelete <- *(v.server.ConvertVxlanVtepInstanceToVtepConfig(config))
-	return true, nil
+	c, err := v.server.ConvertVxlanVtepInstanceToVtepConfig(config)
+	if err == nil {
+		v.server.Configchans.Vtepdelete <- *c
+		return true, nil
+	}
+	return false, err
 }
 
 func (v *VXLANDServiceHandler) UpdateVxlanVtepInstances(origconfig *vxland.VxlanVtepInstances, newconfig *vxland.VxlanVtepInstances, attrset []bool) (bool, error) {
 	v.logger.Info(fmt.Sprintf("UpdateVxlanVtepInstances orig[%#v] new[%#v]", origconfig, newconfig))
-	update := vxlan.VtepUpdate{
-		Oldconfig: *(v.server.ConvertVxlanVtepInstanceToVtepConfig(origconfig)),
-		Newconfig: *(v.server.ConvertVxlanVtepInstanceToVtepConfig(newconfig)),
-		Attr:      attrset,
+	oc, _ := v.server.ConvertVxlanVtepInstanceToVtepConfig(origconfig)
+	nc, err := v.server.ConvertVxlanVtepInstanceToVtepConfig(newconfig)
+	if err == nil {
+		update := vxlan.VtepUpdate{
+			Oldconfig: *oc,
+			Newconfig: *nc,
+			Attr:      attrset,
+		}
+		v.server.Configchans.Vtepupdate <- update
+		return true, nil
 	}
-	v.server.Configchans.Vtepupdate <- update
-	return true, nil
+
+	return false, err
+}
+
+func (v *VXLANDServiceHandler) HandleDbReadVxlanInstance(dbHdl *sql.DB) error {
+	dbCmd := "select * from VxlanInstance"
+	rows, err := dbHdl.Query(dbCmd)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("DB method Query failed for 'VxlanInstance' with error ", dbCmd, err))
+		return err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+
+		object := new(vxland.VxlanInstance)
+		if err = rows.Scan(&object.VxlanId, &object.McDestIp, &object.VlanId, &object.Mtu); err != nil {
+
+			fmt.Println("Db method Scan failed when interating over VxlanInstance")
+		}
+		_, err = v.CreateVxlanInstance(object)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (v *VXLANDServiceHandler) HandleDbReadVxlanVtepInstances(dbHdl *sql.DB) error {
+	dbCmd := "select * from VxlanVtepInstances"
+	rows, err := dbHdl.Query(dbCmd)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("DB method Query failed for 'VxlanVtepInstances' with error ", dbCmd, err))
+		return err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+
+		object := new(vxland.VxlanVtepInstances)
+		if err = rows.Scan(&object.VtepId, &object.VxlanId, &object.VtepName, &object.SrcIfIndex, &object.UDP, &object.TTL, &object.TOS, &object.InnerVlanHandlingMode, &object.Learning, &object.Rsc, &object.L2miss, &object.L3miss, &object.DstIp, &object.DstMac, &object.VlanId); err != nil {
+
+			fmt.Println("Db method Scan failed when interating over VxlanVtepInstances")
+		}
+		_, err = v.CreateVxlanVtepInstances(object)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (v *VXLANDServiceHandler) ReadConfigFromDB() error {
@@ -117,17 +194,16 @@ func (v *VXLANDServiceHandler) ReadConfigFromDB() error {
 	}
 
 	defer dbHdl.Close()
-	/*
-		if err := s.HandleDbReadDot1dStpBridgeConfig(dbHdl); err != nil {
-			stp.StpLogger("ERROR", "Error getting All Dot1dStpBridgeConfig objects")
-			return err
-		}
 
-		if err = s.HandleDbReadDot1dStpPortEntryConfig(dbHdl); err != nil {
-			stp.StpLogger("ERROR", "Error getting All Dot1dStpPortEntryConfig objects")
-			return err
-		}
-	*/
+	if err := v.HandleDbReadVxlanInstance(dbHdl); err != nil {
+		//stp.StpLogger("ERROR", "Error getting All VxlanInstance objects")
+		return err
+	}
+
+	if err = v.HandleDbReadVxlanVtepInstances(dbHdl); err != nil {
+		//stp.StpLogger("ERROR", "Error getting All VxlanVtepInstance objects")
+		return err
+	}
 
 	return nil
 }

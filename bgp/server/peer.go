@@ -32,7 +32,7 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 
 	peer.NeighborConf = base.NewNeighborConf(peer.logger, globalConf, peerGroup, peerConf)
 	peer.fsmManager = fsm.NewFSMManager(peer.logger, peer.NeighborConf, server.BGPPktSrcCh, server.PeerFSMConnCh,
-		server.PeerFSMStateCh, server.PeerAttrsCh, server.ReachabilityCh)
+		server.ReachabilityCh)
 	return &peer
 }
 
@@ -53,7 +53,7 @@ func (p *Peer) Init() {
 		p.logger.Info(fmt.Sprintf("Instantiating new FSM Manager for neighbor %s\n",
 			p.NeighborConf.Neighbor.NeighborAddress))
 		p.fsmManager = fsm.NewFSMManager(p.logger, p.NeighborConf, p.Server.BGPPktSrcCh, p.Server.PeerFSMConnCh,
-			p.Server.PeerFSMStateCh, p.Server.PeerAttrsCh, p.Server.ReachabilityCh)
+			p.Server.ReachabilityCh)
 	}
 
 	go p.fsmManager.Init()
@@ -98,30 +98,6 @@ func (p *Peer) Command(command int) {
 		return
 	}
 	p.fsmManager.CommandCh <- command
-}
-
-func (p *Peer) SetPeerAttrs(bgpId net.IP, asSize uint8, holdTime uint32, keepaliveTime uint32,
-	addPathFamily map[packet.AFI]map[packet.SAFI]uint8) {
-	p.NeighborConf.BGPId = bgpId
-	p.NeighborConf.ASSize = asSize
-	p.NeighborConf.Neighbor.State.HoldTime = holdTime
-	p.NeighborConf.Neighbor.State.KeepaliveTime = keepaliveTime
-	for afi, safiMap := range addPathFamily {
-		if afi == packet.AfiIP {
-			for _, val := range safiMap {
-				if (val & packet.BGPCapAddPathRx) != 0 {
-					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set add paths maxtx to %d\n",
-						p.NeighborConf.Neighbor.NeighborAddress, p.NeighborConf.RunningConf.AddPathsMaxTx))
-					p.NeighborConf.Neighbor.State.AddPathsMaxTx = p.NeighborConf.RunningConf.AddPathsMaxTx
-				}
-				if (val & packet.BGPCapAddPathTx) != 0 {
-					p.logger.Info(fmt.Sprintf("SetPeerAttrs - Neighbor %s set add paths rx to %s\n",
-						p.NeighborConf.Neighbor.NeighborAddress, p.NeighborConf.RunningConf.AddPathsRx))
-					p.NeighborConf.Neighbor.State.AddPathsRx = true
-				}
-			}
-		}
-	}
 }
 
 func (p *Peer) getAddPathsMaxTx() int {
@@ -194,11 +170,6 @@ func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 	p.NeighborConf.Neighbor.State.AddPathsRx = false
 	p.NeighborConf.Neighbor.State.AddPathsMaxTx = 0
 
-}
-
-func (p *Peer) FSMStateChange(state fsm.BGPFSMState) {
-	p.logger.Info(fmt.Sprintf("Neighbor %s: FSMStateChange %d", p.NeighborConf.Neighbor.NeighborAddress, state))
-	p.NeighborConf.Neighbor.State.SessionState = uint32(state)
 }
 
 func (p *Peer) sendUpdateMsg(msg *packet.BGPMessage, path *bgprib.Path) {
