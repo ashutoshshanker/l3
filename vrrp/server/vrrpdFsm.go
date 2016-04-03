@@ -166,8 +166,7 @@ func (svr *VrrpServer) VrrpTransitionToMaster(key string, reason string) {
 		svr.logger.Err("No entry found ending fsm")
 		return
 	}
-	svr.logger.Info(fmt.Sprintln("adver sent for vrid", gblInfo.IntfConfig.VRID))
-	// Configure secondary interface with VMAC and VIP
+	// Set Sub-intf state up
 	svr.VrrpUpdateSubIntf(gblInfo, true /*configure or set*/)
 	// (140) + Set the Adver_Timer to Advertisement_Interval
 	// Start Advertisement Timer
@@ -233,7 +232,9 @@ func (svr *VrrpServer) VrrpTransitionToBackup(key string, AdvertisementInterval 
 		svr.logger.Err("No entry found ending fsm")
 		return
 	}
-
+	// Bring Down Sub-Interface
+	svr.VrrpUpdateSubIntf(gblInfo, false /*configure or set*/)
+	// Re-Calculate Down timer value
 	gblInfo.MasterDownLock.Lock()
 	svr.VrrpCalculateDownValue(AdvertisementInterval, &gblInfo)
 	gblInfo.MasterDownLock.Unlock()
@@ -254,7 +255,6 @@ func (svr *VrrpServer) VrrpInitState(key string) {
 		svr.VrrpTransitionToMaster(key, "Priority is 255")
 	} else {
 		svr.logger.Info("Transitioning to Backup State")
-		svr.VrrpUpdateSubIntf(gblInfo, false /*configure or set*/)
 		// Transition to backup state first
 		svr.VrrpTransitionToBackup(key,
 			gblInfo.IntfConfig.AdvertisementInterval,
@@ -380,7 +380,7 @@ func (svr *VrrpServer) VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 			}
 			svr.vrrpGblInfo[key] = gblInfo
 			svr.VrrpTransitionToBackup(key, int32(vrrpHdr.MaxAdverInt),
-				"Remote Priority is higher or priority are equal remote ip is higher than local ip")
+				"Remote Priority is higher OR (priority are equal AND remote ip is higher than local ip)")
 		} else { // new Master logic
 			// Discard Advertisement
 			return

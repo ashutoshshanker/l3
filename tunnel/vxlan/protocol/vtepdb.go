@@ -31,7 +31,7 @@ type vtepDbEntry struct {
 	VtepId                uint32
 	VxlanId               uint32
 	VtepName              string
-	SrcIfIndex            int32
+	SrcIfName             string
 	UDP                   uint16
 	TTL                   uint16
 	TOS                   uint16
@@ -58,13 +58,13 @@ type srcMacVtepMap struct {
 
 func NewVtepDbEntry(c *VtepConfig) *vtepDbEntry {
 	vtep := &vtepDbEntry{
-		VtepId:     c.VtepId,
-		VxlanId:    c.VxlanId,
-		VtepName:   c.VtepName,
-		SrcIfIndex: c.SrcIfIndex,
-		UDP:        c.UDP,
-		TTL:        c.TTL,
-		TOS:        c.TOS,
+		VtepId:    c.VtepId,
+		VxlanId:   c.VxlanId,
+		VtepName:  c.VtepName,
+		SrcIfName: c.SrcIfName,
+		UDP:       c.UDP,
+		TTL:       c.TTL,
+		TOS:       c.TOS,
 		InnerVlanHandlingMode: c.InnerVlanHandlingMode,
 		Learning:              c.Learning,
 		Rsc:                   c.Rsc,

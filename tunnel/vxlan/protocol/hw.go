@@ -2,6 +2,7 @@
 package vxlan
 
 import (
+	hwconst "asicd/asicdConstDefs"
 	"asicd/pluginManager/pluginCommon"
 	"asicdServices"
 	"encoding/json"
@@ -9,10 +10,21 @@ import (
 	"io/ioutil"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 	"utils/commonDefs"
 	"utils/ipcutils"
 )
+
+var PortConfigMap map[int32]portConfig
+
+type portConfig struct {
+	Name         string
+	HardwareAddr net.HardwareAddr
+	Speed        int32
+	PortNum      int32
+	IfIndex      int32
+}
 
 type VXLANClientBase struct {
 	Address            string
@@ -57,6 +69,46 @@ func GetClientPort(paramsFile string, c string) int {
 	return 0
 }
 
+func ConstructPortConfigMap() {
+	currMarker := asicdServices.Int(hwconst.MIN_SYS_PORTS)
+	if asicdclnt.ClientHdl != nil {
+		//StpLogger("INFO", "Calling asicd for port config")
+		count := asicdServices.Int(hwconst.MAX_SYS_PORTS)
+		for {
+			bulkInfo, err := asicdclnt.ClientHdl.GetBulkPortState(currMarker, count)
+			if err != nil {
+				//StpLogger("ERROR", fmt.Sprintf("GetBulkPortState Error: %s", err))
+				return
+			}
+			//StpLogger("INFO", fmt.Sprintf("Length of GetBulkPortState: %d", bulkInfo.Count))
+
+			bulkCfgInfo, err := asicdclnt.ClientHdl.GetBulkPort(currMarker, count)
+			if err != nil {
+				//StpLogger("ERROR", fmt.Sprintf("Error: %s", err))
+				return
+			}
+
+			//StpLogger("INFO", fmt.Sprintf("Length of GetBulkPortConfig: %d", bulkCfgInfo.Count))
+			objCount := int(bulkInfo.Count)
+			more := bool(bulkInfo.More)
+			currMarker = asicdServices.Int(bulkInfo.EndIdx)
+			for i := 0; i < objCount; i++ {
+				ifindex := bulkInfo.PortStateList[i].IfIndex
+				ent := PortConfigMap[ifindex]
+				ent.PortNum = bulkInfo.PortStateList[i].PortNum
+				ent.IfIndex = ifindex
+				ent.Name = bulkInfo.PortStateList[i].Name
+				ent.HardwareAddr, _ = net.ParseMAC(bulkCfgInfo.PortList[i].MacAddr)
+				PortConfigMap[ifindex] = ent
+				//StpLogger("INIT", fmt.Sprintf("Found Port %d IfIndex %d Name %s\n", ent.PortNum, ent.IfIndex, ent.Name))
+			}
+			if more == false {
+				return
+			}
+		}
+	}
+}
+
 // connect the the asic d
 func ConnectToClients(paramsFile string) {
 	port := GetClientPort(paramsFile, "asicd")
@@ -71,7 +123,7 @@ func ConnectToClients(paramsFile string) {
 				asicdclnt.ClientHdl = asicdServices.NewASICDServicesClientFactory(asicdclnt.Transport, asicdclnt.PtrProtocolFactory)
 				asicdclnt.IsConnected = true
 				// lets gather all info needed from asicd such as the port
-				//ConstructPortConfigMap()
+				ConstructPortConfigMap()
 				break
 			} else {
 				time.Sleep(time.Millisecond * 500)
@@ -80,7 +132,15 @@ func ConnectToClients(paramsFile string) {
 	}
 }
 
-func (s *VXLANServer) getLoopbackInfo() (success bool, mac net.HardwareAddr, ip net.IP) {
+func (s *VXLANServer) getLinuxIfName(ifindex int32) string {
+
+	if p, ok := PortConfigMap[ifindex]; ok {
+		return p.Name
+	}
+	return ""
+}
+
+func (s *VXLANServer) getLoopbackInfo() (success bool, lbname string, mac net.HardwareAddr, ip net.IP) {
 	// TODO this logic only assumes one loopback interface.  More logic is needed
 	// to handle multiple  loopbacks configured.  The idea should be
 	// that the lowest IP address is used.
@@ -94,6 +154,7 @@ func (s *VXLANServer) getLoopbackInfo() (success bool, mac net.HardwareAddr, ip 
 			currMarker = asicdServices.Int(bulkInfo.EndIdx)
 			for i := 0; i < objCount; i++ {
 				ifindex := bulkInfo.LogicalIntfStateList[i].IfIndex
+				lbname = bulkInfo.LogicalIntfStateList[i].Name
 				if pluginCommon.GetTypeFromIfIndex(ifindex) == commonDefs.IfTypeLoopback {
 					mac, _ = net.ParseMAC(bulkInfo.LogicalIntfStateList[i].SrcMac)
 					ipV4ObjMore := true
@@ -106,8 +167,8 @@ func (s *VXLANServer) getLoopbackInfo() (success bool, mac net.HardwareAddr, ip 
 						for j := 0; j < ipV4ObjCount; j++ {
 							if ipV4BulkInfo.IPv4IntfList[j].IfIndex == ifindex {
 								success = true
-								ip = net.ParseIP(ipV4BulkInfo.IPv4IntfList[j].IpAddr)
-								return success, mac, ip
+								ip = net.ParseIP(strings.Split(ipV4BulkInfo.IPv4IntfList[j].IpAddr, "/")[0])
+								return success, lbname, mac, ip
 							}
 						}
 					}
@@ -115,5 +176,5 @@ func (s *VXLANServer) getLoopbackInfo() (success bool, mac net.HardwareAddr, ip 
 			}
 		}
 	}
-	return success, mac, ip
+	return success, lbname, mac, ip
 }

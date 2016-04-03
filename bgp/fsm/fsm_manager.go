@@ -54,16 +54,13 @@ type FSMManager struct {
 }
 
 func NewFSMManager(logger *logging.Writer, neighborConf *base.NeighborConf, bgpPktSrcCh chan *packet.BGPPktSrc,
-	fsmConnCh chan PeerFSMConn, fsmStateCh chan PeerFSMState, peerAttrsCh chan PeerAttrs,
-	reachabilityCh chan config.ReachabilityInfo) *FSMManager {
+	fsmConnCh chan PeerFSMConn, reachabilityCh chan config.ReachabilityInfo) *FSMManager {
 	mgr := FSMManager{
 		logger:         logger,
 		neighborConf:   neighborConf,
 		gConf:          neighborConf.Global,
 		pConf:          &neighborConf.RunningConf,
 		fsmConnCh:      fsmConnCh,
-		fsmStateCh:     fsmStateCh,
-		peerAttrsCh:    peerAttrsCh,
 		bgpPktSrcCh:    bgpPktSrcCh,
 		reachabilityCh: reachabilityCh,
 	}
@@ -197,8 +194,7 @@ func (mgr *FSMManager) fsmBroken(id uint8, fsmDelete bool) {
 
 func (mgr *FSMManager) fsmStateChange(id uint8, state BGPFSMState) {
 	if mgr.activeFSM == id || mgr.activeFSM == uint8(config.ConnDirInvalid) {
-		mgr.fsmStateCh <- PeerFSMState{mgr.neighborConf.Neighbor.NeighborAddress.String(), state}
-		//mgr.Peer.FSMStateChange(state)
+		mgr.neighborConf.FSMStateChange(uint32(state))
 	}
 }
 
@@ -315,9 +311,7 @@ func (mgr *FSMManager) receivedBGPOpenMessage(id uint8, connDir config.ConnDir, 
 	if closeConnDir == config.ConnDirInvalid || closeConnDir != connDir {
 		asSize := packet.GetASSize(openMsg)
 		addPathFamily := packet.GetAddPathFamily(openMsg)
-		//mgr.Peer.SetPeerAttrs(openMsg.BGPId, asSize, mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime, addPathFamily)
-		mgr.peerAttrsCh <- PeerAttrs{mgr.neighborConf.Neighbor.NeighborAddress.String(), openMsg.BGPId, asSize,
-			mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime, addPathFamily}
+		mgr.neighborConf.SetPeerAttrs(openMsg.BGPId, asSize, mgr.fsms[id].holdTime, mgr.fsms[id].keepAliveTime, addPathFamily)
 	}
 
 	if closeConnDir == connDir {
