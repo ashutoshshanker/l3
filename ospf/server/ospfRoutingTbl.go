@@ -5,6 +5,7 @@ import (
 	"ribd"
 	"ribdInt"
 	"strconv"
+        "l3/ospf/config"
 )
 
 type DestType bool
@@ -37,15 +38,32 @@ type NextHop struct {
 	NextHopIP uint32
 }
 
-type RoutingTblKey struct {
+type AreaIdKey struct {
+        AreaId uint32
+}
+
+type RoutingTblEntryKey struct {
 	DestId   uint32   // IP address(Network Type) RouterID(Router Type)
 	AddrMask uint32   // Only For Network Type
 	DestType DestType // true: Network, false: Router
 }
 
+type AreaRoutingTbl struct {
+        RoutingTblMap      map[RoutingTblEntryKey]RoutingTblEntry
+}
+
+/*
+type RoutingTblKey struct {
+	DestId   uint32   // IP address(Network Type) RouterID(Router Type)
+	AddrMask uint32   // Only For Network Type
+	DestType DestType // true: Network, false: Router
+	AreaId   uint32   // Area Id
+}
+*/
+
 type RoutingTblEntry struct {
 	OptCapabilities uint8    // Optional Capabilities
-	Area            uint32   // Area
+	//Area            uint32   // Area
 	PathType        PathType // Path Type
 	Cost            uint16
 	Type2Cost       uint16
@@ -58,57 +76,59 @@ type RoutingTblEntry struct {
 func (server *OSPFServer) dumpRoutingTbl() {
 	server.logger.Info("=============Routing Table============")
 	server.logger.Info("DestId      AddrMask        DestType        OprCapabilities Area    PathType        Cost    Type2Cost       LSOrigin        NumOfPaths      NextHops        AdvRtr")
-	for key, ent := range server.RoutingTbl {
-		DestId := convertUint32ToIPv4(key.DestId)
-		AddrMask := convertUint32ToIPv4(key.AddrMask)
-		var DestType string
-		if key.DestType == Network {
-			DestType = "Network"
-		} else {
-			DestType = "Router"
-		}
-		Area := convertUint32ToIPv4(ent.Area)
-		var PathType string
-		if ent.PathType == IntraArea {
-			PathType = "IntraArea"
-		} else if ent.PathType == InterArea {
-			PathType = "InterArea"
-		} else if ent.PathType == Type1Ext {
-			PathType = "Type1Ext"
-		} else {
-			PathType = "Type2Ext"
-		}
-		var LsaType string
-		if ent.LSOrigin.LSType == RouterLSA {
-			LsaType = "RouterLSA"
-		} else if ent.LSOrigin.LSType == NetworkLSA {
-			LsaType = "NetworkLSA"
-		} else if ent.LSOrigin.LSType == Summary3LSA {
-			LsaType = "Summary3LSA"
-		} else if ent.LSOrigin.LSType == Summary4LSA {
-			LsaType = "Summary4LSA"
-		} else {
-			LsaType = "ASExternalLSA"
-		}
-		LsaLSId := convertUint32ToIPv4(ent.LSOrigin.LSId)
-		LsaAdvRouter := convertUint32ToIPv4(ent.LSOrigin.AdvRouter)
-		AdvRtr := convertUint32ToIPv4(ent.AdvRtr)
-		var NextHops string = "["
-		for nxtHopKey, _ := range ent.NextHops {
-			NextHops = NextHops + "{"
-			IfIPAddr := convertUint32ToIPv4(nxtHopKey.IfIPAddr)
-			NextHopIP := convertUint32ToIPv4(nxtHopKey.NextHopIP)
-			nextHops := fmt.Sprint("IfIpAddr:", IfIPAddr, "IfIdx:", nxtHopKey.IfIdx, "NextHopIP:", NextHopIP)
-			NextHops = NextHops + nextHops
-			NextHops = NextHops + "}"
-		}
-		NextHops = NextHops + "]"
-		server.logger.Info(fmt.Sprintln(DestId, AddrMask, DestType, ent.OptCapabilities, Area, PathType, ent.Cost, ent.Type2Cost, "[", LsaType, LsaLSId, LsaAdvRouter, "]", ent.NumOfPaths, NextHops, AdvRtr))
-	}
+        for areaIdKey, areaEnt := range server.RoutingTbl {
+                for key, ent := range areaEnt.RoutingTblMap {
+                        DestId := convertUint32ToIPv4(key.DestId)
+                        AddrMask := convertUint32ToIPv4(key.AddrMask)
+                        var DestType string
+                        if key.DestType == Network {
+                                DestType = "Network"
+                        } else {
+                                DestType = "Router"
+                        }
+                        Area := convertUint32ToIPv4(areaIdKey.AreaId)
+                        var PathType string
+                        if ent.PathType == IntraArea {
+                                PathType = "IntraArea"
+                        } else if ent.PathType == InterArea {
+                                PathType = "InterArea"
+                        } else if ent.PathType == Type1Ext {
+                                PathType = "Type1Ext"
+                        } else {
+                                PathType = "Type2Ext"
+                        }
+                        var LsaType string
+                        if ent.LSOrigin.LSType == RouterLSA {
+                                LsaType = "RouterLSA"
+                        } else if ent.LSOrigin.LSType == NetworkLSA {
+                                LsaType = "NetworkLSA"
+                        } else if ent.LSOrigin.LSType == Summary3LSA {
+                                LsaType = "Summary3LSA"
+                        } else if ent.LSOrigin.LSType == Summary4LSA {
+                                LsaType = "Summary4LSA"
+                        } else {
+                                LsaType = "ASExternalLSA"
+                        }
+                        LsaLSId := convertUint32ToIPv4(ent.LSOrigin.LSId)
+                        LsaAdvRouter := convertUint32ToIPv4(ent.LSOrigin.AdvRouter)
+                        AdvRtr := convertUint32ToIPv4(ent.AdvRtr)
+                        var NextHops string = "["
+                        for nxtHopKey, _ := range ent.NextHops {
+                                NextHops = NextHops + "{"
+                                IfIPAddr := convertUint32ToIPv4(nxtHopKey.IfIPAddr)
+                                NextHopIP := convertUint32ToIPv4(nxtHopKey.NextHopIP)
+                                nextHops := fmt.Sprint("IfIpAddr:", IfIPAddr, "IfIdx:", nxtHopKey.IfIdx, "NextHopIP:", NextHopIP)
+                                NextHops = NextHops + nextHops
+                                NextHops = NextHops + "}"
+                        }
+                        NextHops = NextHops + "]"
+                        server.logger.Info(fmt.Sprintln(DestId, AddrMask, DestType, ent.OptCapabilities, Area, PathType, ent.Cost, ent.Type2Cost, "[", LsaType, LsaLSId, LsaAdvRouter, "]", ent.NumOfPaths, NextHops, AdvRtr))
+                }
+        }
 	server.logger.Info("==============End of Routing Table================")
 }
 
-func (server *OSPFServer) UpdateRoutingTblForRouter(vKey VertexKey, tVertex TreeVertex, rootVKey VertexKey) {
+func (server *OSPFServer) UpdateRoutingTblForRouter(areaIdKey AreaIdKey, vKey VertexKey, tVertex TreeVertex, rootVKey VertexKey) {
 	server.logger.Info(fmt.Sprintln("Updating Routing Table for Router Vertex", vKey, tVertex))
 
 	gEnt, exist := server.AreaGraph[vKey]
@@ -116,20 +136,22 @@ func (server *OSPFServer) UpdateRoutingTblForRouter(vKey VertexKey, tVertex Tree
 		server.logger.Err(fmt.Sprintln("Entry doesn't exist in Area Graph for:", vKey))
 		return
 	}
-	rKey := RoutingTblKey{
+	rKey := RoutingTblEntryKey{
 		DestType: Router,
 		AddrMask: 0, //TODO
 		DestId:   vKey.ID,
+                //AreaId:   gEnt.AreaId,
 	}
 
-	rEnt, exist := server.TempRoutingTbl[rKey]
+        tempRoutingTbl := server.TempRoutingTbl[areaIdKey]
+	rEnt, exist := tempRoutingTbl.RoutingTblMap[rKey]
 	if exist {
 		server.logger.Info(fmt.Sprintln("Routing Tbl entry already exist for:", rKey))
 		return
 	}
 
 	rEnt.OptCapabilities = 0 //TODO
-	rEnt.Area = gEnt.AreaId
+	//rEnt.Area = gEnt.AreaId
 	rEnt.PathType = IntraArea
 	rEnt.Cost = tVertex.Distance
 	rEnt.Type2Cost = 0 //TODO
@@ -174,10 +196,11 @@ func (server *OSPFServer) UpdateRoutingTblForRouter(vKey VertexKey, tVertex Tree
 		rEnt.NextHops[nextHop] = true
 	}
 	rEnt.AdvRtr = vKey.AdvRtr
-	server.TempRoutingTbl[rKey] = rEnt
+	tempRoutingTbl.RoutingTblMap[rKey] = rEnt
+	server.TempRoutingTbl[areaIdKey] = tempRoutingTbl
 }
 
-func (server *OSPFServer) UpdateRoutingTblForSNetwork(vKey VertexKey, tVertex TreeVertex, rootVKey VertexKey) {
+func (server *OSPFServer) UpdateRoutingTblForSNetwork(areaIdKey AreaIdKey, vKey VertexKey, tVertex TreeVertex, rootVKey VertexKey) {
 	server.logger.Info(fmt.Sprintln("Updating Routing Table for Stub Network Vertex", vKey, tVertex))
 
 	sEnt, exist := server.AreaStubs[vKey]
@@ -185,20 +208,22 @@ func (server *OSPFServer) UpdateRoutingTblForSNetwork(vKey VertexKey, tVertex Tr
 		server.logger.Err(fmt.Sprintln("Entry doesn't exist in Area Stubs for:", vKey))
 		return
 	}
-	rKey := RoutingTblKey{
+	rKey := RoutingTblEntryKey{
 		DestType: Network,
 		AddrMask: sEnt.LinkData, //TODO
 		DestId:   vKey.ID,
+                //AreaId:   sEnt.AreaId,
 	}
 
-	rEnt, exist := server.TempRoutingTbl[rKey]
+        tempRoutingTbl := server.TempRoutingTbl[areaIdKey]
+	rEnt, exist := tempRoutingTbl.RoutingTblMap[rKey]
 	if exist {
 		server.logger.Info(fmt.Sprintln("Routing Tbl entry already exist for:", rKey))
 		return
 	}
 
 	rEnt.OptCapabilities = 0 //TODO
-	rEnt.Area = sEnt.AreaId
+	//rEnt.Area = sEnt.AreaId
 	rEnt.PathType = IntraArea //TODO
 	rEnt.Cost = tVertex.Distance
 	rEnt.Type2Cost = 0 //TODO
@@ -218,14 +243,6 @@ func (server *OSPFServer) UpdateRoutingTblForSNetwork(vKey VertexKey, tVertex Tr
 		vFirst := tVertex.Paths[i][0]
 		vSecond := tVertex.Paths[i][1]
 		vThird := tVertex.Paths[i][2]
-		/*
-		   var vThird VertexKey
-		   if pathlen == 2 {
-		           vThird = vKey
-		   } else {
-		           vThird = tVertex.Paths[i][2]
-		   }
-		*/
 		gFirst, exist := server.AreaGraph[vFirst]
 		if !exist {
 			server.logger.Info(fmt.Sprintln("1. Entry does not exist for:", vFirst, "in Area Graph"))
@@ -246,10 +263,11 @@ func (server *OSPFServer) UpdateRoutingTblForSNetwork(vKey VertexKey, tVertex Tr
 		rEnt.NextHops[nextHop] = true
 	}
 	rEnt.AdvRtr = vKey.AdvRtr
-	server.TempRoutingTbl[rKey] = rEnt
+	tempRoutingTbl.RoutingTblMap[rKey] = rEnt
+	server.TempRoutingTbl[areaIdKey] = tempRoutingTbl
 }
 
-func (server *OSPFServer) UpdateRoutingTblForTNetwork(vKey VertexKey, tVertex TreeVertex, rootVKey VertexKey) {
+func (server *OSPFServer) UpdateRoutingTblForTNetwork(areaIdKey AreaIdKey, vKey VertexKey, tVertex TreeVertex, rootVKey VertexKey) {
 	server.logger.Info(fmt.Sprintln("Updating Routing Table for Transit Network Vertex", vKey, tVertex))
 
 	gEnt, exist := server.AreaGraph[vKey]
@@ -267,20 +285,22 @@ func (server *OSPFServer) UpdateRoutingTblForTNetwork(vKey VertexKey, tVertex Tr
 	if !exist {
 		server.logger.Err(fmt.Sprintln("Vertex", vKey, "has neighboring router but no corresponding linkdata"))
 	}
-	rKey := RoutingTblKey{
+	rKey := RoutingTblEntryKey{
 		DestType: Network,
 		AddrMask: addrMask, //TODO
 		DestId:   vKey.ID & addrMask,
+                //AreaId:   gEnt.AreaId,
 	}
 
-	rEnt, exist := server.TempRoutingTbl[rKey]
+        tempRoutingTbl := server.TempRoutingTbl[areaIdKey]
+	rEnt, exist := tempRoutingTbl.RoutingTblMap[rKey]
 	if exist {
 		server.logger.Info(fmt.Sprintln("Routing Tbl entry already exist for:", rKey))
 		return
 	}
 
 	rEnt.OptCapabilities = 0 //TODO
-	rEnt.Area = gEnt.AreaId
+	//rEnt.Area = gEnt.AreaId
 	rEnt.PathType = IntraArea //TODO
 	rEnt.Cost = tVertex.Distance
 	rEnt.Type2Cost = 0 //TODO
@@ -300,14 +320,6 @@ func (server *OSPFServer) UpdateRoutingTblForTNetwork(vKey VertexKey, tVertex Tr
 		vFirst := tVertex.Paths[i][0]
 		vSecond := tVertex.Paths[i][1]
 		vThird := tVertex.Paths[i][2]
-		/*
-		   var vThird VertexKey
-		   if pathlen == 2 {
-		           vThird = vKey
-		   } else {
-		           vThird = tVertex.Paths[i][2]
-		   }
-		*/
 		gFirst, exist := server.AreaGraph[vFirst]
 		if !exist {
 			server.logger.Info(fmt.Sprintln("1. Entry does not exist for:", vFirst, "in Area Graph"))
@@ -328,17 +340,20 @@ func (server *OSPFServer) UpdateRoutingTblForTNetwork(vKey VertexKey, tVertex Tr
 		rEnt.NextHops[nextHop] = true
 	}
 	rEnt.AdvRtr = vKey.AdvRtr
-	server.TempRoutingTbl[rKey] = rEnt
+	tempRoutingTbl.RoutingTblMap[rKey] = rEnt
+	server.TempRoutingTbl[areaIdKey] = tempRoutingTbl
 }
 
 // Compare Old and New Route
-func (server *OSPFServer) CompareRoutes(rKey RoutingTblKey) bool {
-	oldEnt, exist := server.OldRoutingTbl[rKey]
+func (server *OSPFServer) CompareRoutes(areaIdKey AreaIdKey, rKey RoutingTblEntryKey) bool {
+        oldRoutingTbl := server.OldRoutingTbl[areaIdKey]
+	oldEnt, exist := oldRoutingTbl.RoutingTblMap[rKey]
 	if !exist {
 		server.logger.Err(fmt.Sprintln("No Route with", rKey, "was there in Old Routing Table"))
 		return true
 	}
-	newEnt, exist := server.TempRoutingTbl[rKey]
+        tempRoutingTbl := server.TempRoutingTbl[areaIdKey]
+	newEnt, exist := tempRoutingTbl.RoutingTblMap[rKey]
 	if !exist {
 		server.logger.Err(fmt.Sprintln("No Route with", rKey, "is there in New Routing Table"))
 		return true
@@ -359,9 +374,10 @@ func (server *OSPFServer) CompareRoutes(rKey RoutingTblKey) bool {
 	return true
 }
 
-func (server *OSPFServer) DeleteRoute(rKey RoutingTblKey) {
+func (server *OSPFServer) DeleteRoute(areaIdKey AreaIdKey, rKey RoutingTblEntryKey) {
 	server.logger.Info(fmt.Sprintln("Deleting route for rKey:", rKey))
-	oldEnt, exist := server.OldRoutingTbl[rKey]
+        oldRoutingTbl := server.OldRoutingTbl[areaIdKey]
+	oldEnt, exist := oldRoutingTbl.RoutingTblMap[rKey]
 	if !exist {
 		server.logger.Info(fmt.Sprintln("No route installed for rKey:", rKey, "hence, not deleting it"))
 		return
@@ -389,13 +405,14 @@ func (server *OSPFServer) DeleteRoute(rKey RoutingTblKey) {
 	}
 }
 
-func (server *OSPFServer) UpdateRoute(rKey RoutingTblKey) {
+func (server *OSPFServer) UpdateRoute(areaIdKey AreaIdKey, rKey RoutingTblEntryKey) {
 	server.logger.Info(fmt.Sprintln("Updating route for rKey:", rKey))
 }
 
-func (server *OSPFServer) InstallRoute(rKey RoutingTblKey) {
+func (server *OSPFServer) InstallRoute(areaIdKey AreaIdKey, rKey RoutingTblEntryKey) {
 	server.logger.Info(fmt.Sprintln("Installing new route for rKey", rKey))
-	newEnt, exist := server.TempRoutingTbl[rKey]
+        tempRoutingTbl := server.TempRoutingTbl[areaIdKey]
+	newEnt, exist := tempRoutingTbl.RoutingTblMap[rKey]
 	if !exist {
 		server.logger.Info(fmt.Sprintln("No new routing table entry exist for rkey:", rKey, "hence not installing it"))
 		return
@@ -433,12 +450,16 @@ func (server *OSPFServer) InstallRoute(rKey RoutingTblKey) {
 	}
 }
 
-func (server *OSPFServer) InstallRoutingTbl() {
-	server.logger.Info("Installing Routing Table")
-	OldRoutingTblKeys := make(map[RoutingTblKey]bool)
-	NewRoutingTblKeys := make(map[RoutingTblKey]bool)
+func (server *OSPFServer) InstallRoutingTbl(areaId uint32) {
+	server.logger.Info(fmt.Sprintln("Installing Routing Table for area:", areaId))
+        areaIdKey := AreaIdKey {
+                        AreaId: areaId,
+                        }
+	OldRoutingTblKeys := make(map[RoutingTblEntryKey]bool)
+	NewRoutingTblKeys := make(map[RoutingTblEntryKey]bool)
 
-	for rKey, rEnt := range server.OldRoutingTbl {
+        oldRoutingTbl := server.OldRoutingTbl[areaIdKey]
+	for rKey, rEnt := range oldRoutingTbl.RoutingTblMap {
 		if rKey.DestType != Network {
 			continue
 		}
@@ -446,7 +467,9 @@ func (server *OSPFServer) InstallRoutingTbl() {
 			OldRoutingTblKeys[rKey] = false
 		}
 	}
-	for rKey, rEnt := range server.TempRoutingTbl {
+
+        tempRoutingTbl := server.TempRoutingTbl[areaIdKey]
+	for rKey, rEnt := range tempRoutingTbl.RoutingTblMap {
 		if rKey.DestType != Network {
 			continue
 		}
@@ -457,9 +480,9 @@ func (server *OSPFServer) InstallRoutingTbl() {
 	for rKey, _ := range NewRoutingTblKeys {
 		_, exist := OldRoutingTblKeys[rKey]
 		if exist {
-			ret := server.CompareRoutes(rKey)
+			ret := server.CompareRoutes(areaIdKey, rKey)
 			if ret == false { // Old Routes and New Routes are not same
-				server.UpdateRoute(rKey)
+				server.UpdateRoute(areaIdKey, rKey)
 				OldRoutingTblKeys[rKey] = true
 				NewRoutingTblKeys[rKey] = true
 			} else { // Old Routes and New Routes are same
@@ -471,15 +494,123 @@ func (server *OSPFServer) InstallRoutingTbl() {
 
 	for rKey, ent := range OldRoutingTblKeys {
 		if ent == false {
-			server.DeleteRoute(rKey)
+			server.DeleteRoute(areaIdKey, rKey)
 		}
 		OldRoutingTblKeys[rKey] = true
 	}
 
 	for rKey, ent := range NewRoutingTblKeys {
 		if ent == false {
-			server.InstallRoute(rKey)
+			server.InstallRoute(areaIdKey, rKey)
 		}
 		NewRoutingTblKeys[rKey] = true
 	}
+}
+
+func (server *OSPFServer)HandleSummaryLsa(areaId uint32) {
+        server.logger.Info(fmt.Sprintln("Inside Handling Summary LSA for area:", areaId))
+        lsdbKey := LsdbKey {
+                AreaId: areaId,
+        }
+        lsDbEnt, exist := server.AreaLsdb[lsdbKey]
+        if !exist {
+                server.logger.Err(fmt.Sprintln("Unable to find Area Lsdb entry"))
+                return
+        }
+        // Handling Summary LSA in case of FS is internal router
+        if server.ospfGlobalConf.AreaBdrRtrStatus == false {
+                for lsaKey, lsaEnt := range lsDbEnt.Summary3LsaMap {
+                        server.logger.Info(fmt.Sprintln("Summary LSAKey:", lsaKey, "lsaENt:", lsaEnt))
+                        if lsaEnt.Metric == LSInfinity ||
+                                lsaEnt.LsaMd.LSAge == config.MaxAge {
+                                server.logger.Info("Ignoring Summary LSA...")
+                                continue
+                        }
+                        rtrId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
+                        if lsaKey.AdvRouter == rtrId {
+                                server.logger.Info("Self originated summary LSA, so no need to process for routing table calc")
+                                continue
+                        }
+
+                        areaIdKey := AreaIdKey {
+                                        AreaId: areaId,
+                                }
+                        // TODO: Handle Area Range Section 16.2 Point 3
+                        //Network := lsaKey.LSId & lsaEnt.Netmask
+                        //Mask := lsaEnt.Netmask
+                        rKey := RoutingTblEntryKey {
+                                DestId: lsaKey.AdvRouter,
+                                AddrMask: 0,
+                                DestType: Router,
+                        }
+
+                        tempRoutingTbl := server.TempRoutingTbl[areaIdKey]
+                        rEnt, exist := tempRoutingTbl.RoutingTblMap[rKey]
+                        if !exist {
+                                server.logger.Info("Router LSA for the doesnot exists for Summary Lsa Advertising Router")
+                                continue
+                        }
+                        cost := rEnt.Cost + uint16(lsaEnt.Metric)
+                        nextHopMap := rEnt.NextHops
+                        numOfNextHops := rEnt.NumOfPaths
+                        rKey = RoutingTblEntryKey {
+                                DestId: lsaKey.LSId & lsaEnt.Netmask,
+                                AddrMask: lsaEnt.Netmask,
+                                DestType: Network,
+                        }
+
+                        tempRoutingTbl = server.TempRoutingTbl[areaIdKey]
+                        rEnt, exist = tempRoutingTbl.RoutingTblMap[rKey]
+                        if exist {
+                                if rEnt.PathType == IntraArea {
+                                        continue
+                                }
+
+                                if rEnt.Cost < cost {
+                                        server.logger.Info("Route already exists with lesser cost")
+                                        continue
+                                } else if rEnt.Cost > cost {
+                                        rEnt.OptCapabilities = 0 //TODO
+                                        //rEnt.PathType = InterArea
+                                        rEnt.Cost = cost
+                                        //rEnt.Type2Cost = 0
+                                        rEnt.LSOrigin = lsaKey
+                                        rEnt.NumOfPaths = numOfNextHops
+                                        rEnt.NextHops = make(map[NextHop]bool)
+                                        for key, _ := range nextHopMap {
+                                                rEnt.NextHops[key] = true
+                                        }
+                                        rEnt.AdvRtr = lsaKey.AdvRouter
+                                } else {
+                                        cnt := 0
+                                        for key, _ := range nextHopMap {
+                                                _, exist = rEnt.NextHops[key]
+                                                if !exist {
+                                                        rEnt.NextHops[key] = true
+                                                        cnt++
+                                                }
+                                        }
+                                        rEnt.NumOfPaths = numOfNextHops + cnt
+                                }
+                        } else {
+                                rEnt.OptCapabilities = 0 //TODO
+                                rEnt.PathType = InterArea
+                                rEnt.Cost = cost
+                                rEnt.Type2Cost = 0
+                                rEnt.LSOrigin = lsaKey
+                                rEnt.NumOfPaths = numOfNextHops
+                                rEnt.NextHops = make(map[NextHop]bool)
+                                for key, _ := range nextHopMap {
+                                        rEnt.NextHops[key] = true
+                                }
+                                rEnt.AdvRtr = lsaKey.AdvRouter
+                        }
+                        tempRoutingTbl.RoutingTblMap[rKey] = rEnt
+                        server.TempRoutingTbl[areaIdKey] = tempRoutingTbl
+                }
+        }
+}
+
+func (server *OSPFServer)generateSummaryRoutes(areaId uint32) {
+
 }
