@@ -846,6 +846,11 @@ func (server *OSPFServer) refreshNeighborSlice() {
 
 }
 
+/*@fn resendDBDPkt
+Send DBD packets at continuous interval if neighbor doesnt
+reply.
+*/
+
 /* @fn processNeighborDeadEvent
 	1) clear retransmission list.
 	2) send message to IFFSM
