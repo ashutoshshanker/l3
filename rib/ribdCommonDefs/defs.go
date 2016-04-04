@@ -1,5 +1,6 @@
 package ribdCommonDefs
 import "ribdInt"
+import "utils/commonDefs"
 
 const (
       CONNECTED  = 0
@@ -33,4 +34,23 @@ type RouteReachabilityStatusMsgInfo struct {
 	Network string
 	IsReachable bool
 	NextHopIntf ribdInt.NextHopInfo
+}
+
+func GetNextHopIfTypeStr(nextHopIfType ribdInt.Int) (nextHopIfTypeStr string, err error) {
+	nextHopIfTypeStr = ""
+	switch nextHopIfType {
+	case commonDefs.L2RefTypePort:
+		nextHopIfTypeStr = "PHY"
+		break
+	case commonDefs.L2RefTypeVlan:
+		nextHopIfTypeStr = "VLAN"
+		break
+	case commonDefs.IfTypeNull:
+		nextHopIfTypeStr = "NULL"
+		break
+	case commonDefs.IfTypeLoopback:
+		nextHopIfTypeStr = "Loopback"
+		break
+	}
+	return nextHopIfTypeStr, err
 }

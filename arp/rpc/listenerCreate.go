@@ -25,9 +25,11 @@ func (h *ARPHandler) SendSetArpConfig(refTimeout int) bool {
 	return true
 }
 
-func (h *ARPHandler) ResolveArpIPV4(targetIp string, ifType arpdInt.Int, ifId arpdInt.Int) (arpdInt.Int, error) {
+//func (h *ARPHandler) ResolveArpIPV4(targetIp string, ifType arpdInt.Int, ifId arpdInt.Int) (arpdInt.Int, error) {
+func (h *ARPHandler) ResolveArpIPV4(targetIp string, ifType arpdInt.Int, ifId arpdInt.Int) ( error) {
 	h.logger.Info(fmt.Sprintln("Received ResolveArpIPV4 call with targetIp:", targetIp, "ifType:", ifType, "ifId:", ifId))
-	return h.SendResolveArpIPv4(targetIp, ifType, ifId), nil
+	h.SendResolveArpIPv4(targetIp, ifType, ifId)
+	return nil
 }
 
 //func (h *ARPHandler) CreateArpConfig(refTimeout arpd.Int) (arpd.Int, error) {
