@@ -456,8 +456,10 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			discard, op = server.sanityCheckNetworkLsa(*nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
 
 		case Summary3LSA, Summary4LSA:
+                        server.logger.Info(fmt.Sprintln("Received summary Lsa Packet :", lsdb_msg.Data))
 			slsa := NewSummaryLsa()
 			decodeSummaryLsa(lsdb_msg.Data, slsa, lsa_key)
+                        server.logger.Info(fmt.Sprintln("Decoded summary Lsa Packet :", slsa))
 			dslsa, ret := server.getSummaryLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckSummaryLsa(*slsa, dslsa, nbr, intf, ret, lsa_max_age)
 			lsop = LSASUMMARYFLOOD

@@ -152,6 +152,7 @@ func (server *BFDServer) GetIfIndexAndLocalIpFromDestIp(DestIp string) (int32, s
 		server.logger.Info(fmt.Sprintf("%s is not reachable", DestIp))
 		return int32(0), ""
 	}
+	server.ribdClient.ClientHdl.TrackReachabilityStatus(DestIp,"BFD","add")
 	ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(reachabilityInfo.NextHopIfIndex), int(reachabilityInfo.NextHopIfType))
 	server.logger.Info(fmt.Sprintln("GetIfIndexAndLocalIpFromDestIp: DestIp: ", DestIp, "IfIndex: ", ifIndex))
 	return ifIndex, reachabilityInfo.NextHopIp
@@ -384,6 +385,7 @@ func (server *BFDServer) DeleteBfdSession(sessionMgmt BfdSessionMgmt) error {
 		} else {
 			server.SessionDeleteHandler(session, Protocol)
 		}
+	    server.ribdClient.ClientHdl.TrackReachabilityStatus(DestIp,"BFD","del")
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
 	}

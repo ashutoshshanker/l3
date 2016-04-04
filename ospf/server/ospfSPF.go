@@ -356,7 +356,7 @@ func (server *OSPFServer)ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
                                 var path Path
                                 path = make(Path, 0)
                                 tEnt.Paths[0] = path
-                                tEnt.Distance = 0xff00
+                                tEnt.Distance = 0xff00 // LSInfinity
                                 tEnt.NumOfPaths = 1
                         }
                         tEntry, exist := server.SPFTree[treeVSlice[j]]
@@ -528,7 +528,10 @@ func (server *OSPFServer)dumpSPFTree() {
 }
 
 
-func (server *OSPFServer)UpdateRoutingTbl(vKey VertexKey) {
+func (server *OSPFServer)UpdateRoutingTbl(vKey VertexKey, areaId uint32) {
+        areaIdKey := AreaIdKey {
+                        AreaId: areaId,
+                        }
         for key, ent := range server.SPFTree {
                 if vKey == key {
                         server.logger.Info("It's own vertex")
@@ -536,35 +539,55 @@ func (server *OSPFServer)UpdateRoutingTbl(vKey VertexKey) {
                 }
                 switch key.Type {
                 case RouterVertex:
-                        server.UpdateRoutingTblForRouter(key, ent, vKey)
+                        server.UpdateRoutingTblForRouter(areaIdKey, key, ent, vKey)
                 case SNetworkVertex:
-                        server.UpdateRoutingTblForSNetwork(key, ent, vKey)
+                        server.UpdateRoutingTblForSNetwork(areaIdKey, key, ent, vKey)
                 case TNetworkVertex:
-                        server.UpdateRoutingTblForTNetwork(key, ent, vKey)
+                        server.UpdateRoutingTblForTNetwork(areaIdKey, key, ent, vKey)
                 }
         }
+}
+
+func (server *OSPFServer)initRoutingTbl(areaId uint32) {
+        areaIdKey := AreaIdKey {
+                        AreaId: areaId,
+                        }
+        routingTbl := server.RoutingTbl[areaIdKey]
+        routingTbl.RoutingTblMap = make(map[RoutingTblEntryKey]RoutingTblEntry)
+        server.RoutingTbl[areaIdKey] = routingTbl
 }
 
 func (server *OSPFServer) spfCalculation() {
         for {
                 msg := <-server.StartCalcSPFCh
                 server.logger.Info(fmt.Sprintln("Recevd SPF Calculation Notification for:", msg))
+                server.logger.Info(fmt.Sprintln("Area LS Database:", server.AreaLsdb))
                 // Create New Routing table
                 // Invalidate Old Routing table
                 // Backup Old Routing table
                 // TODO: Have Per Area Routing Tbl
                 server.OldRoutingTbl = nil
-                server.OldRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
+                server.OldRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
                 server.TempRoutingTbl = nil
-                server.TempRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-                server.OldRoutingTbl = server.RoutingTbl
-                flag := false //TODO:Hack
+                server.TempRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
                 for key, _ := range server.AreaConfMap {
+                        flag := false //TODO:Hack
                         // Initialize Algorithm's Data Structure
+                        areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
                         server.AreaGraph = make(map[VertexKey]Vertex)
                         server.AreaStubs = make(map[VertexKey]StubVertex)
                         server.SPFTree = make(map[VertexKey]TreeVertex)
-                        areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
+                        areaIdKey := AreaIdKey {
+                                        AreaId: areaId,
+                                }
+                        oldRoutingTbl := server.OldRoutingTbl[areaIdKey]
+                        oldRoutingTbl.RoutingTblMap = make(map[RoutingTblEntryKey]RoutingTblEntry)
+                        server.OldRoutingTbl[areaIdKey] = oldRoutingTbl
+                        server.OldRoutingTbl[areaIdKey] = server.RoutingTbl[areaIdKey]
+
+                        tempRoutingTbl := server.TempRoutingTbl[areaIdKey]
+                        tempRoutingTbl.RoutingTblMap = make(map[RoutingTblEntryKey]RoutingTblEntry)
+                        server.TempRoutingTbl[areaIdKey] = tempRoutingTbl
                         vKey, err := server.CreateAreaGraph(areaId)
                         if err != nil {
                                 server.logger.Err(fmt.Sprintln("Error while creating graph for areaId:", areaId))
@@ -587,21 +610,51 @@ func (server *OSPFServer) spfCalculation() {
                         server.dumpAreaStubs()
                         server.dumpSPFTree()
                         server.logger.Info("=========================End after Dijkstra=================")
-                        server.UpdateRoutingTbl(vKey)
+                        server.UpdateRoutingTbl(vKey, areaId)
+                        server.HandleSummaryLsa(areaId)
                         server.AreaGraph = nil
                         server.AreaStubs = nil
                         server.SPFTree = nil
+                        if flag == false {
+                                server.InstallRoutingTbl(areaId)
+                                if server.ospfGlobalConf.AreaBdrRtrStatus == true {
+                                        server.logger.Info("Generate Summary routes from Routing tble...")
+                                        server.generateSummaryRoutes(areaId)
+                                }
+                        } else {
+                                server.logger.Info("Some Error in Routing Table Generation")
+                        }
                 }
-                if flag == false {
-                        server.InstallRoutingTbl()
-                        server.RoutingTbl = nil
-                        server.RoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-                        server.RoutingTbl = server.TempRoutingTbl
-                        server.TempRoutingTbl = nil
-                        server.OldRoutingTbl = nil
-                } else {
-                        server.logger.Info("Some Error in Routing Table Generation")
+                for key, _ := range server.AreaConfMap {
+                        areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
+                        areaIdKey := AreaIdKey {
+                                        AreaId: areaId,
+                                }
+                        routingTbl := server.RoutingTbl[areaIdKey]
+                        routingTbl.RoutingTblMap = nil
+                        server.RoutingTbl[areaIdKey] = routingTbl
                 }
+                server.RoutingTbl = nil
+                server.RoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
+                for key, _ := range server.AreaConfMap {
+                        areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
+                        areaIdKey := AreaIdKey {
+                                        AreaId: areaId,
+                                }
+                        tempRoutingTbl := server.TempRoutingTbl[areaIdKey]
+                        routingTbl := make(map[RoutingTblEntryKey]RoutingTblEntry)
+                        routingTbl = tempRoutingTbl.RoutingTblMap
+                        server.RoutingTbl[areaIdKey] = AreaRoutingTbl {
+                                                        RoutingTblMap: routingTbl,
+                                                        }
+                        tempRoutingTbl.RoutingTblMap = nil
+                        server.TempRoutingTbl[areaIdKey] = tempRoutingTbl
+                        oldRoutingTbl := server.OldRoutingTbl[areaIdKey]
+                        oldRoutingTbl.RoutingTblMap = nil
+                        server.OldRoutingTbl[areaIdKey] = oldRoutingTbl
+                }
+                server.TempRoutingTbl = nil
+                server.OldRoutingTbl = nil
                 server.dumpRoutingTbl()
                 server.DoneCalcSPFCh <- true
         }
