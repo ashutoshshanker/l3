@@ -82,12 +82,26 @@ func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepIn
 
 	DstNetMac, _ := net.ParseMAC(c.DstMac)
 
-	ok, name, mac, ip := s.getLoopbackInfo()
-	if !ok {
-		errorstr := "VTEP: Src Tunnel Info not provisioned yet, loopback intf needed"
-		s.logger.Info(errorstr)
-		return &VtepConfig{}, errors.New(errorstr)
+	var mac net.HardwareAddr
+	var ip net.IP
+	var name string
+	var ok bool
+	if c.SrcIp == "" || c.SrcMac == "" {
+		ok, name, mac, ip = s.getLoopbackInfo()
+		if !ok {
+			errorstr := "VTEP: Src Tunnel Info not provisioned yet, loopback intf needed"
+			s.logger.Info(errorstr)
+			return &VtepConfig{}, errors.New(errorstr)
+		}
+		if c.SrcMac == "" {
+			mac, _ = net.ParseMAC(c.SrcMac)
+		}
+		if c.SrcIp == "" {
+			ip = net.ParseIP(c.SrcIp)
+		}
+
 	}
+
 	srcName := s.getLinuxIfName(c.SrcIfIndex)
 
 	s.logger.Info(fmt.Sprintf("Forcing Vtep %s to use Lb %s SrcMac %s Ip %s", c.VtepName, name, mac, ip))

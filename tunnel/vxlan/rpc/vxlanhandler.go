@@ -14,6 +14,8 @@ import (
 
 const DBName string = "UsrConfDb.db"
 
+var VxlanSupported bool = false
+
 type VXLANDServiceHandler struct {
 	server *vxlan.VXLANServer
 	logger *logging.Writer
@@ -60,6 +62,10 @@ func (v *VXLANDServiceHandler) StartThriftServer() {
 }
 
 func (v *VXLANDServiceHandler) CreateVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
+	if !VxlanSupported {
+		return false, fmt.Errorf("VXLAN: not supported")
+	}
+
 	v.logger.Info(fmt.Sprintf("CreateVxlanConfigInstance %#v", config))
 
 	c, err := v.server.ConvertVxlanInstanceToVxlanConfig(config)
@@ -97,6 +103,10 @@ func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInsta
 }
 
 func (v *VXLANDServiceHandler) CreateVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
+	if !VxlanSupported {
+		return false, fmt.Errorf("VXLAN: not supported")
+	}
+
 	v.logger.Info(fmt.Sprintf("CreateVxlanVtepInstances %#v", config))
 	c, err := v.server.ConvertVxlanVtepInstanceToVtepConfig(config)
 	if err == nil {
@@ -171,7 +181,7 @@ func (v *VXLANDServiceHandler) HandleDbReadVxlanVtepInstances(dbHdl *sql.DB) err
 	for rows.Next() {
 
 		object := new(vxland.VxlanVtepInstances)
-		if err = rows.Scan(&object.VtepId, &object.VxlanId, &object.VtepName, &object.SrcIfIndex, &object.UDP, &object.TTL, &object.TOS, &object.InnerVlanHandlingMode, &object.Learning, &object.Rsc, &object.L2miss, &object.L3miss, &object.DstIp, &object.DstMac, &object.VlanId); err != nil {
+		if err = rows.Scan(&object.VtepId, &object.VxlanId, &object.VtepName, &object.SrcIfIndex, &object.UDP, &object.TTL, &object.TOS, &object.InnerVlanHandlingMode, &object.Learning, &object.Rsc, &object.L2miss, &object.L3miss, &object.DstIp, &object.SrcIp, &object.SrcMac, &object.DstMac, &object.VlanId); err != nil {
 
 			fmt.Println("Db method Scan failed when interating over VxlanVtepInstances")
 		}
