@@ -14,6 +14,8 @@ import (
 
 const DBName string = "UsrConfDb.db"
 
+var VxlanSupported bool = false
+
 type VXLANDServiceHandler struct {
 	server *vxlan.VXLANServer
 	logger *logging.Writer
@@ -60,6 +62,9 @@ func (v *VXLANDServiceHandler) StartThriftServer() {
 }
 
 func (v *VXLANDServiceHandler) CreateVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
+	if !VxlanSupported {
+		return false, fmt.Errorf("VXLAN: not supported")
+	}
 
 	v.logger.Info(fmt.Sprintf("CreateVxlanConfigInstance %#v", config))
 
@@ -98,6 +103,9 @@ func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInsta
 }
 
 func (v *VXLANDServiceHandler) CreateVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
+	if !VxlanSupported {
+		return false, fmt.Errorf("VXLAN: not supported")
+	}
 
 	v.logger.Info(fmt.Sprintf("CreateVxlanVtepInstances %#v", config))
 	c, err := v.server.ConvertVxlanVtepInstanceToVtepConfig(config)
