@@ -155,6 +155,7 @@ type VrrpServer struct {
 	vrrpSnapshotLen               int32
 	vrrpPromiscuous               bool
 	vrrpTimeout                   time.Duration
+	vrrpPktSend                   chan bool
 }
 
 const (
