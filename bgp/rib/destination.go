@@ -485,7 +485,7 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 						Cost:              int32(paths[0].reachabilityInfo.Metric),
 						NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
 						NextHopIp:         paths[0].reachabilityInfo.NextHop}
-					d.rib.ribdClient.CreateIPv4Route(&cfg)
+					d.rib.ribdClient.OnewayCreateIPv4Route(&cfg)
 				}
 				if idx == 0 {
 					locRibAction = RouteActionAdd
@@ -518,7 +518,7 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 						NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
 						NextHopIp:         path.reachabilityInfo.NextHop}
 
-					d.rib.ribdClient.DeleteIPv4Route(&cfg)
+					d.rib.ribdClient.OnewayDeleteIPv4Route(&cfg)
 					d.logger.Info(fmt.Sprintf("DeleteV4Route for ip=%s nexthop=%s DONE\n", d.IPPrefix.Prefix.String(),
 						path.reachabilityInfo.NextHop))
 				}
@@ -546,7 +546,7 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 					NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
 					NextHopIp:         path.reachabilityInfo.NextHop}
 
-				d.rib.ribdClient.DeleteIPv4Route(&cfg)
+				d.rib.ribdClient.OnewayDeleteIPv4Route(&cfg)
 				d.logger.Info(fmt.Sprintln("DeleteV4Route from ECMP paths, route =", route, "ip =",
 					d.IPPrefix.Prefix.String(), "next hop =", path.reachabilityInfo.NextHop, "DONE"))
 			}
@@ -575,7 +575,7 @@ func (d *Destination) updateRoute(path *Path) {
 		NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
 		NextHopIp:         path.reachabilityInfo.NextHop}
 
-	d.rib.ribdClient.DeleteIPv4Route(&cfg)
+	d.rib.ribdClient.OnewayDeleteIPv4Route(&cfg)
 
 	if path.IsAggregate() || !path.IsLocal() {
 		var nextHop string
@@ -597,7 +597,7 @@ func (d *Destination) updateRoute(path *Path) {
 			NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
 			NextHopIp:         nextHop}
 
-		d.rib.ribdClient.CreateIPv4Route(&cfg)
+		d.rib.ribdClient.OnewayCreateIPv4Route(&cfg)
 	}
 }
 
