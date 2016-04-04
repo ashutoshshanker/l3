@@ -71,4 +71,5 @@ service RIBDINTServices
 	void linkUp(1: int ifType, 2:int ifIndex);
 	void intfUp(1:string ipAddr);
 	void intfDown(1:string ipAddr);
+	
 }

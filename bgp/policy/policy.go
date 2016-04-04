@@ -38,7 +38,7 @@ func NewBGPPolicyEngine(logger *logging.Writer) *BGPPolicyEngine {
 	if PolicyEngine == nil {
 		bgpPE := &BGPPolicyEngine{}
 		bgpPE.logger = logger
-		bgpPE.PolicyEngine = utilspolicy.NewPolicyEngineDB()
+		bgpPE.PolicyEngine = utilspolicy.NewPolicyEngineDB(logger)
 		bgpPE.ConditionCfgCh = make(chan utilspolicy.PolicyConditionConfig)
 		bgpPE.ActionCfgCh = make(chan utilspolicy.PolicyActionConfig)
 		bgpPE.StmtCfgCh = make(chan utilspolicy.PolicyStmtConfig)

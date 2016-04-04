@@ -995,7 +995,7 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		//call asicd to add
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
-			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType))
+			asicdclnt.ClientHdl.OnewayCreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType))
 		}
 		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 			//call arpd to resolve the ip
@@ -1259,7 +1259,7 @@ func createV4Route(destNetIp string,
 		//call asicd
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
-			asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType))
+			asicdclnt.ClientHdl.OnewayCreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType))
 		}
 
 		if arpdclnt.IsConnected && routeType != ribdCommonDefs.CONNECTED {
