@@ -170,6 +170,8 @@ func (svr *VrrpServer) VrrpSendPkt(key string, priority uint16) {
 	svr.VrrpUpdateMasterTimerStateInfo(&gblInfo)
 	gblInfo.IntfConfig.Priority = configuredPriority
 	svr.vrrpGblInfo[key] = gblInfo
+	// inform the caller that advertisment packet is send out
+	svr.vrrpPktSend <- true
 }
 
 func (svr *VrrpServer) VrrpUpdateMasterTimerStateInfo(gblInfo *VrrpGlobalInfo) {

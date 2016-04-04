@@ -34,6 +34,10 @@ type LsdbKey struct {
 	AreaId uint32
 }
 
+type RoutingTblKey struct {
+        AreaId uint32
+}
+
 type LsdbSliceEnt struct {
 	AreaId uint32
 	LSType uint8
@@ -115,9 +119,9 @@ type OSPFServer struct {
 
 	RefreshDuration time.Duration
 
-	RoutingTbl     map[RoutingTblKey]RoutingTblEntry
-	OldRoutingTbl  map[RoutingTblKey]RoutingTblEntry
-	TempRoutingTbl map[RoutingTblKey]RoutingTblEntry
+	RoutingTbl     map[AreaIdKey]AreaRoutingTbl
+	OldRoutingTbl  map[AreaIdKey]AreaRoutingTbl
+	TempRoutingTbl map[AreaIdKey]AreaRoutingTbl
 	StartCalcSPFCh chan bool
 	DoneCalcSPFCh  chan bool
 	AreaGraph      map[VertexKey]Vertex
@@ -186,9 +190,9 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.asicdSubSocketCh = make(chan []byte)
 	ospfServer.asicdSubSocketErrCh = make(chan error)
 
-	ospfServer.RoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-	ospfServer.OldRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-	ospfServer.TempRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
+	ospfServer.RoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
+	ospfServer.OldRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
+	ospfServer.TempRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
 	ospfServer.StartCalcSPFCh = make(chan bool)
 	ospfServer.DoneCalcSPFCh = make(chan bool)
 

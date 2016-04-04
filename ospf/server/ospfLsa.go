@@ -446,7 +446,7 @@ func decodeSummaryLsa(data []byte, lsa *SummaryLsa, lsakey *LsaKey) {
 	lsa.LsaMd.LSLen = binary.BigEndian.Uint16(data[18:20])
 	lsa.Netmask = binary.BigEndian.Uint32(data[20:24])
 	temp := binary.BigEndian.Uint32(data[24:28])
-	lsa.Metric = 0x00ffffff | temp
+	lsa.Metric = 0x00ffffff & temp
 	numOfTOS := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 8) / 8
 	lsa.SummaryTOSDetails = make([]SummaryTOSDetail, numOfTOS)
 	start := 28

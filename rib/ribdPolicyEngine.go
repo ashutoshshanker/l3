@@ -98,7 +98,11 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 			tempRoute.Prototype = ribdInt.Int(proto)
 			tempRoute.Metric = ribdInt.Int(ipRoute.Cost)
 
-			entity := buildPolicyEntityFromRoute(tempRoute, params)
+			entity,err := buildPolicyEntityFromRoute(tempRoute, params)
+		    if err != nil {
+			    logger.Err(fmt.Sprintln("Error builiding policy entity params"))
+			    return 
+		    }
 			if !PolicyEngineDB.ConditionCheckValid(entity, conditionsList, policyStmt) {
 				logger.Info(fmt.Sprintln("This route does not qualify for reversing reject route"))
 				continue
@@ -168,7 +172,11 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 				tempRoute.IfIndex = ribdInt.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex))
 				tempRoute.Prototype = ribdCommonDefs.CONNECTED
 				tempRoute.Metric = 0
-				entity := buildPolicyEntityFromRoute(tempRoute, params)
+				entity,err := buildPolicyEntityFromRoute(tempRoute, params)
+		        if err != nil {
+			        logger.Err(fmt.Sprintln("Error builiding policy entity params"))
+			        return 
+		        }
 				if !PolicyEngineDB.ConditionCheckValid(entity, conditionsList, policyStmt) {
 					logger.Info(fmt.Sprintln("This route does not qualify for reversing reject route"))
 					continue
@@ -536,7 +544,11 @@ func PolicyEngineFilter(route ribdInt.Routes, policyPath int, params interface{}
 	}
 	routeInfo := params.(RouteParams)
 	logger.Info(fmt.Sprintln("PolicyEngineFilter for policypath ", policyPath_Str, "createType = ", routeInfo.createType, " deleteType = ", routeInfo.deleteType, " route: ", route.Ipaddr, ":", route.Mask, " protocol type: ", route.Prototype))
-	entity := buildPolicyEntityFromRoute(route, params)
+	entity,err := buildPolicyEntityFromRoute(route, params)
+	if err != nil {
+		logger.Info(fmt.Sprintln("Error building policy params"))
+		return
+	}
 	entity.PolicyList = make([]string, 0)
 	for j := 0; j < len(route.PolicyList); j++ {
 		entity.PolicyList = append(entity.PolicyList, route.PolicyList[j])
@@ -567,7 +579,11 @@ func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, t
 		selectedRouteInfoRecord := selectedRouteList[i]
 		policyRoute := ribdInt.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(selectedRouteInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(selectedRouteInfoRecord.metric), Prototype: ribdInt.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid: rmapInfoRecordList.isPolicyBasedStateValid}
 		params := RouteParams{destNetIp: policyRoute.Ipaddr, networkMask: policyRoute.Mask, routeType: ribd.Int(policyRoute.Prototype), nextHopIp: selectedRouteInfoRecord.nextHopIp.String(), sliceIdx: ribd.Int(policyRoute.SliceIdx), createType: Invalid, deleteType: Invalid}
-		entity := buildPolicyEntityFromRoute(policyRoute, params)
+		entity,err := buildPolicyEntityFromRoute(policyRoute, params)
+		if err != nil {
+			logger.Err(fmt.Sprintln("Error builiding policy entity params"))
+			return err
+		}
 		entity.PolicyList = make([]string, 0)
 		for j := 0; j < len(rmapInfoRecordList.policyList); j++ {
 			entity.PolicyList = append(entity.PolicyList, rmapInfoRecordList.policyList[j])
@@ -599,7 +615,11 @@ func policyEngineTraverseAndReverse(policyItem interface{}) {
 			logger.Info(fmt.Sprintln("Invalid route ", ext.routeList[idx]))
 			continue
 		}
-		entity := buildPolicyEntityFromRoute(policyRoute, params)
+		entity,err := buildPolicyEntityFromRoute(policyRoute, params)
+		if err != nil {
+			logger.Err(fmt.Sprintln("Error builiding policy entity params"))
+			return 
+		}
 		PolicyEngineDB.PolicyEngineUndoPolicyForEntity(entity, policy, params)
 		deleteRoutePolicyState(ipPrefix, policy.Name)
 		PolicyEngineDB.DeletePolicyEntityMapEntry(entity, policy.Name)
