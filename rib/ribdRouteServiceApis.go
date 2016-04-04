@@ -9,6 +9,8 @@ import (
 	"ribd"
 	"strconv"
 	"utils/commonDefs"
+	"strings"
+	"net"
 )
 
 func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
@@ -38,28 +40,48 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 		logger.Err(fmt.Sprintln("Cannot create ip route on a unknown L3 interface"))
 		return false, errors.New("Cannot create ip route on a unknown L3 interface")
 	}
-	destNetIpAddr, err := getIP(cfg.DestinationNw)
-	if err != nil {
-		logger.Println("destNetIpAddr invalid")
-		return false, errors.New("Invalid destination IP address")
-	}
-	networkMaskAddr,err := getIP(cfg.NetworkMask)
-	if err != nil {
-		logger.Println("networkMaskAddr invalid")
-		return false, errors.New("Invalid mask")
-	}
 	_, err = getIP(cfg.NextHopIp)
 	if err != nil {
 		logger.Println("nextHopIpAddr invalid")
 		return false,errors.New("Invalid next hop ip address")
 	}
-	_, err = getPrefixLen(networkMaskAddr)
-	if err != nil {
-		return false, errors.New("Invalid networkMask")
-	}
-	_, err = getNetworkPrefix(destNetIpAddr, networkMaskAddr)
-	if err != nil {
-		return false,errors.New("Invalid destination ip/network Mask")
+	isCidr := strings.Contains(cfg.DestinationNw, "/")
+	if isCidr { //the given address is in CIDR format
+	    ip, ipNet, err := net.ParseCIDR(cfg.DestinationNw)
+	    if err != nil {    
+		    logger.Err(fmt.Sprintln("Invalid Destination IP address"))
+			return false, errors.New("Invalid Desitnation IP address")
+	    }
+	    _, err = getNetworkPrefixFromCIDR(cfg.DestinationNw)
+	    if err != nil {
+		    return false,errors.New("Invalid destination ip/network Mask")
+	    }
+		cfg.DestinationNw = ip.String() 
+	    ipMask := make(net.IP, 4)
+		copy(ipMask, ipNet.Mask)
+		ipMaskStr := net.IP(ipMask).String()
+		cfg.NetworkMask = ipMaskStr
+	} else {
+		//validate ip and mask string if not a CIDR address
+	    destNetIpAddr, err := getIP(cfg.DestinationNw)
+	    if err != nil {
+		    logger.Println("destNetIpAddr invalid")
+		    return false, errors.New("Invalid destination IP address")
+	    }
+	    networkMaskAddr,err := getIP(cfg.NetworkMask)
+	    if err != nil {
+		    logger.Println("networkMaskAddr invalid")
+		    return false, errors.New("Invalid mask")
+	    }
+	    _, err = getPrefixLen(networkMaskAddr)
+	    if err != nil {
+		    return false, errors.New("Invalid networkMask")
+	    }
+	
+	    _, err = getNetworkPrefix(destNetIpAddr, networkMaskAddr)
+	    if err != nil {
+		    return false,errors.New("Invalid destination ip/network Mask")
+	    }
 	}
 	m.RouteCreateConfCh <- cfg
 	return true, nil
