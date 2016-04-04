@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"bytes"
 	"time"
 	"utils/netUtils"
 	"utils/patriciaDB"
@@ -36,6 +37,7 @@ type PublisherMapInfo struct {
 	pub_socket *nanomsg.PubSocket
 }
 var RedistributeRouteMap map[string][]RedistributeRouteInfo
+var TrackReachabilityMap map[string][]string //map[ipAddr][]protocols
 var RouteProtocolTypeMapDB map[string]int
 var ReverseRouteProtoTypeMapDB map[int]string
 var ProtocolAdminDistanceMapDB map[string]RouteDistanceConfig
@@ -60,6 +62,7 @@ func BuildPublisherMap() {
 	}
 	PublisherInfoMap["EBGP"] = PublisherInfoMap["BGP"]
 	PublisherInfoMap["IBGP"] = PublisherInfoMap["BGP"]
+	PublisherInfoMap["BFD"] = PublisherMapInfo{ribdCommonDefs.PUB_SOCKET_BFDD_ADDR,InitPublisher(ribdCommonDefs.PUB_SOCKET_BFDD_ADDR)}
 }
 func BuildRouteProtocolTypeMapDB() {
 	RouteProtocolTypeMapDB["CONNECTED"] = ribdCommonDefs.CONNECTED
@@ -128,12 +131,24 @@ func BuildProtocolAdminDistanceSlice() {
    }
    return isBetter
 }*/
-func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entity policy.PolicyEngineFilterEntityParams) {
+func findElement(list []string, element string) (int) {
+	index := -1
+	for i :=0 ;i<len(list);i++ {
+		if list[i]==element {
+			logger.Info(fmt.Sprintln("Found element ", element, " at index ",i))
+			return i
+		}
+	}
+	logger.Info(fmt.Sprintln("Element ", element, " not added to the list"))
+	return index
+}
+func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entity policy.PolicyEngineFilterEntityParams, err error) {
 	routeInfo := params.(RouteParams)
+    logger.Info(fmt.Sprintln("buildPolicyEntityFromRoute: createType: ", routeInfo.createType, " delete type: ", routeInfo.deleteType))
 	destNetIp, err := netUtils.GetCIDR(route.Ipaddr, route.Mask)
 	if err != nil {
 		logger.Info(fmt.Sprintln("error getting CIDR address for ", route.Ipaddr, ":", route.Mask))
-		return
+		return entity,err
 	}
 	entity.DestNetIp = destNetIp
 	entity.NextHopIp = route.NextHopIp
@@ -144,7 +159,7 @@ func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entit
 	if routeInfo.deleteType != Invalid {
 		entity.DeletePath = true
 	}
-	return entity
+	return entity,err
 }
 func findRouteWithNextHop(routeInfoList []RouteInfoRecord, nextHopIP string) (found bool, routeInfoRecord RouteInfoRecord, index int) {
 	logger.Println("findRouteWithNextHop")
@@ -432,13 +447,13 @@ func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes
 	}
 	var evtStr string
 	if evt == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
-		evtStr = "NOTIFY_ROUTE_CREATED"
+		evtStr = " NOTIFY_ROUTE_CREATED "
 	} else if evt == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-		evtStr = "NOTIFY_ROUTE_DELETED"
+		evtStr = " NOTIFY_ROUTE_DELETED "
 	}
 	eventInfo := "Redistribute "
 	if route.NetworkStatement == true {
-		eventInfo = "Advertise Network Statement "
+		eventInfo = " Advertise Network Statement "
 	}
 	eventInfo = eventInfo + evtStr + " for route " + route.Ipaddr + " " + route.Mask + " type" + ReverseRouteProtoTypeMapDB[int(route.Prototype)]
 	logger.Info(fmt.Sprintln("Sending ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " ", buf))
@@ -448,7 +463,7 @@ func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes
 	PUB.Send(buf, nanomsg.DontWait)
 }
 func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteReachabilityStatusInfo) {
-	logger.Info(fmt.Sprintln("RouteReachabilityStatusNotificationSend"))
+	logger.Info(fmt.Sprintln("RouteReachabilityStatusNotificationSend for protocol ", targetProtocol))
 	evt := ribdCommonDefs.NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE
 	publisherInfo,ok := PublisherInfoMap[targetProtocol]
 	if !ok {
@@ -458,9 +473,10 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 	PUB := publisherInfo.pub_socket
 	msgInfo := ribdCommonDefs.RouteReachabilityStatusMsgInfo{}
 	msgInfo.Network = info.destNet
-	if info.status == "Up" {
+	if info.status == "Up" || info.status == "Updated"{
 		msgInfo.IsReachable = true
 	}
+	msgInfo.NextHopIntf = info.nextHopIntf
 	msgBuf := msgInfo
 	msgbufbytes, err := json.Marshal(msgBuf)
 	msg := ribdCommonDefs.RibdNotifyMsg{MsgType: uint16(evt), MsgBuf: msgbufbytes}
@@ -469,20 +485,52 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 		logger.Println("Error in marshalling Json")
 		return
 	}
-	var evtStr string
-	if info.status == "Down" {
-		evtStr = "to Down"
-	} else if info.status == "Up" {
-		evtStr = "to Up"
+	eventInfo := "Update Route Reachability status " + info.status + " for network " + info.destNet + " for protocol " + targetProtocol
+	if info.status == "Up" {
+		eventInfo = eventInfo + " NextHop IP: " + info.nextHopIntf.NextHopIp + " IfType/Index: " + strconv.Itoa(int(info.nextHopIntf.NextHopIfType)) + "/" + strconv.Itoa(int(info.nextHopIntf.NextHopIfIndex ))
 	}
-	eventInfo := "Update Route Reachability status " + evtStr + " for network " + info.destNet + "for protocol " + targetProtocol
-	logger.Info(fmt.Sprintln("Sending ", evtStr, " for network ", info.destNet))
+	logger.Info(fmt.Sprintln("Sending  NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE with status ",info.status, " for network ", info.destNet))
 	t1 := time.Now()
 	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
 	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
 	PUB.Send(buf, nanomsg.DontWait)
-	//for non-subscriber protocols like BFD
-	RIBD_PUB.Send(buf, nanomsg.DontWait)
+}
+func RouteReachabilityStatusUpdate(targetProtocol string, info RouteReachabilityStatusInfo) {
+	logger.Info(fmt.Sprintln("RouteReachabilityStatusUpdate targetProtocol ", targetProtocol))
+    if targetProtocol != "NONE" {
+	    RouteReachabilityStatusNotificationSend(targetProtocol,info)
+	}
+	var ipMask net.IP
+	ip,ipNet,err := net.ParseCIDR(info.destNet)
+	if err != nil {
+		logger.Err(fmt.Sprintln("Error getting IP from cidr: ", info.destNet))
+		return 
+	}
+	ipMask = make(net.IP, 4)
+	copy(ipMask, ipNet.Mask)
+	ipAddrStr := ip.String()
+	ipMaskStr := net.IP(ipMask).String()
+	destIpPrefix,err := getNetowrkPrefixFromStrings(ipAddrStr, ipMaskStr)
+	if err != nil {
+		logger.Err(fmt.Sprintln("Error getting ip prefix for ip:", ipAddrStr, " mask:", ipMaskStr))
+		return 
+	}
+	//check the TrackReachabilityMap to see if any other protocols are interested in receiving updates for this ipAddr 
+	for k,list := range TrackReachabilityMap {
+		prefix,err := getNetowrkPrefixFromStrings(k,ipMaskStr)
+	    if err != nil {
+		    logger.Err(fmt.Sprintln("Error getting ip prefix for ip:", k, " mask:", ipMaskStr))
+		    return 
+	    }
+		if bytes.Equal(destIpPrefix,prefix) {
+	        for idx := 0;idx <len(list);idx++{
+		        logger.Info(fmt.Sprintln(" protocol ", list[idx], " interested in receving reachability updates for ipAddr ", info.destNet))
+				info.destNet = k
+		        RouteReachabilityStatusNotificationSend(list[idx],info)
+	        }
+		}
+	}
+	return
 }
 func delLinuxRoute(route RouteInfoRecord) {
 	logger.Println("delLinuxRoute")

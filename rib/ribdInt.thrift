@@ -64,6 +64,7 @@ service RIBDINTServices
 	//list<Routes> getConnectedRoutesInfo();
     void printV4Routes();
 	RoutesGetInfo getBulkRoutesForProtocol(1: string srcProtocol, 2: int fromIndex ,3: int rcount)
+    void TrackReachabilityStatus(1: string ipAddr, 2: string protocol, 3:string op) //op:"add"/"del"
 	//RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	void linkDown(1: int ifType, 2:int ifIndex);

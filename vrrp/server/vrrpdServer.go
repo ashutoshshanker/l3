@@ -422,6 +422,7 @@ func (vrrpServer *VrrpServer) VrrpInitGlobalDS() {
 	vrrpServer.vrrpPromiscuous = false
 	vrrpServer.vrrpTimeout = 10 * time.Microsecond
 	vrrpServer.vrrpMacConfigAdded = false
+	vrrpServer.vrrpPktSend = make(chan bool)
 }
 
 func (svr *VrrpServer) VrrpDeAllocateMemoryToGlobalDS() {
