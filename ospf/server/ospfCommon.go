@@ -10,6 +10,8 @@ import (
 var ALLSPFROUTER string = "224.0.0.5"
 var ALLDROUTER string = "224.0.0.6"
 
+var LSInfinity uint32 = 0x00ffffff
+
 type OspfHdrMetadata struct {
 	pktType  OspfType
 	pktlen   uint16
