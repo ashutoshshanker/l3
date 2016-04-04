@@ -214,9 +214,20 @@ func (p *PeerConn) StopReading() {
 	p.stopCh <- true
 }
 
-func (p *PeerConn) readPartialPkt(length uint32) ([]byte, error) {
+func (p *PeerConn) readPartialPkt(length int) ([]byte, error) {
 	buf := make([]byte, length)
-	_, err := (*p.conn).Read(buf)
+	var totalRead int = 0
+	var read int = 0
+	var err error
+	for totalRead < length {
+		read, err = (*p.conn).Read(buf[totalRead:])
+		if err != nil {
+			return buf, err
+		}
+		totalRead += read
+		p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id, "conn:readPartialPkt -",
+			"read", read, "bytes, total read", totalRead, "bytes, lenght =", length))
+	}
 	return buf, err
 }
 
@@ -233,7 +244,7 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool)
 			msgErr = nil
 			header = nil
 			(*p.conn).SetReadDeadline(time.Now().Add(time.Duration(3) * time.Second))
-			buf, err := p.readPartialPkt(packet.BGPMsgHeaderLen)
+			buf, err := p.readPartialPkt(int(packet.BGPMsgHeaderLen))
 			if err != nil {
 				if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
 					doneCh <- true
@@ -260,12 +271,12 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool)
 
 			if header.Type != packet.BGPMsgTypeKeepAlive {
 				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
-					"Recieved BGP packet type=", header.Type))
+					"Recieved BGP packet type=", header.Type, "len=", header.Len()))
 			}
 
 			(*p.conn).SetReadDeadline(t)
 			if header.Len() > packet.BGPMsgHeaderLen {
-				buf, err = p.readPartialPkt(header.Len() - packet.BGPMsgHeaderLen)
+				buf, err = p.readPartialPkt(int(header.Len() - packet.BGPMsgHeaderLen))
 				if err != nil {
 					p.fsm.outConnErrCh <- err
 					doneCh <- false
