@@ -1,10 +1,10 @@
 package server
 
 import (
-	"l3/rib/ribdCommonDefs"	
 	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
+	"l3/rib/ribdCommonDefs"
 )
 
 func (server *BFDServer) CreateRIBdSubscriber() {
@@ -56,20 +56,20 @@ func (server *BFDServer) processRibdNotification(rxBuf []byte) {
 		return
 	}
 	switch msg.MsgType {
-		case ribdCommonDefs.NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE:
-		    server.logger.Info(fmt.Sprintln("Received NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE"))
-            var msgInfo ribdCommonDefs.RouteReachabilityStatusMsgInfo
-			err = json.Unmarshal(msg.MsgBuf, &msgInfo)
-		    if err != nil {
-			    server.logger.Err(fmt.Sprintln("Unable to unmarshal msg:", msg.MsgBuf))
-			    return
-		    }
-			server.logger.Info(fmt.Sprintln(" IP ", msgInfo.Network, " reachabilityStatus: ", msgInfo.IsReachable))
-			if msgInfo.IsReachable {
-				server.logger.Info(fmt.Sprintln(" NextHop IP:", msgInfo.NextHopIntf.NextHopIp, " IntfType:IntfId ", msgInfo.NextHopIntf.NextHopIfType, ":",msgInfo.NextHopIntf.NextHopIfIndex))
-			}
-		    break
-		default:
-		    break
+	case ribdCommonDefs.NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE:
+		server.logger.Info(fmt.Sprintln("Received NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE"))
+		var msgInfo ribdCommonDefs.RouteReachabilityStatusMsgInfo
+		err = json.Unmarshal(msg.MsgBuf, &msgInfo)
+		if err != nil {
+			server.logger.Err(fmt.Sprintln("Unable to unmarshal msg:", msg.MsgBuf))
+			return
+		}
+		server.logger.Info(fmt.Sprintln(" IP ", msgInfo.Network, " reachabilityStatus: ", msgInfo.IsReachable))
+		if msgInfo.IsReachable {
+			server.logger.Info(fmt.Sprintln(" NextHop IP:", msgInfo.NextHopIntf.NextHopIp, " IntfType:IntfId ", msgInfo.NextHopIntf.NextHopIfType, ":", msgInfo.NextHopIntf.NextHopIfIndex))
+		}
+		break
+	default:
+		break
 	}
 }

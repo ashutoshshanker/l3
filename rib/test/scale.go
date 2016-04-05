@@ -10,10 +10,10 @@ import (
 
 func handleClient(client *ribd.RIBDServicesClient) (err error) {
 	var count int = 1
-	var maxCount int = 30000
+	var maxCount int = 5000
 	intByt2 := 1
 	intByt3 := 1
-	byte1 := "21"
+	byte1 := "27"
 	byte4 := "0"
 
 	start := time.Now()
@@ -21,31 +21,34 @@ func handleClient(client *ribd.RIBDServicesClient) (err error) {
 	for {
 		if intByt3 > 254 {
 			intByt3 = 1
+			intByt2++
 		} else {
 			intByt3++
 		}
 		if intByt2 > 254 {
 			intByt2 = 1
-		} else {
-			intByt2++
-		}
+		} //else {
+			//intByt2++
+		//}
 
 		route = ribd.IPv4Route{}
 		byte2 := strconv.Itoa(intByt2)
-		byte3 := strconv.Itoa(intByt3 + 1)
+		byte3 := strconv.Itoa(intByt3)
 		rtNet := byte1 + "." + byte2 + "." + byte3 + "." + byte4
 		route.DestinationNw = rtNet
 		route.NetworkMask = "255.255.255.0"
-		route.NextHopIp = "20.0.1.2"
-		route.OutgoingInterface = "33554434"
-		route.OutgoingIntfType = "VLAN"
+		route.NextHopIp = "7.0.1.2"
+		route.OutgoingInterface = "0"
+		route.OutgoingIntfType = "Loopback"
 		route.Protocol = "STATIC"
 		//fmt.Println("Creating Route ", route)
 		_, rv := client.CreateIPv4Route(&route)
 		if rv == nil {
 			count++
 		} else {
-			fmt.Println("Call failed", rv)
+			fmt.Println("Call failed", rv, "count: ", count)
+	        elapsed := time.Since(start)
+	        fmt.Println(" ## Elapsed time is ", elapsed)
 			return nil
 		}
 		if maxCount == count {

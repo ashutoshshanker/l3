@@ -136,8 +136,8 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                 destIpAddr := net.ParseIP(destIp)
                 destNet := destIpAddr.Mask(mask)
                 if myNet.Equal(destNet) != true {
-                        server.logger.Info(fmt.Sprintln("Received Arp Probe but destIp:", destIp, "is not in same network. Hence, not processing it"))
-                        server.logger.Info(fmt.Sprintln("Ip and Netmask on the recvd interface is", myIP, mask))
+                        //server.logger.Info(fmt.Sprintln("Received Arp Probe but destIp:", destIp, "is not in same network. Hence, not processing it"))
+                        //server.logger.Info(fmt.Sprintln("Ip and Netmask on the recvd interface is", myIP, mask))
                         return
                 }
         }
@@ -173,7 +173,7 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                 if srcIp == destIp &&
                         srcIp != "0.0.0.0" {
                         server.logger.Info(fmt.Sprintln("Received Gratuitous Arp with IP:", srcIp))
-                        server.logger.Info(fmt.Sprintln("1 Installing Arp entry IP:", srcIp, "MAC:", srcMac))
+                        //server.logger.Info(fmt.Sprintln("1 Installing Arp entry IP:", srcIp, "MAC:", srcMac))
                         server.arpEntryUpdateCh <- UpdateArpEntryMsg {
                                 PortNum: port,
                                 IpAddr: srcIp,
@@ -183,7 +183,7 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                 } else {
                         if srcIp == "0.0.0.0" {
                                 server.logger.Info(fmt.Sprintln("Received Arp Probe for IP:", destIp))
-                                server.logger.Info(fmt.Sprintln("2 Installing Arp entry IP:", destIp, "MAC: incomplete"))
+                                //server.logger.Info(fmt.Sprintln("2 Installing Arp entry IP:", destIp, "MAC: incomplete"))
                                 server.arpEntryUpdateCh <- UpdateArpEntryMsg {
                                         PortNum: port,
                                         IpAddr: destIp,
@@ -192,9 +192,9 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                                 }
                         } else {
                                 // Arp Request Pkt from neighbor1 for neighbor2 IP
-                                server.logger.Info(fmt.Sprintln("Received Arp Request from Neighbor1( IP:", srcIp, "MAC:", srcMac, ") for Neighbor2 (IP:", destIp, "Mac: incomplete)"))
+                                //server.logger.Info(fmt.Sprintln("Received Arp Request from Neighbor1( IP:", srcIp, "MAC:", srcMac, ") for Neighbor2 (IP:", destIp, "Mac: incomplete)"))
 
-                                server.logger.Info(fmt.Sprintln("3 Installing Arp entry IP:", srcIp, "MAC:", srcMac))
+                                //server.logger.Info(fmt.Sprintln("3 Installing Arp entry IP:", srcIp, "MAC:", srcMac))
                                 server.arpEntryUpdateCh <- UpdateArpEntryMsg {
                                         PortNum: port,
                                         IpAddr: srcIp,
@@ -202,7 +202,7 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                                         Type: false,
                                 }
 
-                                server.logger.Info(fmt.Sprintln("4 Installing Arp entry IP:", destIp, "MAC: incomplete"))
+                                //server.logger.Info(fmt.Sprintln("4 Installing Arp entry IP:", destIp, "MAC: incomplete"))
                                 server.arpEntryUpdateCh <- UpdateArpEntryMsg {
                                         PortNum: port,
                                         IpAddr: destIp,
@@ -212,11 +212,11 @@ func (server *ARPServer)processArpRequest(arp *layers.ARP, port int) {
                         }
                 }
         } else if srcExist == true {
-                server.logger.Info(fmt.Sprintln("Received our own ARP Request with SrcIP:", srcIp, "DestIP:", destIp))
+                //server.logger.Info(fmt.Sprintln("Received our own ARP Request with SrcIP:", srcIp, "DestIP:", destIp))
         } else if destExist == true {
                 server.logger.Info(fmt.Sprintln("Received ARP Request for our IP with SrcIP:", srcIp, "DestIP:", destIp, "linux should respond to this request"))
                 if srcIp != "0.0.0.0" {
-                        server.logger.Info(fmt.Sprintln("5 Installing Arp entry IP:", srcIp, "MAC:", srcMac))
+                        //server.logger.Info(fmt.Sprintln("5 Installing Arp entry IP:", srcIp, "MAC:", srcMac))
                         server.arpEntryUpdateCh <- UpdateArpEntryMsg {
                                 PortNum: port,
                                 IpAddr: srcIp,
@@ -256,7 +256,7 @@ func (server *ARPServer) processArpReply(arp *layers.ARP, port int) {
         if myNet.Equal(srcNet) !=  true ||
                 myNet.Equal(destNet) != true {
                 server.logger.Info(fmt.Sprintln("Received Arp Reply but srcIp:", srcIp, " and destIp:", destIp, "are not in same network. Hence, not processing it"))
-                server.logger.Info(fmt.Sprintln("Netmask on the recvd interface is", mask))
+                //server.logger.Info(fmt.Sprintln("Netmask on the recvd interface is", mask))
                 return
         }
         //server.logger.Info(fmt.Sprintln("6 Installing Arp entry IP:", srcIp, "MAC:", srcMac))

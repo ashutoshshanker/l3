@@ -110,6 +110,11 @@ func (server *BFDServer) processSessionConfig(sessionConfig SessionConfig) error
 func (server *BFDServer) SendAdminDownToAllNeighbors() error {
 	for _, session := range server.bfdGlobal.Sessions {
 		session.StopBfdSession()
+		sessionMgmt := BfdSessionMgmt{
+			DestIp:   session.state.IpAddr,
+			ForceDel: true,
+		}
+		server.DeleteBfdSession(sessionMgmt)
 	}
 	return nil
 }
@@ -152,7 +157,7 @@ func (server *BFDServer) GetIfIndexAndLocalIpFromDestIp(DestIp string) (int32, s
 		server.logger.Info(fmt.Sprintf("%s is not reachable", DestIp))
 		return int32(0), ""
 	}
-	server.ribdClient.ClientHdl.TrackReachabilityStatus(DestIp,"BFD","add")
+	server.ribdClient.ClientHdl.TrackReachabilityStatus(DestIp, "BFD", "add")
 	ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(reachabilityInfo.NextHopIfIndex), int(reachabilityInfo.NextHopIfType))
 	server.logger.Info(fmt.Sprintln("GetIfIndexAndLocalIpFromDestIp: DestIp: ", DestIp, "IfIndex: ", ifIndex))
 	return ifIndex, reachabilityInfo.NextHopIp
@@ -340,11 +345,11 @@ func (server *BFDServer) CreateBfdSession(sessionMgmt BfdSessionMgmt) (*BfdSessi
 	return bfdSession, nil
 }
 
-func (server *BFDServer) SessionDeleteHandler(session *BfdSession, Protocol bfddCommonDefs.BfdSessionOwner) error {
+func (server *BFDServer) SessionDeleteHandler(session *BfdSession, Protocol bfddCommonDefs.BfdSessionOwner, ForceDel bool) error {
 	var i int
 	sessionId := session.state.SessionId
 	session.state.RegisteredProtocols[Protocol] = false
-	if session.CheckIfAnyProtocolRegistered() == false {
+	if ForceDel || session.CheckIfAnyProtocolRegistered() == false {
 		session.txTimer.Stop()
 		session.sessionTimer.Stop()
 		session.SessionStopClientCh <- true
@@ -361,10 +366,10 @@ func (server *BFDServer) SessionDeleteHandler(session *BfdSession, Protocol bfdd
 	return nil
 }
 
-func (server *BFDServer) DeletePerLinkSessions(DestIp string, Protocol bfddCommonDefs.BfdSessionOwner) error {
+func (server *BFDServer) DeletePerLinkSessions(DestIp string, Protocol bfddCommonDefs.BfdSessionOwner, ForceDel bool) error {
 	for _, session := range server.bfdGlobal.Sessions {
 		if session.state.IpAddr == DestIp {
-			server.SessionDeleteHandler(session, Protocol)
+			server.SessionDeleteHandler(session, Protocol, ForceDel)
 		}
 	}
 	return nil
@@ -376,16 +381,17 @@ func (server *BFDServer) DeletePerLinkSessions(DestIp string, Protocol bfddCommo
 func (server *BFDServer) DeleteBfdSession(sessionMgmt BfdSessionMgmt) error {
 	DestIp := sessionMgmt.DestIp
 	Protocol := sessionMgmt.Protocol
+	ForceDel := sessionMgmt.ForceDel
 	server.logger.Info(fmt.Sprintln("DeleteSession ", DestIp, Protocol))
 	sessionId, found := server.FindBfdSession(DestIp)
 	if found {
 		session := server.bfdGlobal.Sessions[sessionId]
 		if session.state.PerLinkSession {
-			server.DeletePerLinkSessions(DestIp, Protocol)
+			server.DeletePerLinkSessions(DestIp, Protocol, ForceDel)
 		} else {
-			server.SessionDeleteHandler(session, Protocol)
+			server.SessionDeleteHandler(session, Protocol, ForceDel)
 		}
-	    server.ribdClient.ClientHdl.TrackReachabilityStatus(DestIp,"BFD","del")
+		server.ribdClient.ClientHdl.TrackReachabilityStatus(DestIp, "BFD", "del")
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
 	}
@@ -460,12 +466,12 @@ func (session *BfdSession) StartSessionServer(server *BFDServer) error {
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", destAddr, err))
-		return nil
+		return err
 	}
 	ServerConn, err := net.ListenUDP("udp", ServerAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ListenUDP ", err))
-		return nil
+		return err
 	}
 	sessionId := session.state.SessionId
 	defer ServerConn.Close()
@@ -843,15 +849,18 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", destAddr, err))
+		return err
 	}
 	localAddr := session.state.LocalIpAddr + ":" + strconv.Itoa(SRC_PORT)
 	ClientAddr, err := net.ResolveUDPAddr("udp", localAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", localAddr, err))
+		return err
 	}
 	Conn, err := net.DialUDP("udp", ClientAddr, ServerAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed DialUDP ", ClientAddr, ServerAddr, err))
+		return err
 	}
 	sessionTimeoutMS := time.Duration(session.rxInterval)
 	txTimerMS := time.Duration(session.txInterval)
