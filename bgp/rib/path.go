@@ -7,7 +7,7 @@ import (
 	"l3/bgp/baseobjects"
 	"l3/bgp/packet"
 	"net"
-	"ribd"
+	_ "ribd"
 	"strconv"
 	"strings"
 	"utils/logging"
@@ -45,21 +45,18 @@ func getRouteSource(routeType uint8) uint8 {
 }
 
 type Path struct {
-	rib             *AdjRib
-	logger          *logging.Writer
-	NeighborConf    *base.NeighborConf
-	PathAttrs       []packet.BGPPathAttr
-	withdrawn       bool
-	updated         bool
-	Pref            uint32
-	NextHop         string
-	NextHopIfType   ribd.Int
-	NextHopIfIdx    ribd.Int
-	Metric          ribd.Int
-	routeType       uint8
-	MED             uint32
-	LocalPref       uint32
-	AggregatedPaths map[string]*Path
+	rib          *AdjRib
+	logger       *logging.Writer
+	NeighborConf *base.NeighborConf
+	PathAttrs    []packet.BGPPathAttr
+	withdrawn    bool
+	updated      bool
+	Pref         uint32
+	reachabilityInfo *ReachabilityInfo
+	routeType        uint8
+	MED              uint32
+	LocalPref        uint32
+	AggregatedPaths  map[string]*Path
 }
 
 func NewPath(adjRib *AdjRib, peer *base.NeighborConf, pa []packet.BGPPathAttr, withdrawn bool, updated bool, routeType uint8) *Path {
@@ -88,12 +85,10 @@ func (p *Path) Clone() *Path {
 		withdrawn:    p.withdrawn,
 		updated:      p.updated,
 		Pref:         p.Pref,
-		NextHop:      p.NextHop,
-		NextHopIfIdx: p.NextHopIfIdx,
-		Metric:       p.Metric,
-		routeType:    p.routeType,
-		MED:          p.MED,
-		LocalPref:    p.LocalPref,
+		reachabilityInfo: p.reachabilityInfo,
+		routeType:        p.routeType,
+		MED:              p.MED,
+		LocalPref:        p.LocalPref,
 	}
 
 	return path
@@ -161,6 +156,13 @@ func (p *Path) SetUpdate(status bool) {
 
 func (p *Path) IsUpdated() bool {
 	return p.updated
+}
+
+func (p *Path) GetPeerIP() string {
+	if p.NeighborConf != nil {
+		return p.NeighborConf.Neighbor.NeighborAddress.String()
+	}
+	return ""
 }
 
 func (p *Path) GetPreference() uint32 {
@@ -276,31 +278,12 @@ func (p *Path) GetNumClusters() uint16 {
 	return packet.GetNumClusters(p.PathAttrs)
 }
 
-func (p *Path) GetReachabilityInfo() {
-	ipStr := p.GetNextHop().String()
-	reachabilityInfo, err := p.rib.ribdClient.GetRouteReachabilityInfo(ipStr)
-	if err != nil {
-		p.logger.Info(fmt.Sprintf("NEXT_HOP[%s] is not reachable", ipStr))
-		p.NextHop = ""
-		return
-	}
-	p.NextHop = reachabilityInfo.NextHopIp
-	if p.NextHop == "" || p.NextHop[0] == '0' {
-		p.logger.Info(fmt.Sprintf("Next hop for %s is %s. Using %s as the next hop", ipStr, p.NextHop, ipStr))
-		p.NextHop = ipStr
-	}
-	p.NextHopIfType = ribd.Int(reachabilityInfo.NextHopIfType)
-	p.NextHopIfIdx = ribd.Int(reachabilityInfo.NextHopIfIndex)
-	p.Metric = ribd.Int(reachabilityInfo.Metric)
+func (p *Path) SetReachabilityInfo(reachabilityInfo *ReachabilityInfo) {
+	p.reachabilityInfo = reachabilityInfo
 }
 
 func (p *Path) IsReachable() bool {
-	if p.NextHop != "" {
-		return true
-	}
-
-	p.GetReachabilityInfo()
-	if p.NextHop != "" {
+	if p.IsLocal() || (p.reachabilityInfo != nil && p.reachabilityInfo.NextHop != "") {
 		return true
 	}
 	return false
