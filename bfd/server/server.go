@@ -62,6 +62,7 @@ type BfdSessionMgmt struct {
 	DestIp   string
 	Protocol bfddCommonDefs.BfdSessionOwner
 	PerLink  bool
+	ForceDel bool
 }
 
 type BfdSession struct {
@@ -111,6 +112,9 @@ type BFDServer struct {
 	asicdSubSocket      *nanomsg.SubSocket
 	asicdSubSocketCh    chan []byte
 	asicdSubSocketErrCh chan error
+	ribdSubSocket       *nanomsg.SubSocket
+	ribdSubSocketCh     chan []byte
+	ribdSubSocketErrCh  chan error
 	portPropertyMap     map[int32]PortProperty
 	vlanPropertyMap     map[int32]VlanProperty
 	IPIntfPropertyMap   map[string]IPIntfProperty
@@ -135,6 +139,8 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer.IntfConfigDeleteCh = make(chan int32)
 	bfdServer.asicdSubSocketCh = make(chan []byte)
 	bfdServer.asicdSubSocketErrCh = make(chan error)
+	bfdServer.ribdSubSocketCh = make(chan []byte)
+	bfdServer.ribdSubSocketErrCh = make(chan error)
 	bfdServer.portPropertyMap = make(map[int32]PortProperty)
 	bfdServer.vlanPropertyMap = make(map[int32]VlanProperty)
 	bfdServer.lagPropertyMap = make(map[int32]LagProperty)
@@ -417,6 +423,8 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	go server.ReadConfigFromDB(dbHdl, dbReadCh)
 	// Start subcriber for ASICd events
 	go server.CreateASICdSubscriber()
+	// Start subcriber for RIBd events
+	go server.CreateRIBdSubscriber()
 	// Start session management handler
 	go server.StartSessionHandler()
 	// Initialize and run notification publisher
@@ -442,6 +450,9 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:
+		case ribdrxBuf := <-server.ribdSubSocketCh:
+			server.processRibdNotification(ribdrxBuf)
+		case <-server.ribdSubSocketErrCh:
 		case sessionConfig := <-server.SessionConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Session Configuration", sessionConfig))
 			server.processSessionConfig(sessionConfig)

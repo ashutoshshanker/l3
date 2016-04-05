@@ -47,6 +47,7 @@ func (server *OSPFServer) processAreaConfig(areaConf config.AreaConf) {
 	server.initAreaStateSlice(areaConfKey)
 	areaId := convertAreaOrRouterIdUint32(string(areaConf.AreaId))
 	server.initLSDatabase(areaId)
+        server.initRoutingTbl(areaId)
 }
 
 func (server *OSPFServer) initAreaConfDefault() {

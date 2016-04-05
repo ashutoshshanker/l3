@@ -147,6 +147,15 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *bgprib.Path) boo
 	return true
 }
 
+func (p *Peer) clearRibOut() {
+	for ip, pathIdMap := range p.ribOut {
+		for pathId, _ := range pathIdMap {
+			delete(p.ribOut[ip], pathId)
+		}
+		delete(p.ribOut, ip)
+	}
+}
+
 func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 	host, _, err := net.SplitHostPort((*conn).LocalAddr().String())
 	if err != nil {
@@ -155,6 +164,7 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 		return
 	}
 	p.NeighborConf.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
+	p.clearRibOut()
 	//p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
 }
 
@@ -169,7 +179,7 @@ func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 	p.NeighborConf.Neighbor.State.KeepaliveTime = p.NeighborConf.RunningConf.KeepaliveTime
 	p.NeighborConf.Neighbor.State.AddPathsRx = false
 	p.NeighborConf.Neighbor.State.AddPathsMaxTx = 0
-
+	p.clearRibOut()
 }
 
 func (p *Peer) sendUpdateMsg(msg *packet.BGPMessage, path *bgprib.Path) {

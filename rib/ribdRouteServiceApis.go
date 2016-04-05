@@ -9,6 +9,8 @@ import (
 	"ribd"
 	"strconv"
 	"utils/commonDefs"
+	"strings"
+	"net"
 )
 
 func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
@@ -38,8 +40,56 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 		logger.Err(fmt.Sprintln("Cannot create ip route on a unknown L3 interface"))
 		return false, errors.New("Cannot create ip route on a unknown L3 interface")
 	}
+	_, err = getIP(cfg.NextHopIp)
+	if err != nil {
+		logger.Println("nextHopIpAddr invalid")
+		return false,errors.New("Invalid next hop ip address")
+	}
+	isCidr := strings.Contains(cfg.DestinationNw, "/")
+	if isCidr { //the given address is in CIDR format
+	    ip, ipNet, err := net.ParseCIDR(cfg.DestinationNw)
+	    if err != nil {    
+		    logger.Err(fmt.Sprintln("Invalid Destination IP address"))
+			return false, errors.New("Invalid Desitnation IP address")
+	    }
+	    _, err = getNetworkPrefixFromCIDR(cfg.DestinationNw)
+	    if err != nil {
+		    return false,errors.New("Invalid destination ip/network Mask")
+	    }
+		cfg.DestinationNw = ip.String() 
+	    ipMask := make(net.IP, 4)
+		copy(ipMask, ipNet.Mask)
+		ipMaskStr := net.IP(ipMask).String()
+		cfg.NetworkMask = ipMaskStr
+	} else {
+		//validate ip and mask string if not a CIDR address
+	    destNetIpAddr, err := getIP(cfg.DestinationNw)
+	    if err != nil {
+		    logger.Println("destNetIpAddr invalid")
+		    return false, errors.New("Invalid destination IP address")
+	    }
+	    networkMaskAddr,err := getIP(cfg.NetworkMask)
+	    if err != nil {
+		    logger.Println("networkMaskAddr invalid")
+		    return false, errors.New("Invalid mask")
+	    }
+	    _, err = getPrefixLen(networkMaskAddr)
+	    if err != nil {
+		    return false, errors.New("Invalid networkMask")
+	    }
+	
+	    _, err = getNetworkPrefix(destNetIpAddr, networkMaskAddr)
+	    if err != nil {
+		    return false,errors.New("Invalid destination ip/network Mask")
+	    }
+	}
 	m.RouteCreateConfCh <- cfg
 	return true, nil
+}
+func (m RIBDServicesHandler) OnewayCreateIPv4Route(cfg *ribd.IPv4Route) (err error) {
+	logger.Info(fmt.Sprintln("OnewayCreateIPv4Route - Received create route request for ip", cfg.DestinationNw, " mask ", cfg.NetworkMask, "cfg.OutgoingIntfType: ", cfg.OutgoingIntfType, "cfg.OutgoingInterface: ", cfg.OutgoingInterface))
+	m.CreateIPv4Route(cfg)
+	return err
 }
 func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeleteIPv4:RouteReceived Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHopIp, "Protocol ", cfg.Protocol))
@@ -55,6 +105,11 @@ func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 	}
 	m.RouteDeleteConfCh <- cfg
 	return true, nil
+}
+func (m RIBDServicesHandler) OnewayDeleteIPv4Route(cfg *ribd.IPv4Route) (err error) {
+	logger.Info(fmt.Sprintln("OnewayDeleteIPv4Route:RouteReceived Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHopIp, "Protocol ", cfg.Protocol))
+	m.DeleteIPv4Route(cfg)
+	return err
 }
 func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
 	logger.Println("UpdateIPv4Route: Received update route request")
@@ -91,6 +146,11 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
 	routeUpdateConfig := UpdateRouteInfo{origconfig, newconfig, attrset}
 	m.RouteUpdateConfCh <- routeUpdateConfig
 	return true, nil
+}
+func (m RIBDServicesHandler) OnewayUpdateIPv4Route(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (err error) {
+	logger.Println("OneWayUpdateIPv4Route: Received update route request")
+	m.UpdateIPv4Route(origconfig, newconfig, attrset)
+	return err
 }
 func (m RIBDServicesHandler) GetIPv4RouteState(destNw string, nextHop string) (*ribd.IPv4RouteState, error) {
 	logger.Info("Get state for IPv4Route")

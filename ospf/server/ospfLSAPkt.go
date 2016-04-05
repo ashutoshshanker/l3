@@ -437,10 +437,11 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			dnlsa, ret := server.getNetworkLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckNetworkLsa(*nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
 
-		case Summary3LSA:
-		case Summary4LSA:
+		case Summary3LSA, Summary4LSA:
+                        server.logger.Info(fmt.Sprintln("Received summary Lsa Packet :", lsdb_msg.Data))
 			slsa := NewSummaryLsa()
 			decodeSummaryLsa(lsdb_msg.Data, slsa, lsa_key)
+                        server.logger.Info(fmt.Sprintln("Decoded summary Lsa Packet :", slsa))
 			dslsa, ret := server.getSummaryLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckSummaryLsa(*slsa, dslsa, nbr, intf, ret, lsa_max_age)
 
@@ -895,8 +896,7 @@ func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey uint32, a
 		} else {
 			server.logger.Info(fmt.Sprintln("LSAREQ: Network lsa not found. lsaid ", req.link_state_id, " lstype ", lsa_key.LSType))
 		}
-	case Summary3LSA:
-	case Summary4LSA:
+	case Summary3LSA, Summary4LSA:
 		dslsa, ret := server.getSummaryLsaFromLsdb(areaid, *lsa_key)
 		if ret == LsdbEntryFound {
 			lsa_pkt = encodeSummaryLsa(dslsa, *lsa_key)
@@ -989,8 +989,7 @@ func (server *OSPFServer) lsaAddCheck(lsaheader ospfLSAHeader,
 		dnlsa, ret := server.getNetworkLsaFromLsdb(areaId, *lsa_key)
 		discard, op = server.sanityCheckNetworkLsa(*nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
 
-	case Summary3LSA:
-	case Summary4LSA:
+	case Summary3LSA, Summary4LSA:
 		slsa := NewSummaryLsa()
 		dslsa, ret := server.getSummaryLsaFromLsdb(areaId, *lsa_key)
 		discard, op = server.sanityCheckSummaryLsa(*slsa, dslsa, nbr, intf, ret, lsa_max_age)
