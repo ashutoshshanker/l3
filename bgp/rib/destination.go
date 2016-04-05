@@ -199,11 +199,11 @@ func (d *Destination) AddOrUpdatePath(peerIp string, pathId uint32, path *Path) 
 		d.recalculate = true
 	}
 
-	if added {
-		outPathId := d.getNextPathId()
-		route := NewRoute(d, path, RouteActionNone, pathId, outPathId)
-		d.pathRouteMap[path] = route
-	}
+	//if added {
+	outPathId := d.getNextPathId()
+	route := NewRoute(d, path, RouteActionNone, pathId, outPathId)
+	d.pathRouteMap[path] = route
+	//}
 	d.peerPathMap[peerIp][pathId] = path
 	return added
 }
