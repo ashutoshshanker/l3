@@ -499,7 +499,7 @@ func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 	return pub
 }
 func InitializePolicyDB() {
-	PolicyEngineDB = policy.NewPolicyEngineDB()
+	PolicyEngineDB = policy.NewPolicyEngineDB(logger)
 	PolicyEngineDB.SetDefaultImportPolicyActionFunc(defaultImportPolicyEngineActionFunc)
 	PolicyEngineDB.SetDefaultExportPolicyActionFunc(defaultExportPolicyEngineActionFunc)
 	PolicyEngineDB.SetIsEntityPresentFunc(DoesRouteExist)
@@ -520,6 +520,7 @@ func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
 	RouteInfoMap = patriciaDB.NewTrie()
 	ribdServicesHandler := &RIBDServicesHandler{}
     RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
+	TrackReachabilityMap = make(map[string][]string)
     RouteProtocolTypeMapDB = make(map[string]int)
     ReverseRouteProtoTypeMapDB = make(map[int]string)
     ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)

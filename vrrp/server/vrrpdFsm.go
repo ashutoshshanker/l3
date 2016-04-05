@@ -126,6 +126,7 @@ func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 			key:      key,
 			priority: VRRP_IGNORE_PRIORITY,
 		}
+		<-svr.vrrpPktSend
 		gblInfo, exists := svr.vrrpGblInfo[key]
 		if !exists {
 			svr.logger.Err("Gbl Config for " + key + " doesn't exists")
@@ -158,7 +159,9 @@ func (svr *VrrpServer) VrrpTransitionToMaster(key string, reason string) {
 		key:      key,
 		priority: VRRP_IGNORE_PRIORITY,
 	}
-
+	// Wait for the packet to be send out
+	<-svr.vrrpPktSend
+	// After Advertisment update fsm state info
 	svr.VrrpUpdateStateInfo(key, reason, VRRP_MASTER_STATE)
 
 	gblInfo, exists := svr.vrrpGblInfo[key]
@@ -166,7 +169,7 @@ func (svr *VrrpServer) VrrpTransitionToMaster(key string, reason string) {
 		svr.logger.Err("No entry found ending fsm")
 		return
 	}
-	// Set Sub-intf state up
+	// Set Sub-intf state up and send out garp via linux stack
 	svr.VrrpUpdateSubIntf(gblInfo, true /*configure or set*/)
 	// (140) + Set the Adver_Timer to Advertisement_Interval
 	// Start Advertisement Timer
@@ -180,7 +183,6 @@ func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
 		return
 	}
 	if gblInfo.MasterDownTimer != nil {
-		svr.logger.Info("Resetting down timer")
 		gblInfo.MasterDownLock.Lock()
 		gblInfo.MasterDownTimer.Reset(time.Duration(gblInfo.MasterDownValue) *
 			time.Second)
@@ -358,6 +360,7 @@ func (svr *VrrpServer) VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 			key:      key,
 			priority: VRRP_IGNORE_PRIORITY,
 		}
+		<-svr.vrrpPktSend
 		svr.VrrpHandleMasterAdverTimer(key)
 	} else {
 		ipLayer := inPkt.Layer(layers.LayerTypeIPv4)
@@ -399,8 +402,6 @@ func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 		svr.logger.Err("No entry found ending fsm")
 		return
 	}
-	svr.logger.Info(fmt.Sprintln("Received fsm request for vrid",
-		gblInfo.IntfConfig.VRID))
 	gblInfo.StateNameLock.Lock()
 	currentState := gblInfo.StateName
 	gblInfo.StateNameLock.Unlock()
@@ -449,14 +450,18 @@ func (svr *VrrpServer) VrrpStopTimers(IfIndex int32) {
 		}
 		// If state is Master then we need to send an advertisement with
 		// priority as 0
-		gblInfo.StateNameLock.Lock()
-		if gblInfo.StateName == VRRP_MASTER_STATE {
+		gblInfo.StateNameLock.RLock()
+		state := gblInfo.StateName
+		gblInfo.StateNameLock.RUnlock()
+		if state == VRRP_MASTER_STATE {
 			svr.vrrpTxPktCh <- VrrpTxChannelInfo{
 				key:      key,
 				priority: VRRP_MASTER_DOWN_PRIORITY,
 			}
+			<-svr.vrrpPktSend
 		}
 		// Transition to Init State
+		gblInfo.StateNameLock.Lock()
 		gblInfo.StateName = VRRP_INITIALIZE_STATE
 		gblInfo.StateNameLock.Unlock()
 		svr.vrrpGblInfo[key] = gblInfo
