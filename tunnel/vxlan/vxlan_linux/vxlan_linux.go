@@ -5,6 +5,7 @@ package vxlan_linux
 import (
 	"fmt"
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netlink/nl"
 	"net"
 	"time"
 	//"os/exec"
@@ -157,12 +158,13 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		LinkAttrs: netlink.LinkAttrs{
 			Name: c.VtepName,
 			//MasterIndex: VxlanDB[c.VxlanId].Brg.Attrs().Index,
-			MTU: VxlanDB[c.VxlanId].Brg.Attrs().MTU,
+			HardwareAddr: c.TunnelSrcMac,
+			MTU:          VxlanDB[c.VxlanId].Brg.Attrs().MTU,
 		},
 		VxlanId:      int(c.VxlanId),
 		VtepDevIndex: link.Attrs().Index,
 		SrcAddr:      c.TunnelSrcIp,
-		Group:        VxlanDB[c.VxlanId].Group,
+		Group:        c.TunnelDstIp,
 		TTL:          int(c.TTL),
 		TOS:          int(c.TOS),
 		Learning:     c.Learning,
@@ -174,9 +176,9 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		NoAge:        false,
 		GBP:          false,
 		Age:          300,
-		Port:         int(c.UDP),
-		PortLow:      int(c.UDP),
-		PortHigh:     int(c.UDP),
+		Port:         int(nl.Swap16(c.UDP)),
+		PortLow:      int(nl.Swap16(c.UDP)),
+		PortHigh:     int(nl.Swap16(c.UDP)),
 	}
 
 	//equivalent to linux command:
@@ -190,7 +192,12 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 
 	link, err = netlink.LinkByName(vtep.Name)
 	if err != nil {
-		v.logger.Err(err.Error())
+		v.logger.Err(fmt.Sprintf("Link by Name vtep:", err.Error()))
+	}
+
+	// found that hte mac we are trying to set fails lets try and add it again
+	if err := netlink.LinkSetHardwareAddr(link, c.TunnelSrcMac); err != err {
+		v.logger.Err(fmt.Sprintf("LinkSetHardwareAddr vtep:", err.Error()))
 	}
 
 	// equivalent to linux command:
@@ -236,17 +243,48 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 	if c.TunnelDstIp != nil &&
 		c.TunnelDstMac != nil {
 		neigh := &netlink.Neigh{
-			LinkIndex:    link.Attrs().Index,
-			Family:       netlink.NDA_VNI,                           // NDA_VNI
+			LinkIndex: link.Attrs().Index,
+			//Family:       netlink.NDA_VNI,                          // NDA_VNI
 			State:        netlink.NUD_NOARP | netlink.NUD_PERMANENT, // NUD_NOARP (0x40) | NUD_PERMANENT (0x80)
 			Type:         1,
 			Flags:        netlink.NTF_SELF, // NTF_SELF
 			IP:           c.TunnelDstIp,
 			HardwareAddr: c.TunnelDstMac,
 		}
-		if err := netlink.NeighAppend(neigh); err != nil {
-			v.logger.Err(err.Error())
+		v.logger.Info(fmt.Sprintf("neighbor: %#v", neigh))
+		if err := netlink.NeighSet(neigh); err != nil {
+			v.logger.Err(fmt.Sprintf("NeighSet:", err.Error()))
 		}
+		/*
+			neighList, err := netlink.NeighList(neigh.LinkIndex, neigh.Family)
+			if err == nil {
+
+				for _, n := range neighList {
+					foundNeighbor := false
+					if len(neigh.IP) == len(n.IP) {
+						for i, _ := range neigh.IP {
+							if neigh.IP[i] == n.IP[i] {
+								foundNeighbor = true
+							} else {
+								foundNeighbor = false
+							}
+						}
+					}
+					if foundNeighbor {
+						v.logger.Info("Found Neighbor ip")
+						if n.State == netlink.NUD_FAILED {
+							v.logger.Info(fmt.Sprintf("retry neighbor: %#v", neigh))
+							if err := netlink.NeighSet(neigh); err != nil {
+								v.logger.Err(fmt.Sprintf("NeighSet:", err.Error()))
+							}
+						}
+					}
+				}
+			}
+		*/
+
+	} else {
+		v.logger.Info(fmt.Sprintf("neighbor: not configured dstIp %#v dstmac %#v", c.TunnelDstIp, c.TunnelDstMac))
 	}
 
 	vxlanDbEntry := VxlanDB[uint32(vtep.VxlanId)]
