@@ -10,10 +10,10 @@ import (
 
 func handleClient(client *ribd.RIBDServicesClient) (err error) {
 	var count int = 1
-	var maxCount int = 5000
+	var maxCount int = 30000
 	intByt2 := 1
 	intByt3 := 1
-	byte1 := "27"
+	byte1 := "22"
 	byte4 := "0"
 
 	start := time.Now()
@@ -42,7 +42,7 @@ func handleClient(client *ribd.RIBDServicesClient) (err error) {
 		route.OutgoingIntfType = "Loopback"
 		route.Protocol = "STATIC"
 		//fmt.Println("Creating Route ", route)
-		_, rv := client.CreateIPv4Route(&route)
+		 rv := client.OnewayCreateIPv4Route(&route)
 		if rv == nil {
 			count++
 		} else {
