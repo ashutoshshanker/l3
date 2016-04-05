@@ -177,8 +177,8 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		GBP:          false,
 		Age:          300,
 		Port:         int(nl.Swap16(c.UDP)),
-		PortLow:      int(nl.Swap16(c.UDP)),
-		PortHigh:     int(nl.Swap16(c.UDP)),
+		PortLow:      int(c.UDP),
+		PortHigh:     int(c.UDP),
 	}
 
 	//equivalent to linux command:
