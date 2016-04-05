@@ -49,7 +49,7 @@ type VtepConfig struct {
 	UDP                   uint16           //vxlan udp port.  Deafult is the iana default udp port
 	TTL                   uint16           //TTL of the Vxlan tunnel
 	TOS                   uint16           //Type of Service
-	InnerVlanHandlingMode bool             //The inner vlan tag handling mode.
+	InnerVlanHandlingMode int32            //The inner vlan tag handling mode.
 	Learning              bool             //specifies if unknown source link layer  addresses and IP addresses are entered into the VXLAN  device forwarding database.
 	Rsc                   bool             //specifies if route short circuit is turned on.
 	L2miss                bool             //specifies if netlink LLADDR miss notifications are generated.
@@ -113,7 +113,7 @@ func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepIn
 		UDP:       uint16(c.UDP),
 		TTL:       uint16(c.TTL),
 		TOS:       uint16(c.TOS),
-		InnerVlanHandlingMode: ConvertInt32ToBool(c.InnerVlanHandlingMode),
+		InnerVlanHandlingMode: c.InnerVlanHandlingMode,
 		Learning:              c.Learning,
 		Rsc:                   c.Rsc,
 		L2miss:                c.L2miss,

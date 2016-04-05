@@ -35,7 +35,7 @@ type vtepDbEntry struct {
 	UDP                   uint16
 	TTL                   uint16
 	TOS                   uint16
-	InnerVlanHandlingMode bool
+	InnerVlanHandlingMode int32
 	Learning              bool
 	Rsc                   bool
 	L2miss                bool

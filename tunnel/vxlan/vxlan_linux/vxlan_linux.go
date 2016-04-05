@@ -44,7 +44,7 @@ type VtepConfig struct {
 	UDP                   uint16           //vxlan udp port.  Deafult is the iana default udp port
 	TTL                   uint16           //TTL of the Vxlan tunnel
 	TOS                   uint16           //Type of Service
-	InnerVlanHandlingMode bool             //The inner vlan tag handling mode.
+	InnerVlanHandlingMode int32            //The inner vlan tag handling mode.
 	Learning              bool             //specifies if unknown source link layer  addresses and IP addresses are entered into the VXLAN  device forwarding database.
 	Rsc                   bool             //specifies if route short circuit is turned on.
 	L2miss                bool             //specifies if netlink LLADDR miss notifications are generated.
@@ -255,34 +255,33 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		if err := netlink.NeighSet(neigh); err != nil {
 			v.logger.Err(fmt.Sprintf("NeighSet:", err.Error()))
 		}
-		/*
-			neighList, err := netlink.NeighList(neigh.LinkIndex, neigh.Family)
-			if err == nil {
+	retry_neighbor_set:
+		neighList, err := netlink.NeighList(neigh.LinkIndex, neigh.Family)
+		if err == nil {
 
-				for _, n := range neighList {
-					foundNeighbor := false
-					if len(neigh.IP) == len(n.IP) {
-						for i, _ := range neigh.IP {
-							if neigh.IP[i] == n.IP[i] {
-								foundNeighbor = true
-							} else {
-								foundNeighbor = false
-							}
+			for _, n := range neighList {
+				foundNeighbor := false
+				if len(neigh.IP) == len(n.IP) {
+					for i, _ := range neigh.IP {
+						if neigh.IP[i] == n.IP[i] {
+							foundNeighbor = true
+						} else {
+							foundNeighbor = false
 						}
 					}
-					if foundNeighbor {
-						v.logger.Info("Found Neighbor ip")
-						if n.State == netlink.NUD_FAILED {
-							v.logger.Info(fmt.Sprintf("retry neighbor: %#v", neigh))
-							if err := netlink.NeighSet(neigh); err != nil {
-								v.logger.Err(fmt.Sprintf("NeighSet:", err.Error()))
-							}
+				}
+				if foundNeighbor {
+					v.logger.Info("Found Neighbor ip")
+					if n.State == netlink.NUD_FAILED {
+						v.logger.Info(fmt.Sprintf("retry neighbor: %#v", neigh))
+						if err := netlink.NeighSet(neigh); err != nil {
+							v.logger.Err(fmt.Sprintf("NeighSet:", err.Error()))
+							goto retry_neighbor_set
 						}
 					}
 				}
 			}
-		*/
-
+		}
 	} else {
 		v.logger.Info(fmt.Sprintf("neighbor: not configured dstIp %#v dstmac %#v", c.TunnelDstIp, c.TunnelDstMac))
 	}
