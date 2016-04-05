@@ -62,6 +62,7 @@ type BfdSessionMgmt struct {
 	DestIp   string
 	Protocol bfddCommonDefs.BfdSessionOwner
 	PerLink  bool
+	ForceDel bool
 }
 
 type BfdSession struct {
@@ -111,9 +112,9 @@ type BFDServer struct {
 	asicdSubSocket      *nanomsg.SubSocket
 	asicdSubSocketCh    chan []byte
 	asicdSubSocketErrCh chan error
-	ribdSubSocket      *nanomsg.SubSocket
-	ribdSubSocketCh    chan []byte
-	ribdSubSocketErrCh chan error
+	ribdSubSocket       *nanomsg.SubSocket
+	ribdSubSocketCh     chan []byte
+	ribdSubSocketErrCh  chan error
 	portPropertyMap     map[int32]PortProperty
 	vlanPropertyMap     map[int32]VlanProperty
 	IPIntfPropertyMap   map[string]IPIntfProperty
