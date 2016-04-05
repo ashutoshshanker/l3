@@ -11,10 +11,12 @@ import (
 	"utils/commonDefs"
 	"strings"
 	"net"
+	"time"
 )
 
 func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
 	logger.Info(fmt.Sprintln("Received create route request for ip", cfg.DestinationNw, " mask ", cfg.NetworkMask, "cfg.OutgoingIntfType: ", cfg.OutgoingIntfType, "cfg.OutgoingInterface: ", cfg.OutgoingInterface))
+	cfg.CreateTime = time.Now().String()
 	_, ok := RouteProtocolTypeMapDB[cfg.Protocol]
 	if !ok {
 		logger.Info(fmt.Sprintln("route type ", cfg.Protocol, " invalid"))
