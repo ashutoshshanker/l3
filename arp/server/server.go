@@ -102,6 +102,7 @@ type ARPServer struct {
 	ResolveIPv4Ch          chan ResolveIPv4
 	ArpConfCh              chan ArpConf
 	dumpArpTable           bool
+	InitDone	       chan bool
 }
 
 func NewARPServer(logger *logging.Writer) *ARPServer {
@@ -124,6 +125,7 @@ func NewARPServer(logger *logging.Writer) *ARPServer {
 	arpServer.arpCounterUpdateCh = make(chan bool)
 	arpServer.ResolveIPv4Ch = make(chan ResolveIPv4)
 	arpServer.ArpConfCh = make(chan ArpConf)
+	arpServer.InitDone = make(chan bool)
 	return arpServer
 }
 
@@ -254,6 +256,7 @@ func (server *ARPServer) InitServer(paramDir string) {
 func (server *ARPServer) StartServer(paramDir string) {
 	server.logger.Info(fmt.Sprintln("Inside Start Server...", paramDir))
 	server.InitServer(paramDir)
+	server.InitDone <- true
 	for {
 		select {
 		case arpConf := <-server.ArpConfCh:

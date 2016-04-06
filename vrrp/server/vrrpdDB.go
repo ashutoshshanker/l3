@@ -49,7 +49,6 @@ func (svr *VrrpServer) VrrpReadDB() error {
 		if err != nil {
 			svr.logger.Err(fmt.Sprintln("scanning rows failed", err))
 		} else {
-			//svr.logger.Info(fmt.Sprintln(config))
 			svr.VrrpCreateGblInfo(config)
 		}
 	}
