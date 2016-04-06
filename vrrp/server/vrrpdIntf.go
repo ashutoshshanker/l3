@@ -26,7 +26,7 @@ func (svr *VrrpServer) VrrpGetIPv4IntfList() {
 	more := false
 	count := 10
 	for {
-		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkIPv4Intf(
+		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkIPv4IntfState(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
 			svr.logger.Err(fmt.Sprintln("getting bulk ipv4 intf config",
@@ -37,9 +37,9 @@ func (svr *VrrpServer) VrrpGetIPv4IntfList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			svr.VrrpCreateIfIndexEntry(bulkInfo.IPv4IntfList[i].IfIndex,
-				bulkInfo.IPv4IntfList[i].IpAddr)
-			svr.VrrpMapIfIndexToLinuxIfIndex(bulkInfo.IPv4IntfList[i].IfIndex)
+			svr.VrrpCreateIfIndexEntry(bulkInfo.IPv4IntfStateList[i].IfIndex,
+				bulkInfo.IPv4IntfStateList[i].IpAddr)
+			svr.VrrpMapIfIndexToLinuxIfIndex(bulkInfo.IPv4IntfStateList[i].IfIndex)
 		}
 		if more == false {
 			break

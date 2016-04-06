@@ -138,19 +138,19 @@ func (server *BFDServer) BuildIPv4InterfacesMap() error {
 	for {
 		var ipv4IntfMsg IPv4IntfNotifyMsg
 		server.logger.Info(fmt.Sprintf("Getting %d objects from currMarker %d\n", count, currMarker))
-		IPIntfBulk, err := server.asicdClient.ClientHdl.GetBulkIPv4Intf(currMarker, count)
+		IPIntfBulk, err := server.asicdClient.ClientHdl.GetBulkIPv4IntfState(currMarker, count)
 		if err != nil {
-			server.logger.Info(fmt.Sprintln("GetBulkIPv4Intf with err ", err))
+			server.logger.Info(fmt.Sprintln("GetBulkIPv4IntfState with err ", err))
 			return err
 		}
 		if IPIntfBulk.Count == 0 {
-			server.logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4Intf"))
+			server.logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4IntfState"))
 			return nil
 		}
-		server.logger.Info(fmt.Sprintf("Got IPv4 interfaces - len  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfList), IPIntfBulk.Count))
+		server.logger.Info(fmt.Sprintf("Got IPv4 interfaces - len  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfStateList), IPIntfBulk.Count))
 		for i := 0; i < int(IPIntfBulk.Count); i++ {
-			ipv4IntfMsg.IpAddr = IPIntfBulk.IPv4IntfList[i].IpAddr
-			ipv4IntfMsg.IfId = IPIntfBulk.IPv4IntfList[i].IfIndex
+			ipv4IntfMsg.IpAddr = IPIntfBulk.IPv4IntfStateList[i].IpAddr
+			ipv4IntfMsg.IfId = IPIntfBulk.IPv4IntfStateList[i].IfIndex
 			server.createIPIntfConfMap(ipv4IntfMsg)
 			server.logger.Info(fmt.Sprintf("Created IPv4 interface (%d : %s)\n", ipv4IntfMsg.IfId, ipv4IntfMsg.IpAddr))
 		}
