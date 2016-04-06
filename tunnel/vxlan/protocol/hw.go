@@ -160,14 +160,14 @@ func (s *VXLANServer) getLoopbackInfo() (success bool, lbname string, mac net.Ha
 					ipV4ObjMore := true
 					ipV4ObjCurrMarker := asicdServices.Int(0)
 					for ipV4ObjMore {
-						ipV4BulkInfo, _ := asicdclnt.ClientHdl.GetBulkIPv4Intf(ipV4ObjCurrMarker, 20)
+						ipV4BulkInfo, _ := asicdclnt.ClientHdl.GetBulkIPv4IntfState(ipV4ObjCurrMarker, 20)
 						ipV4ObjCount := int(ipV4BulkInfo.Count)
 						ipV4ObjCurrMarker = asicdServices.Int(bulkInfo.EndIdx)
 						ipV4ObjMore = bool(ipV4BulkInfo.More)
 						for j := 0; j < ipV4ObjCount; j++ {
-							if ipV4BulkInfo.IPv4IntfList[j].IfIndex == ifindex {
+							if ipV4BulkInfo.IPv4IntfStateList[j].IfIndex == ifindex {
 								success = true
-								ip = net.ParseIP(strings.Split(ipV4BulkInfo.IPv4IntfList[j].IpAddr, "/")[0])
+								ip = net.ParseIP(strings.Split(ipV4BulkInfo.IPv4IntfStateList[j].IpAddr, "/")[0])
 								return success, lbname, mac, ip
 							}
 						}
