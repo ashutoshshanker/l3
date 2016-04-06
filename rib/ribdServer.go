@@ -28,6 +28,12 @@ type UpdateRouteInfo struct {
 	newRoute  *ribd.IPv4Route
 	attrset   []bool
 }
+type NextHopInfoKey struct {
+	nextHopIp    string
+}
+type NextHopInfo struct {
+	refCount     int
+}
 type RIBDServicesHandler struct {
 	RouteCreateConfCh            chan *ribd.IPv4Route
 	RouteDeleteConfCh            chan *ribd.IPv4Route
@@ -37,6 +43,8 @@ type RIBDServicesHandler struct {
 	AsicdAddRouteCh              chan RouteInfoRecord
 	AsicdDelRouteCh              chan RouteInfoRecord
 	ArpdResolveRouteCh           chan RouteInfoRecord
+	ArpdRemoveRouteCh            chan RouteInfoRecord
+	NextHopInfoMap               map[NextHopInfoKey]NextHopInfo
 	PolicyConditionCreateConfCh  chan *ribd.PolicyCondition
 	PolicyConditionDeleteConfCh  chan *ribd.PolicyCondition
 	PolicyConditionUpdateConfCh  chan *ribd.PolicyCondition
@@ -530,7 +538,8 @@ func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
     ReverseRouteProtoTypeMapDB = make(map[int]string)
     ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
     PublisherInfoMap = make(map[string]PublisherMapInfo)
-	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route)
+	ribdServicesHandler.NextHopInfoMap = make(map[NextHopInfoKey]NextHopInfo)
+	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route,1000)
 	ribdServicesHandler.RouteDeleteConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteUpdateConfCh = make(chan UpdateRouteInfo)
 	ribdServicesHandler.NetlinkAddRouteCh = make(chan RouteInfoRecord,1000)
@@ -538,6 +547,7 @@ func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
 	ribdServicesHandler.AsicdAddRouteCh = make(chan RouteInfoRecord,1000)
 	ribdServicesHandler.AsicdDelRouteCh = make(chan RouteInfoRecord,1000)
 	ribdServicesHandler.ArpdResolveRouteCh = make(chan RouteInfoRecord,1000)
+	ribdServicesHandler.ArpdRemoveRouteCh = make(chan RouteInfoRecord,1000)
 	ribdServicesHandler.PolicyConditionCreateConfCh = make(chan *ribd.PolicyCondition)
 	ribdServicesHandler.PolicyConditionDeleteConfCh = make(chan *ribd.PolicyCondition)
 	ribdServicesHandler.PolicyConditionUpdateConfCh = make(chan *ribd.PolicyCondition)

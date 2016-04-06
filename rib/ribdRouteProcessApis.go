@@ -993,21 +993,20 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType = ribdInt.Int(routeInfoRecord.nextHopIfType)
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex = ribdInt.Int(routeInfoRecord.nextHopIfIndex)
 	    //routeInfoRecord.resolvedNextHopIpIntf,_ = ResolveNextHop(routeInfoRecord.nextHopIp.String())
-		//addLinuxRoute(routeInfoRecord)
 		logger.Info("Adding message to NetlinkAddRouteCh")
 		routeServiceHandler.NetlinkAddRouteCh <- routeInfoRecord
 		//call asicd to add
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
-			//asicdclnt.ClientHdl.OnewayCreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType))
-            routeServiceHandler.AsicdAddRouteCh <- routeInfoRecord
+            //routeServiceHandler.AsicdAddRouteCh <- routeInfoRecord
 		}
 		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
-			//call arpd to resolve the ip
-/*			logger.Info(fmt.Sprintln("### Sending ARP Resolve for ", routeInfoRecord.nextHopIp.String(), routeInfoRecord.nextHopIfType))
-			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType), arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex))
-			logger.Info(fmt.Sprintln("ARP resolve for ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType), arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex), " returned "))*/
-			routeServiceHandler.ArpdResolveRouteCh <- routeInfoRecord
+			if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.nextHopIp.String()}) {
+			    //call arpd to resolve the ip
+				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.nextHopIp.String(), " to ArpdResolveRouteCh"))
+			    routeServiceHandler.ArpdResolveRouteCh <- routeInfoRecord
+		    }
+		    updateNextHopMap(NextHopInfoKey{routeInfoRecord.nextHopIp.String()},add)
 		}
 		//update in the event log
 		eventInfo := "Installed " + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)] + " route " + policyRoute.Ipaddr + ":" + policyRoute.Mask + " nextHopIp :" + routeInfoRecord.nextHopIp.String() + " in Hardware and RIB " 
@@ -1107,7 +1106,18 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	if asicdclnt.IsConnected {
 		logger.Info(fmt.Sprintln("Calling asicd to delete this route- ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
 		//asicdclnt.ClientHdl.OnewayDeleteIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType))
-        routeServiceHandler.AsicdDelRouteCh <- routeInfoRecord
+        //routeServiceHandler.AsicdDelRouteCh <- routeInfoRecord
+	}
+	if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
+		if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.nextHopIp.String()}) {
+			logger.Info(fmt.Sprintln("ARP resolve was never called for ", routeInfoRecord.nextHopIp.String()))
+		} else {
+		    refCount := updateNextHopMap(NextHopInfoKey{routeInfoRecord.nextHopIp.String()},del)
+			if refCount == 0{
+				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.nextHopIp.String(), " to ArpdRemoveRouteCh"))
+				routeServiceHandler.ArpdRemoveRouteCh <- routeInfoRecord
+			}
+		}
 	}
 	//delLinuxRoute(routeInfoRecord)
 	routeServiceHandler.NetlinkDelRouteCh <- routeInfoRecord
@@ -1270,14 +1280,15 @@ func createV4Route(destNetIp string,
 		//call asicd
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
-			//asicdclnt.ClientHdl.OnewayCreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType))
-            routeServiceHandler.AsicdAddRouteCh <- routeInfoRecord
+            //routeServiceHandler.AsicdAddRouteCh <- routeInfoRecord
 		}
-		if arpdclnt.IsConnected && routeType != ribdCommonDefs.CONNECTED{
-/*			logger.Info(fmt.Sprintln("### 22 Sending ARP Resolve for ", routeInfoRecord.nextHopIp.String(), routeInfoRecord.nextHopIfType))
-			arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType), arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex))
-			logger.Info(fmt.Sprintln("ARP resolve for ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType), arpdInt.Int(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex), " returned "))*/
-			routeServiceHandler.ArpdResolveRouteCh <- routeInfoRecord
+		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
+			if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.nextHopIp.String()}) {
+			    //call arpd to resolve the ip
+				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.nextHopIp.String()," to ArpdResolveRouteCh"))
+			    routeServiceHandler.ArpdResolveRouteCh <- routeInfoRecord
+		    }
+		    updateNextHopMap(NextHopInfoKey{routeInfoRecord.nextHopIp.String()},add)
 		}
 		//update in the event log
 		eventInfo := "Installed " + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)] + " route " + policyRoute.Ipaddr + ":" + policyRoute.Mask + " nextHopIp :" + routeInfoRecord.nextHopIp.String() +" in Hardware and RIB " 

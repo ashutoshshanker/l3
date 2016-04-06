@@ -128,6 +128,36 @@ func BuildProtocolAdminDistanceSlice() {
    }
    return isBetter
 }*/
+func arpResolveCalled(key NextHopInfoKey) (bool) {
+	if routeServiceHandler.NextHopInfoMap == nil {
+		return false
+	}
+	info,ok := routeServiceHandler.NextHopInfoMap[key]
+	if !ok || info.refCount == 0 {
+		logger.Info(fmt.Sprintln("Arp resolve not called for ", key.nextHopIp))
+		return false
+	}
+	return true
+}
+func updateNextHopMap(key NextHopInfoKey, op int) (count int){
+	if routeServiceHandler.NextHopInfoMap == nil {
+		return -1
+	}
+	info,ok := routeServiceHandler.NextHopInfoMap[key]
+	if !ok {
+		routeServiceHandler.NextHopInfoMap[key] = NextHopInfo{1}
+		count = 1
+	} else {
+	    if op == add {
+		    info.refCount++
+	    } else if op == del {
+		    info.refCount--
+	    }
+	    routeServiceHandler.NextHopInfoMap[key] = info
+		count = info.refCount
+	}
+	return count
+}
 func findElement(list []string, element string) (int) {
 	index := -1
 	for i :=0 ;i<len(list);i++ {
