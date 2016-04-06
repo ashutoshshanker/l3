@@ -151,7 +151,8 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 
 	link, err := netlink.LinkByName(c.SrcIfName)
 	if err != nil {
-		v.logger.Err(err.Error())
+		v.logger.Err(fmt.Sprintf("Error finding link %s: %s", c.SrcIfName, err.Error()))
+		return
 	}
 
 	vtep := &netlink.Vxlan{

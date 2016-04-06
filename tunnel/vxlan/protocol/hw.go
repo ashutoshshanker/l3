@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
+	"l3/tunnel/vxlan/vxlan_linux"
 	"net"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 )
 
 var PortConfigMap map[int32]portConfig
+var softswitch *vxlan_linux.VxlanLinux
 
 type portConfig struct {
 	Name         string
@@ -44,6 +46,38 @@ type ClientJson struct {
 }
 
 var asicdclnt AsicdClient
+
+func ConvertVxlanConfigToVxlanLinuxConfig(c *VxlanConfig) *vxlan_linux.VxlanConfig {
+
+	return &vxlan_linux.VxlanConfig{
+		VNI:    c.VNI,
+		VlanId: c.VlanId,
+		Group:  c.Group,
+		MTU:    c.MTU,
+	}
+}
+
+func ConvertVtepConfigToVxlanLinuxConfig(c *VtepConfig) *vxlan_linux.VtepConfig {
+	return &vxlan_linux.VtepConfig{
+		VtepId:    c.VtepId,
+		VxlanId:   c.VxlanId,
+		VtepName:  c.VtepName,
+		SrcIfName: c.SrcIfName,
+		UDP:       c.UDP,
+		TTL:       c.TTL,
+		TOS:       c.TOS,
+		InnerVlanHandlingMode: c.InnerVlanHandlingMode,
+		Learning:              c.Learning,
+		Rsc:                   c.Rsc,
+		L2miss:                c.L2miss,
+		L3miss:                c.L3miss,
+		TunnelSrcIp:           c.TunnelSrcIp,
+		TunnelDstIp:           c.TunnelDstIp,
+		VlanId:                c.VlanId,
+		TunnelSrcMac:          c.TunnelSrcMac,
+		TunnelDstMac:          c.TunnelDstMac,
+	}
+}
 
 // look up the various other daemons based on c string
 func GetClientPort(paramsFile string, c string) int {
@@ -132,7 +166,7 @@ func ConnectToClients(paramsFile string) {
 	}
 }
 
-func (s *VXLANServer) getLinuxIfName(ifindex int32) string {
+func asicDGetLinuxIfName(ifindex int32) string {
 
 	if p, ok := PortConfigMap[ifindex]; ok {
 		return p.Name
@@ -140,35 +174,37 @@ func (s *VXLANServer) getLinuxIfName(ifindex int32) string {
 	return ""
 }
 
-func (s *VXLANServer) getLoopbackInfo() (success bool, lbname string, mac net.HardwareAddr, ip net.IP) {
+func asicDGetLoopbackInfo() (success bool, lbname string, mac net.HardwareAddr, ip net.IP) {
 	// TODO this logic only assumes one loopback interface.  More logic is needed
 	// to handle multiple  loopbacks configured.  The idea should be
 	// that the lowest IP address is used.
-	more := true
-	for more {
-		currMarker := asicdServices.Int(0)
-		bulkInfo, err := asicdclnt.ClientHdl.GetBulkLogicalIntfState(currMarker, 5)
-		if err == nil {
-			objCount := int(bulkInfo.Count)
-			more = bool(bulkInfo.More)
-			currMarker = asicdServices.Int(bulkInfo.EndIdx)
-			for i := 0; i < objCount; i++ {
-				ifindex := bulkInfo.LogicalIntfStateList[i].IfIndex
-				lbname = bulkInfo.LogicalIntfStateList[i].Name
-				if pluginCommon.GetTypeFromIfIndex(ifindex) == commonDefs.IfTypeLoopback {
-					mac, _ = net.ParseMAC(bulkInfo.LogicalIntfStateList[i].SrcMac)
-					ipV4ObjMore := true
-					ipV4ObjCurrMarker := asicdServices.Int(0)
-					for ipV4ObjMore {
-						ipV4BulkInfo, _ := asicdclnt.ClientHdl.GetBulkIPv4Intf(ipV4ObjCurrMarker, 20)
-						ipV4ObjCount := int(ipV4BulkInfo.Count)
-						ipV4ObjCurrMarker = asicdServices.Int(bulkInfo.EndIdx)
-						ipV4ObjMore = bool(ipV4BulkInfo.More)
-						for j := 0; j < ipV4ObjCount; j++ {
-							if ipV4BulkInfo.IPv4IntfList[j].IfIndex == ifindex {
-								success = true
-								ip = net.ParseIP(strings.Split(ipV4BulkInfo.IPv4IntfList[j].IpAddr, "/")[0])
-								return success, lbname, mac, ip
+	if asicdclnt.ClientHdl != nil {
+		more := true
+		for more {
+			currMarker := asicdServices.Int(0)
+			bulkInfo, err := asicdclnt.ClientHdl.GetBulkLogicalIntfState(currMarker, 5)
+			if err == nil {
+				objCount := int(bulkInfo.Count)
+				more = bool(bulkInfo.More)
+				currMarker = asicdServices.Int(bulkInfo.EndIdx)
+				for i := 0; i < objCount; i++ {
+					ifindex := bulkInfo.LogicalIntfStateList[i].IfIndex
+					lbname = bulkInfo.LogicalIntfStateList[i].Name
+					if pluginCommon.GetTypeFromIfIndex(ifindex) == commonDefs.IfTypeLoopback {
+						mac, _ = net.ParseMAC(bulkInfo.LogicalIntfStateList[i].SrcMac)
+						ipV4ObjMore := true
+						ipV4ObjCurrMarker := asicdServices.Int(0)
+						for ipV4ObjMore {
+							ipV4BulkInfo, _ := asicdclnt.ClientHdl.GetBulkIPv4Intf(ipV4ObjCurrMarker, 20)
+							ipV4ObjCount := int(ipV4BulkInfo.Count)
+							ipV4ObjCurrMarker = asicdServices.Int(bulkInfo.EndIdx)
+							ipV4ObjMore = bool(ipV4BulkInfo.More)
+							for j := 0; j < ipV4ObjCount; j++ {
+								if ipV4BulkInfo.IPv4IntfList[j].IfIndex == ifindex {
+									success = true
+									ip = net.ParseIP(strings.Split(ipV4BulkInfo.IPv4IntfList[j].IpAddr, "/")[0])
+									return success, lbname, mac, ip
+								}
 							}
 						}
 					}
@@ -177,4 +213,55 @@ func (s *VXLANServer) getLoopbackInfo() (success bool, lbname string, mac net.Ha
 		}
 	}
 	return success, lbname, mac, ip
+}
+
+func asicDCreateVxlan(vxlan *VxlanConfig) {
+	// convert a vxland config to hw config
+	if asicdclnt.ClientHdl != nil {
+		// TODO
+	} else {
+
+		// run standalone
+		if softswitch == nil {
+			softswitch = vxlan_linux.NewVxlanLinux(logger)
+		}
+		softswitch.CreateVxLAN(ConvertVxlanConfigToVxlanLinuxConfig(vxlan))
+	}
+}
+
+func asicDDeleteVxlan(vxlan *VxlanConfig) {
+	// convert a vxland config to hw config
+	if asicdclnt.ClientHdl != nil {
+		// TODO
+	} else {
+		// run standalone
+		if softswitch != nil {
+			softswitch.DeleteVxLAN(ConvertVxlanConfigToVxlanLinuxConfig(vxlan))
+		}
+	}
+}
+
+func asicDCreateVtep(vtep *VtepConfig) {
+	// convert a vxland config to hw config
+	if asicdclnt.ClientHdl != nil {
+		// TODO
+	} else {
+		// run standalone
+		if softswitch == nil {
+			softswitch = vxlan_linux.NewVxlanLinux(logger)
+		}
+		softswitch.CreateVtep(ConvertVtepConfigToVxlanLinuxConfig(vtep))
+	}
+}
+
+func asicDDeleteVtep(vtep *VtepConfig) {
+	// convert a vxland config to hw config
+	if asicdclnt.ClientHdl != nil {
+		// TODO
+	} else {
+		// run standalone
+		if softswitch != nil {
+			softswitch.DeleteVtep(ConvertVtepConfigToVxlanLinuxConfig(vtep))
+		}
+	}
 }
