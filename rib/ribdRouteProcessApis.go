@@ -1047,6 +1047,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	delType int) {
 	logger.Info(" deleteRoute")
 	deleteNode := true
+	deleteLinuxRoute := true
 	if destNetSlice == nil || int(routeInfoRecord.sliceIdx) >= len(destNetSlice) {
 		logger.Info(fmt.Sprintln("Destination slice not found at the expected slice index ", routeInfoRecord.sliceIdx))
 		return
@@ -1055,6 +1056,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	//the following operations delete this node from the RIB DB
 	if delType != FIBOnly {
 		logger.Info("Del type != FIBOnly, so delete the entry in RIB DB")
+		deleteLinuxRoute = false
 		routeInfoList := routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]]
 		found, _, index := findRouteWithNextHop(routeInfoList, routeInfoRecord.nextHopIp.String())
 		if !found || index == -1 {
@@ -1072,6 +1074,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 			logger.Info(fmt.Sprintln("All routes for this destination from protocol ", ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)], " deleted"))
 			routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]] = nil
 			deleteNode = true
+			deleteLinuxRoute = true
 			for k, v := range routeInfoRecordList.routeInfoProtocolMap {
 				if v != nil && len(v) != 0 {
 					logger.Info(fmt.Sprintln("There are still other protocol ", k, " routes for this destination"))
@@ -1120,7 +1123,10 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 		}
 	}
 	//delLinuxRoute(routeInfoRecord)
-	routeServiceHandler.NetlinkDelRouteCh <- routeInfoRecord
+	logger.Info(fmt.Sprintln("deleteLinuxRoute: ", deleteLinuxRoute))
+	if deleteLinuxRoute {
+	    routeServiceHandler.NetlinkDelRouteCh <- routeInfoRecord
+	}
 	//update in the event log
 	delStr := "Route Uninstalled in Hardware "
 	if delType == FIBAndRIB {
