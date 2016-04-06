@@ -16,33 +16,33 @@ func (server *ARPServer) processResolveIPv4(conf ResolveIPv4) {
 	if conf.IfType == commonDefs.L2RefTypeVlan {
 		vlanEnt := server.vlanPropMap[IfIndex]
 		for port, _ := range vlanEnt.UntagPortMap {
-			server.sendArpReq(conf.TargetIP, port)
 			server.arpEntryUpdateCh <- UpdateArpEntryMsg{
 				PortNum: port,
 				IpAddr:  conf.TargetIP,
 				MacAddr: "incomplete",
 				Type:    true,
 			}
+			server.sendArpReq(conf.TargetIP, port)
 		}
 	} else if conf.IfType == commonDefs.L2RefTypeLag {
 		lagEnt := server.lagPropMap[IfIndex]
 		for port, _ := range lagEnt.PortMap {
-			server.sendArpReq(conf.TargetIP, port)
 			server.arpEntryUpdateCh <- UpdateArpEntryMsg{
 				PortNum: port,
 				IpAddr:  conf.TargetIP,
 				MacAddr: "incomplete",
 				Type:    true,
 			}
+			server.sendArpReq(conf.TargetIP, port)
 		}
 	} else if conf.IfType == commonDefs.L2RefTypePort {
-		server.sendArpReq(conf.TargetIP, IfIndex)
 		server.arpEntryUpdateCh <- UpdateArpEntryMsg{
 			PortNum: IfIndex,
 			IpAddr:  conf.TargetIP,
 			MacAddr: "incomplete",
 			Type:    true,
 		}
+		server.sendArpReq(conf.TargetIP, IfIndex)
 	}
 }
 

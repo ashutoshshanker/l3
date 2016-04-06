@@ -499,7 +499,7 @@ func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 	return pub
 }
 func InitializePolicyDB() {
-	PolicyEngineDB = policy.NewPolicyEngineDB()
+	PolicyEngineDB = policy.NewPolicyEngineDB(logger)
 	PolicyEngineDB.SetDefaultImportPolicyActionFunc(defaultImportPolicyEngineActionFunc)
 	PolicyEngineDB.SetDefaultExportPolicyActionFunc(defaultExportPolicyEngineActionFunc)
 	PolicyEngineDB.SetIsEntityPresentFunc(DoesRouteExist)
