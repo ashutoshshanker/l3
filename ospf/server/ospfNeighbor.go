@@ -80,8 +80,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 		case config.NbrAttempt:
 			/* reject packet */
 			return
-		case config.NbrInit:
-		case config.NbrExchangeStart:
+		case config.NbrInit, config.NbrExchangeStart:
 			//intfKey := nbrConf.intfConfKey
 			var isAdjacent bool
 			var negotiationDone bool
@@ -605,7 +604,8 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 				}
 				/* This ensures Flood packet is sent only after last DBD.  */
 
-				if nbrConf.OspfNbrState == config.NbrLoading || nbrConf.OspfNbrState == config.NbrFull {
+				//if nbrConf.OspfNbrState == config.NbrLoading || nbrConf.OspfNbrState == config.NbrFull {
+				if nbrConf.isMaster && !dbd_mdata.ospfNbrDBDData.ibit && !dbd_mdata.ospfNbrDBDData.mbit {
 					server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
 				}
 			}
@@ -701,7 +701,7 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 
 	/*   attach summary list */
 	if server.ospfGlobalConf.isABR {
-		summary_list := server.generateDbsummaryLsaList()
+		summary_list := server.generateDbsummaryLsaList(areaId)
 		if summary_list != nil {
 			db_list = append(db_list, summary_list...)
 		}
@@ -718,12 +718,15 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 /* @fn generateDbsummaryLsaList
 This function will attach summary LSAs if the router is ABR
 */
-func (server *OSPFServer) generateDbsummaryLsaList() []*ospfNeighborDBSummary {
+func (server *OSPFServer) generateDbsummaryLsaList(self_areaId uint32) []*ospfNeighborDBSummary {
 	db_list := []*ospfNeighborDBSummary{}
 	for areaid, _ := range server.AreaConfMap {
 		areaId := convertAreaOrRouterIdUint32(string(areaid.AreaId))
 		lsdbKey := LsdbKey{
 			AreaId: areaId,
+		}
+		if areaId != self_areaId { // attach to only eligible interfaces
+			continue
 		}
 		area_lsa, exist := server.AreaLsdb[lsdbKey]
 		if !exist {
@@ -745,8 +748,8 @@ func (server *OSPFServer) generateDbsummaryLsaList() []*ospfNeighborDBSummary {
 			db_summary.valid = true
 			/* add entry to the db summary list  */
 			db_list = append(db_list, db_summary)
-			//lsid := convertUint32ToIPv4(lsaKey.LSId)
-			//server.logger.Info(fmt.Sprintln("negotiation: db_list append router lsid  ", lsid))
+			lsid := convertUint32ToIPv4(lsaKey.LSId)
+			server.logger.Info(fmt.Sprintln("negotiation: db_list summary append router lsid  ", lsid))
 		} // end of for
 
 		/*  TODO - check if we want to add Summary4 LSA */

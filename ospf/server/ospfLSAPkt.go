@@ -456,13 +456,15 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			discard, op = server.sanityCheckNetworkLsa(*nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
 
 		case Summary3LSA, Summary4LSA:
-                        server.logger.Info(fmt.Sprintln("Received summary Lsa Packet :", lsdb_msg.Data))
+			server.logger.Info(fmt.Sprintln("Received summary Lsa Packet :", lsdb_msg.Data))
 			slsa := NewSummaryLsa()
 			decodeSummaryLsa(lsdb_msg.Data, slsa, lsa_key)
-                        server.logger.Info(fmt.Sprintln("Decoded summary Lsa Packet :", slsa))
+			server.logger.Info(fmt.Sprintln("Decoded summary Lsa Packet :", slsa))
 			dslsa, ret := server.getSummaryLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckSummaryLsa(*slsa, dslsa, nbr, intf, ret, lsa_max_age)
-			lsop = LSASUMMARYFLOOD
+			if server.ospfGlobalConf.isABR {
+				lsop = LSASUMMARYFLOOD
+			}
 
 		case ASExternalLSA:
 			alsa := NewASExternalLsa()
@@ -490,7 +492,7 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 		}
 		flood_pkt.pkt = make([]byte, end_index-index)
 		copy(flood_pkt.pkt, lsdb_msg.Data)
-		if lsop != LSASUMMARYFLOOD { // summary lsa is flooded after LSDB/SPF changes are done.
+		if lsop != LSASUMMARYFLOOD { // for ABR summary lsa is flooded after LSDB/SPF changes are done.
 			server.ospfNbrLsaUpdSendCh <- flood_pkt
 		}
 		//if !discard && op == LsdbEntryNotFound {
@@ -535,7 +537,6 @@ func (server *OSPFServer) lsAgeCheck(intf IntfConf, lsa_max_age bool, exist int)
 		}
 	}
 	if send_ack && exist == LsdbEntryNotFound && lsa_max_age {
-		// TODO send ack
 		return true
 	}
 	return false
@@ -795,8 +796,6 @@ func (server *OSPFServer) DecodeLSAAck(msg ospfNeighborLSAAckMsg) {
 	}
 	/* process each LSA and update request list */
 	for index := range msg.lsa_headers {
-		/* TODO
-		   optimize search technique using sort method */
 		req_list := ospfNeighborRequest_list[msg.nbrKey]
 		reTx_list := ospfNeighborRetx_list[msg.nbrKey]
 		for in := range req_list {
