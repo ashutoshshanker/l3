@@ -24,10 +24,11 @@ const (
 type LsaOp uint8
 
 const (
-	LSAFLOOD    = 0 // flood when FULL state reached
-	LSASELFLOOD = 1 // flood for received LSA
-	LSAINTF     = 2 // Send LSA on the interface in reply to LSAREQ
-	LSAAGE      = 3 // flood aged LSAs.
+	LSAFLOOD        = 0 // flood when FULL state reached
+	LSASELFLOOD     = 1 // flood for received LSA
+	LSAINTF         = 2 // Send LSA on the interface in reply to LSAREQ
+	LSAAGE          = 3 // flood aged LSAs.
+	LSASUMMARYFLOOD = 4 //flood summary LSAs in different areas.
 )
 
 type NeighborConfKey struct {

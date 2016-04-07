@@ -253,7 +253,7 @@ func (server *OSPFServer) GetBulkOspfNbrEntryState(idx int, cnt int) (int, int, 
 			result[i].NbrOptions = ent.OspfNbrOptions
 			result[i].NbrPriority = uint8(ent.OspfRtrPrio)
 			result[i].NbrState = ent.OspfNbrState
-			result[i].NbrEvents = 0
+			result[i].NbrEvents = int(ent.nbrEvent)
 			result[i].NbrLsRetransQLen = 0
 			result[i].NbmaNbrPermanence = 0
 			result[i].NbrHelloSuppressed = false
