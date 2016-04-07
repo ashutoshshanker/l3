@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/binary"
 	"fmt"
 	"l3/ospf/config"
 	"time"
@@ -151,8 +152,6 @@ func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
 	if ent.IfFSMState <= config.Waiting {
 		return
 	}
-	server.logger.Info(fmt.Sprintln("FLUSH: Network lsa lsid ",
-		ent.IfIpAddr, " adv_router ", server.ospfGlobalConf.RouterId))
 
 	LSType := NetworkLSA
 	LSId := convertAreaOrRouterIdUint32(ent.IfIpAddr.String())
@@ -168,7 +167,13 @@ func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
 	selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
 
-	lsa, _ := server.getNetworkLsaFromLsdb(areaId, lsaKey)
+	lsa, exist := server.getNetworkLsaFromLsdb(areaId, lsaKey)
+	if exist == LsdbEntryNotFound {
+		return
+	}
+
+	server.logger.Info(fmt.Sprintln("FLUSH: Network lsa lsid ",
+		ent.IfIpAddr, " adv_router ", server.ospfGlobalConf.RouterId))
 	lsa.LsaMd.LSAge = config.MaxAge
 	lsa_pkt := encodeNetworkLsa(lsa, lsaKey)
 	// Add entry to the flush map which will be flooded to all neighbors
@@ -178,6 +183,7 @@ func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
 	delete(selfOrigLsaEnt, lsaKey)
 	server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
 	server.AreaLsdb[lsdbKey] = lsDbEnt
+
 }
 
 func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isDR bool) {
@@ -211,7 +217,7 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 	attachedRtr = append(attachedRtr, selfRtrId)
 
 	numOfAttachedRtr := len(attachedRtr)
-	if numOfAttachedRtr == 0 {
+	if numOfAttachedRtr == 1 {
 		return
 	}
 
@@ -801,35 +807,39 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 		nbrExists = true
 		break
 	}
-	if !nbrExists {
-		return
-	}
-	if msg.oldstate != msg.newstate {
-		if msg.newstate == config.DesignatedRouter {
-			server.logger.Info(fmt.Sprintln("Generate network and/or router LSA ", intf.IfIpAddr))
-			//server.generateRouterLSA(msg.areaId)
-			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
-		} else if msg.oldstate == config.DesignatedRouter {
-			server.logger.Info(fmt.Sprintln("Flush network LSA . Generate router LSA ", intf.IfIpAddr))
-			server.flushNetworkLSA(msg.areaId, msg.intfKey)
-			//server.generateRouterLSA(msg.areaId)
-			/* send flush message to neighbor followed by flood for
-			   router LSAs */
-			flood_pkt := ospfFloodMsg{
-				lsOp: LSAAGE,
-			}
-			server.ospfNbrLsaUpdSendCh <- flood_pkt
-		}
-	} else {
-		if msg.newstate == config.DesignatedRouter {
+	if nbrExists {
+		rtr_id := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
+		if intf.IfDRtrId == rtr_id {
 			server.logger.Info(fmt.Sprintln("Generate network LSA ", intf.IfIpAddr))
 			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
 		}
-		server.logger.Info(fmt.Sprintln("Generate router LSA ", intf.IfIpAddr))
-		//server.generateRouterLSA(msg.areaId)
+		server.generateRouterLSA(msg.areaId)
+		server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)
 	}
-	server.generateRouterLSA(msg.areaId)
-	server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)
+
+	/*
+		if msg.oldstate != msg.newstate {
+			if msg.newstate == config.DesignatedRouter {
+				server.logger.Info(fmt.Sprintln("Generate network and/or router LSA ", intf.IfIpAddr))
+				//server.generateRouterLSA(msg.areaId)
+				server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
+			} else if msg.oldstate == config.DesignatedRouter {
+				server.logger.Info(fmt.Sprintln("Flush network LSA . Generate router LSA ", intf.IfIpAddr))
+				server.flushNetworkLSA(msg.areaId, msg.intfKey)
+
+				flood_pkt := ospfFloodMsg{
+					lsOp: LSAAGE,
+				}
+				server.ospfNbrLsaUpdSendCh <- flood_pkt
+			}
+		} else {
+			if msg.newstate == config.DesignatedRouter {
+				server.logger.Info(fmt.Sprintln("Generate network LSA ", intf.IfIpAddr))
+				server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
+			}
+			server.logger.Info(fmt.Sprintln("Generate router LSA ", intf.IfIpAddr))
+		} */
+
 }
 
 /* @processLSDatabaseTicker
