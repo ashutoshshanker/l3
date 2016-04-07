@@ -275,6 +275,7 @@ func (server *BFDServer) UpdateBfdSessionsOnInterface(ifIndex int32) error {
 				session.authType = AuthenticationType(intf.conf.AuthenticationType)
 				session.authKeyId = uint32(intf.conf.AuthenticationKeyId)
 				session.authData = intf.conf.AuthenticationData
+				session.intfConfigChanged = true
 				if intfEnabled {
 					session.InitiatePollSequence()
 				} else {
@@ -840,11 +841,17 @@ func (session *BfdSession) MoveToUpState() error {
 }
 
 func (session *BfdSession) ApplyTxJitter() time.Duration {
-	txInterval := session.txInterval * (1 - session.txJitter/100)
+	var txInterval int32
+	if session.state.DetectionMultiplier == 1 {
+		txInterval = session.txInterval * (1 - session.txJitter/100)
+	} else {
+		txInterval = session.txInterval * (1 + session.txJitter/100)
+	}
 	return time.Duration(txInterval)
 }
 
 func (session *BfdSession) StartSessionClient(server *BFDServer) error {
+	var err error
 	destAddr := session.state.IpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
@@ -871,12 +878,15 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 		select {
 		case sessionId := <-session.TxTimeoutCh:
 			bfdSession := server.bfdGlobal.Sessions[sessionId]
-			bfdSession.UpdateBfdSessionControlPacket()
-			buf, err := bfdSession.bfdPacket.CreateBfdControlPacket()
+			if bfdSession.intfConfigChanged == true {
+				bfdSession.UpdateBfdSessionControlPacket()
+				bfdSession.bfdPacketBuf, err = bfdSession.bfdPacket.CreateBfdControlPacket()
+				bfdSession.intfConfigChanged = false
+			}
 			if err != nil {
 				server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", bfdSession.state.SessionId))
 			} else {
-				_, err = Conn.Write(buf)
+				_, err = Conn.Write(bfdSession.bfdPacketBuf)
 				if err != nil {
 					server.logger.Info(fmt.Sprintln("failed to send control packet for session ", bfdSession.state.SessionId))
 				} else {
