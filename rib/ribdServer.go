@@ -229,7 +229,7 @@ func processLinkUpEvent(ifType ribd.Int, ifIndex ribd.Int) {
 			RIBD_PUB.Send(buf, nanomsg.DontWait)
 
 			//Add this route - should call install
-			createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ribd.Int(ConnectedRoutes[i].Metric), ConnectedRoutes[i].NextHopIp, ribd.Int(ConnectedRoutes[i].NextHopIfType), ribd.Int(ConnectedRoutes[i].IfIndex), ribd.Int(ConnectedRoutes[i].Prototype), FIBOnly, ribdCommonDefs.RoutePolicyStateChangeNoChange, time.Now().String(),ribd.Int(ConnectedRoutes[i].SliceIdx))
+			createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ribd.Int(ConnectedRoutes[i].Metric), ConnectedRoutes[i].NextHopIp, ribd.Int(ConnectedRoutes[i].NextHopIfType), ribd.Int(ConnectedRoutes[i].IfIndex), ribd.Int(ConnectedRoutes[i].Prototype), FIBOnly, ribdCommonDefs.RoutePolicyStateChangeNoChange, ribd.Int(ConnectedRoutes[i].SliceIdx))
 		}
 	}
 }
