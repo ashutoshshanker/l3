@@ -807,14 +807,16 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 		nbrExists = true
 		break
 	}
-	if !nbrExists {
-		return
+	if nbrExists {
+		rtr_id := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
+		if intf.IfDRtrId == rtr_id {
+			server.logger.Info(fmt.Sprintln("Generate network LSA ", intf.IfIpAddr))
+			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
+		}
+		server.generateRouterLSA(msg.areaId)
+		server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)
 	}
-	rtr_id := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
-	if intf.IfDRtrId == rtr_id {
-		server.logger.Info(fmt.Sprintln("Generate network LSA ", intf.IfIpAddr))
-		server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
-	}
+
 	/*
 		if msg.oldstate != msg.newstate {
 			if msg.newstate == config.DesignatedRouter {
@@ -837,8 +839,7 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 			}
 			server.logger.Info(fmt.Sprintln("Generate router LSA ", intf.IfIpAddr))
 		} */
-	server.generateRouterLSA(msg.areaId)
-	server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)
+
 }
 
 /* @processLSDatabaseTicker

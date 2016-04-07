@@ -242,8 +242,10 @@ func (server *OSPFServer) BuildAndSendLSAReq(nbrId uint32, nbrConf OspfNeighborE
 		add_items = uint8(max_req)
 		nbrConf.ospfNbrLsaReqIndex += max_req
 	}
+	server.logger.Info(fmt.Sprintln("LSAREQ: nbrIndex ",
+		nbrConf.ospfNbrLsaReqIndex, " add_items ", add_items, " req_list len ", len(reqlist)))
 	index := nbrConf.ospfNbrLsaReqIndex
-	for i = 0; i < add_items; i++ {
+	for i = 0; i < uint8(len(reqlist)); i++ {
 		req.ls_type = uint32(reqlist[i].lsa_headers.ls_type)
 		req.link_state_id = reqlist[i].lsa_headers.link_state_id
 		req.adv_router_id = reqlist[i].lsa_headers.adv_router_id
@@ -771,7 +773,7 @@ func (server *OSPFServer) ProcessRxLSAAckPkt(data []byte, ospfHdrMd *OspfHdrMeta
 			copy(header_byte, data[start_index:start_index+20])
 			lsa_header = decodeLSAHeader(header_byte)
 			server.logger.Info(fmt.Sprintln("LSAACK: Header decoded ",
-				"ls_age:options:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
+				"ls_age:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
 				lsa_header.ls_age, lsa_header.ls_type, lsa_header.link_state_id,
 				lsa_header.adv_router_id, lsa_header.ls_sequence_num,
 				lsa_header.ls_checksum))
