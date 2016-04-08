@@ -1,16 +1,16 @@
 COMPS=arp\
+      rib\
 		bgp\
 		ospf\
-		rib\
 		dhcp_relay\
 		bfd \
 		vrrp\
 		tunnel/vxlan
 
 IPCS=arp\
+     rib\
 	  bgp\
 	  ospf\
-	  rib\
 	  dhcp_relay\
 	  bfd\
 	  vrrp\

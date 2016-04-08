@@ -16,49 +16,52 @@ const (
 )
 
 type Route struct {
-	bgpRoute         *bgpd.BGPRoute
+	BGPRoute         *bgpd.BGPRoute
 	dest             *Destination
 	path             *Path
 	routeListIdx     int
 	time             time.Time
 	action           RouteAction
-	outPathId        uint32
+	OutPathId        uint32
 	PolicyList       []string
 	PolicyHitCounter int
 }
 
 func NewRoute(dest *Destination, path *Path, action RouteAction, inPathId, outPathId uint32) *Route {
+	currTime := time.Now()
 	bgpRoute := &bgpd.BGPRoute{
-		Network:   dest.ipPrefix.Prefix.String(),
-		CIDRLen:   int16(dest.ipPrefix.Length),
-		NextHop:   path.GetNextHop().String(),
-		Metric:    int32(path.MED),
-		LocalPref: int32(path.LocalPref),
-		Path:      path.GetAS4ByteList(),
-		PathId:    int32(inPathId),
+		Network:     dest.IPPrefix.Prefix.String(),
+		CIDRLen:     int16(dest.IPPrefix.Length),
+		NextHop:     path.GetNextHop().String(),
+		Metric:      int32(path.MED),
+		LocalPref:   int32(path.LocalPref),
+		Path:        path.GetAS4ByteList(),
+		PathId:      int32(inPathId),
+		UpdatedTime: currTime.String(),
 	}
 	return &Route{
-		bgpRoute:         bgpRoute,
+		BGPRoute:         bgpRoute,
 		dest:             dest,
 		path:             path,
 		routeListIdx:     -1,
-		time:             time.Now(),
+		time:             currTime,
 		action:           action,
-		outPathId:        outPathId,
+		OutPathId:        outPathId,
 		PolicyList:       make([]string, 0),
 		PolicyHitCounter: 0,
 	}
 }
 
 func (r *Route) GetBGPRoute() *bgpd.BGPRoute {
-	if r.bgpRoute != nil {
-		r.bgpRoute.Updated = time.Now().Sub(r.time).String()
+	if r.BGPRoute != nil {
+		r.BGPRoute.UpdatedDuration = time.Now().Sub(r.time).String()
 	}
-	return r.bgpRoute
+	return r.BGPRoute
 }
 
 func (r *Route) update() {
 	r.time = time.Now()
+	r.BGPRoute.UpdatedTime = r.time.String()
 }
 
 func (r *Route) setAction(action RouteAction) {

@@ -31,6 +31,8 @@ func main() {
 	//go arpServer.StartServer(fileName)
 	go arpServer.StartServer(*paramsDir)
 
+	<-arpServer.InitDone
+
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewARPHandler(arpServer, logger)
 	rpc.StartServer(logger, confIface, *paramsDir)

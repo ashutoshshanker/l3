@@ -58,6 +58,9 @@ func main() {
 	}
 	routeServiceHandler = handler
 	go routeServiceHandler.StartServer(*paramsDir)
+	go routeServiceHandler.StartNetlinkServer()
+	go routeServiceHandler.StartAsicdServer()
+	go routeServiceHandler.StartArpdServer()
 	up := <-routeServiceHandler.ServerUpCh
 	dbHdl.Close()
 	logger.Info(fmt.Sprintln("RIBD server is up: ", up))

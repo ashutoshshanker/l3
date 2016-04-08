@@ -76,6 +76,16 @@ func newospfLSAHeader() *ospfLSAHeader {
 	return &ospfLSAHeader{}
 }
 
+func newDbdMsg(key uint32, dbd_data ospfDatabaseDescriptionData) ospfNeighborDBDMsg {
+	dbdNbrMsg := ospfNeighborDBDMsg{
+		ospfNbrConfKey: NeighborConfKey{
+			OspfNbrRtrId: key,
+		},
+		ospfNbrDBDData: dbd_data,
+	}
+	return dbdNbrMsg
+}
+
 func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptionData, pktlen uint16) {
 	dbd_data.interface_mtu = binary.BigEndian.Uint16(data[0:2])
 	dbd_data.options = data[2]
@@ -105,11 +115,11 @@ func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptio
 				start_index = uint8(OSPF_DBD_MIN_SIZE + (i * OSPF_LSA_HEADER_SIZE))
 				copy(header_byte, data[start_index:start_index+20])
 				lsa_header = decodeLSAHeader(header_byte)
-				/*				fmt.Println("DBD: Header decoded ",
-								"ls_age:options:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
-								lsa_header.ls_age, lsa_header.ls_type, lsa_header.link_state_id,
-								lsa_header.adv_router_id, lsa_header.ls_sequence_num,
-								lsa_header.ls_checksum) */
+				fmt.Println("DBD: Header decoded ",
+					"ls_age:options:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
+					lsa_header.ls_age, lsa_header.ls_type, lsa_header.link_state_id,
+					lsa_header.adv_router_id, lsa_header.ls_sequence_num,
+					lsa_header.ls_checksum)
 				dbd_data.lsa_headers = append(dbd_data.lsa_headers, lsa_header)
 			}
 		}
@@ -382,12 +392,32 @@ func (server *OSPFServer) ConstructAndSendDbdPacket(nbrKey NeighborConfKey,
 	return dbd_mdata, last_exchange
 }
 
-func newDbdMsg(key uint32, dbd_data ospfDatabaseDescriptionData) ospfNeighborDBDMsg {
-	dbdNbrMsg := ospfNeighborDBDMsg{
-		ospfNbrConfKey: NeighborConfKey{
-			OspfNbrRtrId: key,
-		},
-		ospfNbrDBDData: dbd_data,
+/*
+ @fn calculateDBLsaAttach
+	This API detects how many LSA headers can be added in
+	the DB packet
+*/
+func (server *OSPFServer) calculateDBLsaAttach(nbrKey NeighborConfKey, nbrConf OspfNeighborEntry) (last_exchange bool, lsa_attach uint8) {
+	last_exchange = true
+	lsa_attach = 0
+
+	max_lsa_headers := calculateMaxLsaHeaders()
+	db_list := ospfNeighborDBSummary_list[nbrKey.OspfNbrRtrId]
+	slice_len := len(db_list)
+	server.logger.Info(fmt.Sprintln("DBD: slice_len ", slice_len, "max_lsa_header ", max_lsa_headers,
+		"nbrConf.lsa_index ", nbrConf.ospfNbrLsaIndex))
+	if slice_len == int(nbrConf.ospfNbrLsaIndex) {
+		return
 	}
-	return dbdNbrMsg
+	if max_lsa_headers > (uint8(slice_len) - uint8(nbrConf.ospfNbrLsaIndex)) {
+		lsa_attach = uint8(slice_len) - uint8(nbrConf.ospfNbrLsaIndex)
+	} else {
+		lsa_attach = max_lsa_headers
+	}
+	if (nbrConf.ospfNbrLsaIndex + lsa_attach) >= uint8(slice_len) {
+		// the last slice in the list being sent
+		server.logger.Info(fmt.Sprintln("DBD:  Send the last dd packet with nbr/state ", nbrKey.OspfNbrRtrId, nbrConf.OspfNbrState))
+		last_exchange = true
+	}
+	return last_exchange, 0
 }
