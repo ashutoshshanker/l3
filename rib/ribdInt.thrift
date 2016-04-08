@@ -56,6 +56,16 @@ struct PolicyDstIpMatchPrefixSetCondition{
 	1 : string 	PrefixSet
 	2 : PolicyPrefix Prefix
 }
+struct IPv4Route {
+	1 : string DestinationNw
+	2 : string NetworkMask
+	3 : string NextHopIp
+	4 : i32 Cost
+	5 : string OutgoingIntfType
+	6 : string OutgoingInterface
+	7 : string Protocol
+	8 : string CreateTime
+}
 
 service RIBDINTServices 
 {
@@ -71,5 +81,6 @@ service RIBDINTServices
 	void linkUp(1: int ifType, 2:int ifIndex);
 	void intfUp(1:string ipAddr);
 	void intfDown(1:string ipAddr);
+	oneway void OnewayCreateBulkIPv4Route(1: list<IPv4Route> config);
 	
 }
