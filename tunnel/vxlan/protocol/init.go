@@ -8,5 +8,6 @@ func init() {
 	vtepDB = make(map[vtepDbKey]*VtepDbEntry, 0)
 	vxlanDB = make(map[uint32]*vxlanDbEntry, 0)
 	PortConfigMap = make(map[int32]portConfig, 0)
+	portDB = make(map[string]*VxlanPort, 0)
 
 }

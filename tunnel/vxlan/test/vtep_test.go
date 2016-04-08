@@ -20,18 +20,25 @@ func Setup() {
 	vxlan.SetLogger(logger)
 }
 
+var UDP_PORT layers.UDPPort = 4789
+
+//var UDP_PORT layers.UDPPort = 8472
+
 func CreateTestLbPort(name string) error {
 
 	var linkAttrs netlink.LinkAttrs
 	//create loopbacki/f
 	liLink, err := netlink.LinkByName(name)
 	if err != nil {
+
 		linkAttrs.Name = name
 		linkAttrs.Flags = net.FlagLoopback
 		linkAttrs.HardwareAddr = net.HardwareAddr{
 			0x00, 0x00, 0x64, 0x01, 0x01, 0x01,
 		}
-		liLink = &netlink.Dummy{linkAttrs} //,"loopback"}
+		//liLink = &netlink.Dummy{linkAttrs} //,"loopback"}
+		liLink = &netlink.Veth{linkAttrs, "tap2"}
+
 		err = netlink.LinkAdd(liLink)
 		if err != nil {
 			logger.Err(fmt.Sprintf("SS: LinkAdd call failed during CreateTestLbPort() ", err))
@@ -72,8 +79,8 @@ func CreateVxlanArpFrame(vni [3]uint8) gopacket.SerializeBuffer {
 	tunneldstip := net.ParseIP("100.1.1.1")
 	// outer ethernet header
 	eth := layers.Ethernet{
-		SrcMAC:       tunneldstmac,
-		DstMAC:       tunnelsrcmac,
+		SrcMAC:       tunnelsrcmac,
+		DstMAC:       tunneldstmac,
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 	ip := layers.IPv4{
@@ -91,8 +98,8 @@ func CreateVxlanArpFrame(vni [3]uint8) gopacket.SerializeBuffer {
 	}
 
 	udp := layers.UDP{
-		SrcPort: 4789,
-		DstPort: 4789,
+		SrcPort: UDP_PORT,
+		DstPort: UDP_PORT,
 		Length:  100,
 	}
 	udp.SetNetworkLayerForChecksum(&ip)
@@ -107,8 +114,8 @@ func CreateVxlanArpFrame(vni [3]uint8) gopacket.SerializeBuffer {
 
 	// inner ethernet header
 	ieth := layers.Ethernet{
-		SrcMAC:       dstmac,
-		DstMAC:       srcmac,
+		SrcMAC:       srcmac,
+		DstMAC:       dstmac,
 		EthernetType: layers.EthernetTypeARP,
 	}
 
@@ -145,15 +152,72 @@ func SendPacket(handle *pcap.Handle, buf gopacket.SerializeBuffer, t *testing.T)
 	}
 }
 
+func CreateTestVtepRxHandle(ifname string) *pcap.Handle {
+	handle, err := pcap.OpenLive(ifname, 65536, false, 50*time.Millisecond)
+	if err != nil {
+		logger.Err(fmt.Sprintf("SS: FAiled during OpenLive()", err))
+		return nil
+	}
+	return handle
+}
+
+func WaitForRxPacket(handle *pcap.Handle) chan bool {
+	waitdone := make(chan bool)
+	src := gopacket.NewPacketSource(handle, layers.LayerTypeEthernet)
+	in := src.Packets()
+	timeout := time.NewTimer(10 * time.Second)
+	go func() {
+		for {
+			select {
+			case packet, ok := <-in:
+				if ok {
+					fmt.Println("TEST: Rx packet", packet)
+					timeout.Stop()
+					waitdone <- true
+					return
+				} else {
+					// channel closed
+					return
+				}
+			case <-timeout.C:
+				waitdone <- false
+				return
+			}
+		}
+	}()
+
+	return waitdone
+}
+
+func waitTillVtepIsUp(ifname string) {
+	/* need to get stp if state??? can take up to 15 seconds
+	for {
+		link, _ := netlink.LinkByName(ifname)
+		if link != nil {
+			if link.Attrs().Flags&net.FlagUp != 0 {
+				break
+			} else {
+				fmt.Println("Link is not up yet")
+			}
+		} else {
+			fmt.Println("Link has not been created yet")
+		}
+	}
+	*/
+	time.Sleep(15 * time.Second)
+
+}
+
 func TestRxArpPacket(t *testing.T) {
 
 	Setup()
 
 	// setup
-	vteplbname := "lo"
-	srcip := net.ParseIP("100.1.1.1")
+	vteplbnametx := "eth0" // test will send to this port
+	vteplbnamerx := "eth2" // vxland will rx/tx on this port
+	srcip := net.IP{0x64, 0x01, 0x01, 0x01}
 	srcmac, _ := net.ParseMAC("00:00:64:01:01:01")
-	dstip := net.ParseIP("100.1.1.2")
+	dstip := net.IP{0x64, 0x01, 0x01, 0x02}
 	dstmac, _ := net.ParseMAC("00:00:64:01:01:02")
 
 	vxlanconfig := &vxlan.VxlanConfig{
@@ -164,12 +228,13 @@ func TestRxArpPacket(t *testing.T) {
 
 	vxlan.CreateVxLAN(vxlanconfig)
 
+	fmt.Printf("src/dst ip %#v %#v \n", srcip, dstip)
 	vtepconfig := &vxlan.VtepConfig{
 		VtepId:    10,
 		VxlanId:   500,
 		VtepName:  "vtep10",
-		SrcIfName: vteplbname,
-		UDP:       4789,
+		SrcIfName: vteplbnamerx,
+		UDP:       uint16(UDP_PORT),
 		TTL:       255,
 		TOS:       0,
 		InnerVlanHandlingMode: 0,
@@ -183,35 +248,66 @@ func TestRxArpPacket(t *testing.T) {
 		TunnelSrcMac:          srcmac,
 		TunnelDstMac:          dstmac,
 	}
-
-	if vteplbname != "lo" {
-		// create linux loopback interface to which the vtep will be associated with
-		err := CreateTestLbPort(vteplbname)
-		if err != nil {
-			t.Error("Failed to Create test looopback interface")
-			t.FailNow()
+	/*
+		if vteplbnametx != "tap1" {
+			// create linux loopback interface to which the vtep will be associated with
+			err := CreateTestLbPort(vteplbnametx)
+			if err != nil {
+				t.Error("Failed to Create test looopback interface")
+				t.FailNow()
+			}
 		}
-	}
+	*/
 
-	handle := CreateTestTxHandle(vteplbname)
+	handle := CreateTestTxHandle(vteplbnametx)
 	if handle == nil {
 		t.Error("Failed to Create pcap handle")
 		t.FailNow()
 	}
+	rxhandle := CreateTestVtepRxHandle(vtepconfig.VtepName)
 
 	// create vtep interface and which will listen on vtep interface
-	vtep := vxlan.CreateVtep(vtepconfig)
-
+	vxlan.CreateVtep(vtepconfig)
+	// delay to allow for resources to be created in linux
+	waitTillVtepIsUp(vtepconfig.VtepName)
 	// send an ARP frame
 	// Set up all the layers' fields we can.
 	arppktbuf := CreateVxlanArpFrame([3]uint8{uint8(vtepconfig.VxlanId >> 16 & 0xff), uint8(vtepconfig.VxlanId >> 8 & 0xff), uint8(vtepconfig.VxlanId >> 0 & 0xff)})
-	fmt.Println("Sending packet")
+	fmt.Println("Sending packet to ", vteplbnametx)
+	// create a listener for the packet that should be received
+	donechan := WaitForRxPacket(rxhandle)
+	// send packet
 	SendPacket(handle, arppktbuf, t)
+	done := <-donechan
+	if !done {
+		t.Error("Failed to Receive packet")
+		t.FailNow()
+	}
+	// lets close the listner channel
+	rxhandle.Close()
+	// cleanup the resources
+	vxlan.DeleteVtep(vtepconfig)
+	vxlan.DeleteVxLAN(vxlanconfig)
 
-	time.Sleep(15 * time.Second)
-	if vtep.GetRxStats() == 0 {
-		t.Error("Failed to Receive a packet")
+	if len(vxlan.GetVxlanDB()) != 0 {
+		t.Error("Failed to Delete Vxlan entry")
 		t.FailNow()
 	}
 
+	if len(vxlan.GetVtepDB()) != 0 {
+		t.Error("Failed to Delete Vtep entry")
+		t.FailNow()
+	}
+	// Linux needs time to clean up all its resources
+	time.Sleep(3 * time.Second)
+	link, err := netlink.LinkByName(fmt.Sprintf("br%d", vxlanconfig.VNI))
+	if link != nil {
+		t.Error(fmt.Sprintf("Failed to delete bridge", err))
+		t.FailNow()
+	}
+	link, err = netlink.LinkByName(vtepconfig.VtepName)
+	if link != nil {
+		t.Error("Failed to delete vtep (vEth) interfaces")
+		t.FailNow()
+	}
 }

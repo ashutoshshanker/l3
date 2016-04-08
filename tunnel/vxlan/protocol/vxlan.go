@@ -25,6 +25,10 @@ func NewVxlanDbEntry(c *VxlanConfig) *vxlanDbEntry {
 	}
 }
 
+func GetVxlanDB() map[uint32]*vxlanDbEntry {
+	return vxlanDB
+}
+
 func saveVxLanConfigData(c *VxlanConfig) {
 	if _, ok := vxlanDB[c.VNI]; !ok {
 		vxlan := NewVxlanDbEntry(c)

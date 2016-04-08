@@ -5,7 +5,7 @@ package vxlan_linux
 import (
 	"fmt"
 	"github.com/vishvananda/netlink"
-	"github.com/vishvananda/netlink/nl"
+	//"github.com/vishvananda/netlink/nl"
 	"net"
 	"time"
 	//"os/exec"
@@ -155,12 +155,14 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		return
 	}
 
+	/* 4/6/16 DID Not work, packets were never received on VTEP
 	vtep := &netlink.Vxlan{
 		LinkAttrs: netlink.LinkAttrs{
 			Name: c.VtepName,
 			//MasterIndex: VxlanDB[c.VxlanId].Brg.Attrs().Index,
 			HardwareAddr: c.TunnelSrcMac,
-			MTU:          VxlanDB[c.VxlanId].Brg.Attrs().MTU,
+			//MTU:          VxlanDB[c.VxlanId].Brg.Attrs().MTU,
+			MTU: 1550,
 		},
 		VxlanId:      int(c.VxlanId),
 		VtepDevIndex: link.Attrs().Index,
@@ -180,6 +182,25 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		Port:         int(nl.Swap16(c.UDP)),
 		PortLow:      int(c.UDP),
 		PortHigh:     int(c.UDP),
+	}
+	*/
+	// Veth will create two interfaces
+	// VtepName and VtepName + Int
+	// the VtepNam + Int interface will be used by Vxland to rx packets
+	// from other daemons and to send packets received from physical port
+	// to the daemons
+	//
+	//  physical port <--> vxland (if vxlan packet) <--> vtepName Int <-->
+	//  vtepName <--> Other Daemons listening
+	//  on this vtepName interface
+	vtep := &netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{
+			Name:         c.VtepName,
+			MasterIndex:  VxlanDB[c.VxlanId].Brg.Attrs().Index,
+			HardwareAddr: c.TunnelSrcMac,
+			MTU:          VxlanDB[c.VxlanId].Brg.Attrs().MTU,
+		},
+		PeerName: c.VtepName + "Int",
 	}
 
 	//equivalent to linux command:
@@ -241,55 +262,56 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 
 			// values taken from linux/neighbour.h
 	*/
-	if c.TunnelDstIp != nil &&
-		c.TunnelDstMac != nil {
-		neigh := &netlink.Neigh{
-			LinkIndex: link.Attrs().Index,
-			//Family:       netlink.NDA_VNI,                          // NDA_VNI
-			State:        netlink.NUD_NOARP | netlink.NUD_PERMANENT, // NUD_NOARP (0x40) | NUD_PERMANENT (0x80)
-			Type:         1,
-			Flags:        netlink.NTF_SELF, // NTF_SELF
-			IP:           c.TunnelDstIp,
-			HardwareAddr: c.TunnelDstMac,
-		}
-		v.logger.Info(fmt.Sprintf("neighbor: %#v", neigh))
-		if err := netlink.NeighSet(neigh); err != nil {
-			v.logger.Err(fmt.Sprintf("NeighSet:", err.Error()))
-		}
-	retry_neighbor_set:
-		neighList, err := netlink.NeighList(neigh.LinkIndex, neigh.Family)
-		if err == nil {
+	/*
+		if c.TunnelDstIp != nil &&
+			c.TunnelDstMac != nil {
+			neigh := &netlink.Neigh{
+				LinkIndex: link.Attrs().Index,
+				//Family:       netlink.NDA_VNI,                           // NDA_VNI
+				State:        netlink.NUD_NOARP | netlink.NUD_PERMANENT, // NUD_NOARP (0x40) | NUD_PERMANENT (0x80)
+				Type:         1,
+				Flags:        netlink.NTF_SELF, // NTF_SELF
+				IP:           c.TunnelDstIp,
+				HardwareAddr: c.TunnelDstMac,
+			}
+			v.logger.Info(fmt.Sprintf("neighbor: %#v", neigh))
+			if err := netlink.NeighSet(neigh); err != nil {
+				v.logger.Err(fmt.Sprintf("NeighSet:", err.Error()))
+			}
+		retry_neighbor_set:
+			neighList, err := netlink.NeighList(neigh.LinkIndex, neigh.Family)
+			if err == nil {
 
-			for _, n := range neighList {
-				foundNeighbor := false
-				if len(neigh.IP) == len(n.IP) {
-					for i, _ := range neigh.IP {
-						if neigh.IP[i] == n.IP[i] {
-							foundNeighbor = true
-						} else {
-							foundNeighbor = false
+				for _, n := range neighList {
+					foundNeighbor := false
+					if len(neigh.IP) == len(n.IP) {
+						for i, _ := range neigh.IP {
+							if neigh.IP[i] == n.IP[i] {
+								foundNeighbor = true
+							} else {
+								foundNeighbor = false
+							}
 						}
 					}
-				}
-				if foundNeighbor {
-					v.logger.Info("Found Neighbor ip")
-					if n.State == netlink.NUD_FAILED {
-						v.logger.Info(fmt.Sprintf("retry neighbor: %#v", neigh))
-						if err := netlink.NeighSet(neigh); err != nil {
-							v.logger.Err(fmt.Sprintf("NeighSet:", err.Error()))
-							goto retry_neighbor_set
+					if foundNeighbor {
+						v.logger.Info("Found Neighbor ip")
+						if n.State == netlink.NUD_FAILED {
+							v.logger.Info(fmt.Sprintf("retry neighbor: %#v", neigh))
+							if err := netlink.NeighSet(neigh); err != nil {
+								v.logger.Err(fmt.Sprintf("NeighSet:", err.Error()))
+								goto retry_neighbor_set
+							}
 						}
 					}
 				}
 			}
+		} else {
+			v.logger.Info(fmt.Sprintf("neighbor: not configured dstIp %#v dstmac %#v", c.TunnelDstIp, c.TunnelDstMac))
 		}
-	} else {
-		v.logger.Info(fmt.Sprintf("neighbor: not configured dstIp %#v dstmac %#v", c.TunnelDstIp, c.TunnelDstMac))
-	}
-
-	vxlanDbEntry := VxlanDB[uint32(vtep.VxlanId)]
+	*/
+	vxlanDbEntry := VxlanDB[uint32(c.VxlanId)]
 	vxlanDbEntry.Links = append(vxlanDbEntry.Links, &link)
-	VxlanDB[uint32(vtep.VxlanId)] = vxlanDbEntry
+	VxlanDB[uint32(c.VxlanId)] = vxlanDbEntry
 
 	if err := netlink.LinkSetMaster(link, vxlanDbEntry.Brg); err != nil {
 		v.logger.Err(err.Error())
@@ -317,7 +339,8 @@ func (v *VxlanLinux) DeleteVtep(c *VtepConfig) {
 	foundEntry := false
 	if vxlanentry, ok := VxlanDB[c.VxlanId]; ok {
 		for i, link := range vxlanentry.Links {
-			linkName := (*link).(*netlink.Vxlan).Attrs().Name
+			//linkName := (*link).(*netlink.Vxlan).Attrs().Name
+			linkName := (*link).(*netlink.Veth).Attrs().Name
 			if linkName == c.VtepName {
 				v.logger.Info(fmt.Sprintf("deleteVtep: link found %s looking for %s", linkName, c.VtepName))
 				foundEntry = true
