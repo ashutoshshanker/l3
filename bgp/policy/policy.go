@@ -3,6 +3,7 @@ package server
 
 import (
 	"fmt"
+	bgprib "l3/bgp/rib"
 	"utils/logging"
 	utilspolicy "utils/policy"
 )
@@ -17,7 +18,7 @@ type PolicyActionFunc struct {
 type PolicyExtensions struct {
 	HitCounter    int
 	RouteList     []string
-	RouteInfoList []*Route
+	RouteInfoList []*bgprib.Route
 }
 
 type BGPPolicyEngine struct {
@@ -37,7 +38,7 @@ func NewBGPPolicyEngine(logger *logging.Writer) *BGPPolicyEngine {
 	if PolicyEngine == nil {
 		bgpPE := &BGPPolicyEngine{}
 		bgpPE.logger = logger
-		bgpPE.PolicyEngine = utilspolicy.NewPolicyEngineDB()
+		bgpPE.PolicyEngine = utilspolicy.NewPolicyEngineDB(logger)
 		bgpPE.ConditionCfgCh = make(chan utilspolicy.PolicyConditionConfig)
 		bgpPE.ActionCfgCh = make(chan utilspolicy.PolicyActionConfig)
 		bgpPE.StmtCfgCh = make(chan utilspolicy.PolicyStmtConfig)

@@ -91,8 +91,6 @@ func (svr *VrrpServer) VrrpCreateVrrpHeader(gblInfo VrrpGlobalInfo) ([]byte, uin
 	}
 	vrrpHeader.IPv4Addr = append(vrrpHeader.IPv4Addr, ip)
 	vrrpEncHdr, hdrLen := svr.VrrpEncodeHeader(vrrpHeader)
-	svr.logger.Info(fmt.Sprintln("vrrp header after enc is",
-		svr.VrrpDecodeHeader(vrrpEncHdr)))
 	return vrrpEncHdr, hdrLen
 }
 
@@ -153,8 +151,6 @@ func (svr *VrrpServer) VrrpSendPkt(key string, priority uint16) {
 		svr.logger.Err("No Entry for " + key)
 		return
 	}
-	svr.logger.Info(fmt.Sprintln("advertisement send by Master VRID",
-		gblInfo.IntfConfig.VRID))
 	gblInfo.PcapHdlLock.Lock()
 	if gblInfo.pHandle == nil {
 		svr.logger.Info("Invalid Pcap Handle")
@@ -174,6 +170,8 @@ func (svr *VrrpServer) VrrpSendPkt(key string, priority uint16) {
 	svr.VrrpUpdateMasterTimerStateInfo(&gblInfo)
 	gblInfo.IntfConfig.Priority = configuredPriority
 	svr.vrrpGblInfo[key] = gblInfo
+	// inform the caller that advertisment packet is send out
+	svr.vrrpPktSend <- true
 }
 
 func (svr *VrrpServer) VrrpUpdateMasterTimerStateInfo(gblInfo *VrrpGlobalInfo) {

@@ -6,6 +6,7 @@ import (
 	"bfdd"
 	"flag"
 	"fmt"
+	bgppolicy "l3/bgp/policy"
 	"l3/bgp/rpc"
 	"l3/bgp/server"
 	"l3/bgp/utils"
@@ -77,7 +78,7 @@ func main() {
 	}
 
 	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
-	bgpPolicyEng := server.NewBGPPolicyEngine(logger)
+	bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger)
 	go bgpPolicyEng.StartPolicyEngine()
 
 	logger.Info(fmt.Sprintln("Starting BGP Server..."))

@@ -26,8 +26,15 @@ func UpdateRoutesFromDB() (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over IPV4Route rows with error %s\n", err))
 			return err
 		}
-        cfg := ribd.IPv4Route {ipRoute.OutgoingIntfType, ipRoute.Protocol, ipRoute.OutgoingInterface,ipRoute.DestinationNw,int32(ipRoute.Cost),ipRoute.NetworkMask,ipRoute.NextHopIp}
-		_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg)//ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
+		cfg := ribd.IPv4Route{
+			DestinationNw:     ipRoute.DestinationNw,
+			Protocol:          ipRoute.Protocol,
+			OutgoingInterface: ipRoute.OutgoingInterface,
+			OutgoingIntfType:  ipRoute.OutgoingIntfType,
+			Cost:              int32(ipRoute.Cost),
+			NetworkMask:       ipRoute.NetworkMask,
+			NextHopIp:         ipRoute.NextHopIp}
+		_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg) //ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
 		//_,err = createV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto),  FIBAndRIB,ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 		if err != nil {
 			logger.Info(fmt.Sprintf("Route create failed with err %s\n", err))
@@ -82,7 +89,7 @@ func UpdatePolicyActionsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
-		_, err = routeServiceHandler.ProcessPolicyActionConfigCreate(&action)
+		_,err = routeServiceHandler.ProcessPolicyActionConfigCreate(&action)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -104,7 +111,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
-		logger.Info(fmt.Sprintln("Scanning stmt ", stmt.Name, "MatchConditions:",stmt.MatchConditions))
+		logger.Info(fmt.Sprintln("Scanning stmt ", stmt.Name, "MatchConditions:", stmt.MatchConditions))
 		dbCmdCond := "select * from PolicyStmtConditions"
 		conditionrows, err := dbHdl.Query(dbCmdCond)
 		if err != nil {
@@ -146,7 +153,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintln("Fetching action ", Actions))
 			stmt.Actions = append(stmt.Actions, Actions)
 		}
-		_, err = routeServiceHandler.ProcessPolicyStmtConfigCreate(&stmt)
+		err = routeServiceHandler.ProcessPolicyStmtConfigCreate(&stmt)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -187,12 +194,12 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 				logger.Info(fmt.Sprintln("Not a stmt for this policy, policyName: ", policyName))
 				continue
 			}
-			logger.Info(fmt.Sprintln("Fetching stmt ", stmt,"Precedence:",precedence))
+			logger.Info(fmt.Sprintln("Fetching stmt ", stmt, "Precedence:", precedence))
 			policyStmtPrecedence := ribd.PolicyDefinitionStmtPrecedence{Precedence: int32(precedence), Statement: stmt}
 			policy.StatementList = append(policy.StatementList, &policyStmtPrecedence)
 		}
 
-		_, err = routeServiceHandler.ProcessPolicyDefinitionConfigCreate(&policy)
+		err = routeServiceHandler.ProcessPolicyDefinitionConfigCreate(&policy)
 		if err != nil {
 			logger.Info(fmt.Sprintf("policy create failed with err %s\n", err))
 			return err

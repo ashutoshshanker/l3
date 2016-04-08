@@ -203,6 +203,10 @@ func (server *ARPServer) processL3StateChange(msg asicdConstDefs.L3IntfStateNoti
 	}
 }
 
+func (server *ARPServer) processIPv4NbrMacMove(msg asicdConstDefs.IPv4NbrMacMoveNotifyMsg) {
+	server.arpEntryMacMoveCh <- msg
+}
+
 /*
 
 func (server *ARPServer)processL2StateChange(msg asicdConstDefs.L2IntfStateNotifyMsg) {
@@ -275,7 +279,7 @@ func (server *ARPServer) constructL3Infra() {
 	server.logger.Info("Calling Asicd for getting L3 Interfaces")
 	count := 100
 	for {
-		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkIPv4Intf(asicdServices.Int(curMark), asicdServices.Int(count))
+		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkIPv4IntfState(asicdServices.Int(curMark), asicdServices.Int(count))
 		if bulkInfo == nil {
 			break
 		}
@@ -283,8 +287,8 @@ func (server *ARPServer) constructL3Infra() {
 		more := bool(bulkInfo.More)
 		curMark = int(bulkInfo.EndIdx)
 		for i := 0; i < objCnt; i++ {
-			ip, ipNet, _ := net.ParseCIDR(bulkInfo.IPv4IntfList[i].IpAddr)
-			ifIdx := int(bulkInfo.IPv4IntfList[i].IfIndex)
+			ip, ipNet, _ := net.ParseCIDR(bulkInfo.IPv4IntfStateList[i].IpAddr)
+			ifIdx := int(bulkInfo.IPv4IntfStateList[i].IfIndex)
 			ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(ifIdx))
 			if ifType == commonDefs.L2RefTypeVlan {
 				vlanEnt := server.vlanPropMap[ifIdx]
@@ -389,17 +393,22 @@ func (server *ARPServer) constructVlanInfra() {
 	server.logger.Info("Calling Asicd for getting Vlan Property")
 	count := 100
 	for {
-		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkVlan(asicdServices.Int(curMark), asicdServices.Int(count))
-		if bulkInfo == nil {
+		bulkVlanInfo, _ := server.asicdClient.ClientHdl.GetBulkVlan(asicdServices.Int(curMark), asicdServices.Int(count))
+		if bulkVlanInfo == nil {
 			break
 		}
-		objCnt := int(bulkInfo.Count)
-		more := bool(bulkInfo.More)
-		curMark = int(bulkInfo.EndIdx)
+		/* Get bulk on vlan state can re-use curMark and count used by get bulk vlan, as there is a 1:1 mapping in terms of cfg/state objs */
+		bulkVlanStateInfo, _ := server.asicdClient.ClientHdl.GetBulkVlanState(asicdServices.Int(curMark), asicdServices.Int(count))
+		if bulkVlanStateInfo == nil {
+			break
+		}
+		objCnt := int(bulkVlanInfo.Count)
+		more := bool(bulkVlanInfo.More)
+		curMark = int(bulkVlanInfo.EndIdx)
 		for i := 0; i < objCnt; i++ {
-			ifIndex := int(bulkInfo.VlanList[i].IfIndex)
+			ifIndex := int(bulkVlanStateInfo.VlanStateList[i].IfIndex)
 			ent := server.vlanPropMap[ifIndex]
-			untaggedIfIndexList, _ := ParseUsrPortStrToPortList(bulkInfo.VlanList[i].UntagIfIndexList)
+			untaggedIfIndexList, _ := ParseUsrPortStrToPortList(bulkVlanInfo.VlanList[i].UntagIfIndexList)
 			ent.UntagPortMap = make(map[int]bool)
 			for i := 0; i < len(untaggedIfIndexList); i++ {
 				ent.UntagPortMap[int(untaggedIfIndexList[i])] = true

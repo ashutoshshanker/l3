@@ -34,6 +34,10 @@ type LsdbKey struct {
 	AreaId uint32
 }
 
+type RoutingTblKey struct {
+        AreaId uint32
+}
+
 type LsdbSliceEnt struct {
 	AreaId uint32
 	LSType uint8
@@ -60,11 +64,11 @@ type OSPFServer struct {
 	LsdbUpdateCh       chan LsdbUpdateMsg
 	LsaUpdateRetCodeCh chan bool
 	IntfStateChangeCh  chan LSAChangeMsg
-	NetworkDRChangeCh  chan LSAChangeMsg
+	NetworkDRChangeCh  chan DrChangeMsg
 	FlushNetworkLSACh  chan NetworkLSAChangeMsg
 	CreateNetworkLSACh chan ospfNbrMdata
 	AdjOKEvtCh         chan AdjOKEvtMsg
-
+	maxAgeLsaCh        chan maxAgeLsaMsg
 	/*
 	   connRoutesTimer         *time.Timer
 	   ribSubSocket        *nanomsg.SubSocket
@@ -87,6 +91,7 @@ type OSPFServer struct {
 	neighborConfStopCh    chan bool
 	nbrFSMCtrlCh          chan bool
 	neighborSliceRefCh    *time.Ticker
+	neighborSliceStartCh  chan bool
 	neighborBulkSlice     []uint32
 	neighborDBDEventCh    chan ospfNeighborDBDMsg
 	neighborLSAReqEventCh chan ospfNeighborLSAreqMsg
@@ -96,8 +101,8 @@ type OSPFServer struct {
 	ospfNbrLsaReqSendCh   chan ospfNeighborLSAreqMsg
 	ospfNbrLsaUpdSendCh   chan ospfFloodMsg
 	ospfNbrLsaAckSendCh   chan ospfNeighborAckTxMsg
-	ospfRxNbrPktStopCh  chan bool
-	ospfTxNbrPktStopCh       chan bool
+	ospfRxNbrPktStopCh    chan bool
+	ospfTxNbrPktStopCh    chan bool
 
 	//neighborDBDEventCh   chan IntfToNeighDbdMsg
 
@@ -114,9 +119,9 @@ type OSPFServer struct {
 
 	RefreshDuration time.Duration
 
-	RoutingTbl     map[RoutingTblKey]RoutingTblEntry
-	OldRoutingTbl  map[RoutingTblKey]RoutingTblEntry
-	TempRoutingTbl map[RoutingTblKey]RoutingTblEntry
+	RoutingTbl     map[AreaIdKey]AreaRoutingTbl
+	OldRoutingTbl  map[AreaIdKey]AreaRoutingTbl
+	TempRoutingTbl map[AreaIdKey]AreaRoutingTbl
 	StartCalcSPFCh chan bool
 	DoneCalcSPFCh  chan bool
 	AreaGraph      map[VertexKey]Vertex
@@ -140,20 +145,21 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.AreaLsdb = make(map[LsdbKey]LSDatabase)
 	ospfServer.AreaSelfOrigLsa = make(map[LsdbKey]SelfOrigLsa)
 	ospfServer.IntfStateChangeCh = make(chan LSAChangeMsg)
-	ospfServer.NetworkDRChangeCh = make(chan LSAChangeMsg)
+	ospfServer.NetworkDRChangeCh = make(chan DrChangeMsg)
 	ospfServer.CreateNetworkLSACh = make(chan ospfNbrMdata)
 	ospfServer.FlushNetworkLSACh = make(chan NetworkLSAChangeMsg)
 	ospfServer.LsdbSlice = []LsdbSliceEnt{}
 	ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
 	ospfServer.LsaUpdateRetCodeCh = make(chan bool)
 	ospfServer.AdjOKEvtCh = make(chan AdjOKEvtMsg)
+	ospfServer.maxAgeLsaCh = make(chan maxAgeLsaMsg)
 	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
 	ospfServer.neighborHelloEventCh = make(chan IntfToNeighMsg)
 	ospfServer.neighborConfCh = make(chan ospfNeighborConfMsg)
 	ospfServer.neighborConfStopCh = make(chan bool)
-	ospfServer.neighborSliceRefCh = time.NewTicker(time.Minute * 10)
+	ospfServer.neighborSliceStartCh = make(chan bool)
 	ospfServer.AreaStateMutex = sync.RWMutex{}
 	ospfServer.AreaStateMap = make(map[AreaConfKey]AreaState)
 	ospfServer.AreaStateSlice = []AreaConfKey{}
@@ -165,13 +171,13 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.nbrFSMCtrlCh = make(chan bool)
 	ospfServer.RefreshDuration = time.Duration(10) * time.Minute
 	ospfServer.neighborDBDEventCh = make(chan ospfNeighborDBDMsg)
-	ospfServer.neighborLSAReqEventCh = make(chan ospfNeighborLSAreqMsg)
-	ospfServer.neighborLSAUpdEventCh = make(chan ospfNeighborLSAUpdMsg)
-	ospfServer.neighborLSAACKEventCh = make(chan ospfNeighborLSAAckMsg)
+	ospfServer.neighborLSAReqEventCh = make(chan ospfNeighborLSAreqMsg, 2)
+	ospfServer.neighborLSAUpdEventCh = make(chan ospfNeighborLSAUpdMsg, 2)
+	ospfServer.neighborLSAACKEventCh = make(chan ospfNeighborLSAAckMsg, 2)
 	ospfServer.ospfNbrDBDSendCh = make(chan ospfNeighborDBDMsg)
-	ospfServer.ospfNbrLsaAckSendCh = make(chan ospfNeighborAckTxMsg)
-	ospfServer.ospfNbrLsaReqSendCh = make(chan ospfNeighborLSAreqMsg)
-	ospfServer.ospfNbrLsaUpdSendCh = make(chan ospfFloodMsg)
+	ospfServer.ospfNbrLsaAckSendCh = make(chan ospfNeighborAckTxMsg, 2)
+	ospfServer.ospfNbrLsaReqSendCh = make(chan ospfNeighborLSAreqMsg, 2)
+	ospfServer.ospfNbrLsaUpdSendCh = make(chan ospfFloodMsg, 2)
 	ospfServer.ospfRxNbrPktStopCh = make(chan bool)
 	ospfServer.ospfTxNbrPktStopCh = make(chan bool)
 
@@ -184,9 +190,9 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.asicdSubSocketCh = make(chan []byte)
 	ospfServer.asicdSubSocketErrCh = make(chan error)
 
-	ospfServer.RoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-	ospfServer.OldRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-	ospfServer.TempRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
+	ospfServer.RoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
+	ospfServer.OldRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
+	ospfServer.TempRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
 	ospfServer.StartCalcSPFCh = make(chan bool)
 	ospfServer.DoneCalcSPFCh = make(chan bool)
 

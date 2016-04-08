@@ -27,18 +27,26 @@ func policyEngineActionRejectRoute(params interface{}) {
 	logger.Info(fmt.Sprintln("policyEngineActionRejectRoute for route ", routeInfo.destNetIp, " ", routeInfo.networkMask))
 	nextHopIfTypeStr := ""
 	switch routeInfo.nextHopIfType {
-		case commonDefs.L2RefTypePort:
-			nextHopIfTypeStr = "PHY"
-			break
-		case commonDefs.L2RefTypeVlan:
-			nextHopIfTypeStr = "VLAN"
-			break
-		case commonDefs.IfTypeNull:
-			nextHopIfTypeStr = "NULL"
-			break
+	case commonDefs.L2RefTypePort:
+		nextHopIfTypeStr = "PHY"
+		break
+	case commonDefs.L2RefTypeVlan:
+		nextHopIfTypeStr = "VLAN"
+		break
+	case commonDefs.IfTypeNull:
+		nextHopIfTypeStr = "NULL"
+		break
 	}
-    cfg := ribd.IPv4Route{nextHopIfTypeStr, ReverseRouteProtoTypeMapDB[int(routeInfo.routeType)], strconv.Itoa(int(routeInfo.nextHopIfIndex)),routeInfo.destNetIp,int32(routeInfo.metric),routeInfo.networkMask,routeInfo.nextHopIp}
-	_, err := routeServiceHandler.ProcessRouteDeleteConfig(&cfg)//routeInfo.destNetIp, routeInfo.networkMask, ReverseRouteProtoTypeMapDB[int(routeInfo.routeType)], routeInfo.nextHopIp) // FIBAndRIB)//,ribdCommonDefs.RoutePolicyStateChangetoInValid)
+	cfg := ribd.IPv4Route{
+		DestinationNw:     routeInfo.destNetIp,
+		Protocol:          ReverseRouteProtoTypeMapDB[int(routeInfo.routeType)],
+		OutgoingInterface: strconv.Itoa(int(routeInfo.nextHopIfIndex)),
+		OutgoingIntfType:  nextHopIfTypeStr,
+		Cost:              int32(routeInfo.metric),
+		NetworkMask:       routeInfo.networkMask,
+		NextHopIp:         routeInfo.nextHopIp}
+
+	_, err := routeServiceHandler.ProcessRouteDeleteConfig(&cfg) //routeInfo.destNetIp, routeInfo.networkMask, ReverseRouteProtoTypeMapDB[int(routeInfo.routeType)], routeInfo.nextHopIp) // FIBAndRIB)//,ribdCommonDefs.RoutePolicyStateChangetoInValid)
 	if err != nil {
 		logger.Info(fmt.Sprintln("deleting v4 route failed with err ", err))
 		return
@@ -90,13 +98,25 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 			tempRoute.Prototype = ribdInt.Int(proto)
 			tempRoute.Metric = ribdInt.Int(ipRoute.Cost)
 
-			entity := buildPolicyEntityFromRoute(tempRoute, params)
+			entity, err := buildPolicyEntityFromRoute(tempRoute, params)
+			if err != nil {
+				logger.Err(fmt.Sprintln("Error builiding policy entity params"))
+				return
+			}
 			if !PolicyEngineDB.ConditionCheckValid(entity, conditionsList, policyStmt) {
 				logger.Info(fmt.Sprintln("This route does not qualify for reversing reject route"))
 				continue
 			}
-            cfg := ribd.IPv4Route {ipRoute.OutgoingIntfType, "STATIC", ipRoute.OutgoingInterface,tempRoute.Ipaddr,int32(tempRoute.Metric),tempRoute.Mask,tempRoute.NextHopIp}
-			_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg)//tempRoute.Ipaddr, tempRoute.Mask, tempRoute.Metric, tempRoute.NextHopIp, tempRoute.NextHopIfType, tempRoute.IfIndex, "STATIC") //tempRoute.Prototype)
+			cfg := ribd.IPv4Route{
+				DestinationNw:     tempRoute.Ipaddr,
+				Protocol:          "STATIC",
+				OutgoingInterface: ipRoute.OutgoingInterface,
+				OutgoingIntfType:  ipRoute.OutgoingIntfType,
+				Cost:              int32(tempRoute.Metric),
+				NetworkMask:       tempRoute.Mask,
+				NextHopIp:         tempRoute.NextHopIp}
+
+			_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg) //tempRoute.Ipaddr, tempRoute.Mask, tempRoute.Metric, tempRoute.NextHopIp, tempRoute.NextHopIfType, tempRoute.IfIndex, "STATIC") //tempRoute.Prototype)
 			if err != nil {
 				logger.Info(fmt.Sprintf("Route create failed with err %s\n", err))
 				return
@@ -113,19 +133,19 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 		count = 100
 		for {
 			logger.Info(fmt.Sprintf("Getting %d objects from currMarker %d\n", count, currMarker))
-			IPIntfBulk, err := asicdclnt.ClientHdl.GetBulkIPv4Intf(currMarker, count)
+			IPIntfBulk, err := asicdclnt.ClientHdl.GetBulkIPv4IntfState(currMarker, count)
 			if err != nil {
-				logger.Info(fmt.Sprintln("GetBulkIPv4Intf with err ", err))
+				logger.Info(fmt.Sprintln("GetBulkIPv4IntfState with err ", err))
 				return
 			}
 			if IPIntfBulk.Count == 0 {
-				logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4Intf"))
+				logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4IntfState"))
 				return
 			}
-			logger.Info(fmt.Sprintf("len(IPIntfBulk.IPv4IntfList)  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfList), IPIntfBulk.Count))
+			logger.Info(fmt.Sprintf("len(IPIntfBulk.IPv4IntfStateList)  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfStateList), IPIntfBulk.Count))
 			for i := 0; i < int(IPIntfBulk.Count); i++ {
 				var ipMask net.IP
-				ip, ipNet, err := net.ParseCIDR(IPIntfBulk.IPv4IntfList[i].IpAddr)
+				ip, ipNet, err := net.ParseCIDR(IPIntfBulk.IPv4IntfStateList[i].IpAddr)
 				if err != nil {
 					return
 				}
@@ -136,32 +156,43 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 				tempRoute.Ipaddr = ipAddrStr
 				tempRoute.Mask = ipMaskStr
 				tempRoute.NextHopIp = "0.0.0.0"
-				tempRoute.NextHopIfType = ribdInt.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex))
+				tempRoute.NextHopIfType = ribdInt.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))
 				nextHopIfTypeStr := ""
 				switch tempRoute.NextHopIfType {
-					case commonDefs.L2RefTypePort:
-					    nextHopIfTypeStr = "PHY"
-						break
-					case commonDefs.L2RefTypeVlan:
-						nextHopIfTypeStr = "VLAN"
-						break
-					case commonDefs.IfTypeNull:
-						nextHopIfTypeStr = "NULL"
-						break
+				case commonDefs.L2RefTypePort:
+					nextHopIfTypeStr = "PHY"
+					break
+				case commonDefs.L2RefTypeVlan:
+					nextHopIfTypeStr = "VLAN"
+					break
+				case commonDefs.IfTypeNull:
+					nextHopIfTypeStr = "NULL"
+					break
 				}
-				tempRoute.IfIndex = ribdInt.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex))
+				tempRoute.IfIndex = ribdInt.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))
 				tempRoute.Prototype = ribdCommonDefs.CONNECTED
 				tempRoute.Metric = 0
-				entity := buildPolicyEntityFromRoute(tempRoute, params)
+				entity, err := buildPolicyEntityFromRoute(tempRoute, params)
+				if err != nil {
+					logger.Err(fmt.Sprintln("Error builiding policy entity params"))
+					return
+				}
 				if !PolicyEngineDB.ConditionCheckValid(entity, conditionsList, policyStmt) {
 					logger.Info(fmt.Sprintln("This route does not qualify for reversing reject route"))
 					continue
 				}
 				logger.Info(fmt.Sprintf("Calling createv4Route with ipaddr %s mask %s\n", ipAddrStr, ipMaskStr))
-                cfg := ribd.IPv4Route {nextHopIfTypeStr, "CONNECTED", strconv.Itoa(int(tempRoute.IfIndex)),tempRoute.Ipaddr,0,tempRoute.Mask,"0.0.0.0"}
-				_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg)//ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
+				cfg := ribd.IPv4Route{
+					DestinationNw:     tempRoute.Ipaddr,
+					Protocol:          "CONNECTED",
+					OutgoingInterface: strconv.Itoa(int(tempRoute.IfIndex)),
+					OutgoingIntfType:  nextHopIfTypeStr,
+					Cost:              0,
+					NetworkMask:       tempRoute.Mask,
+					NextHopIp:         "0.0.0.0"}
+				_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
 				if err != nil {
-					logger.Info(fmt.Sprintf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex))))
+					logger.Info(fmt.Sprintf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))))
 				}
 			}
 			if IPIntfBulk.More == false {
@@ -200,7 +231,10 @@ func policyEngineActionUndoNetworkStatemenAdvertiseAction(actionItem interface{}
 		logger.Info(fmt.Sprintln("Undo network statement advertise to BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
 		route.NetworkStatement = true
-		RouteNotificationSend(RIBD_BGPD_PUB, route, evt)
+		publisherInfo, ok := PublisherInfoMap["BGP"]
+		if ok {
+			RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+		}
 		break
 	default:
 		logger.Info(fmt.Sprintln("Unknown target protocol"))
@@ -227,7 +261,10 @@ func policyEngineActionUndoRedistribute(actionItem interface{}, conditionsList [
 		logger.Info(fmt.Sprintln("Redistribute to BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
 		route.RouteOrigin = ReverseRouteProtoTypeMapDB[int(RouteInfo.routeType)]
-		RouteNotificationSend(RIBD_BGPD_PUB, route, evt)
+		publisherInfo, ok := PublisherInfoMap["BGP"]
+		if ok {
+			RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+		}
 		break
 	default:
 		logger.Info(fmt.Sprintln("Unknown target protocol"))
@@ -252,21 +289,28 @@ func policyEngineUpdateRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, han
 	//route := ribdInt.Routes{Ipaddr:selectedRouteInfoRecord.destNetIp.String() , Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(selectedRouteInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(selectedRouteInfoRecord.metric), Prototype: ribdInt.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid: rmapInfoRecordList.isPolicyBasedStateValid}
 	nextHopIfTypeStr := ""
 	switch selectedRouteInfoRecord.nextHopIfType {
-		case commonDefs.L2RefTypePort:
-			nextHopIfTypeStr = "PHY"
-			break
-		case commonDefs.L2RefTypeVlan:
-			nextHopIfTypeStr = "VLAN"
-			break
-		case commonDefs.IfTypeNull:
-			nextHopIfTypeStr = "NULL"
-			break
+	case commonDefs.L2RefTypePort:
+		nextHopIfTypeStr = "PHY"
+		break
+	case commonDefs.L2RefTypeVlan:
+		nextHopIfTypeStr = "VLAN"
+		break
+	case commonDefs.IfTypeNull:
+		nextHopIfTypeStr = "NULL"
+		break
 	}
 	nextHopIf := strconv.Itoa(int(selectedRouteInfoRecord.nextHopIfIndex))
-    cfg := ribd.IPv4Route {nextHopIfTypeStr, ReverseRouteProtoTypeMapDB[int(selectedRouteInfoRecord.protocol)], nextHopIf,selectedRouteInfoRecord.destNetIp.String(),int32(selectedRouteInfoRecord.metric),selectedRouteInfoRecord.networkMask.String(),selectedRouteInfoRecord.nextHopIp.String()}
+	cfg := ribd.IPv4Route{
+		DestinationNw:     selectedRouteInfoRecord.destNetIp.String(),
+		Protocol:          ReverseRouteProtoTypeMapDB[int(selectedRouteInfoRecord.protocol)],
+		OutgoingInterface: nextHopIf,
+		OutgoingIntfType:  nextHopIfTypeStr,
+		Cost:              int32(selectedRouteInfoRecord.metric),
+		NetworkMask:       selectedRouteInfoRecord.networkMask.String(),
+		NextHopIp:         selectedRouteInfoRecord.nextHopIp.String()}
 	//Even though we could potentially have multiple selected routes, calling update once for this prefix should suffice
 	//routeServiceHandler.UpdateIPv4Route(&cfg, nil, nil)
-    routeServiceHandler.ProcessRouteUpdateConfig(&cfg,&cfg,nil)
+	routeServiceHandler.ProcessRouteUpdateConfig(&cfg, &cfg, nil)
 	return err
 }
 func policyEngineTraverseAndUpdate() {
@@ -277,7 +321,7 @@ func policyEngineActionAcceptRoute(params interface{}) {
 	routeInfo := params.(RouteParams)
 	logger.Info(fmt.Sprintln("policyEngineActionAcceptRoute for ip ", routeInfo.destNetIp, " and mask ", routeInfo.networkMask))
 	_, err := createV4Route(routeInfo.destNetIp, routeInfo.networkMask, routeInfo.metric, routeInfo.nextHopIp, routeInfo.nextHopIfType, routeInfo.nextHopIfIndex, routeInfo.routeType, routeInfo.createType, ribdCommonDefs.RoutePolicyStateChangetoValid, routeInfo.sliceIdx)
-    //_, err := routeServiceHandler.InstallRoute(routeInfo)
+	//_, err := routeServiceHandler.InstallRoute(routeInfo)
 	if err != nil {
 		logger.Info(fmt.Sprintln("creating v4 route failed with err ", err))
 		return
@@ -297,7 +341,7 @@ func policyEngineActionUndoSetAdminDistance(actionItem interface{}, conditionsLi
 	conditionInfo := conditionItem.(policy.PolicyCondition).ConditionInfo
 	conditionProtocol := conditionInfo.(string)
 	//case policyCommonDefs.PolicyConditionTypeProtocolMatch:
-	routeDistanceConfig,ok := ProtocolAdminDistanceMapDB[conditionProtocol]
+	routeDistanceConfig, ok := ProtocolAdminDistanceMapDB[conditionProtocol]
 	if !ok {
 		logger.Info(fmt.Sprintln("Invalid protocol provided for undo set admin distance"))
 		return
@@ -322,10 +366,10 @@ func policyEngineActionSetAdminDistance(actionItem interface{}, conditionList []
 	for i := 0; i < len(conditionList); i++ {
 		//case policyCommonDefs.PolicyConditionTypeProtocolMatch:
 		conditionProtocol := conditionList[i].(string)
-		routeDistanceConfig,ok := ProtocolAdminDistanceMapDB[conditionProtocol]
+		routeDistanceConfig, ok := ProtocolAdminDistanceMapDB[conditionProtocol]
 		if !ok {
-		    logger.Info(fmt.Sprintln("Invalid protocol provided for set admin distance"))
-		    return
+			logger.Info(fmt.Sprintln("Invalid protocol provided for set admin distance"))
+			return
 		}
 		routeDistanceConfig.configuredDistance = actionInfo
 		ProtocolAdminDistanceMapDB[conditionProtocol] = routeDistanceConfig
@@ -374,7 +418,10 @@ func policyEngineActionNetworkStatementAdvertise(actionInfo interface{}, conditi
 		logger.Info(fmt.Sprintln("NetworkStatemtnAdvertise to BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
 		route.NetworkStatement = true
-		RouteNotificationSend(RIBD_BGPD_PUB, route, evt)
+		publisherInfo, ok := PublisherInfoMap["BGP"]
+		if ok {
+			RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+		}
 		break
 	default:
 		logger.Info(fmt.Sprintln("Unknown target protocol"))
@@ -413,7 +460,10 @@ func policyEngineActionRedistribute(actionInfo interface{}, conditionInfo []inte
 		logger.Info(fmt.Sprintln("Redistribute to BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
 		route.RouteOrigin = ReverseRouteProtoTypeMapDB[int(RouteInfo.routeType)]
-		RouteNotificationSend(RIBD_BGPD_PUB, route, evt)
+		publisherInfo, ok := PublisherInfoMap["BGP"]
+		if ok {
+			RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+		}
 		break
 	default:
 		logger.Info(fmt.Sprintln("Unknown target protocol"))
@@ -494,7 +544,15 @@ func PolicyEngineFilter(route ribdInt.Routes, policyPath int, params interface{}
 	}
 	routeInfo := params.(RouteParams)
 	logger.Info(fmt.Sprintln("PolicyEngineFilter for policypath ", policyPath_Str, "createType = ", routeInfo.createType, " deleteType = ", routeInfo.deleteType, " route: ", route.Ipaddr, ":", route.Mask, " protocol type: ", route.Prototype))
-	entity := buildPolicyEntityFromRoute(route, params)
+	entity, err := buildPolicyEntityFromRoute(route, params)
+	if err != nil {
+		logger.Info(fmt.Sprintln("Error building policy params"))
+		return
+	}
+	entity.PolicyList = make([]string, 0)
+	for j := 0; j < len(route.PolicyList); j++ {
+		entity.PolicyList = append(entity.PolicyList, route.PolicyList[j])
+	}
 	PolicyEngineDB.PolicyEngineFilter(entity, policyPath, params)
 	var op int
 	if routeInfo.deleteType != Invalid {
@@ -521,7 +579,11 @@ func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, t
 		selectedRouteInfoRecord := selectedRouteList[i]
 		policyRoute := ribdInt.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(selectedRouteInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(selectedRouteInfoRecord.metric), Prototype: ribdInt.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid: rmapInfoRecordList.isPolicyBasedStateValid}
 		params := RouteParams{destNetIp: policyRoute.Ipaddr, networkMask: policyRoute.Mask, routeType: ribd.Int(policyRoute.Prototype), nextHopIp: selectedRouteInfoRecord.nextHopIp.String(), sliceIdx: ribd.Int(policyRoute.SliceIdx), createType: Invalid, deleteType: Invalid}
-		entity := buildPolicyEntityFromRoute(policyRoute, params)
+		entity, err := buildPolicyEntityFromRoute(policyRoute, params)
+		if err != nil {
+			logger.Err(fmt.Sprintln("Error builiding policy entity params"))
+			return err
+		}
 		entity.PolicyList = make([]string, 0)
 		for j := 0; j < len(rmapInfoRecordList.policyList); j++ {
 			entity.PolicyList = append(entity.PolicyList, rmapInfoRecordList.policyList[j])
@@ -553,7 +615,11 @@ func policyEngineTraverseAndReverse(policyItem interface{}) {
 			logger.Info(fmt.Sprintln("Invalid route ", ext.routeList[idx]))
 			continue
 		}
-		entity := buildPolicyEntityFromRoute(policyRoute, params)
+		entity, err := buildPolicyEntityFromRoute(policyRoute, params)
+		if err != nil {
+			logger.Err(fmt.Sprintln("Error builiding policy entity params"))
+			return
+		}
 		PolicyEngineDB.PolicyEngineUndoPolicyForEntity(entity, policy, params)
 		deleteRoutePolicyState(ipPrefix, policy.Name)
 		PolicyEngineDB.DeletePolicyEntityMapEntry(entity, policy.Name)

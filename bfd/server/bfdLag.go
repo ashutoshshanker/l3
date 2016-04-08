@@ -132,7 +132,7 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 			}
 			ipLayer := &layers.IPv4{
 				SrcIP:    net.ParseIP(bfdSession.state.LocalIpAddr),
-				DstIP:    net.ParseIP(bfdSession.state.RemoteIpAddr),
+				DstIP:    net.ParseIP(bfdSession.state.IpAddr),
 				Protocol: layers.IPProtocolUDP,
 			}
 			udpLayer := &layers.UDP{
