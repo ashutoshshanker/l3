@@ -115,11 +115,11 @@ func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptio
 				start_index = uint8(OSPF_DBD_MIN_SIZE + (i * OSPF_LSA_HEADER_SIZE))
 				copy(header_byte, data[start_index:start_index+20])
 				lsa_header = decodeLSAHeader(header_byte)
-				/*				fmt.Println("DBD: Header decoded ",
-								"ls_age:options:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
-								lsa_header.ls_age, lsa_header.ls_type, lsa_header.link_state_id,
-								lsa_header.adv_router_id, lsa_header.ls_sequence_num,
-								lsa_header.ls_checksum) */
+				fmt.Println("DBD: Header decoded ",
+					"ls_age:options:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
+					lsa_header.ls_age, lsa_header.ls_type, lsa_header.link_state_id,
+					lsa_header.adv_router_id, lsa_header.ls_sequence_num,
+					lsa_header.ls_checksum)
 				dbd_data.lsa_headers = append(dbd_data.lsa_headers, lsa_header)
 			}
 		}

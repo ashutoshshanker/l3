@@ -22,6 +22,7 @@ type ospfFloodMsg struct {
 	linkid  uint32
 	lsOp    uint8  // indicates whether to flood on all interfaces or selective ones.
 	pkt     []byte //LSA flood packet received from another neighbor
+	summaryUpdMsg summaryLsaUpdMsg
 }
 
 var maxAgeLsaMap map[LsaKey][]byte
@@ -87,19 +88,6 @@ func (server *OSPFServer) SendSelfOrigLSA(areaId uint32, intfKey IntfConfKey) []
 					total_len += pktLen
 
 				}
-
-			case Summary3LSA:
-				entry, _ := server.getSummaryLsaFromLsdb(areaId, key)
-				LsaEnc = encodeSummaryLsa(entry, key)
-				checksumOffset := uint16(14)
-				checkSum := computeFletcherChecksum(LsaEnc[2:], checksumOffset)
-				binary.BigEndian.PutUint16(LsaEnc[16:18], checkSum)
-				pktLen = len(LsaEnc)
-				binary.BigEndian.PutUint16(LsaEnc[18:20], uint16(pktLen))
-				//server.logger.Info(fmt.Sprintln("Flood: Encoded LSA = ", LsaEnc))
-				ospfLsaPkt.lsa = append(ospfLsaPkt.lsa, LsaEnc...)
-				ospfLsaPkt.no_lsas++
-				total_len += pktLen
 
 			} // end of case
 		}
@@ -207,6 +195,9 @@ func (server *OSPFServer) processFloodMsg(lsa_data ospfFloodMsg) {
 
 		}
 
+	case LSASUMMARYFLOOD: 
+	     server.logger.Info(fmt.Sprintln("Flood: Summary LSA flood msg received."))
+	    server.processSummaryLSAFlood(lsa_data.summaryUpdMsg)
 	case LSAAGE: // Flood aged LSAs
 		server.constructAndSendLsaAgeFlood()
 
@@ -296,6 +287,77 @@ func (server *OSPFServer) interfaceFloodCheck(key IntfConfKey) bool {
 		}
 	}
 	return flood_check
+}
+
+/*
+@fn processSummaryLSAFlood
+This API takes care of flooding new summary LSAs that is added in the LSDB
+*/
+func (server *OSPFServer) processSummaryLSAFlood(msg summaryLsaUpdMsg) {
+	ospfLsaPkt := newospfNeighborLSAUpdPkt()
+	var lsaEncPkt []byte
+	LsaEnc := []byte{}
+
+	ospfLsaPkt.no_lsas = 0
+
+	count := len(msg.lsa_data)
+	server.logger.Info(fmt.Sprintln("Summary: Received msg. Count ", count))
+	for i := 0; i < count; i++ {
+		lsamdata := msg.lsa_data[i]
+		server.logger.Info(fmt.Sprintln("Summary: Start flooding. Area ",
+			lsamdata.areaId, " lsa ", lsamdata.lsaKey))
+		LsaEnc = server.encodeSummaryLsa(lsamdata.areaId, lsamdata.lsaKey)
+		//ospfLsaPkt.lsa = append(ospfLsaPkt.lsa, LsaEnc...)
+		no_lsas := uint32(1)
+		lsas_enc := make([]byte, 4)
+		binary.BigEndian.PutUint32(lsas_enc, no_lsas)
+		lsaEncPkt = append(lsaEncPkt, lsas_enc...)
+		lsaEncPkt = append(lsaEncPkt, LsaEnc...)
+		server.logger.Info(fmt.Sprintln("SUMMARY: Send for flooding ",
+			lsamdata.areaId, " adv_router ", lsamdata.lsaKey.AdvRouter, " lsid ",
+			lsamdata.lsaKey.LSId))
+		server.floodSummaryLsa(lsaEncPkt, lsamdata.areaId)
+	}
+
+}
+
+func (server *OSPFServer) encodeSummaryLsa(areaid uint32, lsakey LsaKey) []byte {
+	entry, ret := server.getSummaryLsaFromLsdb(areaid, lsakey)
+	if ret == LsdbEntryNotFound {
+		server.logger.Info(fmt.Sprintln("Summary LSA: Lsa not found . Area",
+			areaid, " LSA key ", lsakey))
+		return nil
+	}
+	LsaEnc := encodeSummaryLsa(entry, lsakey)
+	pktLen := len(LsaEnc)
+	checksumOffset := uint16(14)
+	checkSum := computeFletcherChecksum(LsaEnc[2:], checksumOffset)
+	binary.BigEndian.PutUint16(LsaEnc[16:18], checkSum)
+	binary.BigEndian.PutUint16(LsaEnc[18:20], uint16(pktLen))
+	return LsaEnc
+
+}
+
+func (server *OSPFServer) floodSummaryLsa(pkt []byte, areaid uint32) {
+	dstMac := net.HardwareAddr{0x01, 0x00, 0x5e, 0x00, 0x00, 0x05}
+	dstIp := net.IP{224, 0, 0, 5}
+	if server.ospfGlobalConf.isABR {
+		/*TODO - add the logic later . */
+		server.logger.Info("Recieved flood summary message")
+	} else {
+		for key, intf := range server.IntfConfMap {
+			ifArea := convertIPv4ToUint32(intf.IfAreaId)
+			if ifArea == areaid {
+				// flood to your own area
+				nbrMdata, ok := ospfIntfToNbrMap[key]
+				if ok && len(nbrMdata.nbrList) > 0 {
+					send_pkt := server.BuildLsaUpdPkt(key, intf, dstMac, dstIp, len(pkt), pkt)
+					server.logger.Info(fmt.Sprintln("SUMMARY: Send  LSA to interface ", intf.IfIpAddr, " area ", areaid))
+					server.SendOspfPkt(key, send_pkt)
+				}
+			}
+		}
+	}
 }
 
 /*

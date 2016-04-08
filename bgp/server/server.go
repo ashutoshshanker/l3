@@ -1050,7 +1050,7 @@ func (server *BGPServer) getIfaceIP(ip string) {
 func (server *BGPServer) setInterfaceMapForPeer(peerIP string, peer *Peer) {
 	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer, "calling GetRouteReachabilityInfo"))
 	reachInfo, err := server.ribdClient.GetRouteReachabilityInfo(peerIP)
-	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer, "GetRouteReachabilityInfo returned", *reachInfo))
+	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer, "GetRouteReachabilityInfo returned", reachInfo))
 	if err != nil {
 		server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
 	} else {

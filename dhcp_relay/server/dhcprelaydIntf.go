@@ -238,7 +238,7 @@ func DhcpRelayAgentGetIpv4IntfList() {
 	more := false
 	count := 10
 	for {
-		bulkInfo, err := asicdClient.ClientHdl.GetBulkIPv4Intf(
+		bulkInfo, err := asicdClient.ClientHdl.GetBulkIPv4IntfState(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
 			logger.Err(fmt.Sprintln("DRA: getting bulk vlan config",
@@ -249,10 +249,10 @@ func DhcpRelayAgentGetIpv4IntfList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			obj := dhcprelayIntfIpv4Map[bulkInfo.IPv4IntfList[i].IfIndex]
-			obj.IfIndex = bulkInfo.IPv4IntfList[i].IfIndex
-			obj.IpAddr = bulkInfo.IPv4IntfList[i].IpAddr
-			dhcprelayIntfIpv4Map[bulkInfo.IPv4IntfList[i].IfIndex] = obj
+			obj := dhcprelayIntfIpv4Map[bulkInfo.IPv4IntfStateList[i].IfIndex]
+			obj.IfIndex = bulkInfo.IPv4IntfStateList[i].IfIndex
+			obj.IpAddr = bulkInfo.IPv4IntfStateList[i].IpAddr
+			dhcprelayIntfIpv4Map[bulkInfo.IPv4IntfStateList[i].IfIndex] = obj
 		}
 		if more == false {
 			break

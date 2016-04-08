@@ -93,6 +93,23 @@ func newospfNeighborLSAUpdPkt() *ospfNeighborLSAUpdPkt {
 	return &ospfNeighborLSAUpdPkt{}
 }
 
+type summaryLsamdata struct {
+	areaId uint32
+	lsaKey LsaKey
+}
+
+func newsummaryLsamdata() *summaryLsamdata {
+	return &summaryLsamdata{}
+}
+
+type summaryLsaUpdMsg struct {
+	lsa_data []summaryLsamdata
+}
+
+func newsummaryLsaUpdMsg() *summaryLsaUpdMsg {
+	return &summaryLsaUpdMsg{}
+}
+
 func getLsaHeaderFromLsa(ls_age uint16, options uint8, ls_type uint8, link_state_id uint32,
 	adv_router_id uint32, ls_sequence_num uint32, ls_checksum uint16, ls_len uint16) ospfLSAHeader {
 
@@ -225,8 +242,10 @@ func (server *OSPFServer) BuildAndSendLSAReq(nbrId uint32, nbrConf OspfNeighborE
 		add_items = uint8(max_req)
 		nbrConf.ospfNbrLsaReqIndex += max_req
 	}
+	server.logger.Info(fmt.Sprintln("LSAREQ: nbrIndex ",
+		nbrConf.ospfNbrLsaReqIndex, " add_items ", add_items, " req_list len ", len(reqlist)))
 	index := nbrConf.ospfNbrLsaReqIndex
-	for i = 0; i < add_items; i++ {
+	for i = 0; i < uint8(len(reqlist)); i++ {
 		req.ls_type = uint32(reqlist[i].lsa_headers.ls_type)
 		req.link_state_id = reqlist[i].lsa_headers.link_state_id
 		req.adv_router_id = reqlist[i].lsa_headers.adv_router_id
@@ -381,6 +400,7 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 		return
 	}
 
+	lsop := uint8(LSASELFLOOD)
 	intf := server.IntfConfMap[nbr.intfConfKey]
 	lsa_max_age := false
 	discard = server.lsaUpdDiscardCheck(nbr, msg.data)
@@ -438,12 +458,15 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			discard, op = server.sanityCheckNetworkLsa(*nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
 
 		case Summary3LSA, Summary4LSA:
-                        server.logger.Info(fmt.Sprintln("Received summary Lsa Packet :", lsdb_msg.Data))
+			server.logger.Info(fmt.Sprintln("Received summary Lsa Packet :", lsdb_msg.Data))
 			slsa := NewSummaryLsa()
 			decodeSummaryLsa(lsdb_msg.Data, slsa, lsa_key)
-                        server.logger.Info(fmt.Sprintln("Decoded summary Lsa Packet :", slsa))
+			server.logger.Info(fmt.Sprintln("Decoded summary Lsa Packet :", slsa))
 			dslsa, ret := server.getSummaryLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckSummaryLsa(*slsa, dslsa, nbr, intf, ret, lsa_max_age)
+			if server.ospfGlobalConf.isABR {
+				lsop = LSASUMMARYFLOOD
+			}
 
 		case ASExternalLSA:
 			alsa := NewASExternalLsa()
@@ -467,12 +490,13 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			areaId: msg.areaId,
 			lsType: lsa_header.LSType,
 			linkid: lsa_header.LinkId,
-			lsOp:   LSASELFLOOD,
+			lsOp:   lsop,
 		}
 		flood_pkt.pkt = make([]byte, end_index-index)
 		copy(flood_pkt.pkt, lsdb_msg.Data)
-		server.ospfNbrLsaUpdSendCh <- flood_pkt
-
+		if lsop != LSASUMMARYFLOOD { // for ABR summary lsa is flooded after LSDB/SPF changes are done.
+			server.ospfNbrLsaUpdSendCh <- flood_pkt
+		}
 		//if !discard && op == LsdbEntryNotFound {
 		lsaAckMsg := newospfNeighborAckTxMsg()
 		lsaAckMsg.lsa_headers_byte = append(lsaAckMsg.lsa_headers_byte, lsa_header_byte...)
@@ -515,7 +539,6 @@ func (server *OSPFServer) lsAgeCheck(intf IntfConf, lsa_max_age bool, exist int)
 		}
 	}
 	if send_ack && exist == LsdbEntryNotFound && lsa_max_age {
-		// TODO send ack
 		return true
 	}
 	return false
@@ -750,7 +773,7 @@ func (server *OSPFServer) ProcessRxLSAAckPkt(data []byte, ospfHdrMd *OspfHdrMeta
 			copy(header_byte, data[start_index:start_index+20])
 			lsa_header = decodeLSAHeader(header_byte)
 			server.logger.Info(fmt.Sprintln("LSAACK: Header decoded ",
-				"ls_age:options:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
+				"ls_age:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
 				lsa_header.ls_age, lsa_header.ls_type, lsa_header.link_state_id,
 				lsa_header.adv_router_id, lsa_header.ls_sequence_num,
 				lsa_header.ls_checksum))
@@ -775,8 +798,6 @@ func (server *OSPFServer) DecodeLSAAck(msg ospfNeighborLSAAckMsg) {
 	}
 	/* process each LSA and update request list */
 	for index := range msg.lsa_headers {
-		/* TODO
-		   optimize search technique using sort method */
 		req_list := ospfNeighborRequest_list[msg.nbrKey]
 		reTx_list := ospfNeighborRetx_list[msg.nbrKey]
 		for in := range req_list {

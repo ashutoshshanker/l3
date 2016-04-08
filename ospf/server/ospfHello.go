@@ -200,6 +200,9 @@ func (server *OSPFServer) processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetad
 		}
 	}
 
+	routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
+	ospfNeighborIPToMAC[routerId] = ethHdrMd.srcMAC
+
 	server.processOspfHelloNeighbor(TwoWayStatus, ospfHelloData, ipHdrMd, ospfHdrMd, key)
 
 	return nil
