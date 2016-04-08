@@ -1,6 +1,7 @@
 package server
 
 import (
+	"asicd/asicdConstDefs"
 	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
@@ -48,12 +49,12 @@ func (server *BFDServer) listenForRIBdUpdates(address string) error {
 	return nil
 }
 
-func (server *BFDServer) processRibdNotification(rxBuf []byte) {
+func (server *BFDServer) processRibdNotification(rxBuf []byte) error {
 	var msg ribdCommonDefs.RibdNotifyMsg
 	err := json.Unmarshal(rxBuf, &msg)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to unmarshal rxBuf:", rxBuf))
-		return
+		return err
 	}
 	switch msg.MsgType {
 	case ribdCommonDefs.NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE:
@@ -62,14 +63,20 @@ func (server *BFDServer) processRibdNotification(rxBuf []byte) {
 		err = json.Unmarshal(msg.MsgBuf, &msgInfo)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Unable to unmarshal msg:", msg.MsgBuf))
-			return
+			return err
 		}
 		server.logger.Info(fmt.Sprintln(" IP ", msgInfo.Network, " reachabilityStatus: ", msgInfo.IsReachable))
 		if msgInfo.IsReachable {
 			server.logger.Info(fmt.Sprintln(" NextHop IP:", msgInfo.NextHopIntf.NextHopIp, " IntfType:IntfId ", msgInfo.NextHopIntf.NextHopIfType, ":", msgInfo.NextHopIntf.NextHopIfIndex))
+			ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(msgInfo.NextHopIntf.NextHopIfType), int(msgInfo.NextHopIntf.NextHopIfIndex))
+			server.HandleNextHopChange(msgInfo.Network, ifIndex)
+		} else {
+			server.logger.Info(fmt.Sprintln(" NextHop IP:", msgInfo.NextHopIntf.NextHopIp, " is not reachable "))
+			server.HandleNextHopChange(msgInfo.Network, 0)
 		}
 		break
 	default:
 		break
 	}
+	return nil
 }

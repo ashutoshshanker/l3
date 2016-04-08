@@ -275,7 +275,6 @@ func (server *BFDServer) UpdateBfdSessionsOnInterface(ifIndex int32) error {
 				session.authType = AuthenticationType(intf.conf.AuthenticationType)
 				session.authKeyId = uint32(intf.conf.AuthenticationKeyId)
 				session.authData = intf.conf.AuthenticationData
-				session.intfConfigChanged = true
 				if intfEnabled {
 					session.InitiatePollSequence()
 				} else {
@@ -457,8 +456,8 @@ func (server *BFDServer) AdminDownBfdSession(sessionMgmt BfdSessionMgmt) error {
 
 // This function handles NextHop change from RIB.
 // Subsequent control packets will be sent using the BFD attributes configuration on the new IfIndex.
-// A Poll control packet will be sent to BFD neighbor and expact a Final control packet.
-func (server *BFDServer) HandleNextHopChange(DestIp string) error {
+// A Poll control packet will be sent to BFD neighbor and expect a Final control packet.
+func (server *BFDServer) HandleNextHopChange(DestIp string, IfIndex int32) error {
 	return nil
 }
 
@@ -878,15 +877,12 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 		select {
 		case sessionId := <-session.TxTimeoutCh:
 			bfdSession := server.bfdGlobal.Sessions[sessionId]
-			if bfdSession.intfConfigChanged == true {
-				bfdSession.UpdateBfdSessionControlPacket()
-				bfdSession.bfdPacketBuf, err = bfdSession.bfdPacket.CreateBfdControlPacket()
-				bfdSession.intfConfigChanged = false
-			}
+			bfdSession.UpdateBfdSessionControlPacket()
+			buf, err := bfdSession.bfdPacket.CreateBfdControlPacket()
 			if err != nil {
 				server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", bfdSession.state.SessionId))
 			} else {
-				_, err = Conn.Write(bfdSession.bfdPacketBuf)
+				_, err = Conn.Write(buf)
 				if err != nil {
 					server.logger.Info(fmt.Sprintln("failed to send control packet for session ", bfdSession.state.SessionId))
 				} else {
