@@ -75,6 +75,7 @@ type BfdSession struct {
 	txJitter            int32
 	SessionTimeoutCh    chan int32
 	bfdPacket           *BfdControlPacket
+	bfdPacketBuf        []byte
 	SessionStopClientCh chan bool
 	pollSequence        bool
 	pollSequenceFinal   bool
@@ -86,6 +87,7 @@ type BfdSession struct {
 	sendPcapHandle      *pcap.Handle
 	recvPcapHandle      *pcap.Handle
 	useDedicatedMac     bool
+	intfConfigChanged   bool
 	server              *BFDServer
 }
 
