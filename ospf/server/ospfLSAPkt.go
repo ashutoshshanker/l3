@@ -465,7 +465,9 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			dslsa, ret := server.getSummaryLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckSummaryLsa(*slsa, dslsa, nbr, intf, ret, lsa_max_age)
 			if server.ospfGlobalConf.isABR {
-				lsop = LSASUMMARYFLOOD
+				server.logger.Info(fmt.Sprintln("LSAUPD: I am ABR so flood the LSA after spf changes."))
+				/* TODO - fix this as it is always detecrted as  ABR */
+				//lsop = LSASUMMARYFLOOD
 			}
 
 		case ASExternalLSA:
