@@ -164,6 +164,10 @@ func convertUint32ToIPv4(val uint32) string {
 	return str
 }
 
+func convertIPInByteToString(ip []byte) string {
+        return convertUint32ToIPv4(convertIPv4ToUint32(ip))
+}
+
 const (
 	MODX                       int    = 4102
 	FLETCHER_CHECKSUM_VALIDATE uint16 = 0xffff
