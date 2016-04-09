@@ -2,7 +2,7 @@ package rpc
 
 import (
 	"arpd"
-	"asicd/asicdCommonDefs"
+	"asicd/asicdConstDefs"
 	"errors"
 	"fmt"
 	"l3/arp/server"
