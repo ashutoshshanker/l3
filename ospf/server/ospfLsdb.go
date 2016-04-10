@@ -131,11 +131,14 @@ func (server *OSPFServer) StartLSDatabase() {
 		server.initLSDatabase(areaId)
 	}
 
+        server.logger.Info("=====Hello1===")
 	server.lsdbStateRefresh()
-	go server.processLSDatabaseUpdates()
+        server.logger.Info("=====Hello2===")
 	maxAgeLsaMap = make(map[LsaKey][]byte)
 	// start LSDB aging ticker
 	lsdbTickerCh = time.NewTimer(time.Second * 1)
+	go server.processLSDatabaseUpdates()
+        server.logger.Info("=====Hello3===")
 	return
 }
 
@@ -331,7 +334,10 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 	LSAge := 0
 	AdvRouter := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
 	BitE := false //not an AS boundary router (Todo)
-	BitB := false //not an Area Border Router (Todo)
+        BitB := false
+        if server.ospfGlobalConf.AreaBdrRtrStatus == true {
+                BitB = true
+        }
 	lsaKey := LsaKey{
 		LSType:    LSType,
 		LSId:      LSId,
@@ -762,9 +768,11 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 				server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
 		*/
 		case msg := <-server.maxAgeLsaCh:
+                        server.logger.Info("====Hello4===")
 			server.processMaxAgeLsaMsg(msg)
 
 		case <-lsdbTickerCh.C:
+                        server.logger.Info("====Hello5===")
 			lsdbTickerCh.Stop()
 			server.processLSDatabaseTicker()
 			lsdbTickerCh.Reset(time.Duration(1) * time.Second)
@@ -813,9 +821,9 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 			server.logger.Info(fmt.Sprintln("Generate network LSA ", intf.IfIpAddr))
 			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
 		}
-		server.generateRouterLSA(msg.areaId)
-		server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)
 	}
+        server.generateRouterLSA(msg.areaId)
+        server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)
 
 	/*
 		if msg.oldstate != msg.newstate {

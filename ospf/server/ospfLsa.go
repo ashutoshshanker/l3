@@ -417,14 +417,22 @@ func decodeNetworkLsa(data []byte, lsa *NetworkLsa, lsakey *LsaKey) {
 */
 
 func encodeSummaryLsa(lsa SummaryLsa, lsakey LsaKey) []byte {
+        fmt.Println("LsaKey:", lsakey, "lsa:", lsa)
+        fmt.Println("====hi 1========")
 	sLsa := make([]byte, lsa.LsaMd.LSLen)
 	lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
+        fmt.Println("====hi 2========")
 	copy(sLsa[0:20], lsaHdr)
+        fmt.Println("====hi 3========")
 	binary.BigEndian.PutUint32(sLsa[20:24], lsa.Netmask)
 	binary.BigEndian.PutUint32(sLsa[24:28], lsa.Metric)
+        fmt.Println("====hi 4========")
 	numOfTOS := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 8) / 8
+        if numOfTOS <= 0 {
+                return sLsa
+        }
 	start := 28
-	for i := 0; i < numOfTOS; i++ {
+	for i := 0; i < numOfTOS - 1; i++ {
 		end := start + 4
 		var temp uint32
 		temp = uint32(lsa.SummaryTOSDetails[i].TOS) << 24
@@ -448,9 +456,12 @@ func decodeSummaryLsa(data []byte, lsa *SummaryLsa, lsakey *LsaKey) {
 	temp := binary.BigEndian.Uint32(data[24:28])
 	lsa.Metric = 0x00ffffff & temp
 	numOfTOS := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 8) / 8
+        if numOfTOS <= 0 {
+                return
+        }
 	lsa.SummaryTOSDetails = make([]SummaryTOSDetail, numOfTOS)
 	start := 28
-	for i := 0; i < numOfTOS; i++ {
+	for i := 0; i < numOfTOS - 1; i++ {
 		end := start + 4
 		temp = binary.BigEndian.Uint32(data[start:end])
 		lsa.SummaryTOSDetails[i].TOS = uint8((0xff000000 | temp) >> 24)
