@@ -619,11 +619,10 @@ func (server *OSPFServer) spfCalculation() {
                         //flag := false //TODO:Hack
                         // Initialize Algorithm's Data Structure
 
-                        server.logger.Info(fmt.Sprintln("=============================================================================Area Id : ", key.AreaId, "======================================================="))
+                        //server.logger.Info(fmt.Sprintln("===========Area Id : ", key.AreaId, "Area Bdr Status:", server.ospfGlobalConf.isABR, "======================================================="))
                         if len(aEnt.IntfListMap) == 0 {
                                 continue
                         }
-                        server.logger.Info("====Ashutosh=================")
                         aEnt.TransitCapability = false
                         areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
                         server.AreaGraph = make(map[VertexKey]Vertex)
@@ -647,10 +646,10 @@ func (server *OSPFServer) spfCalculation() {
                                 //flag = true
                                 continue
                         }
-                        server.logger.Info("=========================Start before Dijkstra=================")
-                        server.dumpAreaGraph()
-                        server.dumpAreaStubs()
-                        server.logger.Info("=========================End before Dijkstra=================")
+                        //server.logger.Info("=========================Start before Dijkstra=================")
+                        //server.dumpAreaGraph()
+                        //server.dumpAreaStubs()
+                        //server.logger.Info("=========================End before Dijkstra=================")
                         //server.printRouterLsa()
                         err = server.ExecuteDijkstra(vKey, areaId)
                         if err != nil {
@@ -658,11 +657,11 @@ func (server *OSPFServer) spfCalculation() {
                                 //flag = true
                                 continue
                         }
-                        server.logger.Info("=========================Start after Dijkstra=================")
-                        server.dumpAreaGraph()
-                        server.dumpAreaStubs()
-                        server.dumpSPFTree()
-                        server.logger.Info("=========================End after Dijkstra=================")
+                        //server.logger.Info("=========================Start after Dijkstra=================")
+                        //server.dumpAreaGraph()
+                        //server.dumpAreaStubs()
+                        //server.dumpSPFTree()
+                        //server.logger.Info("=========================End after Dijkstra=================")
                         server.UpdateRoutingTbl(vKey, areaId)
                         server.HandleSummaryLsa(areaId)
                         server.AreaGraph = nil

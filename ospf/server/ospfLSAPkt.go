@@ -923,7 +923,10 @@ func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey uint32, a
 		dslsa, ret := server.getSummaryLsaFromLsdb(areaid, *lsa_key)
 		if ret == LsdbEntryFound {
 			lsa_pkt = encodeSummaryLsa(dslsa, *lsa_key)
-		}
+                        flood = true
+		} else {
+			server.logger.Info(fmt.Sprintln("LSAREQ: Summary lsa not found. lsaid ", req.link_state_id, " lstype ", lsa_key.LSType))
+                }
 	case ASExternalLSA:
 		dalsa, ret := server.getASExternalLsaFromLsdb(areaid, *lsa_key)
 		if ret == LsdbEntryFound {

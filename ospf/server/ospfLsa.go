@@ -303,6 +303,7 @@ func encodeLinkData(lDetail LinkDetail, length int) []byte {
 }
 
 func encodeRouterLsa(lsa RouterLsa, lsakey LsaKey) []byte {
+        fmt.Println("lsa:", lsa, "LsaKey:", lsakey)
 	rtrLsa := make([]byte, lsa.LsaMd.LSLen)
 	lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
 	copy(rtrLsa[0:20], lsaHdr)
@@ -355,6 +356,7 @@ func encodeRouterLsa(lsa RouterLsa, lsakey LsaKey) []byte {
 */
 
 func encodeNetworkLsa(lsa NetworkLsa, lsakey LsaKey) []byte {
+        fmt.Println("lsa:", lsa, "LsaKey:", lsakey)
 	if lsa.LsaMd.LSLen == 0 {
 		return nil
 	}
@@ -418,21 +420,17 @@ func decodeNetworkLsa(data []byte, lsa *NetworkLsa, lsakey *LsaKey) {
 
 func encodeSummaryLsa(lsa SummaryLsa, lsakey LsaKey) []byte {
         fmt.Println("LsaKey:", lsakey, "lsa:", lsa)
-        fmt.Println("====hi 1========")
 	sLsa := make([]byte, lsa.LsaMd.LSLen)
 	lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
-        fmt.Println("====hi 2========")
 	copy(sLsa[0:20], lsaHdr)
-        fmt.Println("====hi 3========")
 	binary.BigEndian.PutUint32(sLsa[20:24], lsa.Netmask)
 	binary.BigEndian.PutUint32(sLsa[24:28], lsa.Metric)
-        fmt.Println("====hi 4========")
 	numOfTOS := (int(lsa.LsaMd.LSLen) - OSPF_LSA_HEADER_SIZE - 8) / 8
         if numOfTOS <= 0 {
                 return sLsa
         }
 	start := 28
-	for i := 0; i < numOfTOS - 1; i++ {
+	for i := 0; i < numOfTOS; i++ {
 		end := start + 4
 		var temp uint32
 		temp = uint32(lsa.SummaryTOSDetails[i].TOS) << 24
@@ -461,7 +459,7 @@ func decodeSummaryLsa(data []byte, lsa *SummaryLsa, lsakey *LsaKey) {
         }
 	lsa.SummaryTOSDetails = make([]SummaryTOSDetail, numOfTOS)
 	start := 28
-	for i := 0; i < numOfTOS - 1; i++ {
+	for i := 0; i < numOfTOS; i++ {
 		end := start + 4
 		temp = binary.BigEndian.Uint32(data[start:end])
 		lsa.SummaryTOSDetails[i].TOS = uint8((0xff000000 | temp) >> 24)
@@ -579,6 +577,8 @@ func decodeASExternalLsa(data []byte, lsa *ASExternalLsa, lsakey *LsaKey) {
 }
 
 func (server *OSPFServer) getRouterLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa RouterLsa, retVal int) {
+        server.logger.Info(fmt.Sprintln("1. LS DB:", server.AreaLsdb))
+        server.logger.Info(fmt.Sprintln("1. areaId:", areaId, "lsaKey:", lsaKey))
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
@@ -591,6 +591,8 @@ func (server *OSPFServer) getRouterLsaFromLsdb(areaId uint32, lsaKey LsaKey) (ls
 }
 
 func (server *OSPFServer) getNetworkLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa NetworkLsa, retVal int) {
+        server.logger.Info(fmt.Sprintln("2. LS DB:", server.AreaLsdb))
+        server.logger.Info(fmt.Sprintln("2. areaId:", areaId, "lsaKey:", lsaKey))
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
@@ -603,25 +605,34 @@ func (server *OSPFServer) getNetworkLsaFromLsdb(areaId uint32, lsaKey LsaKey) (l
 }
 
 func (server *OSPFServer) getSummaryLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa SummaryLsa, retVal int) {
+        server.logger.Info(fmt.Sprintln("3. LS DB:", server.AreaLsdb))
+        server.logger.Info(fmt.Sprintln("3. areaId:", areaId, "lsaKey:", lsaKey))
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
-	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+	lsDbEnt, exist := server.AreaLsdb[lsdbKey]
+        if !exist {
+                return lsa, LsdbEntryNotFound
+        }
 	if lsaKey.LSType == Summary3LSA {
-		lsa, exist := lsDbEnt.Summary3LsaMap[lsaKey]
+		lsa, exist = lsDbEnt.Summary3LsaMap[lsaKey]
 		if !exist {
 			return lsa, LsdbEntryNotFound
-		}
+                }
 	} else if lsaKey.LSType == Summary4LSA {
-		lsa, exist := lsDbEnt.Summary4LsaMap[lsaKey]
+		lsa, exist = lsDbEnt.Summary4LsaMap[lsaKey]
 		if !exist {
 			return lsa, LsdbEntryNotFound
-		}
-	}
-	return lsa, LsdbEntryFound
+                }
+	} else {
+                return lsa, LsdbEntryNotFound
+        }
+        return lsa, LsdbEntryFound
 }
 
 func (server *OSPFServer) getASExternalLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa ASExternalLsa, retVal int) {
+        server.logger.Info(fmt.Sprintln("4. LS DB:", server.AreaLsdb))
+        server.logger.Info(fmt.Sprintln("4. areaId:", areaId, "lsaKey:", lsaKey))
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
