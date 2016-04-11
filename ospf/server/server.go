@@ -119,12 +119,12 @@ type OSPFServer struct {
 
 	RefreshDuration time.Duration
 
-	TempAreaRoutingTbl map[AreaIdKey]AreaRoutingTbl
-        GlobalRoutingTbl        map[RoutingTblEntryKey]GlobalRoutingTblEntry
-        OldGlobalRoutingTbl     map[RoutingTblEntryKey]GlobalRoutingTblEntry
-        TempGlobalRoutingTbl    map[RoutingTblEntryKey]GlobalRoutingTblEntry
+	TempAreaRoutingTbl   map[AreaIdKey]AreaRoutingTbl
+	GlobalRoutingTbl     map[RoutingTblEntryKey]GlobalRoutingTblEntry
+	OldGlobalRoutingTbl  map[RoutingTblEntryKey]GlobalRoutingTblEntry
+	TempGlobalRoutingTbl map[RoutingTblEntryKey]GlobalRoutingTblEntry
 
-        SummaryLsDb             map[LsdbKey]SummaryLsaMap
+	SummaryLsDb map[LsdbKey]SummaryLsaMap
 
 	StartCalcSPFCh chan bool
 	DoneCalcSPFCh  chan bool
@@ -305,6 +305,10 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	*/
 	server.logger.Info("Listen for ASICd updates")
 	server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
+	err := server.initAsicdForRxMulticastPkt()
+	if err != nil {
+		server.logger.Err(fmt.Sprintln("Unable to initialize asicd for receiving multicast packets", err))
+	}
 	go server.createASICdSubscriber()
 	go server.spfCalculation()
 

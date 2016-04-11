@@ -2,11 +2,12 @@ package server
 
 import (
 	"asicd/asicdConstDefs"
+	"asicdInt"
 	"asicdServices"
 	"encoding/json"
 	"fmt"
-        "net"
 	nanomsg "github.com/op/go-nanomsg"
+	"net"
 	"utils/commonDefs"
 )
 
@@ -75,21 +76,21 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 		ipv4IntfMsg.IfId = uint16(asicdConstDefs.GetIntfIdFromIfIndex(NewIpv4IntfMsg.IfIndex))
 		if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_CREATE", ipv4IntfMsg))
-                        mtu := server.computeMinMTU(ipv4IntfMsg)
-                        // We need more information from Asicd about numbered/unnumbered p2p
-                        // or broadcast
-                        //Start
-                        ip, _, _ := net.ParseCIDR(ipv4IntfMsg.IpAddr)
-                        if ip.String() == "40.0.1.10" {
-                                server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, unnumberedP2P)
-                        } else if ip.String() == "40.0.1.15" {
-                                server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, numberedP2P)
-                        } else {
-                                server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, broadcast)
-                        }
+			mtu := server.computeMinMTU(ipv4IntfMsg)
+			// We need more information from Asicd about numbered/unnumbered p2p
+			// or broadcast
+			//Start
+			ip, _, _ := net.ParseCIDR(ipv4IntfMsg.IpAddr)
+			if ip.String() == "40.0.1.10" {
+				server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, unnumberedP2P)
+			} else if ip.String() == "40.0.1.15" {
+				server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, numberedP2P)
+			} else {
+				server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, broadcast)
+			}
 
-                        //End
-                        server.updateIpPropertyMap(ipv4IntfMsg, msg.MsgType)
+			//End
+			server.updateIpPropertyMap(ipv4IntfMsg, msg.MsgType)
 			//server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex)
 			if ipv4IntfMsg.IfType == commonDefs.L2RefTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
@@ -99,7 +100,7 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 		} else {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_DELETE", ipv4IntfMsg))
 			server.deleteIPIntfConfMap(ipv4IntfMsg, NewIpv4IntfMsg.IfIndex)
-                        server.updateIpPropertyMap(ipv4IntfMsg, msg.MsgType)
+			server.updateIpPropertyMap(ipv4IntfMsg, msg.MsgType)
 			if ipv4IntfMsg.IfType == commonDefs.L2RefTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
 			} else if ipv4IntfMsg.IfType == commonDefs.L2RefTypeVlan { // Vlan
@@ -120,8 +121,35 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 	}
 }
 
+func (server *OSPFServer) initAsicdForRxMulticastPkt() (err error) {
+	// All SPF Router
+	allSPFRtrMacConf := asicdInt.RsvdProtocolMacConfig{
+		MacAddr:     ALLSPFROUTERMAC,
+		MacAddrMask: MASKMAC,
+	}
+
+	ret, err := server.asicdClient.ClientHdl.EnablePacketReception(&allSPFRtrMacConf)
+	if !ret {
+		server.logger.Info(fmt.Sprintln("Adding reserved mac failed", ALLSPFROUTERMAC))
+		return err
+	}
+
+	// All D Router
+	allDRtrMacConf := asicdInt.RsvdProtocolMacConfig{
+		MacAddr:     ALLDROUTERMAC,
+		MacAddrMask: MASKMAC,
+	}
+
+	ret, err = server.asicdClient.ClientHdl.EnablePacketReception(&allDRtrMacConf)
+	if !ret {
+		server.logger.Info(fmt.Sprintln("Adding reserved mac failed", ALLDROUTERMAC))
+		return err
+	}
+	return nil
+}
+
 const (
-        numberedP2P int = 0
-        unnumberedP2P int = 1
-        broadcast int = 2
+	numberedP2P   int = 0
+	unnumberedP2P int = 1
+	broadcast     int = 2
 )
