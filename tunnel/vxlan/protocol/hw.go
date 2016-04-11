@@ -4,6 +4,7 @@ package vxlan
 import (
 	hwconst "asicd/asicdConstDefs"
 	"asicd/pluginManager/pluginCommon"
+	"asicdInt"
 	"asicdServices"
 	"encoding/json"
 	"git.apache.org/thrift.git/lib/go/thrift"
@@ -57,6 +58,16 @@ func ConvertVxlanConfigToVxlanLinuxConfig(c *VxlanConfig) *vxlan_linux.VxlanConf
 	}
 }
 
+func ConvertVxlanConfigToVxlanAsicdConfig(c *VxlanConfig) *asicdInt.Vxlan {
+
+	return &asicdInt.Vxlan{
+		VxlanId:  int32(c.VNI),
+		VlanId:   int16(c.VlanId),
+		McDestIp: c.Group.String(),
+		Mtu:      int32(c.MTU),
+	}
+}
+
 func ConvertVtepConfigToVxlanLinuxConfig(c *VtepConfig) *vxlan_linux.VtepConfig {
 	return &vxlan_linux.VtepConfig{
 		VtepId:    c.VtepId,
@@ -76,6 +87,37 @@ func ConvertVtepConfigToVxlanLinuxConfig(c *VtepConfig) *vxlan_linux.VtepConfig 
 		VlanId:                c.VlanId,
 		TunnelSrcMac:          c.TunnelSrcMac,
 		TunnelDstMac:          c.TunnelDstMac,
+	}
+}
+
+func ConvertVtepConfigToVxlanAsicdConfig(c *VtepConfig) *asicdInt.Vtep {
+
+	ifindex := int32(0)
+	for _, pc := range PortConfigMap {
+		if pc.Name == c.SrcIfName {
+			ifindex = pc.IfIndex
+		}
+
+	}
+
+	return &asicdInt.Vtep{
+		VtepId:     int32(c.VtepId),
+		VxlanId:    int32(c.VxlanId),
+		VtepName:   c.VtepName,
+		SrcIfIndex: ifindex,
+		UDP:        int16(c.UDP),
+		TTL:        int16(c.TTL),
+		TOS:        int16(c.TOS),
+		InnerVlanHandlingMode: int32(c.InnerVlanHandlingMode),
+		Learning:              c.Learning,
+		Rsc:                   c.Rsc,
+		L2miss:                c.L2miss,
+		L3miss:                c.L3miss,
+		SrcIp:                 c.TunnelSrcIp.String(),
+		DstIp:                 c.TunnelDstIp.String(),
+		VlanId:                int16(c.VlanId),
+		SrcMac:                c.TunnelSrcMac.String(),
+		DstMac:                c.TunnelDstMac.String(),
 	}
 }
 
@@ -200,9 +242,9 @@ func asicDGetLoopbackInfo() (success bool, lbname string, mac net.HardwareAddr, 
 							ipV4ObjCurrMarker = asicdServices.Int(bulkInfo.EndIdx)
 							ipV4ObjMore = bool(ipV4BulkInfo.More)
 							for j := 0; j < ipV4ObjCount; j++ {
-								if ipV4BulkInfo.IPv4IntfList[j].IfIndex == ifindex {
+								if ipV4BulkInfo.IPv4IntfStateList[j].IfIndex == ifindex {
 									success = true
-									ip = net.ParseIP(strings.Split(ipV4BulkInfo.IPv4IntfList[j].IpAddr, "/")[0])
+									ip = net.ParseIP(strings.Split(ipV4BulkInfo.IPv4IntfStateList[j].IpAddr, "/")[0])
 									return success, lbname, mac, ip
 								}
 							}
@@ -218,7 +260,7 @@ func asicDGetLoopbackInfo() (success bool, lbname string, mac net.HardwareAddr, 
 func asicDCreateVxlan(vxlan *VxlanConfig) {
 	// convert a vxland config to hw config
 	if asicdclnt.ClientHdl != nil {
-		// TODO
+		asicdclnt.ClientHdl.CreateVxlan(ConvertVxlanConfigToVxlanAsicdConfig(vxlan))
 	} else {
 
 		// run standalone
@@ -232,7 +274,7 @@ func asicDCreateVxlan(vxlan *VxlanConfig) {
 func asicDDeleteVxlan(vxlan *VxlanConfig) {
 	// convert a vxland config to hw config
 	if asicdclnt.ClientHdl != nil {
-		// TODO
+		asicdclnt.ClientHdl.DeleteVxlan(ConvertVxlanConfigToVxlanAsicdConfig(vxlan))
 	} else {
 		// run standalone
 		if softswitch != nil {
@@ -244,7 +286,7 @@ func asicDDeleteVxlan(vxlan *VxlanConfig) {
 func asicDCreateVtep(vtep *VtepConfig) {
 	// convert a vxland config to hw config
 	if asicdclnt.ClientHdl != nil {
-		// TODO
+		asicdclnt.ClientHdl.CreateVxlanVtep(ConvertVtepConfigToVxlanAsicdConfig(vtep))
 	} else {
 		// run standalone
 		if softswitch == nil {
@@ -257,7 +299,7 @@ func asicDCreateVtep(vtep *VtepConfig) {
 func asicDDeleteVtep(vtep *VtepConfig) {
 	// convert a vxland config to hw config
 	if asicdclnt.ClientHdl != nil {
-		// TODO
+		asicdclnt.ClientHdl.DeleteVxlanVtep(ConvertVtepConfigToVxlanAsicdConfig(vtep))
 	} else {
 		// run standalone
 		if softswitch != nil {

@@ -7,6 +7,7 @@ import (
 	"github.com/google/gopacket/pcap"
 	"github.com/vishvananda/netlink"
 	vxlan "l3/tunnel/vxlan/protocol"
+	"l3/tunnel/vxlan/vxlan_linux"
 	"net"
 	"testing"
 	"time"
@@ -18,6 +19,9 @@ var logger *logging.Writer
 func Setup() {
 	logger, _ = logging.NewLogger("./", "vxland", "TEST")
 	vxlan.SetLogger(logger)
+	// options "linux", "proxy"
+	// as of 4/11/16 linux does not work getting error counts (carrier)
+	vxlan_linux.VxlanConfigMode = "proxy"
 }
 
 var UDP_PORT layers.UDPPort = 4789
@@ -264,8 +268,10 @@ func TestRxArpPacket(t *testing.T) {
 		t.Error("Failed to Create pcap handle")
 		t.FailNow()
 	}
-	rxhandle := CreateTestVtepRxHandle(vtepconfig.VtepName)
-
+	var rxhandle *pcap.Handle
+	if vxlan_linux.VxlanConfigMode == "proxy" {
+		rxhandle = CreateTestVtepRxHandle(vtepconfig.VtepName)
+	}
 	// create vtep interface and which will listen on vtep interface
 	vxlan.CreateVtep(vtepconfig)
 	// delay to allow for resources to be created in linux
@@ -274,17 +280,21 @@ func TestRxArpPacket(t *testing.T) {
 	// Set up all the layers' fields we can.
 	arppktbuf := CreateVxlanArpFrame([3]uint8{uint8(vtepconfig.VxlanId >> 16 & 0xff), uint8(vtepconfig.VxlanId >> 8 & 0xff), uint8(vtepconfig.VxlanId >> 0 & 0xff)})
 	fmt.Println("Sending packet to ", vteplbnametx)
-	// create a listener for the packet that should be received
-	donechan := WaitForRxPacket(rxhandle)
-	// send packet
-	SendPacket(handle, arppktbuf, t)
-	done := <-donechan
-	if !done {
-		t.Error("Failed to Receive packet")
-		t.FailNow()
+	if vxlan_linux.VxlanConfigMode == "proxy" {
+
+		// create a listener for the packet that should be received
+		donechan := WaitForRxPacket(rxhandle)
+		// send packet
+		SendPacket(handle, arppktbuf, t)
+		done := <-donechan
+		if !done {
+			t.Error("Failed to Receive packet")
+			t.FailNow()
+		}
+		// lets close the listner channel
+		rxhandle.Close()
 	}
-	// lets close the listner channel
-	rxhandle.Close()
+
 	// cleanup the resources
 	vxlan.DeleteVtep(vtepconfig)
 	vxlan.DeleteVxLAN(vxlanconfig)
@@ -310,4 +320,5 @@ func TestRxArpPacket(t *testing.T) {
 		t.Error("Failed to delete vtep (vEth) interfaces")
 		t.FailNow()
 	}
+
 }

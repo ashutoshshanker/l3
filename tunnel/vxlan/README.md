@@ -2,7 +2,7 @@ vxlan package can be run in one of two modes
 
 Config:
 "vxlanmode" - "linux" or "proxy"
-1) "linux" - Using linux vxlan interface
+1) "linux" - Using linux vxlan interface (NOT SUPPORTED)
 2) "proxy" - Using vxland vxlan proxy
 
 "standalone" - true or false

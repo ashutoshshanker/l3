@@ -5,13 +5,16 @@ package vxlan_linux
 import (
 	"fmt"
 	"github.com/vishvananda/netlink"
-	//"github.com/vishvananda/netlink/nl"
+	"github.com/vishvananda/netlink/nl"
 	"net"
 	"time"
 	//"os/exec"
 	"utils/logging"
 )
 
+// options "proxy", "linux"
+// TODO eventually read this from config file
+var VxlanConfigMode string = "proxy"
 var VxlanDB map[uint32]VxlanDbEntry
 
 type VxlanDbEntry struct {
@@ -155,64 +158,76 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		return
 	}
 
-	/* 4/6/16 DID Not work, packets were never received on VTEP
-	vtep := &netlink.Vxlan{
-		LinkAttrs: netlink.LinkAttrs{
-			Name: c.VtepName,
-			//MasterIndex: VxlanDB[c.VxlanId].Brg.Attrs().Index,
-			HardwareAddr: c.TunnelSrcMac,
-			//MTU:          VxlanDB[c.VxlanId].Brg.Attrs().MTU,
-			MTU: 1550,
-		},
-		VxlanId:      int(c.VxlanId),
-		VtepDevIndex: link.Attrs().Index,
-		SrcAddr:      c.TunnelSrcIp,
-		Group:        c.TunnelDstIp,
-		TTL:          int(c.TTL),
-		TOS:          int(c.TOS),
-		Learning:     c.Learning,
-		Proxy:        false,
-		RSC:          c.Rsc,
-		L2miss:       false,
-		L3miss:       false,
-		UDPCSum:      true,
-		NoAge:        false,
-		GBP:          false,
-		Age:          300,
-		Port:         int(nl.Swap16(c.UDP)),
-		PortLow:      int(c.UDP),
-		PortHigh:     int(c.UDP),
-	}
-	*/
-	// Veth will create two interfaces
-	// VtepName and VtepName + Int
-	// the VtepNam + Int interface will be used by Vxland to rx packets
-	// from other daemons and to send packets received from physical port
-	// to the daemons
-	//
-	//  physical port <--> vxland (if vxlan packet) <--> vtepName Int <-->
-	//  vtepName <--> Other Daemons listening
-	//  on this vtepName interface
-	vtep := &netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{
-			Name:         c.VtepName,
-			MasterIndex:  VxlanDB[c.VxlanId].Brg.Attrs().Index,
-			HardwareAddr: c.TunnelSrcMac,
-			MTU:          VxlanDB[c.VxlanId].Brg.Attrs().MTU,
-		},
-		PeerName: c.VtepName + "Int",
+	if VxlanConfigMode == "linux" {
+		/* 4/6/16 DID Not work, packets were never received on VTEP */
+		vtep := &netlink.Vxlan{
+			LinkAttrs: netlink.LinkAttrs{
+				Name: c.VtepName,
+				//MasterIndex: VxlanDB[c.VxlanId].Brg.Attrs().Index,
+				HardwareAddr: c.TunnelSrcMac,
+				//MTU:          VxlanDB[c.VxlanId].Brg.Attrs().MTU,
+				MTU: 1550,
+			},
+			VxlanId:      int(c.VxlanId),
+			VtepDevIndex: link.Attrs().Index,
+			SrcAddr:      c.TunnelSrcIp,
+			Group:        c.TunnelDstIp,
+			TTL:          int(c.TTL),
+			TOS:          int(c.TOS),
+			Learning:     c.Learning,
+			Proxy:        false,
+			RSC:          c.Rsc,
+			L2miss:       false,
+			L3miss:       false,
+			UDPCSum:      true,
+			NoAge:        false,
+			GBP:          false,
+			Age:          300,
+			Port:         int(nl.Swap16(c.UDP)),
+			PortLow:      int(c.UDP),
+			PortHigh:     int(c.UDP),
+		}
+		//equivalent to linux command:
+		// ip link add DEVICE type vxlan id ID [ dev PHYS_DEV  ] [ { group
+		//         | remote } IPADDR ] [ local IPADDR ] [ ttl TTL ] [ tos TOS ] [
+		//          port MIN MAX ] [ [no]learning ] [ [no]proxy ] [ [no]rsc ] [
+		//          [no]l2miss ] [ [no]l3miss ]
+		if err := netlink.LinkAdd(vtep); err != nil {
+			v.logger.Err(err.Error())
+		}
+
+	} else {
+
+		// Veth will create two interfaces
+		// VtepName and VtepName + Int
+		// the VtepNam + Int interface will be used by Vxland to rx packets
+		// from other daemons and to send packets received from physical port
+		// to the daemons
+		//
+		//  physical port <--> vxland (if vxlan packet) <--> vtepName Int <-->
+		//  vtepName <--> Other Daemons listening
+		//  on this vtepName interface
+		vtep := &netlink.Veth{
+			LinkAttrs: netlink.LinkAttrs{
+				Name:         c.VtepName,
+				MasterIndex:  VxlanDB[c.VxlanId].Brg.Attrs().Index,
+				HardwareAddr: c.TunnelSrcMac,
+				MTU:          VxlanDB[c.VxlanId].Brg.Attrs().MTU,
+			},
+			PeerName: c.VtepName + "Int",
+		}
+		//equivalent to linux command:
+		// ip link add DEVICE type vxlan id ID [ dev PHYS_DEV  ] [ { group
+		//         | remote } IPADDR ] [ local IPADDR ] [ ttl TTL ] [ tos TOS ] [
+		//          port MIN MAX ] [ [no]learning ] [ [no]proxy ] [ [no]rsc ] [
+		//          [no]l2miss ] [ [no]l3miss ]
+		if err := netlink.LinkAdd(vtep); err != nil {
+			v.logger.Err(err.Error())
+		}
+
 	}
 
-	//equivalent to linux command:
-	// ip link add DEVICE type vxlan id ID [ dev PHYS_DEV  ] [ { group
-	//         | remote } IPADDR ] [ local IPADDR ] [ ttl TTL ] [ tos TOS ] [
-	//          port MIN MAX ] [ [no]learning ] [ [no]proxy ] [ [no]rsc ] [
-	//          [no]l2miss ] [ [no]l3miss ]
-	if err := netlink.LinkAdd(vtep); err != nil {
-		v.logger.Err(err.Error())
-	}
-
-	link, err = netlink.LinkByName(vtep.Name)
+	link, err = netlink.LinkByName(c.VtepName)
 	if err != nil {
 		v.logger.Err(fmt.Sprintf("Link by Name vtep:", err.Error()))
 	}
@@ -262,7 +277,7 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 
 			// values taken from linux/neighbour.h
 	*/
-	/*
+	if VxlanConfigMode == "linux" {
 		if c.TunnelDstIp != nil &&
 			c.TunnelDstMac != nil {
 			neigh := &netlink.Neigh{
@@ -308,7 +323,7 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		} else {
 			v.logger.Info(fmt.Sprintf("neighbor: not configured dstIp %#v dstmac %#v", c.TunnelDstIp, c.TunnelDstMac))
 		}
-	*/
+	}
 	vxlanDbEntry := VxlanDB[uint32(c.VxlanId)]
 	vxlanDbEntry.Links = append(vxlanDbEntry.Links, &link)
 	VxlanDB[uint32(c.VxlanId)] = vxlanDbEntry
@@ -324,7 +339,7 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 	for i := 0; i < 10; i++ {
 		err := netlink.LinkSetUp(link)
 		if err != nil && i < 10 {
-			v.logger.Info(fmt.Sprintf("createVtep: %s link not connected yet waiting 5ms", vtep.Name))
+			v.logger.Info(fmt.Sprintf("createVtep: %s link not connected yet waiting 5ms", c.VtepName))
 			time.Sleep(time.Millisecond * 5)
 		} else if err != nil {
 			v.logger.Err(err.Error())
@@ -339,8 +354,12 @@ func (v *VxlanLinux) DeleteVtep(c *VtepConfig) {
 	foundEntry := false
 	if vxlanentry, ok := VxlanDB[c.VxlanId]; ok {
 		for i, link := range vxlanentry.Links {
-			//linkName := (*link).(*netlink.Vxlan).Attrs().Name
-			linkName := (*link).(*netlink.Veth).Attrs().Name
+			var linkName string
+			if VxlanConfigMode == "linux" {
+				linkName = (*link).(*netlink.Vxlan).Attrs().Name
+			} else {
+				linkName = (*link).(*netlink.Veth).Attrs().Name
+			}
 			if linkName == c.VtepName {
 				v.logger.Info(fmt.Sprintf("deleteVtep: link found %s looking for %s", linkName, c.VtepName))
 				foundEntry = true
