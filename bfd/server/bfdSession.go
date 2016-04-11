@@ -208,6 +208,7 @@ func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLi
 		bfdSession.authSeqNum = 1
 		bfdSession.authKeyId = uint32(intf.conf.AuthenticationKeyId)
 		bfdSession.authData = intf.conf.AuthenticationData
+		bfdSession.intfConfigChanged = true
 	}
 	bfdSession.server = server
 	bfdSession.bfdPacket = NewBfdControlPacketDefault()
@@ -457,8 +458,8 @@ func (server *BFDServer) AdminDownBfdSession(sessionMgmt BfdSessionMgmt) error {
 
 // This function handles NextHop change from RIB.
 // Subsequent control packets will be sent using the BFD attributes configuration on the new IfIndex.
-// A Poll control packet will be sent to BFD neighbor and expact a Final control packet.
-func (server *BFDServer) HandleNextHopChange(DestIp string) error {
+// A Poll control packet will be sent to BFD neighbor and expect a Final control packet.
+func (server *BFDServer) HandleNextHopChange(DestIp string, IfIndex int32) error {
 	return nil
 }
 
@@ -669,6 +670,7 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 	} else {
 		session.bfdPacket.AuthPresent = false
 	}
+	session.intfConfigChanged = false
 	return nil
 }
 
@@ -850,6 +852,14 @@ func (session *BfdSession) ApplyTxJitter() time.Duration {
 	return time.Duration(txInterval)
 }
 
+func (session *BfdSession) NeedBfdPacketUpdate() bool {
+	if session.intfConfigChanged == true || session.pollSequence == true || session.pollSequenceFinal == true {
+		return true
+	} else {
+		return false
+	}
+}
+
 func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 	var err error
 	destAddr := session.state.IpAddr + ":" + strconv.Itoa(DEST_PORT)
@@ -878,10 +888,9 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 		select {
 		case sessionId := <-session.TxTimeoutCh:
 			bfdSession := server.bfdGlobal.Sessions[sessionId]
-			if bfdSession.intfConfigChanged == true {
+			if bfdSession.NeedBfdPacketUpdate() {
 				bfdSession.UpdateBfdSessionControlPacket()
 				bfdSession.bfdPacketBuf, err = bfdSession.bfdPacket.CreateBfdControlPacket()
-				bfdSession.intfConfigChanged = false
 			}
 			if err != nil {
 				server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", bfdSession.state.SessionId))

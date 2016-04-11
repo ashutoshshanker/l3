@@ -13,7 +13,8 @@ import (
 */
 func (server *OSPFServer) exchangePacketDiscardCheck(nbrConf OspfNeighborEntry, nbrDbPkt ospfDatabaseDescriptionData) (isDiscard bool) {
 	if nbrDbPkt.msbit != nbrConf.isMaster {
-		server.logger.Info(fmt.Sprintln("NBREVENT: SeqNumberMismatch. Nbr should be master"))
+		server.logger.Info(fmt.Sprintln("NBREVENT: SeqNumberMismatch. Nbr should be master  dbdmsbit ", nbrDbPkt.msbit,
+			" isMaster ", nbrConf.isMaster))
 		return true
 	}
 
