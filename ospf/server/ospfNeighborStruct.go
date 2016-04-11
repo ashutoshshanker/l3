@@ -200,10 +200,12 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				updateLSALists(nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
 				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				if nbrMsg.ospfNbrEntry.OspfNbrState >= config.NbrTwoWay {
+					seq_num := uint32(time.Now().Nanosecond())
 					server.ConstructAndSendDbdPacket(nbrMsg.ospfNbrConfKey, true, true, true,
-						INTF_OPTIONS, uint32(time.Now().Nanosecond()), false, false)
+						INTF_OPTIONS, seq_num, false, false)
 					nbrConf.OspfNbrState = config.NbrExchangeStart
 					nbrConf.nbrEvent = config.Nbr2WayReceived
+					nbrConf.ospfNbrSeqNum = seq_num
 					server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				}
 				server.neighborDeadTimerEvent(nbrMsg.ospfNbrConfKey)

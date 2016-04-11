@@ -15,13 +15,13 @@ const (
 for tx LSAUPD channel
 */
 type ospfFloodMsg struct {
-	nbrKey  uint32
-	intfKey IntfConfKey
-	areaId  uint32
-	lsType  uint8
-	linkid  uint32
-	lsOp    uint8  // indicates whether to flood on all interfaces or selective ones.
-	pkt     []byte //LSA flood packet received from another neighbor
+	nbrKey        uint32
+	intfKey       IntfConfKey
+	areaId        uint32
+	lsType        uint8
+	linkid        uint32
+	lsOp          uint8  // indicates whether to flood on all interfaces or selective ones.
+	pkt           []byte //LSA flood packet received from another neighbor
 	summaryUpdMsg summaryLsaUpdMsg
 }
 
@@ -148,13 +148,14 @@ func (server *OSPFServer) processFloodMsg(lsa_data ospfFloodMsg) {
 		nbrConf := server.NeighborConfigMap[lsa_data.nbrKey]
 		rxIntf := server.IntfConfMap[nbrConf.intfConfKey]
 		lsid := convertUint32ToIPv4(lsa_data.linkid)
+		server.logger.Info(fmt.Sprintln("LSASELFLOOD: Received lsid ", lsid, " lstype ", lsa_data.lsType))
 		var lsaEncPkt []byte
 		for key, intf := range server.IntfConfMap {
 			if intf.IfIpAddr.Equal(rxIntf.IfIpAddr) {
 				server.logger.Info(fmt.Sprintln("LSASELFLOOD:Dont flood on rx intf ", rxIntf.IfIpAddr))
 				continue // dont flood the LSA on the interface it is received.
 			}
-			send := server.nbrFloodCheck(lsa_data.nbrKey, key, intf)
+			send := server.nbrFloodCheck(lsa_data.nbrKey, key, intf, lsa_data.lsType)
 			if send {
 				if lsa_data.pkt != nil {
 					server.logger.Info(fmt.Sprintln("LSASELFLOOD: Unicast LSA interface ", intf.IfIpAddr, " lsid ", lsid, " lstype ", lsa_data.lsType))
@@ -195,9 +196,9 @@ func (server *OSPFServer) processFloodMsg(lsa_data ospfFloodMsg) {
 
 		}
 
-	case LSASUMMARYFLOOD: 
-	     server.logger.Info(fmt.Sprintln("Flood: Summary LSA flood msg received."))
-	    server.processSummaryLSAFlood(lsa_data.summaryUpdMsg)
+	case LSASUMMARYFLOOD:
+		server.logger.Info(fmt.Sprintln("Flood: Summary LSA flood msg received."))
+		server.processSummaryLSAFlood(lsa_data.summaryUpdMsg)
 	case LSAAGE: // Flood aged LSAs
 		server.constructAndSendLsaAgeFlood()
 
@@ -254,13 +255,13 @@ func (server *OSPFServer) constructAndSendLsaAgeFlood() {
 /* @fn interfaceFloodCheck
 Check if we need to flood the LSA on the interface
 */
-func (server *OSPFServer) nbrFloodCheck(nbrKey uint32, key IntfConfKey, intf IntfConf) bool {
+func (server *OSPFServer) nbrFloodCheck(nbrKey uint32, key IntfConfKey, intf IntfConf, lsType uint8) bool {
 	/* Check neighbor state */
 	flood_check := true
 	nbrConf := server.NeighborConfigMap[nbrKey]
 	//rtrid := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
-	if nbrConf.intfConfKey == key && nbrConf.isDRBDR {
-		server.logger.Info(fmt.Sprintln("IF FLOOD: Nbr is DR/BDR. Dont flood on this interface . nbr - ", nbrKey, nbrConf.OspfNbrIPAddr))
+	if nbrConf.intfConfKey == key && nbrConf.isDRBDR && lsType != Summary3LSA && lsType != Summary4LSA {
+		server.logger.Info(fmt.Sprintln("IF FLOOD: Nbr is DR/BDR.   flood on this interface . nbr - ", nbrKey, nbrConf.OspfNbrIPAddr))
 		return false
 	}
 	flood_check = server.interfaceFloodCheck(key)
@@ -271,6 +272,7 @@ func (server *OSPFServer) interfaceFloodCheck(key IntfConfKey) bool {
 	flood_check := false
 	nbrData, exist := ospfIntfToNbrMap[key]
 	if !exist {
+		server.logger.Info(fmt.Sprintln("FLOOD: Intf to nbr map doesnt exist."))
 		return false
 	}
 	if nbrData.nbrList != nil {
@@ -278,6 +280,7 @@ func (server *OSPFServer) interfaceFloodCheck(key IntfConfKey) bool {
 			nbrId := nbrData.nbrList[index]
 			nbrConf := server.NeighborConfigMap[nbrId]
 			if nbrConf.OspfNbrState < config.NbrExchange {
+				server.logger.Info(fmt.Sprintln("FLOOD: Nbr < exchange . ", nbrConf.OspfNbrIPAddr))
 				flood_check = false
 				continue
 			}
@@ -285,6 +288,8 @@ func (server *OSPFServer) interfaceFloodCheck(key IntfConfKey) bool {
 			/* TODO - add check if nbrstate is loading - check its retransmission list
 			   add LSA to the adjacency list of neighbor with FULL state.*/
 		}
+	} else {
+		server.logger.Info(fmt.Sprintln("FLOOD: nbr list is null for interface ", key.IPAddr))
 	}
 	return flood_check
 }

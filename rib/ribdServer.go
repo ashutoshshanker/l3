@@ -3,6 +3,7 @@ package main
 import (
 	"arpd"
 	"asicd/asicdConstDefs"
+	"asicdInt"
 	"asicdServices"
 	"database/sql"
 	"encoding/json"
@@ -29,10 +30,10 @@ type UpdateRouteInfo struct {
 	attrset   []bool
 }
 type NextHopInfoKey struct {
-	nextHopIp    string
+	nextHopIp string
 }
 type NextHopInfo struct {
-	refCount     int
+	refCount int
 }
 type RIBDServicesHandler struct {
 	RouteCreateConfCh            chan *ribd.IPv4Route
@@ -137,6 +138,7 @@ var count int
 var ConnectedRoutes []*ribdInt.Routes
 var AsicdSub *nanomsg.SubSocket
 var RIBD_PUB *nanomsg.PubSocket
+
 //var RIBD_BGPD_PUB *nanomsg.PubSocket
 var IntfIdNameMap map[int32]IntfEntry
 
@@ -280,7 +282,14 @@ func installRoutesInASIC() {
 			routeInfoList := prefixNodeRouteList.routeInfoProtocolMap[prefixNodeRouteList.selectedRouteProtocol]
 			for sel := 0; sel < len(routeInfoList); sel++ {
 				routeInfoRecord := routeInfoList[sel]
-				asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String(), int32(routeInfoRecord.nextHopIfType))
+				asicdclnt.ClientHdl.OnewayCreateIPv4Route([]*asicdInt.IPv4Route{
+					&asicdInt.IPv4Route{
+						routeInfoRecord.destNetIp.String(),
+						routeInfoRecord.networkMask.String(),
+						routeInfoRecord.nextHopIp.String(),
+						int32(routeInfoRecord.nextHopIfType),
+					},
+				})
 			}
 		}
 
@@ -532,22 +541,22 @@ func InitializePolicyDB() {
 func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
 	RouteInfoMap = patriciaDB.NewTrie()
 	ribdServicesHandler := &RIBDServicesHandler{}
-    RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
+	RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
 	TrackReachabilityMap = make(map[string][]string)
-    RouteProtocolTypeMapDB = make(map[string]int)
-    ReverseRouteProtoTypeMapDB = make(map[int]string)
-    ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
-    PublisherInfoMap = make(map[string]PublisherMapInfo)
+	RouteProtocolTypeMapDB = make(map[string]int)
+	ReverseRouteProtoTypeMapDB = make(map[int]string)
+	ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
+	PublisherInfoMap = make(map[string]PublisherMapInfo)
 	ribdServicesHandler.NextHopInfoMap = make(map[NextHopInfoKey]NextHopInfo)
-	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route,1000)
+	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route, 1000)
 	ribdServicesHandler.RouteDeleteConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteUpdateConfCh = make(chan UpdateRouteInfo)
-	ribdServicesHandler.NetlinkAddRouteCh = make(chan RouteInfoRecord,1000)
-	ribdServicesHandler.NetlinkDelRouteCh = make(chan RouteInfoRecord,100)
-	ribdServicesHandler.AsicdAddRouteCh = make(chan RouteInfoRecord,1000)
-	ribdServicesHandler.AsicdDelRouteCh = make(chan RouteInfoRecord,1000)
-	ribdServicesHandler.ArpdResolveRouteCh = make(chan RouteInfoRecord,1000)
-	ribdServicesHandler.ArpdRemoveRouteCh = make(chan RouteInfoRecord,1000)
+	ribdServicesHandler.NetlinkAddRouteCh = make(chan RouteInfoRecord, 1000)
+	ribdServicesHandler.NetlinkDelRouteCh = make(chan RouteInfoRecord, 100)
+	ribdServicesHandler.AsicdAddRouteCh = make(chan RouteInfoRecord, 1000)
+	ribdServicesHandler.AsicdDelRouteCh = make(chan RouteInfoRecord, 1000)
+	ribdServicesHandler.ArpdResolveRouteCh = make(chan RouteInfoRecord, 1000)
+	ribdServicesHandler.ArpdRemoveRouteCh = make(chan RouteInfoRecord, 1000)
 	ribdServicesHandler.PolicyConditionCreateConfCh = make(chan *ribd.PolicyCondition)
 	ribdServicesHandler.PolicyConditionDeleteConfCh = make(chan *ribd.PolicyCondition)
 	ribdServicesHandler.PolicyConditionUpdateConfCh = make(chan *ribd.PolicyCondition)
