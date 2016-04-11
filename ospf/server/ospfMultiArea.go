@@ -176,13 +176,6 @@ func (server *OSPFServer)GenerateSummaryLsa() {
                 server.SummaryLsDb[lsDbKey] = sEnt
         }
 
-        server.InstallSummaryLsaInLsDb()
-
-        for key, sEnt := range server.SummaryLsDb {
-                sEnt = nil
-                server.SummaryLsDb[key] = sEnt
-        }
-        server.SummaryLsDb = nil
 }
 
 func (server *OSPFServer) GenerateType3SummaryLSA(rKey RoutingTblEntryKey, rEnt GlobalRoutingTblEntry) (LsaKey, SummaryLsa) {
@@ -204,8 +197,3 @@ func (server *OSPFServer) GenerateType3SummaryLSA(rKey RoutingTblEntryKey, rEnt 
 
         return lsaKey, summaryLsa
 }
-
-func (server *OSPFServer) InstallSummaryLsaInLsDb() {
-        server.logger.Info(fmt.Sprintln("Summary LSA which are need to be installed:", server.SummaryLsDb))
-}
-

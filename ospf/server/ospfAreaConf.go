@@ -210,7 +210,9 @@ func (server *OSPFServer) updateIfABR() {
 	}
 	if index > 1 {
                 server.ospfGlobalConf.isABR = true
+                server.ospfGlobalConf.AreaBdrRtrStatus = true
 	} else {
                 server.ospfGlobalConf.isABR = false
+                server.ospfGlobalConf.AreaBdrRtrStatus = false
         }
 }
