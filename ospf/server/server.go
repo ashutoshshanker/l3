@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/pluginManager/pluginCommon"
+	"asicd/asicdConstDefs"
 	"asicdServices"
 	"container/list"
 	"encoding/json"
@@ -35,7 +35,7 @@ type LsdbKey struct {
 }
 
 type RoutingTblKey struct {
-        AreaId uint32
+	AreaId uint32
 }
 
 type LsdbSliceEnt struct {
@@ -298,7 +298,7 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	   server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
 	*/
 	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
+	server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
 	go server.spfCalculation()
 
