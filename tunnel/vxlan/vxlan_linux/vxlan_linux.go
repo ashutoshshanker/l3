@@ -16,6 +16,12 @@ import (
 // TODO eventually read this from config file
 var VxlanConfigMode string = "proxy"
 var VxlanDB map[uint32]VxlanDbEntry
+var macDb map[int32][]*VxlanMacDbEntry
+
+type VxlanMacDbEntry struct {
+	vtepName string
+	mac      string
+}
 
 type VxlanDbEntry struct {
 	VNI    uint32
@@ -158,6 +164,7 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 		return
 	}
 
+	fmt.Println("Config Mode", VxlanConfigMode)
 	if VxlanConfigMode == "linux" {
 		/* 4/6/16 DID Not work, packets were never received on VTEP */
 		vtep := &netlink.Vxlan{
@@ -280,9 +287,10 @@ func (v *VxlanLinux) CreateVtep(c *VtepConfig) {
 	if VxlanConfigMode == "linux" {
 		if c.TunnelDstIp != nil &&
 			c.TunnelDstMac != nil {
+			// adds arp entry related to tunnel dst
 			neigh := &netlink.Neigh{
-				LinkIndex: link.Attrs().Index,
-				//Family:       netlink.NDA_VNI,                           // NDA_VNI
+				LinkIndex:    link.Attrs().Index,
+				Family:       netlink.NDA_VNI,                           // NDA_VNI
 				State:        netlink.NUD_NOARP | netlink.NUD_PERMANENT, // NUD_NOARP (0x40) | NUD_PERMANENT (0x80)
 				Type:         1,
 				Flags:        netlink.NTF_SELF, // NTF_SELF
@@ -385,5 +393,37 @@ func (v *VxlanLinux) DeleteVtep(c *VtepConfig) {
 		}
 	} else {
 		v.logger.Err("Unable to find vtep in vxlan db")
+	}
+}
+
+func (v *VxlanLinux) LearnFdbVtep(mac string, vtepname string, ifindex int32) {
+
+	if macDb == nil {
+		macDb = make(map[int32][]*VxlanMacDbEntry, 0)
+	}
+
+	if macList, ok := macDb[ifindex]; ok {
+		for _, macentry := range macList {
+			if macentry.mac == mac {
+				return
+			}
+		}
+		macDb[ifindex] = append(macDb[ifindex], &VxlanMacDbEntry{mac: mac,
+			vtepName: vtepname})
+		link, _ := netlink.LinkByName(vtepname)
+		if link != nil {
+			netmac, _ := net.ParseMAC(mac)
+			neigh := &netlink.Neigh{
+				LinkIndex: link.Attrs().Index,
+				//Family:       netlink.NDA_VNI,                           // NDA_VNI
+				State:        netlink.NUD_NOARP, // NUD_NOARP (0x40) | NUD_PERMANENT (0x80)
+				Type:         1,
+				Flags:        netlink.NTF_SELF, // NTF_SELF
+				HardwareAddr: netmac,
+			}
+			if err := netlink.NeighAppend(neigh); err != nil {
+				v.logger.Err(fmt.Sprintf("NeighSet:", err.Error()))
+			}
+		}
 	}
 }

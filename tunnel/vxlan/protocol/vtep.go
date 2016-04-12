@@ -9,6 +9,7 @@ import (
 	"github.com/google/gopacket/pcap"
 	"io/ioutil"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -80,9 +81,11 @@ type srcMacVtepMap struct {
 
 func NewVtepDbEntry(c *VtepConfig) *VtepDbEntry {
 	vtep := &VtepDbEntry{
-		VtepId:    c.VtepId,
-		VxlanId:   c.VxlanId,
-		VtepName:  c.VtepName + "Int",
+		VtepId:  c.VtepId,
+		VxlanId: c.VxlanId,
+		// TODO if we are running in hw linux vs proxy then this should not be + Int
+		VtepName: c.VtepName + "Int",
+		//VtepName:  c.VtepName,
 		SrcIfName: c.SrcIfName,
 		UDP:       c.UDP,
 		TTL:       c.TTL,
@@ -98,11 +101,13 @@ func NewVtepDbEntry(c *VtepConfig) *VtepDbEntry {
 		DstMac:                c.TunnelDstMac,
 		VlanId:                c.VlanId,
 	}
+
 	return vtep
 }
 
 func CreateVtep(c *VtepConfig) *VtepDbEntry {
 
+	// TODO this is only necessary in "proxy" mode
 	CreatePort(c.SrcIfName, c.UDP)
 
 	vtep := saveVtepConfigData(c)
@@ -180,9 +185,12 @@ func (vtep *VtepDbEntry) createVtepSenderListener() error {
 	go func(rxchan chan gopacket.Packet) {
 		for {
 			select {
+			// packets received from applications which should be sent out
 			case packet, ok := <-rxchan:
 				if ok {
-					go vtep.encapAndDispatchPkt(packet)
+					if !vtep.filterPacket(packet) {
+						go vtep.encapAndDispatchPkt(packet)
+					}
 				} else {
 					// channel closed
 					return
@@ -194,6 +202,36 @@ func (vtep *VtepDbEntry) createVtepSenderListener() error {
 	return nil
 }
 
+// do not process packets which contain the vtep src mac
+func (vtep *VtepDbEntry) filterPacket(packet gopacket.Packet) bool {
+
+	ethernetL := packet.Layer(layers.LayerTypeEthernet)
+	if ethernetL != nil {
+		ethernet := ethernetL.(*layers.Ethernet)
+		if ethernet.SrcMAC[0] == vtep.SrcMac[0] &&
+			ethernet.SrcMAC[1] == vtep.SrcMac[1] &&
+			ethernet.SrcMAC[2] == vtep.SrcMac[2] &&
+			ethernet.SrcMAC[3] == vtep.SrcMac[3] &&
+			ethernet.SrcMAC[4] == vtep.SrcMac[4] &&
+			ethernet.SrcMAC[5] == vtep.SrcMac[5] {
+			return true
+		}
+	}
+	return false
+}
+
+func (vtep *VtepDbEntry) learnMacToVtep(data []byte) {
+	p2 := gopacket.NewPacket(data, layers.LinkTypeEthernet, gopacket.Default)
+	ethernetL := p2.Layer(layers.LayerTypeEthernet)
+	if ethernetL != nil {
+		ethernet, _ := ethernetL.(*layers.Ethernet)
+		learnmac := ethernet.SrcMAC
+		logger.Info(fmt.Sprintf("Learning mac", learnmac, "against", strings.TrimRight(vtep.VtepName, "Int")))
+		asicDLearnFwdDbEntry(learnmac, vtep.VtepName, vtep.VtepIfIndex)
+	}
+
+}
+
 func (vtep *VtepDbEntry) decapAndDispatchPkt(packet gopacket.Packet) {
 
 	vxlanLayer := packet.Layer(layers.LayerTypeVxlan)
@@ -201,6 +239,7 @@ func (vtep *VtepDbEntry) decapAndDispatchPkt(packet gopacket.Packet) {
 		vxlan := vxlanLayer.(*layers.VXLAN)
 		buf := vxlan.LayerPayload()
 		logger.Info(fmt.Sprintf("Sending Packet to %s %#v", vtep.VtepName, buf))
+		vtep.learnMacToVtep(buf)
 		if err := vtep.handle.WritePacketData(buf); err != nil {
 			logger.Err("Error writing packet to interface")
 		}

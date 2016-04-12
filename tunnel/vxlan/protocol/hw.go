@@ -307,3 +307,17 @@ func asicDDeleteVtep(vtep *VtepConfig) {
 		}
 	}
 }
+
+func asicDLearnFwdDbEntry(mac net.HardwareAddr, vtepName string, ifindex int32) {
+	macstr := mac.String()
+	// convert a vxland config to hw config
+	if asicdclnt.ClientHdl != nil {
+		//asicdclnt.ClientHdl.DeleteVxlanVtep(ConvertVtepConfigToVxlanAsicdConfig(vtep))
+	} else {
+		// run standalone
+		if softswitch != nil {
+			softswitch.LearnFdbVtep(macstr, vtepName, ifindex)
+		}
+	}
+
+}
