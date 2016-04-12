@@ -3,6 +3,7 @@ package main
 import (
 	"arpd"
 	"asicd/asicdConstDefs"
+	"asicdInt"
 	"asicdServices"
 	"database/sql"
 	"encoding/json"
@@ -29,7 +30,7 @@ type UpdateRouteInfo struct {
 	attrset   []bool
 }
 type NextHopInfoKey struct {
-	nextHopIp    string
+	nextHopIp string
 }
 type NextHopInfo struct {
 	refCount     int     //number of routes using this as a next hop
@@ -138,6 +139,7 @@ var count int
 var ConnectedRoutes []*ribdInt.Routes
 var AsicdSub *nanomsg.SubSocket
 var RIBD_PUB *nanomsg.PubSocket
+
 //var RIBD_BGPD_PUB *nanomsg.PubSocket
 var IntfIdNameMap map[int32]IntfEntry
 
@@ -281,7 +283,14 @@ func installRoutesInASIC() {
 			routeInfoList := prefixNodeRouteList.routeInfoProtocolMap[prefixNodeRouteList.selectedRouteProtocol]
 			for sel := 0; sel < len(routeInfoList); sel++ {
 				routeInfoRecord := routeInfoList[sel]
-				asicdclnt.ClientHdl.CreateIPv4Route(routeInfoRecord.destNetIp.String(), routeInfoRecord.networkMask.String(), routeInfoRecord.nextHopIp.String(), int32(routeInfoRecord.nextHopIfType))
+				asicdclnt.ClientHdl.OnewayCreateIPv4Route([]*asicdInt.IPv4Route{
+					&asicdInt.IPv4Route{
+						routeInfoRecord.destNetIp.String(),
+						routeInfoRecord.networkMask.String(),
+						routeInfoRecord.nextHopIp.String(),
+						int32(routeInfoRecord.nextHopIfType),
+					},
+				})
 			}
 		}
 
@@ -533,12 +542,12 @@ func InitializePolicyDB() {
 func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
 	RouteInfoMap = patriciaDB.NewTrie()
 	ribdServicesHandler := &RIBDServicesHandler{}
-    RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
+	RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
 	TrackReachabilityMap = make(map[string][]string)
-    RouteProtocolTypeMapDB = make(map[string]int)
-    ReverseRouteProtoTypeMapDB = make(map[int]string)
-    ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
-    PublisherInfoMap = make(map[string]PublisherMapInfo)
+	RouteProtocolTypeMapDB = make(map[string]int)
+	ReverseRouteProtoTypeMapDB = make(map[int]string)
+	ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
+	PublisherInfoMap = make(map[string]PublisherMapInfo)
 	ribdServicesHandler.NextHopInfoMap = make(map[NextHopInfoKey]NextHopInfo)
 	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route,5000)
 	ribdServicesHandler.RouteDeleteConfCh = make(chan *ribd.IPv4Route)
