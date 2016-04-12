@@ -12,8 +12,11 @@ import (
 	"sync"
 	"time"
 	"utils/logging"
+	//"ribdInt"
+	//"unsafe"
 )
 
+var totalRoutes int
 const ResetTime int = 120
 const AggregatePathId uint32 = 0
 
@@ -45,15 +48,26 @@ type AdjRib struct {
 	routeListDirty   bool
 	activeGet        bool
 	timer            *time.Timer
+	// Route CreateBulk request attributes
+/*	routeBulkCreateChannel  chan ribdInt.IPv4Route 
+	routeBulkCreateList  [] *ribdInt.IPv4Route
+	routeBulkCreateListSize  int
+	routeBulkCreateIndex int
+	routeBulkCreateTimer  *time.Timer*/
 }
 
 func NewAdjRib(logger *logging.Writer, ribdClient *ribd.RIBDServicesClient, gConf *config.GlobalConfig) *AdjRib {
+	//var route *ribdInt.IPv4Route
 	rib := &AdjRib{
 		logger:           logger,
 		gConf:            gConf,
 		ribdClient:       ribdClient,
 		destPathMap:      make(map[string]*Destination),
 		reachabilityMap:  make(map[string]*ReachabilityInfo),
+/*		routeBulkCreateListSize: 8192*3 / int(unsafe.Sizeof(route)),
+		routeBulkCreateChannel:  make(chan ribdInt.IPv4Route,8192*3 / int(unsafe.Sizeof(route))),
+		routeBulkCreateList: make([]*ribdInt.IPv4Route,8192*3 / int(unsafe.Sizeof(route))),
+		routeBulkCreateIndex : 0,*/
 		unreachablePaths: make(map[string]map[*Path]map[*Destination][]uint32),
 		routeList:        make([]*Route, 0),
 		routeListDirty:   false,
@@ -568,3 +582,47 @@ func (adjRib *AdjRib) BulkGetBGPRoutes(index int, count int) (int, int, []*bgpd.
 	adjRib.timer.Reset(time.Duration(ResetTime) * time.Second)
 	return i, n, result
 }
+/*func (adjRib *AdjRib) SendBulkRouteCreate () {
+	adjRib.logger.Info(fmt.Sprintln("SendBulkRouteCreate, adjRib.routeBulkCreateIndex = ", adjRib.routeBulkCreateIndex))
+	totalRoutes += adjRib.routeBulkCreateIndex
+	adjRib.logger.Info(fmt.Sprintln("Calling createbulkIPv4Route for ", adjRib.routeBulkCreateIndex, " routes, totalRoutes so far = ", totalRoutes))
+	idx := adjRib.routeBulkCreateIndex
+	adjRib.routeBulkCreateIndex=0
+	adjRib.ribdClient.OnewayCreateBulkIPv4Route(adjRib.routeBulkCreateList[0:idx])
+	adjRib.logger.Info("OnewayCreateBulk returned")
+}
+func (adjRib *AdjRib) TimeOutBulkRouteCreate() {
+	adjRib.logger.Info(fmt.Sprintln("TimeOutBulkRouteCreate"))
+	adjRib.SendBulkRouteCreate()
+	if adjRib.routeBulkCreateTimer != nil {
+		adjRib.logger.Info(fmt.Sprintln("timer not nil, stop and make it nil"))
+		adjRib.routeBulkCreateTimer.Stop()
+    }
+}
+func (adjRib *AdjRib) BulkRouteCreate(route ribdInt.IPv4Route) {
+	adjRib.logger.Info(fmt.Sprintln("BulkRouteCreate, routeBulkCreateIndex - ", adjRib.routeBulkCreateIndex))
+    	if adjRib.routeBulkCreateIndex >= adjRib.routeBulkCreateListSize-1 {
+		adjRib.logger.Info(fmt.Sprintln("Size limit of the IPC buffer hit, call createBulk for ", adjRib.routeBulkCreateIndex+1, " routes"))
+		adjRib.SendBulkRouteCreate()
+		adjRib.logger.Info(fmt.Sprintln("resetting routeBulkCreateTimer"))
+		if adjRib.routeBulkCreateTimer != nil {
+		    adjRib.routeBulkCreateTimer.Reset(time.Millisecond)	
+		}
+	} 
+	adjRib.routeBulkCreateList[adjRib.routeBulkCreateIndex] = &route
+	adjRib.routeBulkCreateIndex++
+	if adjRib.routeBulkCreateTimer == nil {
+		adjRib.logger.Info("creating routeBulkCreateTimer")
+	   // adjRib.routeBulkCreateTimer = time.AfterFunc(time.Millisecond, adjRib.TimeOutBulkRouteCreate)
+	}
+}
+func (adjRib *AdjRib) ProcessRIBdRouteRequests() {
+	adjRib.logger.Info(fmt.Sprintln("ProcessRIBdRouteRequests: maximum bulkCreateSize = ", adjRib.routeBulkCreateListSize))
+	for {
+		select {
+		    case route := <-adjRib.routeBulkCreateChannel:
+			adjRib.logger.Info("Received message on routeBulkCreateChannel")
+			adjRib.BulkRouteCreate(route)
+        }
+	}
+}*/
