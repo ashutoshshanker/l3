@@ -13,7 +13,8 @@ import (
 */
 func (server *OSPFServer) exchangePacketDiscardCheck(nbrConf OspfNeighborEntry, nbrDbPkt ospfDatabaseDescriptionData) (isDiscard bool) {
 	if nbrDbPkt.msbit != nbrConf.isMaster {
-		server.logger.Info(fmt.Sprintln("NBREVENT: SeqNumberMismatch. Nbr should be master"))
+		server.logger.Info(fmt.Sprintln("NBREVENT: SeqNumberMismatch. Nbr should be master  dbdmsbit ", nbrDbPkt.msbit,
+			" isMaster ", nbrConf.isMaster))
 		return true
 	}
 
@@ -69,6 +70,132 @@ func (server *OSPFServer) adjacancyEstablishementCheck(isNbrDRBDR bool, isRtrDRB
 	return false
 }
 
+func (server *OSPFServer) processNeighborExstart(nbrKey NeighborConfKey, nbrConf OspfNeighborEntry, nbrDbPkt ospfDatabaseDescriptionData) {
+	var dbd_mdata ospfDatabaseDescriptionData
+	last_exchange := true
+	var isAdjacent bool
+	var negotiationDone bool
+	isAdjacent = server.adjacancyEstablishementCheck(nbrConf.isDRBDR, true)
+	if isAdjacent || nbrConf.OspfNbrState == config.NbrExchangeStart {
+		// change nbr state
+		nbrConf.OspfNbrState = config.NbrExchangeStart
+		// decide master slave relation
+		if nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
+			nbrConf.isMaster = true
+		} else {
+			nbrConf.isMaster = false
+		}
+		/* The initialize(I), more (M) and master(MS) bits are set,
+		   the contents of the packet are empty, and the neighbor's
+		   Router ID is larger than the router's own.  In this case
+		   the router is now Slave.  Set the master/slave bit to
+		   slave, and set the neighbor data structure's DD sequence
+		   number to that specified by the master.
+		*/
+		server.logger.Info(fmt.Sprintln("NBRDBD: nbr rtr id ", nbrKey.OspfNbrRtrId,
+			" my router id ", binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId),
+			" nbr_seq ", nbrConf.ospfNbrSeqNum, "dbd_seq no ", nbrDbPkt.dd_sequence_number))
+		if nbrDbPkt.ibit && nbrDbPkt.mbit && nbrDbPkt.msbit &&
+			nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
+			server.logger.Info(fmt.Sprintln("DBD: (ExStart/slave) SLAVE = self,  MASTER = ", nbrKey.OspfNbrRtrId))
+			nbrConf.isMaster = true
+			server.logger.Info("NBREVENT: Negotiation done..")
+			negotiationDone = true
+			nbrConf.OspfNbrState = config.NbrExchange
+			nbrConf.nbrEvent = config.NbrNegotiationDone
+		}
+		if nbrDbPkt.msbit && nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
+			server.logger.Info(fmt.Sprintln("DBD: (ExStart/slave) SLAVE = self,  MASTER = ", nbrKey.OspfNbrRtrId))
+			nbrConf.isMaster = true
+			server.logger.Info("NBREVENT: Negotiation done..")
+			negotiationDone = true
+			nbrConf.OspfNbrState = config.NbrExchange
+			nbrConf.nbrEvent = config.NbrNegotiationDone
+		}
+
+		/*   The initialize(I) and master(MS) bits are off, the
+		     packet's DD sequence number equals the neighbor data
+		     structure's DD sequence number (indicating
+		     acknowledgment) and the neighbor's Router ID is smaller
+		     than the router's own.  In this case the router is
+		     Master.
+		*/
+		if nbrDbPkt.ibit == false && nbrDbPkt.msbit == false &&
+			nbrDbPkt.dd_sequence_number == nbrConf.ospfNbrSeqNum &&
+			nbrKey.OspfNbrRtrId < binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
+			nbrConf.isMaster = false
+			server.logger.Info(fmt.Sprintln("DBD:(ExStart) SLAVE = ", nbrKey.OspfNbrRtrId, "MASTER = SELF"))
+			server.logger.Info("NBREVENT: Negotiation done..")
+			negotiationDone = true
+			nbrConf.OspfNbrState = config.NbrExchange
+			nbrConf.nbrEvent = config.NbrNegotiationDone
+		}
+
+	} else {
+		nbrConf.OspfNbrState = config.NbrTwoWay
+	}
+
+	var lsa_attach uint8
+	if negotiationDone {
+		//server.logger.Info(fmt.Sprintln("DBD: (Exstart) lsa_headers = ", len(nbrDbPkt.lsa_headers)))
+		server.generateDbSummaryList(nbrKey)
+		if nbrConf.isMaster != true { // i am the master
+			dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, true, true,
+				nbrDbPkt.options, nbrDbPkt.dd_sequence_number+1, true, false)
+		} else {
+			// send acknowledgement DBD with I and MS bit false , mbit = 1
+			dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, true, false,
+				nbrDbPkt.options, nbrDbPkt.dd_sequence_number, true, false)
+			dbd_mdata.dd_sequence_number++
+		}
+
+		if last_exchange {
+			nbrConf.nbrEvent = config.NbrExchangeDone
+		}
+		server.generateRequestList(nbrKey, nbrConf, nbrDbPkt)
+
+	} else { // negotiation not done
+		nbrConf.OspfNbrState = config.NbrExchangeStart
+		if nbrConf.isMaster &&
+			nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
+			dbd_mdata.dd_sequence_number = nbrDbPkt.dd_sequence_number
+			dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, true, true, true,
+				nbrDbPkt.options, nbrDbPkt.dd_sequence_number, false, false)
+			dbd_mdata.dd_sequence_number++
+		} else {
+			//start with new seq number
+			dbd_mdata.dd_sequence_number = uint32(time.Now().Nanosecond()) //nbrConf.ospfNbrSeqNum
+			dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, true, true, true,
+				nbrDbPkt.options, nbrDbPkt.dd_sequence_number, false, false)
+		}
+	}
+
+	nbrConfMsg := ospfNeighborConfMsg{
+		ospfNbrConfKey: NeighborConfKey{
+			OspfNbrRtrId: nbrKey.OspfNbrRtrId,
+		},
+		ospfNbrEntry: OspfNeighborEntry{
+			OspfNbrIPAddr:          nbrConf.OspfNbrIPAddr,
+			OspfRtrPrio:            nbrConf.OspfRtrPrio,
+			intfConfKey:            nbrConf.intfConfKey,
+			OspfNbrOptions:         0,
+			OspfNbrState:           nbrConf.OspfNbrState,
+			isStateUpdate:          true,
+			OspfNbrInactivityTimer: time.Now(),
+			OspfNbrDeadTimer:       nbrConf.OspfNbrDeadTimer,
+			ospfNbrSeqNum:          dbd_mdata.dd_sequence_number,
+			isSeqNumUpdate:         true,
+			isMaster:               nbrConf.isMaster,
+			isMasterUpdate:         true,
+			nbrEvent:               nbrConf.nbrEvent,
+			ospfNbrLsaIndex:        nbrConf.ospfNbrLsaIndex + lsa_attach,
+		},
+		nbrMsgType: NBRUPD,
+	}
+	server.neighborConfCh <- nbrConfMsg
+	OspfNeighborLastDbd[nbrKey] = dbd_mdata
+}
+
 func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfDatabaseDescriptionData) {
 	_, exists := server.NeighborConfigMap[nbrKey.OspfNbrRtrId]
 	var dbd_mdata ospfDatabaseDescriptionData
@@ -80,140 +207,23 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 		case config.NbrAttempt:
 			/* reject packet */
 			return
-		case config.NbrInit:
-		case config.NbrExchangeStart:
+		case config.NbrInit, config.NbrExchangeStart:
 			//intfKey := nbrConf.intfConfKey
-			var isAdjacent bool
-			var negotiationDone bool
-			isAdjacent = server.adjacancyEstablishementCheck(nbrConf.isDRBDR, true)
-			if isAdjacent || nbrConf.OspfNbrState == config.NbrExchangeStart {
-				// change nbr state
-				nbrConf.OspfNbrState = config.NbrExchangeStart
-				// decide master slave relation
-				if nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
-					nbrConf.isMaster = true
-				} else {
-					nbrConf.isMaster = false
-				}
-				/* The initialize(I), more (M) and master(MS) bits are set,
-				   the contents of the packet are empty, and the neighbor's
-				   Router ID is larger than the router's own.  In this case
-				   the router is now Slave.  Set the master/slave bit to
-				   slave, and set the neighbor data structure's DD sequence
-				   number to that specified by the master.
-				*/
-				server.logger.Info(fmt.Sprintln("NBRDBD: nbr rtr id ", nbrKey.OspfNbrRtrId,
-					" my router id ", binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId),
-					" nbr_seq ", nbrConf.ospfNbrSeqNum, "dbd_seq no ", nbrDbPkt.dd_sequence_number))
-				if nbrDbPkt.ibit && nbrDbPkt.mbit && nbrDbPkt.msbit &&
-					nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
-					server.logger.Info(fmt.Sprintln("DBD: (ExStart/slave) SLAVE = self,  MASTER = ", nbrKey.OspfNbrRtrId))
-					nbrConf.isMaster = true
-					server.logger.Info("NBREVENT: Negotiation done..")
-					negotiationDone = true
-					nbrConf.OspfNbrState = config.NbrExchange
-					nbrConf.nbrEvent = config.NbrNegotiationDone
-				}
-				if nbrDbPkt.msbit && nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
-					server.logger.Info(fmt.Sprintln("DBD: (ExStart/slave) SLAVE = self,  MASTER = ", nbrKey.OspfNbrRtrId))
-					nbrConf.isMaster = true
-					server.logger.Info("NBREVENT: Negotiation done..")
-					negotiationDone = true
-					nbrConf.OspfNbrState = config.NbrExchange
-					nbrConf.nbrEvent = config.NbrNegotiationDone
-				}
-
-				/*   The initialize(I) and master(MS) bits are off, the
-				     packet's DD sequence number equals the neighbor data
-				     structure's DD sequence number (indicating
-				     acknowledgment) and the neighbor's Router ID is smaller
-				     than the router's own.  In this case the router is
-				     Master.
-				*/
-				if nbrDbPkt.ibit == false && nbrDbPkt.msbit == false &&
-					nbrDbPkt.dd_sequence_number == nbrConf.ospfNbrSeqNum &&
-					nbrKey.OspfNbrRtrId < binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
-					nbrConf.isMaster = false
-					server.logger.Info(fmt.Sprintln("DBD:(ExStart) SLAVE = ", nbrKey.OspfNbrRtrId, "MASTER = SELF"))
-					server.logger.Info("NBREVENT: Negotiation done..")
-					negotiationDone = true
-					nbrConf.OspfNbrState = config.NbrExchange
-					nbrConf.nbrEvent = config.NbrNegotiationDone
-				}
-
-			} else {
-				nbrConf.OspfNbrState = config.NbrTwoWay
-			}
-
-			var lsa_attach uint8
-			if negotiationDone {
-				//server.logger.Info(fmt.Sprintln("DBD: (Exstart) lsa_headers = ", len(nbrDbPkt.lsa_headers)))
-				server.generateDbSummaryList(nbrKey)
-				if nbrConf.isMaster != true { // i am the master
-					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, true, true,
-						nbrDbPkt.options, nbrDbPkt.dd_sequence_number+1, true, false)
-				} else {
-					// send acknowledgement DBD with I and MS bit false , mbit = 1
-					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, true, false,
-						nbrDbPkt.options, nbrDbPkt.dd_sequence_number, true, false)
-					dbd_mdata.dd_sequence_number++
-				}
-
-				if last_exchange {
-					nbrConf.nbrEvent = config.NbrExchangeDone
-				}
-
-			} else { // negotiation not done
-				nbrConf.OspfNbrState = config.NbrExchangeStart
-				if nbrConf.isMaster &&
-					nbrKey.OspfNbrRtrId > binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId) {
-					dbd_mdata.dd_sequence_number = nbrDbPkt.dd_sequence_number
-					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, true, true, true,
-						nbrDbPkt.options, nbrDbPkt.dd_sequence_number, false, false)
-					dbd_mdata.dd_sequence_number++
-				} else {
-					//start with new seq number
-					dbd_mdata.dd_sequence_number = uint32(time.Now().Nanosecond()) //nbrConf.ospfNbrSeqNum
-					dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, true, true, true,
-						nbrDbPkt.options, nbrDbPkt.dd_sequence_number, false, false)
-				}
-			}
-
-			nbrConfMsg := ospfNeighborConfMsg{
-				ospfNbrConfKey: NeighborConfKey{
-					OspfNbrRtrId: nbrKey.OspfNbrRtrId,
-				},
-				ospfNbrEntry: OspfNeighborEntry{
-					OspfNbrIPAddr:          nbrConf.OspfNbrIPAddr,
-					OspfRtrPrio:            nbrConf.OspfRtrPrio,
-					intfConfKey:            nbrConf.intfConfKey,
-					OspfNbrOptions:         0,
-					OspfNbrState:           nbrConf.OspfNbrState,
-					isStateUpdate:          true,
-					OspfNbrInactivityTimer: time.Now(),
-					OspfNbrDeadTimer:       nbrConf.OspfNbrDeadTimer,
-					ospfNbrSeqNum:          dbd_mdata.dd_sequence_number,
-					isSeqNumUpdate:         true,
-					isMaster:               nbrConf.isMaster,
-					isMasterUpdate:         true,
-					nbrEvent:               nbrConf.nbrEvent,
-					ospfNbrLsaIndex:        nbrConf.ospfNbrLsaIndex + lsa_attach,
-				},
-				nbrMsgType: NBRUPD,
-			}
-			server.neighborConfCh <- nbrConfMsg
-			OspfNeighborLastDbd[nbrKey] = dbd_mdata
+			server.processNeighborExstart(nbrKey, nbrConf, nbrDbPkt)
 
 		case config.NbrExchange:
 			var nbrState config.NbrState
 			isDiscard := server.exchangePacketDiscardCheck(nbrConf, nbrDbPkt)
 			if isDiscard {
-				server.logger.Info(fmt.Sprintln("NBRDBD: Discard packet. nbr", nbrKey.OspfNbrRtrId,
+				server.logger.Info(fmt.Sprintln("NBRDBD: (Exchange)Discard packet. nbr", nbrKey.OspfNbrRtrId,
 					" nbr state ", nbrConf.OspfNbrState))
 
 				nbrState = config.NbrExchangeStart
+				server.processNeighborExstart(nbrKey, nbrConf, nbrDbPkt)
+
 				//invalidate all lists.
 				newDbdMsg(nbrKey.OspfNbrRtrId, OspfNeighborLastDbd[nbrKey])
+				return
 			} else { // process exchange state
 				/* 2) Add lsa_headers to db packet from db_summary list */
 
@@ -283,6 +293,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 				}
 				if !nbrDbPkt.mbit && last_exchange {
 					nbrState = config.NbrLoading
+					nbrConf.ospfNbrLsaReqIndex = server.BuildAndSendLSAReq(nbrKey.OspfNbrRtrId, nbrConf)
 					server.logger.Info(fmt.Sprintln("DBD: Loading , nbr ", nbrKey.OspfNbrRtrId))
 					server.updateNeighborMdata(nbrConf.intfConfKey, nbrKey.OspfNbrRtrId)
 					//	server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
@@ -605,7 +616,8 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 				}
 				/* This ensures Flood packet is sent only after last DBD.  */
 
-				if nbrConf.OspfNbrState == config.NbrLoading || nbrConf.OspfNbrState == config.NbrFull {
+				//if nbrConf.OspfNbrState == config.NbrLoading || nbrConf.OspfNbrState == config.NbrFull {
+				if nbrConf.isMaster && !dbd_mdata.ospfNbrDBDData.ibit && !dbd_mdata.ospfNbrDBDData.mbit {
 					server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
 				}
 			}
@@ -700,12 +712,12 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 	} // end of for
 
 	/*   attach summary list */
-	if server.ospfGlobalConf.isABR {
-		summary_list := server.generateDbsummaryLsaList()
-		if summary_list != nil {
-			db_list = append(db_list, summary_list...)
-		}
+
+	summary_list := server.generateDbsummaryLsaList(areaId)
+	if summary_list != nil {
+		db_list = append(db_list, summary_list...)
 	}
+
 	for lsa := range db_list {
 		rtr_id := convertUint32ToIPv4(db_list[lsa].lsa_headers.adv_router_id)
 		server.logger.Info(fmt.Sprintln(lsa, ": ", rtr_id, " lsatype ", db_list[lsa].lsa_headers.ls_type))
@@ -718,12 +730,15 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 /* @fn generateDbsummaryLsaList
 This function will attach summary LSAs if the router is ABR
 */
-func (server *OSPFServer) generateDbsummaryLsaList() []*ospfNeighborDBSummary {
+func (server *OSPFServer) generateDbsummaryLsaList(self_areaId uint32) []*ospfNeighborDBSummary {
 	db_list := []*ospfNeighborDBSummary{}
 	for areaid, _ := range server.AreaConfMap {
 		areaId := convertAreaOrRouterIdUint32(string(areaid.AreaId))
 		lsdbKey := LsdbKey{
 			AreaId: areaId,
+		}
+		if areaId != self_areaId { // attach to only eligible interfaces
+			continue
 		}
 		area_lsa, exist := server.AreaLsdb[lsdbKey]
 		if !exist {
@@ -731,7 +746,13 @@ func (server *OSPFServer) generateDbsummaryLsaList() []*ospfNeighborDBSummary {
 			return nil
 		}
 		summary_lsdb := area_lsa.Summary3LsaMap
+		selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+
 		for lsaKey, _ := range summary_lsdb {
+			_, exist := selfOrigLsaEnt[lsaKey]
+			if exist && !server.ospfGlobalConf.isABR {
+				continue // dont add self gen LSA if I am not ABR
+			}
 			// check if lsa instance is marked true
 			db_summary := newospfNeighborDBSummary()
 			drlsa, ret := server.getSummaryLsaFromLsdb(areaId, lsaKey)
@@ -745,8 +766,8 @@ func (server *OSPFServer) generateDbsummaryLsaList() []*ospfNeighborDBSummary {
 			db_summary.valid = true
 			/* add entry to the db summary list  */
 			db_list = append(db_list, db_summary)
-			//lsid := convertUint32ToIPv4(lsaKey.LSId)
-			//server.logger.Info(fmt.Sprintln("negotiation: db_list append router lsid  ", lsid))
+			lsid := convertUint32ToIPv4(lsaKey.LSId)
+			server.logger.Info(fmt.Sprintln("negotiation: db_list summary append router lsid  ", lsid))
 		} // end of for
 
 		/*  TODO - check if we want to add Summary4 LSA */

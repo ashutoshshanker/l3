@@ -110,6 +110,11 @@ func (server *BFDServer) processSessionConfig(sessionConfig SessionConfig) error
 func (server *BFDServer) SendAdminDownToAllNeighbors() error {
 	for _, session := range server.bfdGlobal.Sessions {
 		session.StopBfdSession()
+		sessionMgmt := BfdSessionMgmt{
+			DestIp:   session.state.IpAddr,
+			ForceDel: true,
+		}
+		server.DeleteBfdSession(sessionMgmt)
 	}
 	return nil
 }
@@ -152,6 +157,7 @@ func (server *BFDServer) GetIfIndexAndLocalIpFromDestIp(DestIp string) (int32, s
 		server.logger.Info(fmt.Sprintf("%s is not reachable", DestIp))
 		return int32(0), ""
 	}
+	server.ribdClient.ClientHdl.TrackReachabilityStatus(DestIp, "BFD", "add")
 	ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(reachabilityInfo.NextHopIfIndex), int(reachabilityInfo.NextHopIfType))
 	server.logger.Info(fmt.Sprintln("GetIfIndexAndLocalIpFromDestIp: DestIp: ", DestIp, "IfIndex: ", ifIndex))
 	return ifIndex, reachabilityInfo.NextHopIp
@@ -202,6 +208,7 @@ func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLi
 		bfdSession.authSeqNum = 1
 		bfdSession.authKeyId = uint32(intf.conf.AuthenticationKeyId)
 		bfdSession.authData = intf.conf.AuthenticationData
+		bfdSession.intfConfigChanged = true
 	}
 	bfdSession.server = server
 	bfdSession.bfdPacket = NewBfdControlPacketDefault()
@@ -269,6 +276,7 @@ func (server *BFDServer) UpdateBfdSessionsOnInterface(ifIndex int32) error {
 				session.authType = AuthenticationType(intf.conf.AuthenticationType)
 				session.authKeyId = uint32(intf.conf.AuthenticationKeyId)
 				session.authData = intf.conf.AuthenticationData
+				session.intfConfigChanged = true
 				if intfEnabled {
 					session.InitiatePollSequence()
 				} else {
@@ -339,11 +347,11 @@ func (server *BFDServer) CreateBfdSession(sessionMgmt BfdSessionMgmt) (*BfdSessi
 	return bfdSession, nil
 }
 
-func (server *BFDServer) SessionDeleteHandler(session *BfdSession, Protocol bfddCommonDefs.BfdSessionOwner) error {
+func (server *BFDServer) SessionDeleteHandler(session *BfdSession, Protocol bfddCommonDefs.BfdSessionOwner, ForceDel bool) error {
 	var i int
 	sessionId := session.state.SessionId
 	session.state.RegisteredProtocols[Protocol] = false
-	if session.CheckIfAnyProtocolRegistered() == false {
+	if ForceDel || session.CheckIfAnyProtocolRegistered() == false {
 		session.txTimer.Stop()
 		session.sessionTimer.Stop()
 		session.SessionStopClientCh <- true
@@ -360,10 +368,10 @@ func (server *BFDServer) SessionDeleteHandler(session *BfdSession, Protocol bfdd
 	return nil
 }
 
-func (server *BFDServer) DeletePerLinkSessions(DestIp string, Protocol bfddCommonDefs.BfdSessionOwner) error {
+func (server *BFDServer) DeletePerLinkSessions(DestIp string, Protocol bfddCommonDefs.BfdSessionOwner, ForceDel bool) error {
 	for _, session := range server.bfdGlobal.Sessions {
 		if session.state.IpAddr == DestIp {
-			server.SessionDeleteHandler(session, Protocol)
+			server.SessionDeleteHandler(session, Protocol, ForceDel)
 		}
 	}
 	return nil
@@ -375,15 +383,17 @@ func (server *BFDServer) DeletePerLinkSessions(DestIp string, Protocol bfddCommo
 func (server *BFDServer) DeleteBfdSession(sessionMgmt BfdSessionMgmt) error {
 	DestIp := sessionMgmt.DestIp
 	Protocol := sessionMgmt.Protocol
+	ForceDel := sessionMgmt.ForceDel
 	server.logger.Info(fmt.Sprintln("DeleteSession ", DestIp, Protocol))
 	sessionId, found := server.FindBfdSession(DestIp)
 	if found {
 		session := server.bfdGlobal.Sessions[sessionId]
 		if session.state.PerLinkSession {
-			server.DeletePerLinkSessions(DestIp, Protocol)
+			server.DeletePerLinkSessions(DestIp, Protocol, ForceDel)
 		} else {
-			server.SessionDeleteHandler(session, Protocol)
+			server.SessionDeleteHandler(session, Protocol, ForceDel)
 		}
+		server.ribdClient.ClientHdl.TrackReachabilityStatus(DestIp, "BFD", "del")
 	} else {
 		server.logger.Info(fmt.Sprintln("Bfd session not found ", sessionId))
 	}
@@ -448,8 +458,8 @@ func (server *BFDServer) AdminDownBfdSession(sessionMgmt BfdSessionMgmt) error {
 
 // This function handles NextHop change from RIB.
 // Subsequent control packets will be sent using the BFD attributes configuration on the new IfIndex.
-// A Poll control packet will be sent to BFD neighbor and expact a Final control packet.
-func (server *BFDServer) HandleNextHopChange(DestIp string) error {
+// A Poll control packet will be sent to BFD neighbor and expect a Final control packet.
+func (server *BFDServer) HandleNextHopChange(DestIp string, IfIndex int32) error {
 	return nil
 }
 
@@ -458,12 +468,12 @@ func (session *BfdSession) StartSessionServer(server *BFDServer) error {
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", destAddr, err))
-		return nil
+		return err
 	}
 	ServerConn, err := net.ListenUDP("udp", ServerAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ListenUDP ", err))
-		return nil
+		return err
 	}
 	sessionId := session.state.SessionId
 	defer ServerConn.Close()
@@ -660,6 +670,7 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 	} else {
 		session.bfdPacket.AuthPresent = false
 	}
+	session.intfConfigChanged = false
 	return nil
 }
 
@@ -832,24 +843,41 @@ func (session *BfdSession) MoveToUpState() error {
 }
 
 func (session *BfdSession) ApplyTxJitter() time.Duration {
-	txInterval := session.txInterval * (1 - session.txJitter/100)
+	var txInterval int32
+	if session.state.DetectionMultiplier == 1 {
+		txInterval = session.txInterval * (1 - session.txJitter/100)
+	} else {
+		txInterval = session.txInterval * (1 + session.txJitter/100)
+	}
 	return time.Duration(txInterval)
 }
 
+func (session *BfdSession) NeedBfdPacketUpdate() bool {
+	if session.intfConfigChanged == true || session.pollSequence == true || session.pollSequenceFinal == true {
+		return true
+	} else {
+		return false
+	}
+}
+
 func (session *BfdSession) StartSessionClient(server *BFDServer) error {
+	var err error
 	destAddr := session.state.IpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", destAddr, err))
+		return err
 	}
 	localAddr := session.state.LocalIpAddr + ":" + strconv.Itoa(SRC_PORT)
 	ClientAddr, err := net.ResolveUDPAddr("udp", localAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", localAddr, err))
+		return err
 	}
 	Conn, err := net.DialUDP("udp", ClientAddr, ServerAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed DialUDP ", ClientAddr, ServerAddr, err))
+		return err
 	}
 	sessionTimeoutMS := time.Duration(session.rxInterval)
 	txTimerMS := time.Duration(session.txInterval)
@@ -860,12 +888,14 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 		select {
 		case sessionId := <-session.TxTimeoutCh:
 			bfdSession := server.bfdGlobal.Sessions[sessionId]
-			bfdSession.UpdateBfdSessionControlPacket()
-			buf, err := bfdSession.bfdPacket.CreateBfdControlPacket()
+			if bfdSession.NeedBfdPacketUpdate() {
+				bfdSession.UpdateBfdSessionControlPacket()
+				bfdSession.bfdPacketBuf, err = bfdSession.bfdPacket.CreateBfdControlPacket()
+			}
 			if err != nil {
 				server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", bfdSession.state.SessionId))
 			} else {
-				_, err = Conn.Write(buf)
+				_, err = Conn.Write(bfdSession.bfdPacketBuf)
 				if err != nil {
 					server.logger.Info(fmt.Sprintln("failed to send control packet for session ", bfdSession.state.SessionId))
 				} else {

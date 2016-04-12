@@ -62,7 +62,7 @@ func (v *VXLANDServiceHandler) StartThriftServer() {
 func (v *VXLANDServiceHandler) CreateVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
 	v.logger.Info(fmt.Sprintf("CreateVxlanConfigInstance %#v", config))
 
-	c, err := v.server.ConvertVxlanInstanceToVxlanConfig(config)
+	c, err := vxlan.ConvertVxlanInstanceToVxlanConfig(config)
 	if err == nil {
 		v.server.Configchans.Vxlancreate <- *c
 		return true, nil
@@ -72,7 +72,7 @@ func (v *VXLANDServiceHandler) CreateVxlanInstance(config *vxland.VxlanInstance)
 
 func (v *VXLANDServiceHandler) DeleteVxlanInstance(config *vxland.VxlanInstance) (bool, error) {
 	v.logger.Info(fmt.Sprintf("DeleteVxlanConfigInstance %#v", config))
-	c, err := v.server.ConvertVxlanInstanceToVxlanConfig(config)
+	c, err := vxlan.ConvertVxlanInstanceToVxlanConfig(config)
 	if err == nil {
 		v.server.Configchans.Vxlandelete <- *c
 		return true, nil
@@ -82,8 +82,8 @@ func (v *VXLANDServiceHandler) DeleteVxlanInstance(config *vxland.VxlanInstance)
 
 func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInstance, newconfig *vxland.VxlanInstance, attrset []bool) (bool, error) {
 	v.logger.Info(fmt.Sprintf("UpdateVxlanConfigInstance orig[%#v] new[%#v]", origconfig, newconfig))
-	oc, _ := v.server.ConvertVxlanInstanceToVxlanConfig(origconfig)
-	nc, err := v.server.ConvertVxlanInstanceToVxlanConfig(newconfig)
+	oc, _ := vxlan.ConvertVxlanInstanceToVxlanConfig(origconfig)
+	nc, err := vxlan.ConvertVxlanInstanceToVxlanConfig(newconfig)
 	if err == nil {
 		update := vxlan.VxlanUpdate{
 			Oldconfig: *oc,
@@ -98,7 +98,7 @@ func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInsta
 
 func (v *VXLANDServiceHandler) CreateVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
 	v.logger.Info(fmt.Sprintf("CreateVxlanVtepInstances %#v", config))
-	c, err := v.server.ConvertVxlanVtepInstanceToVtepConfig(config)
+	c, err := vxlan.ConvertVxlanVtepInstanceToVtepConfig(config)
 	if err == nil {
 		v.server.Configchans.Vtepcreate <- *c
 		return true, err
@@ -108,7 +108,7 @@ func (v *VXLANDServiceHandler) CreateVxlanVtepInstances(config *vxland.VxlanVtep
 
 func (v *VXLANDServiceHandler) DeleteVxlanVtepInstances(config *vxland.VxlanVtepInstances) (bool, error) {
 	v.logger.Info(fmt.Sprintf("DeleteVxlanVtepInstances %#v", config))
-	c, err := v.server.ConvertVxlanVtepInstanceToVtepConfig(config)
+	c, err := vxlan.ConvertVxlanVtepInstanceToVtepConfig(config)
 	if err == nil {
 		v.server.Configchans.Vtepdelete <- *c
 		return true, nil
@@ -118,8 +118,8 @@ func (v *VXLANDServiceHandler) DeleteVxlanVtepInstances(config *vxland.VxlanVtep
 
 func (v *VXLANDServiceHandler) UpdateVxlanVtepInstances(origconfig *vxland.VxlanVtepInstances, newconfig *vxland.VxlanVtepInstances, attrset []bool) (bool, error) {
 	v.logger.Info(fmt.Sprintf("UpdateVxlanVtepInstances orig[%#v] new[%#v]", origconfig, newconfig))
-	oc, _ := v.server.ConvertVxlanVtepInstanceToVtepConfig(origconfig)
-	nc, err := v.server.ConvertVxlanVtepInstanceToVtepConfig(newconfig)
+	oc, _ := vxlan.ConvertVxlanVtepInstanceToVtepConfig(origconfig)
+	nc, err := vxlan.ConvertVxlanVtepInstanceToVtepConfig(newconfig)
 	if err == nil {
 		update := vxlan.VtepUpdate{
 			Oldconfig: *oc,
@@ -171,7 +171,7 @@ func (v *VXLANDServiceHandler) HandleDbReadVxlanVtepInstances(dbHdl *sql.DB) err
 	for rows.Next() {
 
 		object := new(vxland.VxlanVtepInstances)
-		if err = rows.Scan(&object.VtepId, &object.VxlanId, &object.VtepName, &object.SrcIfIndex, &object.UDP, &object.TTL, &object.TOS, &object.InnerVlanHandlingMode, &object.Learning, &object.Rsc, &object.L2miss, &object.L3miss, &object.DstIp, &object.DstMac, &object.VlanId); err != nil {
+		if err = rows.Scan(&object.VtepId, &object.VxlanId, &object.VtepName, &object.SrcIfIndex, &object.UDP, &object.TTL, &object.TOS, &object.InnerVlanHandlingMode, &object.Learning, &object.Rsc, &object.L2miss, &object.L3miss, &object.DstIp, &object.SrcIp, &object.SrcMac, &object.DstMac, &object.VlanId); err != nil {
 
 			fmt.Println("Db method Scan failed when interating over VxlanVtepInstances")
 		}

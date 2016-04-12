@@ -9,9 +9,9 @@ import (
 
 var SwitchMac [6]uint8
 var NetSwitchMac net.HardwareAddr
+var logger *logging.Writer
 
 type VXLANServer struct {
-	logger      *logging.Writer
 	Configchans *VxLanConfigChannels
 	Paramspath  string // location of params path
 }
@@ -24,11 +24,16 @@ type cfgFileJson struct {
 	SysRsvdVlanRange string            `json:"SysRsvdVlanRange"`
 }
 
-func NewVXLANServer(logger *logging.Writer, paramspath string) *VXLANServer {
+func SetLogger(l *logging.Writer) {
+	logger = l
+}
+
+func NewVXLANServer(l *logging.Writer, paramspath string) *VXLANServer {
+
+	SetLogger(l)
 
 	logger.Info(fmt.Sprintf("Params path: %s", paramspath))
 	server := &VXLANServer{
-		logger:     logger,
 		Paramspath: paramspath,
 	}
 

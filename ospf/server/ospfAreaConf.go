@@ -47,6 +47,7 @@ func (server *OSPFServer) processAreaConfig(areaConf config.AreaConf) {
 	server.initAreaStateSlice(areaConfKey)
 	areaId := convertAreaOrRouterIdUint32(string(areaConf.AreaId))
 	server.initLSDatabase(areaId)
+        server.initRoutingTbl(areaId)
 }
 
 func (server *OSPFServer) initAreaConfDefault() {
@@ -105,10 +106,74 @@ func (server *OSPFServer) areaStateRefresh() {
 	server.AreaStateTimer = time.AfterFunc(server.RefreshDuration, areaStateRefFunc)
 }
 
-func (server *OSPFServer) updateIntfToAreaMap(key IntfConfKey, areaId config.AreaId) config.AreaId {
-	def_key := AreaConfKey{ 
+func (server *OSPFServer) updateIntfToAreaMap(key IntfConfKey, oldAreaId string, newAreaId string) {
+
+        server.logger.Info(fmt.Sprintln("===========1. updateIntfToAreaMap============", server.AreaConfMap, "oldAreaId:", oldAreaId, "newAreaId:", newAreaId, "IntfConfKey:", key))
+        if oldAreaId != "none" && newAreaId != "none" {
+                oldAreaConfKey := AreaConfKey {
+                        AreaId: config.AreaId(oldAreaId),
+                }
+                oldAreaConfEnt, exist := server.AreaConfMap[oldAreaConfKey]
+                if !exist {
+                        server.logger.Err("No such area configuration exist.")
+                        return
+                }
+
+                delete(oldAreaConfEnt.IntfListMap, key)
+                server.AreaConfMap[oldAreaConfKey] = oldAreaConfEnt
+
+                newAreaConfKey := AreaConfKey {
+                        AreaId: config.AreaId(newAreaId),
+                }
+                newAreaConfEnt, exist := server.AreaConfMap[newAreaConfKey]
+                if !exist {
+                        server.logger.Err("No such area configuration exist")
+                        return
+                }
+
+                newAreaConfEnt.IntfListMap[key] = true
+                server.AreaConfMap[newAreaConfKey] = newAreaConfEnt
+        } else if oldAreaId == "none" {
+                newAreaConfKey := AreaConfKey {
+                        AreaId: config.AreaId(newAreaId),
+                }
+                newAreaConfEnt, exist := server.AreaConfMap[newAreaConfKey]
+                if !exist {
+                        server.logger.Err("No such area configuration exist")
+                        return
+                }
+
+                newAreaConfEnt.IntfListMap[key] = true
+                server.AreaConfMap[newAreaConfKey] = newAreaConfEnt
+
+        } else if newAreaId == "none" {
+                oldAreaConfKey := AreaConfKey {
+                        AreaId: config.AreaId(oldAreaId),
+                }
+                oldAreaConfEnt, exist := server.AreaConfMap[oldAreaConfKey]
+                if !exist {
+                        server.logger.Err("No such area configuration exist.")
+                        return
+                }
+
+                delete(oldAreaConfEnt.IntfListMap, key)
+                server.AreaConfMap[oldAreaConfKey] = oldAreaConfEnt
+        } else {
+                server.logger.Err("Invalid Argument for updating Intf List in Area Conf Map")
+                return
+        }
+        server.updateIfABR()
+        server.logger.Info(fmt.Sprintln("AreaConf Map:", server.AreaConfMap, "AreaBdr Status:", server.ospfGlobalConf.isABR))
+/*
+	def_key := AreaConfKey{
 		AreaId: "0.0.0.0",
 	}
+	prevAreaConfKey := AreaConfKey{
+		AreaId: prevAreaId,
+	}
+	pEnt, _ := server.AreaConfMap[prevAreaConfKey]
+        delete(pEnt.IntfListMap, key)
+        server.AreaConfMap[prevAreaConfKey] = pEnt
 	areaConfKey := AreaConfKey{
 		AreaId: areaId,
 	}
@@ -130,16 +195,24 @@ func (server *OSPFServer) updateIntfToAreaMap(key IntfConfKey, areaId config.Are
 	}
 	if !server.ospfGlobalConf.isABR {
 		server.updateIfABR()
-	} 
-return def_key.AreaId
+	}
+        server.logger.Info(fmt.Sprintln("===========2. updateIntfToAreaMap============", server.AreaConfMap))
+        return def_key.AreaId
+*/
 }
 
 func (server *OSPFServer) updateIfABR() {
 	index := 0
-	for _, _ = range server.AreaConfMap {
-		index++
+	for _, areaEnt := range server.AreaConfMap {
+                if len(areaEnt.IntfListMap) > 0 {
+                        index++
+                }
 	}
 	if index > 1 {
-	server.ospfGlobalConf.isABR = true
-	}
+                server.ospfGlobalConf.isABR = true
+                server.ospfGlobalConf.AreaBdrRtrStatus = true
+	} else {
+                server.ospfGlobalConf.isABR = false
+                server.ospfGlobalConf.AreaBdrRtrStatus = false
+        }
 }

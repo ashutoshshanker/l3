@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/pluginManager/pluginCommon"
+	"asicd/asicdConstDefs"
 	"asicdServices"
 	"container/list"
 	"encoding/json"
@@ -31,6 +31,10 @@ type OspfClientBase struct {
 }
 
 type LsdbKey struct {
+	AreaId uint32
+}
+
+type RoutingTblKey struct {
 	AreaId uint32
 }
 
@@ -115,9 +119,13 @@ type OSPFServer struct {
 
 	RefreshDuration time.Duration
 
-	RoutingTbl     map[RoutingTblKey]RoutingTblEntry
-	OldRoutingTbl  map[RoutingTblKey]RoutingTblEntry
-	TempRoutingTbl map[RoutingTblKey]RoutingTblEntry
+	TempAreaRoutingTbl map[AreaIdKey]AreaRoutingTbl
+        GlobalRoutingTbl        map[RoutingTblEntryKey]GlobalRoutingTblEntry
+        OldGlobalRoutingTbl     map[RoutingTblEntryKey]GlobalRoutingTblEntry
+        TempGlobalRoutingTbl    map[RoutingTblEntryKey]GlobalRoutingTblEntry
+
+        SummaryLsDb             map[LsdbKey]SummaryLsaMap
+
 	StartCalcSPFCh chan bool
 	DoneCalcSPFCh  chan bool
 	AreaGraph      map[VertexKey]Vertex
@@ -186,9 +194,11 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.asicdSubSocketCh = make(chan []byte)
 	ospfServer.asicdSubSocketErrCh = make(chan error)
 
-	ospfServer.RoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-	ospfServer.OldRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-	ospfServer.TempRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
+	ospfServer.GlobalRoutingTbl = make(map[RoutingTblEntryKey]GlobalRoutingTblEntry)
+	ospfServer.OldGlobalRoutingTbl = make(map[RoutingTblEntryKey]GlobalRoutingTblEntry)
+	ospfServer.TempGlobalRoutingTbl = make(map[RoutingTblEntryKey]GlobalRoutingTblEntry)
+	//ospfServer.OldRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
+	ospfServer.TempAreaRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
 	ospfServer.StartCalcSPFCh = make(chan bool)
 	ospfServer.DoneCalcSPFCh = make(chan bool)
 
@@ -294,7 +304,7 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	   server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
 	*/
 	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
+	server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
 	go server.spfCalculation()
 

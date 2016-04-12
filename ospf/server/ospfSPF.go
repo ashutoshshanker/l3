@@ -3,7 +3,7 @@ package server
 import (
         "fmt"
         "errors"
-        //"l3/ospf/config"
+        "l3/ospf/config"
 )
 
 type VertexKey struct {
@@ -45,6 +45,8 @@ const (
         SNetworkVertex uint8 = 1 // Stub
         TNetworkVertex uint8 = 2 // Transit
 )
+
+var check bool = true
 
 func findSelfOrigRouterLsaKey(ent map[LsaKey]bool) (LsaKey, error) {
         var key LsaKey
@@ -122,10 +124,16 @@ func (server *OSPFServer)UpdateAreaGraphNetworkLsa(lsaEnt NetworkLsa, lsaKey Lsa
                         server.logger.Err(fmt.Sprintln("========Network LsaMap====", lsDbEnt.NetworkLsaMap))
                         err := errors.New(fmt.Sprintln("Router LSA with LsaKey:", lsaKey, "not found in areaId:", areaId))
                        // continue
+                        if check == true {
+                                continue
+                        }
                         return err
                 }
                 err := server.UpdateAreaGraphRouterLsa(lsaEnt, lsaKey, areaId)
                 if err != nil {
+                        if check == true {
+                                continue
+                        }
                         return err
                 }
         }
@@ -166,6 +174,16 @@ func (server *OSPFServer)UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaKe
                 server.logger.Info(fmt.Sprintln("SPF Graph:", server.AreaGraph))
                 return nil
         }
+        if lsaEnt.BitV == true {
+                area := config.AreaId(convertUint32ToIPv4(areaId))
+                areaConfKey := AreaConfKey {
+                                AreaId: area,
+                        }
+                aEnt, exist := server.AreaConfMap[areaConfKey]
+                if exist && aEnt.TransitCapability == false {
+                        aEnt.TransitCapability = true
+                }
+        }
         ent.NbrVertexKey = make([]VertexKey, 0)
         ent.NbrVertexCost = make([]uint16, 0)
         ent.LinkData = make(map[VertexKey]uint32)
@@ -185,6 +203,9 @@ func (server *OSPFServer)UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaKe
                         nLsaKey, err := server.findNetworkLsa(areaId, vKey.ID)
                         if err != nil {
                                 server.logger.Info(fmt.Sprintln("Err:",err))
+                                if check == true {
+                                        continue
+                                }
                                 return err
                                 //continue
                         }
@@ -246,11 +267,17 @@ func (server *OSPFServer)UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaKe
                         if !exist {
                                 server.logger.Err(fmt.Sprintln("Network LSA with LsaKey:", lsaKey, "not found in LS Database of areaId:", areaId))
                                 err := errors.New(fmt.Sprintln("Network LSA with LsaKey:", lsaKey, "not found in LS Database of areaId:", areaId))
+                                if check == true {
+                                        continue
+                                }
                                 //continue
                                 return err
                         }
                         err := server.UpdateAreaGraphNetworkLsa(lsaEnt, lsaKey, areaId)
                         if err != nil {
+                                if check == true {
+                                        continue
+                                }
                                 return err
                         }
                 } else if vKey.Type == RouterVertex {
@@ -260,10 +287,16 @@ func (server *OSPFServer)UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaKe
                                 server.logger.Err(fmt.Sprintln("Router LSA with LsaKey:", lsaKey, "not found in LS Database of areaId:", areaId))
                                 err := errors.New(fmt.Sprintln("Router LSA with LsaKey:", lsaKey, "not found in LS Database of areaId:", areaId))
                                //continue
+                                if check == true {
+                                        continue
+                                }
                                 return err
                         }
                         err := server.UpdateAreaGraphRouterLsa(lsaEnt, lsaKey, areaId)
                         if err != nil {
+                                if check == true {
+                                        continue
+                                }
                                 return err
                         }
                 } else if vKey.Type == SNetworkVertex {
@@ -307,6 +340,9 @@ func (server *OSPFServer) CreateAreaGraph(areaId uint32) (VertexKey, error) {
         }
 
         err = server.UpdateAreaGraphRouterLsa(lsaEnt, selfRtrLsaKey, areaId)
+        if check == true {
+                err = nil
+        }
         vKey = VertexKey {
                 Type: RouterVertex,
                 ID: selfRtrLsaKey.LSId,
@@ -356,7 +392,7 @@ func (server *OSPFServer)ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
                                 var path Path
                                 path = make(Path, 0)
                                 tEnt.Paths[0] = path
-                                tEnt.Distance = 0xff00
+                                tEnt.Distance = 0xff00 // LSInfinity
                                 tEnt.NumOfPaths = 1
                         }
                         tEntry, exist := server.SPFTree[treeVSlice[j]]
@@ -528,7 +564,20 @@ func (server *OSPFServer)dumpSPFTree() {
 }
 
 
-func (server *OSPFServer)UpdateRoutingTbl(vKey VertexKey) {
+func (server *OSPFServer)UpdateRoutingTbl(vKey VertexKey, areaId uint32) {
+        areaIdKey := AreaIdKey {
+                        AreaId: areaId,
+                        }
+/*
+        lsdbKey := LsdbKey{
+                AreaId: areaId,
+        }
+        lsDbEnt, exist := server.AreaLsdb[lsdbKey]
+        if !exist {
+                server.logger.Err("No Ls DB found..")
+                return
+        }
+*/
         for key, ent := range server.SPFTree {
                 if vKey == key {
                         server.logger.Info("It's own vertex")
@@ -536,73 +585,148 @@ func (server *OSPFServer)UpdateRoutingTbl(vKey VertexKey) {
                 }
                 switch key.Type {
                 case RouterVertex:
-                        server.UpdateRoutingTblForRouter(key, ent, vKey)
+                        //TODO: If Bit V is set in corresponding RtrLsa set Transit Capability
+                        // for the given Area
+                        //rEnt, exist := lsDbEnt.Summary3LsaMap[ent.LsaKey]
+                        server.UpdateRoutingTblForRouter(areaIdKey, key, ent, vKey)
                 case SNetworkVertex:
-                        server.UpdateRoutingTblForSNetwork(key, ent, vKey)
+                        server.UpdateRoutingTblForSNetwork(areaIdKey, key, ent, vKey)
                 case TNetworkVertex:
-                        server.UpdateRoutingTblForTNetwork(key, ent, vKey)
+                        server.UpdateRoutingTblForTNetwork(areaIdKey, key, ent, vKey)
                 }
         }
+}
+
+func (server *OSPFServer)initRoutingTbl(areaId uint32) {
+        server.GlobalRoutingTbl = make(map[RoutingTblEntryKey]GlobalRoutingTblEntry)
 }
 
 func (server *OSPFServer) spfCalculation() {
         for {
                 msg := <-server.StartCalcSPFCh
                 server.logger.Info(fmt.Sprintln("Recevd SPF Calculation Notification for:", msg))
+                server.logger.Info(fmt.Sprintln("Area LS Database:", server.AreaLsdb))
                 // Create New Routing table
                 // Invalidate Old Routing table
                 // Backup Old Routing table
                 // TODO: Have Per Area Routing Tbl
-                server.OldRoutingTbl = nil
-                server.OldRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-                server.TempRoutingTbl = nil
-                server.TempRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-                server.OldRoutingTbl = server.RoutingTbl
-                flag := false //TODO:Hack
-                for key, _ := range server.AreaConfMap {
+                server.OldGlobalRoutingTbl = nil
+                server.OldGlobalRoutingTbl = make(map[RoutingTblEntryKey]GlobalRoutingTblEntry)
+                server.OldGlobalRoutingTbl = server.GlobalRoutingTbl
+                server.TempAreaRoutingTbl = nil
+                server.TempAreaRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
+                for key, aEnt := range server.AreaConfMap {
+                        //flag := false //TODO:Hack
                         // Initialize Algorithm's Data Structure
+
+                        //server.logger.Info(fmt.Sprintln("===========Area Id : ", key.AreaId, "Area Bdr Status:", server.ospfGlobalConf.isABR, "======================================================="))
+                        if len(aEnt.IntfListMap) == 0 {
+                                continue
+                        }
+                        aEnt.TransitCapability = false
+                        areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
                         server.AreaGraph = make(map[VertexKey]Vertex)
                         server.AreaStubs = make(map[VertexKey]StubVertex)
                         server.SPFTree = make(map[VertexKey]TreeVertex)
-                        areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
+                        areaIdKey := AreaIdKey {
+                                        AreaId: areaId,
+                                }
+                        //oldRoutingTbl := server.OldRoutingTbl[areaIdKey]
+                        //oldRoutingTbl.RoutingTblMap = make(map[RoutingTblEntryKey]RoutingTblEntry)
+                        //server.OldRoutingTbl[areaIdKey] = oldRoutingTbl
+                        //server.OldRoutingTbl[areaIdKey] = server.RoutingTbl[areaIdKey]
+
+                        tempRoutingTbl := server.TempAreaRoutingTbl[areaIdKey]
+                        tempRoutingTbl.RoutingTblMap = make(map[RoutingTblEntryKey]RoutingTblEntry)
+                        server.TempAreaRoutingTbl[areaIdKey] = tempRoutingTbl
+
                         vKey, err := server.CreateAreaGraph(areaId)
                         if err != nil {
                                 server.logger.Err(fmt.Sprintln("Error while creating graph for areaId:", areaId))
-                                flag = true
+                                //flag = true
                                 continue
                         }
-                        server.logger.Info("=========================Start before Dijkstra=================")
-                        server.dumpAreaGraph()
-                        server.dumpAreaStubs()
-                        server.logger.Info("=========================End before Dijkstra=================")
+                        //server.logger.Info("=========================Start before Dijkstra=================")
+                        //server.dumpAreaGraph()
+                        //server.dumpAreaStubs()
+                        //server.logger.Info("=========================End before Dijkstra=================")
                         //server.printRouterLsa()
                         err = server.ExecuteDijkstra(vKey, areaId)
                         if err != nil {
                                 server.logger.Err(fmt.Sprintln("Error while executing Dijkstra for areaId:", areaId))
-                                flag = true
+                                //flag = true
                                 continue
                         }
-                        server.logger.Info("=========================Start after Dijkstra=================")
-                        server.dumpAreaGraph()
-                        server.dumpAreaStubs()
-                        server.dumpSPFTree()
-                        server.logger.Info("=========================End after Dijkstra=================")
-                        server.UpdateRoutingTbl(vKey)
+                        //server.logger.Info("=========================Start after Dijkstra=================")
+                        //server.dumpAreaGraph()
+                        //server.dumpAreaStubs()
+                        //server.dumpSPFTree()
+                        //server.logger.Info("=========================End after Dijkstra=================")
+                        server.UpdateRoutingTbl(vKey, areaId)
+                        server.HandleSummaryLsa(areaId)
                         server.AreaGraph = nil
                         server.AreaStubs = nil
                         server.SPFTree = nil
                 }
-                if flag == false {
-                        server.InstallRoutingTbl()
-                        server.RoutingTbl = nil
-                        server.RoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-                        server.RoutingTbl = server.TempRoutingTbl
-                        server.TempRoutingTbl = nil
-                        server.OldRoutingTbl = nil
-                } else {
-                        server.logger.Info("Some Error in Routing Table Generation")
+/*
+                for key, _ := range server.AreaConfMap {
+                        areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
+                        areaIdKey := AreaIdKey {
+                                        AreaId: areaId,
+                                }
+                        routingTbl := server.RoutingTbl[areaIdKey]
+                        routingTbl.RoutingTblMap = nil
+                        server.RoutingTbl[areaIdKey] = routingTbl
                 }
-                server.dumpRoutingTbl()
+*/
+                server.dumpRoutingTbl() // Per area
+                server.TempGlobalRoutingTbl = nil
+                server.TempGlobalRoutingTbl = make(map[RoutingTblEntryKey]GlobalRoutingTblEntry)
+                /* Summarize and Install/Delete Routes In Routing Table */
+                server.InstallRoutingTbl()
+                // Copy the Summarize Routing Table in Global Routing Table
+                server.GlobalRoutingTbl = nil
+                server.GlobalRoutingTbl = make(map[RoutingTblEntryKey]GlobalRoutingTblEntry)
+                server.GlobalRoutingTbl = server.TempGlobalRoutingTbl
+                server.dumpGlobalRoutingTbl()
+/*
+                for key, _ := range server.AreaConfMap {
+                        areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
+                        areaIdKey := AreaIdKey {
+                                        AreaId: areaId,
+                                }
+                        tempRoutingTbl := server.TempRoutingTbl[areaIdKey]
+                        routingTbl := make(map[RoutingTblEntryKey]RoutingTblEntry)
+                        routingTbl = tempRoutingTbl.RoutingTblMap
+                        server.RoutingTbl[areaIdKey] = AreaRoutingTbl {
+                                                        RoutingTblMap: routingTbl,
+                                                        }
+                        tempRoutingTbl.RoutingTblMap = nil
+                        server.TempRoutingTbl[areaIdKey] = tempRoutingTbl
+                        oldRoutingTbl := server.OldRoutingTbl[areaIdKey]
+                        oldRoutingTbl.RoutingTblMap = nil
+                        server.OldRoutingTbl[areaIdKey] = oldRoutingTbl
+                }
+*/
+                for key, _ := range server.AreaConfMap {
+                        areaId := convertAreaOrRouterIdUint32(string(key.AreaId))
+                        areaIdKey := AreaIdKey {
+                                        AreaId: areaId,
+                                }
+                        tempAreaRoutingTbl := server.TempAreaRoutingTbl[areaIdKey]
+                        tempAreaRoutingTbl.RoutingTblMap = nil
+                        server.TempAreaRoutingTbl[areaIdKey] = tempAreaRoutingTbl
+                }
+                server.TempAreaRoutingTbl = nil
+                server.OldGlobalRoutingTbl = nil
+                server.TempGlobalRoutingTbl = nil
+                //server.dumpGlobalRoutingTbl()
+                if server.ospfGlobalConf.AreaBdrRtrStatus == true {
+                        server.logger.Info("Examine transit areas, Summary LSA...")
+                        server.HandleTransitAreaSummaryLsa()
+                        server.logger.Info("Generate Summary LSA...")
+                        server.GenerateSummaryLsa()
+                }
                 server.DoneCalcSPFCh <- true
         }
 }

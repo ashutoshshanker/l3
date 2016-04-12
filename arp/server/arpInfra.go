@@ -279,7 +279,7 @@ func (server *ARPServer) constructL3Infra() {
 	server.logger.Info("Calling Asicd for getting L3 Interfaces")
 	count := 100
 	for {
-		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkIPv4Intf(asicdServices.Int(curMark), asicdServices.Int(count))
+		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkIPv4IntfState(asicdServices.Int(curMark), asicdServices.Int(count))
 		if bulkInfo == nil {
 			break
 		}
@@ -287,8 +287,8 @@ func (server *ARPServer) constructL3Infra() {
 		more := bool(bulkInfo.More)
 		curMark = int(bulkInfo.EndIdx)
 		for i := 0; i < objCnt; i++ {
-			ip, ipNet, _ := net.ParseCIDR(bulkInfo.IPv4IntfList[i].IpAddr)
-			ifIdx := int(bulkInfo.IPv4IntfList[i].IfIndex)
+			ip, ipNet, _ := net.ParseCIDR(bulkInfo.IPv4IntfStateList[i].IpAddr)
+			ifIdx := int(bulkInfo.IPv4IntfStateList[i].IfIndex)
 			ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(ifIdx))
 			if ifType == commonDefs.L2RefTypeVlan {
 				vlanEnt := server.vlanPropMap[ifIdx]

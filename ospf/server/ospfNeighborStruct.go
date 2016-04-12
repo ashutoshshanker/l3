@@ -24,10 +24,11 @@ const (
 type LsaOp uint8
 
 const (
-	LSAFLOOD    = 0 // flood when FULL state reached
-	LSASELFLOOD = 1 // flood for received LSA
-	LSAINTF     = 2 // Send LSA on the interface in reply to LSAREQ
-	LSAAGE      = 3 // flood aged LSAs.
+	LSAFLOOD        = 0 // flood when FULL state reached
+	LSASELFLOOD     = 1 // flood for received LSA
+	LSAINTF         = 2 // Send LSA on the interface in reply to LSAREQ
+	LSAAGE          = 3 // flood aged LSAs.
+	LSASUMMARYFLOOD = 4 //flood summary LSAs in different areas.
 )
 
 type NeighborConfKey struct {
@@ -199,10 +200,12 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				updateLSALists(nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
 				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				if nbrMsg.ospfNbrEntry.OspfNbrState >= config.NbrTwoWay {
+					seq_num := uint32(time.Now().Nanosecond())
 					server.ConstructAndSendDbdPacket(nbrMsg.ospfNbrConfKey, true, true, true,
-						INTF_OPTIONS, uint32(time.Now().Nanosecond()), false, false)
+						INTF_OPTIONS, seq_num, false, false)
 					nbrConf.OspfNbrState = config.NbrExchangeStart
 					nbrConf.nbrEvent = config.Nbr2WayReceived
+					nbrConf.ospfNbrSeqNum = seq_num
 					server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
 				}
 				server.neighborDeadTimerEvent(nbrMsg.ospfNbrConfKey)

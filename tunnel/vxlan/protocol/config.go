@@ -5,7 +5,6 @@ package vxlan
 import (
 	"errors"
 	"fmt"
-	"l3/tunnel/vxlan/vxlan_linux"
 	"net"
 	"reflect"
 	"vxland"
@@ -49,7 +48,7 @@ type VtepConfig struct {
 	UDP                   uint16           //vxlan udp port.  Deafult is the iana default udp port
 	TTL                   uint16           //TTL of the Vxlan tunnel
 	TOS                   uint16           //Type of Service
-	InnerVlanHandlingMode bool             //The inner vlan tag handling mode.
+	InnerVlanHandlingMode int32            //The inner vlan tag handling mode.
 	Learning              bool             //specifies if unknown source link layer  addresses and IP addresses are entered into the VXLAN  device forwarding database.
 	Rsc                   bool             //specifies if route short circuit is turned on.
 	L2miss                bool             //specifies if netlink LLADDR miss notifications are generated.
@@ -68,7 +67,7 @@ func ConvertInt32ToBool(val int32) bool {
 	return true
 }
 
-func (s *VXLANServer) ConvertVxlanInstanceToVxlanConfig(c *vxland.VxlanInstance) (*VxlanConfig, error) {
+func ConvertVxlanInstanceToVxlanConfig(c *vxland.VxlanInstance) (*VxlanConfig, error) {
 
 	return &VxlanConfig{
 		VNI:    uint32(c.VxlanId),
@@ -78,19 +77,33 @@ func (s *VXLANServer) ConvertVxlanInstanceToVxlanConfig(c *vxland.VxlanInstance)
 	}, nil
 }
 
-func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepInstances) (*VtepConfig, error) {
+func ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepInstances) (*VtepConfig, error) {
 
+	var mac net.HardwareAddr
+	var ip net.IP
+	var name string
+	var ok bool
+	if c.SrcIp == "" || c.SrcMac == "" {
+		ok, name, mac, ip = asicDGetLoopbackInfo()
+		if !ok {
+			errorstr := "VTEP: Src Tunnel Info not provisioned yet, loopback intf needed"
+			logger.Info(errorstr)
+			return &VtepConfig{}, errors.New(errorstr)
+		}
+		fmt.Println("loopback info:", name, mac, ip)
+		if c.SrcMac != "" {
+			mac, _ = net.ParseMAC(c.SrcMac)
+		}
+		if c.SrcIp != "" {
+			ip = net.ParseIP(c.SrcIp)
+		}
+
+	}
+
+	srcName := asicDGetLinuxIfName(c.SrcIfIndex)
 	DstNetMac, _ := net.ParseMAC(c.DstMac)
 
-	ok, name, mac, ip := s.getLoopbackInfo()
-	if !ok {
-		errorstr := "VTEP: Src Tunnel Info not provisioned yet, loopback intf needed"
-		s.logger.Info(errorstr)
-		return &VtepConfig{}, errors.New(errorstr)
-	}
-	srcName := s.getLinuxIfName(c.SrcIfIndex)
-
-	s.logger.Info(fmt.Sprintf("Forcing Vtep %s to use Lb %s SrcMac %s Ip %s", c.VtepName, name, mac, ip))
+	logger.Info(fmt.Sprintf("Forcing Vtep %s to use Lb %s SrcMac %s Ip %s", c.VtepName, name, mac, ip))
 	return &VtepConfig{
 		VtepId:    uint32(c.VtepId),
 		VxlanId:   uint32(c.VxlanId),
@@ -99,11 +112,11 @@ func (s *VXLANServer) ConvertVxlanVtepInstanceToVtepConfig(c *vxland.VxlanVtepIn
 		UDP:       uint16(c.UDP),
 		TTL:       uint16(c.TTL),
 		TOS:       uint16(c.TOS),
-		InnerVlanHandlingMode: ConvertInt32ToBool(c.InnerVlanHandlingMode),
-		Learning:              ConvertInt32ToBool(c.Learning),
-		Rsc:                   ConvertInt32ToBool(c.Rsc),
-		L2miss:                ConvertInt32ToBool(c.L2miss),
-		L3miss:                ConvertInt32ToBool(c.L3miss),
+		InnerVlanHandlingMode: c.InnerVlanHandlingMode,
+		Learning:              c.Learning,
+		Rsc:                   c.Rsc,
+		L2miss:                c.L2miss,
+		L3miss:                c.L3miss,
 		TunnelSrcIp:           ip,
 		TunnelDstIp:           net.ParseIP(c.DstIp),
 		VlanId:                uint16(c.VlanId),
@@ -211,35 +224,27 @@ func (s *VXLANServer) ConfigListener() {
 		Vtepupdate:  make(chan VtepUpdate, 0),
 	}
 
-	softswitch := vxlan_linux.NewVxlanLinux(s.logger)
-
-	go func(cc *VxLanConfigChannels, ss *vxlan_linux.VxlanLinux) {
+	go func(cc *VxLanConfigChannels) {
 		for {
 			select {
 			case vxlan := <-cc.Vxlancreate:
-				s.saveVxLanConfigData(&vxlan)
-				c := vxlan_linux.VxlanConfig(vxlan)
-				ss.CreateVxLAN(&c)
+				CreateVxLAN(&vxlan)
 
 			case vxlan := <-cc.Vxlandelete:
-				c := vxlan_linux.VxlanConfig(vxlan)
-				ss.DeleteVxLAN(&c)
+				DeleteVxLAN(&vxlan)
 
 			case <-cc.Vxlanupdate:
 				//s.UpdateThriftVxLAN(&vxlan)
 
 			case vtep := <-cc.Vtepcreate:
-				s.saveVtepConfigData(&vtep)
-				c := vxlan_linux.VtepConfig(vtep)
-				ss.CreateVtep(&c)
+				CreateVtep(&vtep)
 
 			case vtep := <-cc.Vtepdelete:
-				c := vxlan_linux.VtepConfig(vtep)
-				ss.DeleteVtep(&c)
+				DeleteVtep(&vtep)
 
 			case <-cc.Vtepupdate:
 				//s.UpdateThriftVtep(&vtep)
 			}
 		}
-	}(s.Configchans, softswitch)
+	}(s.Configchans)
 }

@@ -56,6 +56,16 @@ struct PolicyDstIpMatchPrefixSetCondition{
 	1 : string 	PrefixSet
 	2 : PolicyPrefix Prefix
 }
+struct IPv4Route {
+	1 : string DestinationNw
+	2 : string NetworkMask
+	3 : string NextHopIp
+	4 : i32 Cost
+	5 : string OutgoingIntfType
+	6 : string OutgoingInterface
+	7 : string Protocol
+	8 : string CreateTime
+}
 
 service RIBDINTServices 
 {
@@ -64,10 +74,13 @@ service RIBDINTServices
 	//list<Routes> getConnectedRoutesInfo();
     void printV4Routes();
 	RoutesGetInfo getBulkRoutesForProtocol(1: string srcProtocol, 2: int fromIndex ,3: int rcount)
+    void TrackReachabilityStatus(1: string ipAddr, 2: string protocol, 3:string op) //op:"add"/"del"
 	//RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	void linkDown(1: int ifType, 2:int ifIndex);
 	void linkUp(1: int ifType, 2:int ifIndex);
 	void intfUp(1:string ipAddr);
 	void intfDown(1:string ipAddr);
+	oneway void OnewayCreateBulkIPv4Route(1: list<IPv4Route> config);
+	
 }

@@ -76,7 +76,7 @@ func (svr *VrrpServer) VrrpPopulateVridState(key string, entry *vrrpd.VrrpVridSt
 	return ok
 }
 
-func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) {
+func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) {
 	key := strconv.Itoa(int(config.IfIndex)) + "_" + strconv.Itoa(int(config.VRID))
 	gblInfo := svr.vrrpGblInfo[key]
 
@@ -84,12 +84,7 @@ func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 	gblInfo.IntfConfig.VRID = config.VRID
 	gblInfo.IntfConfig.VirtualIPv4Addr = config.VirtualIPv4Addr
 	gblInfo.IntfConfig.PreemptMode = config.PreemptMode
-
-	//	if config.Priority == 0 {
-	//		gblInfo.IntfConfig.Priority = VRRP_DEFAULT_PRIORITY
-	//	} else {
 	gblInfo.IntfConfig.Priority = config.Priority
-	//	}
 	if config.AdvertisementInterval == 0 {
 		gblInfo.IntfConfig.AdvertisementInterval = 1
 	} else {
@@ -136,7 +131,6 @@ func (svr *VrrpServer) VrrpCreateGblInfo(config vrrpd.VrrpIntf) { //key string) 
 		svr.logger.Info("Adding protocol mac for punting packets to CPU")
 		svr.VrrpUpdateProtocolMacEntry(true /*add vrrp protocol mac*/)
 	}
-	svr.logger.Info(fmt.Sprintln("Init Vrrp config obj is:", gblInfo))
 	// Start FSM
 	svr.vrrpFsmCh <- VrrpFsm{
 		key: key,
@@ -272,7 +266,10 @@ func (svr *VrrpServer) VrrpGetBulkVrrpVridStates(idx int, cnt int) (int, int, []
 }
 
 func (svr *VrrpServer) VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
-	// @TODO: jgheewala need to add support for secondary/virtual interface
+	_, found := svr.vrrpLinuxIfIndex2AsicdIfIndex[IfIndex]
+	if found {
+		return
+	}
 	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
 	vlanName, ok := svr.vrrpVlanId2Name[vlanId]
 	if ok == false {
@@ -422,6 +419,7 @@ func (vrrpServer *VrrpServer) VrrpInitGlobalDS() {
 	vrrpServer.vrrpPromiscuous = false
 	vrrpServer.vrrpTimeout = 10 * time.Microsecond
 	vrrpServer.vrrpMacConfigAdded = false
+	vrrpServer.vrrpPktSend = make(chan bool)
 }
 
 func (svr *VrrpServer) VrrpDeAllocateMemoryToGlobalDS() {

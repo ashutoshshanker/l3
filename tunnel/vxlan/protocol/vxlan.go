@@ -25,9 +25,29 @@ func NewVxlanDbEntry(c *VxlanConfig) *vxlanDbEntry {
 	}
 }
 
-func (s *VXLANServer) saveVxLanConfigData(c *VxlanConfig) {
+func GetVxlanDB() map[uint32]*vxlanDbEntry {
+	return vxlanDB
+}
+
+func saveVxLanConfigData(c *VxlanConfig) {
 	if _, ok := vxlanDB[c.VNI]; !ok {
 		vxlan := NewVxlanDbEntry(c)
 		vxlanDB[c.VNI] = vxlan
 	}
+}
+
+func CreateVxLAN(c *VxlanConfig) {
+	saveVxLanConfigData(c)
+
+	// create vxlan resources in hw
+	asicDCreateVxlan(c)
+}
+
+func DeleteVxLAN(c *VxlanConfig) {
+
+	// create vxlan resources in hw
+	asicDDeleteVxlan(c)
+
+	delete(vxlanDB, c.VNI)
+
 }
