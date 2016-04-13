@@ -27,7 +27,7 @@ func (server *BFDServer) StartSessionHandler() error {
 	server.FailedSessionClientCh = make(chan int32)
 	//go server.StartBfdSessionDiscoverer()
 	go server.StartBfdSessionRxTx()
-	go server.StartSessionRetryHandler()
+	//go server.StartSessionRetryHandler()
 	for {
 		select {
 		case sessionMgmt := <-server.CreateSessionCh:
@@ -108,7 +108,7 @@ func (server *BFDServer) StartBfdSessionRxTx() error {
 
 func (server *BFDServer) StartSessionRetryHandler() error {
 	server.logger.Info("Starting session retry handler")
-	retryTimer := time.NewTicker(time.Second * 60)
+	retryTimer := time.NewTicker(time.Second * 300)
 	for t := range retryTimer.C {
 		_ = t
 		for i := 0; i < len(server.bfdGlobal.InactiveSessionsIdSlice); i++ {
