@@ -143,10 +143,11 @@ func (adjRib *AdjRib) updateRibOutInfo(action RouteAction, addPathsMod bool, add
 }
 
 func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *Path, rem []packet.NLRI, remPath *Path,
-	addPathCount int) (map[*Path][]*Destination, []*Destination, []*Destination) {
+	addPathCount int) (map[*Path][]*Destination, []*Destination, []*Destination, bool) {
 	withdrawn := make([]*Destination, 0)
 	updated := make(map[*Path][]*Destination)
 	updatedAddPaths := make([]*Destination, 0)
+	addedAllPrefixes := true
 
 	// process withdrawn routes
 	for _, nlri := range rem {
@@ -188,6 +189,12 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 			action, addPathsMod, addRoutes, updRoutes, delRoutes := dest.SelectRouteForLocRib(addPathCount)
 			withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes,
 				delRoutes, dest, withdrawn, updated, updatedAddPaths)
+
+			if remPath != nil {
+				if neighborConf := remPath.GetNeighborConf(); neighborConf != nil {
+					neighborConf.DecrPrefixCount()
+				}
+			}
 			if action == RouteActionDelete {
 				if dest.IsEmpty() {
 					delete(adjRib.destPathMap, nlri.GetPrefix().Prefix.String())
@@ -202,10 +209,21 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 	nextHopStr := addPath.GetNextHop().String()
 	for _, nlri := range add {
 		if nlri.GetPrefix().Prefix.String() == "0.0.0.0" {
+			adjRib.logger.Info(fmt.Sprintf("Can't process NLRI 0.0.0.0"))
 			continue
 		}
+
 		adjRib.logger.Info(fmt.Sprintln("Processing nlri", nlri.GetPrefix().Prefix.String()))
 		dest, _ := adjRib.GetDest(nlri, true)
+		if oldPath := dest.getPathForIP(peerIP, nlri.GetPathId()); oldPath == nil {
+			if addPath.NeighborConf != nil && !addPath.NeighborConf.CanAcceptNewPrefix(true) {
+				adjRib.logger.Info(fmt.Sprintf("Max prefixes limit reached for peer %s, can't process %s",
+					peerIP, nlri.GetPrefix().Prefix.String()))
+				addedAllPrefixes = false
+				continue
+			}
+		}
+
 		dest.AddOrUpdatePath(peerIP, nlri.GetPathId(), addPath)
 		if !addPath.IsReachable() {
 			if _, ok := adjRib.unreachablePaths[nextHopStr][addPath][dest]; !ok {
@@ -221,7 +239,7 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 			delRoutes, dest, withdrawn, updated, updatedAddPaths)
 	}
 
-	return updated, withdrawn, updatedAddPaths
+	return updated, withdrawn, updatedAddPaths, addedAllPrefixes
 }
 
 func (adjRib *AdjRib) ProcessRoutesForReachableRoutes(nextHop string, reachabilityInfo *ReachabilityInfo,
@@ -254,7 +272,7 @@ func (adjRib *AdjRib) ProcessRoutesForReachableRoutes(nextHop string, reachabili
 }
 
 func (adjRib *AdjRib) ProcessUpdate(neighborConf *base.NeighborConf, pktInfo *packet.BGPPktSrc, addPathCount int) (
-	map[*Path][]*Destination, []*Destination, *Path, []*Destination) {
+	map[*Path][]*Destination, []*Destination, *Path, []*Destination, bool) {
 	body := pktInfo.Msg.Body.(*packet.BGPUpdate)
 
 	remPath := NewPath(adjRib, neighborConf, body.PathAttributes, true, false, RouteTypeEGP)
@@ -267,7 +285,7 @@ func (adjRib *AdjRib) ProcessUpdate(neighborConf *base.NeighborConf, pktInfo *pa
 	if !addPath.IsValid() {
 		adjRib.logger.Info(fmt.Sprintf("Received a update with our cluster id %d. Discarding the update.",
 			addPath.NeighborConf.RunningConf.RouteReflectorClusterId))
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, true
 	}
 
 	nextHopStr := addPath.GetNextHop().String()
@@ -283,8 +301,8 @@ func (adjRib *AdjRib) ProcessUpdate(neighborConf *base.NeighborConf, pktInfo *pa
 		}
 	}
 
-	updated, withdrawn, updatedAddPaths := adjRib.ProcessRoutes(pktInfo.Src, body.NLRI, addPath, body.WithdrawnRoutes,
-		remPath, addPathCount)
+	updated, withdrawn, updatedAddPaths, addedAllPrefixes := adjRib.ProcessRoutes(pktInfo.Src, body.NLRI, addPath,
+		body.WithdrawnRoutes, remPath, addPathCount)
 	addPath.updated = false
 
 	if reachabilityInfo != nil {
@@ -292,7 +310,7 @@ func (adjRib *AdjRib) ProcessUpdate(neighborConf *base.NeighborConf, pktInfo *pa
 		updated, withdrawn, updatedAddPaths = adjRib.ProcessRoutesForReachableRoutes(nextHopStr, reachabilityInfo,
 			addPathCount, updated, withdrawn, updatedAddPaths)
 	}
-	return updated, withdrawn, remPath, updatedAddPaths
+	return updated, withdrawn, remPath, updatedAddPaths, addedAllPrefixes
 }
 
 func (adjRib *AdjRib) ProcessConnectedRoutes(src string, path *Path, add []packet.NLRI, remove []packet.NLRI,
@@ -301,8 +319,12 @@ func (adjRib *AdjRib) ProcessConnectedRoutes(src string, path *Path, add []packe
 	removePath = path.Clone()
 	removePath.withdrawn = true
 	path.updated = true
-	updated, withdrawn, updatedAddPaths := adjRib.ProcessRoutes(src, add, path, remove, removePath, addPathCount)
+	updated, withdrawn, updatedAddPaths, addedAllPrefixes := adjRib.ProcessRoutes(src, add, path, remove, removePath,
+		addPathCount)
 	path.updated = false
+	if !addedAllPrefixes {
+		adjRib.logger.Err(fmt.Sprintf("Failed to add connected routes... max prefixes exceeded for connected routes!"))
+	}
 	return updated, withdrawn, removePath, updatedAddPaths
 }
 
@@ -327,6 +349,9 @@ func (adjRib *AdjRib) RemoveUpdatesFromNeighbor(peerIP string, neighborConf *bas
 		}
 	}
 
+	if neighborConf != nil {
+		neighborConf.SetPrefixCount(0)
+	}
 	return updated, withdrawn, remPath, updatedAddPaths
 }
 

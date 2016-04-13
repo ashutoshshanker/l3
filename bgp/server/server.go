@@ -258,12 +258,12 @@ func (server *BGPServer) handleBfdNotifications(rxBuf []byte) {
 	if peer, ok := server.PeerMap[bfd.DestIp]; ok {
 		if !bfd.State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "up" {
 			//peer.StopFSM("Peer BFD Down")
-			peer.Command(int(fsm.BGPEventManualStop))
+			peer.Command(int(fsm.BGPEventManualStop), fsm.BGPCmdReasonNone)
 			peer.NeighborConf.Neighbor.State.BfdNeighborState = "down"
 		}
 		if bfd.State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
 			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
-			peer.Command(int(fsm.BGPEventManualStart))
+			peer.Command(int(fsm.BGPEventManualStart), fsm.BGPCmdReasonNone)
 		}
 		server.logger.Info(fmt.Sprintln("Bfd state of peer ", peer.NeighborConf.Neighbor.NeighborAddress, " is ", peer.NeighborConf.Neighbor.State.BfdNeighborState))
 	}
@@ -883,7 +883,11 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 
 	atomic.AddUint32(&peer.NeighborConf.Neighbor.State.Queues.Input, ^uint32(0))
 	peer.NeighborConf.Neighbor.State.Messages.Received.Update++
-	updated, withdrawn, withdrawPath, updatedAddPaths := server.AdjRib.ProcessUpdate(peer.NeighborConf, pktInfo, server.addPathCount)
+	updated, withdrawn, withdrawPath, updatedAddPaths, addedAllPrefixes := server.AdjRib.ProcessUpdate(
+		peer.NeighborConf, pktInfo, server.addPathCount)
+	if !addedAllPrefixes {
+		peer.MaxPrefixesExceeded()
+	}
 	updated, withdrawn, withdrawPath, updatedAddPaths = server.checkForAggregation(updated, withdrawn, withdrawPath,
 		updatedAddPaths)
 	server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
@@ -1256,7 +1260,7 @@ func (server *BGPServer) StartServer() {
 				server.logger.Info(fmt.Sprintf("Failed to apply command %s. Peer at that address does not exist, %v\n",
 					peerCommand.Command, peerCommand.IP))
 			}
-			peer.Command(peerCommand.Command)
+			peer.Command(peerCommand.Command, fsm.BGPCmdReasonNone)
 
 		case peerFSMConn := <-server.PeerFSMConnCh:
 			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM established/broken channel\n", peerFSMConn.PeerIP))

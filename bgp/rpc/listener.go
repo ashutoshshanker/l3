@@ -88,7 +88,8 @@ func (h *BGPHandler) handlePeerGroup(dbHdl *sql.DB) error {
 		if err = rows.Scan(&group.PeerAS, &group.LocalAS, &group.AuthPassword, &group.Description, &group.Name,
 			&group.RouteReflectorClusterId, &group.RouteReflectorClient, &group.MultiHopEnable, &group.MultiHopTTL,
 			&group.ConnectRetryTime, &group.HoldTime, &group.KeepaliveTime, &group.AddPathsRx,
-			&group.AddPathsMaxTx); err != nil {
+			&group.AddPathsMaxTx, &group.MaxPrefixes, &group.MaxPrefixesThresholdPct, &group.MaxPrefixesDisconnect,
+			&group.MaxPrefixesRestartTimer); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPPeerGroup rows with error %s", err))
 			return err
 		}
@@ -116,7 +117,8 @@ func (h *BGPHandler) handleNeighborConfig(dbHdl *sql.DB) error {
 		if err = rows.Scan(&nConf.PeerAS, &nConf.LocalAS, &nConf.AuthPassword, &nConf.Description, &neighborIP,
 			&neighborIfIndex, &nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable,
 			&nConf.MultiHopTTL, &nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime, &nConf.AddPathsRx,
-			&nConf.AddPathsMaxTx, &nConf.PeerGroup, &nConf.BfdEnable); err != nil {
+			&nConf.AddPathsMaxTx, &nConf.PeerGroup, &nConf.BfdEnable, &nConf.MaxPrefixes,
+			&nConf.MaxPrefixesThresholdPct, &nConf.MaxPrefixesDisconnect, &nConf.MaxPrefixesRestartTimer); err != nil {
 			h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighbor rows with error %s", err))
 			return err
 		}
@@ -439,6 +441,10 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf c
 			BfdEnable:               bgpNeighbor.BfdEnable,
 			AddPathsRx:              bgpNeighbor.AddPathsRx,
 			AddPathsMaxTx:           uint8(bgpNeighbor.AddPathsMaxTx),
+			MaxPrefixes:             uint32(bgpNeighbor.MaxPrefixes),
+			MaxPrefixesThresholdPct: uint8(bgpNeighbor.MaxPrefixesThresholdPct),
+			MaxPrefixesDisconnect:   bgpNeighbor.MaxPrefixesDisconnect,
+			MaxPrefixesRestartTimer: uint8(bgpNeighbor.MaxPrefixesRestartTimer),
 		},
 		NeighborAddress: ip,
 		IfIndex:         ifIndex,
@@ -489,6 +495,12 @@ func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState
 	bgpNeighborResponse.PeerGroup = neighborState.PeerGroup
 	bgpNeighborResponse.AddPathsRx = neighborState.AddPathsRx
 	bgpNeighborResponse.AddPathsMaxTx = int8(neighborState.AddPathsMaxTx)
+
+	bgpNeighborResponse.MaxPrefixes = int32(neighborState.MaxPrefixes)
+	bgpNeighborResponse.MaxPrefixesThresholdPct = int8(neighborState.MaxPrefixesThresholdPct)
+	bgpNeighborResponse.MaxPrefixesDisconnect = neighborState.MaxPrefixesDisconnect
+	bgpNeighborResponse.MaxPrefixesRestartTimer = int8(neighborState.MaxPrefixesRestartTimer)
+	bgpNeighborResponse.TotalPrefixes = int32(neighborState.TotalPrefixes)
 
 	received := bgpd.NewBGPCounters()
 	received.Notification = int64(neighborState.Messages.Received.Notification)
@@ -581,9 +593,14 @@ func (h *BGPHandler) ValidateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (group c
 			KeepaliveTime:           uint32(peerGroup.KeepaliveTime),
 			AddPathsRx:              peerGroup.AddPathsRx,
 			AddPathsMaxTx:           uint8(peerGroup.AddPathsMaxTx),
+			MaxPrefixes:             uint32(peerGroup.MaxPrefixes),
+			MaxPrefixesThresholdPct: uint8(peerGroup.MaxPrefixesThresholdPct),
+			MaxPrefixesDisconnect:   peerGroup.MaxPrefixesDisconnect,
+			MaxPrefixesRestartTimer: uint8(peerGroup.MaxPrefixesRestartTimer),
 		},
 		Name: peerGroup.Name,
 	}
+
 	return group, err
 }
 

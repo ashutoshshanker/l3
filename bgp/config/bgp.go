@@ -67,6 +67,10 @@ type BaseConfig struct {
 	BfdEnable               bool
 	AddPathsRx              bool
 	AddPathsMaxTx           uint8
+	MaxPrefixes             uint32
+	MaxPrefixesThresholdPct uint8
+	MaxPrefixesDisconnect   bool
+	MaxPrefixesRestartTimer uint8
 }
 
 type NeighborConfig struct {
@@ -98,6 +102,11 @@ type NeighborState struct {
 	PeerGroup               string
 	AddPathsRx              bool
 	AddPathsMaxTx           uint8
+	MaxPrefixes             uint32
+	MaxPrefixesThresholdPct uint8
+	MaxPrefixesDisconnect   bool
+	MaxPrefixesRestartTimer uint8
+	TotalPrefixes           uint32
 }
 
 type TransportConfig struct {
