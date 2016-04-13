@@ -297,8 +297,6 @@ func (svr *VrrpServer) VrrpConnectToAsicd(client VrrpClientJson) error {
 	if svr.asicdClient.Transport == nil ||
 		svr.asicdClient.PtrProtocolFactory == nil ||
 		err != nil {
-		svr.logger.Err(fmt.Sprintln("VRRP: Connecting to",
-			client.Name, "failed ", err))
 		return err
 	}
 	svr.asicdClient.ClientHdl =
@@ -363,27 +361,38 @@ func (svr *VrrpServer) VrrpConnectAndInitPortVlan() error {
 		svr.logger.Err("VRRP: Error in Unmarshalling Json")
 		return err
 	}
-
+	re_connect := 25
+	count := 0
 	// connect to client
 	for {
 		time.Sleep(time.Millisecond * 500)
 		for i := 0; i < len(unConnectedClients); i++ {
-			err := svr.VrrpConnectToUnConnectedClient(unConnectedClients[i])
+			err := svr.VrrpConnectToUnConnectedClient(
+				unConnectedClients[i])
 			if err == nil {
 				svr.logger.Info("VRRP: Connected to " +
 					unConnectedClients[i].Name)
-				unConnectedClients = append(unConnectedClients[:i],
+				unConnectedClients = append(
+					unConnectedClients[:i],
 					unConnectedClients[i+1:]...)
 
-			} else if err.Error() == VRRP_CLIENT_CONNECTION_NOT_REQUIRED {
-				svr.logger.Info("VRRP: connection to " + unConnectedClients[i].Name +
-					" not required")
-				unConnectedClients = append(unConnectedClients[:i],
+			} else if err.Error() ==
+				VRRP_CLIENT_CONNECTION_NOT_REQUIRED {
+				unConnectedClients = append(
+					unConnectedClients[:i],
 					unConnectedClients[i+1:]...)
+			} else {
+				count++
+				if count == re_connect {
+					svr.logger.Err(fmt.Sprintln(
+						"Connecting to",
+						unConnectedClients[i].Name,
+						"failed ", err))
+					count = 0
+				}
 			}
 		}
 		if len(unConnectedClients) == 0 {
-			svr.logger.Info("VRRP: all clients connected successfully")
 			break
 		}
 	}
