@@ -31,6 +31,22 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			return
 		}
 		switch Notif.MsgType {
+		case asicdConstDefs.NOTIFY_LOGICAL_INTF_CREATE:
+		    logger.Info("NOTIFY_LOGICAL_INTF_CREATE received")
+			var logicalIntfNotifyMsg asicdConstDefs.LogicalIntfNotifyMsg
+			err = json.Unmarshal(Notif.Msg, &logicalIntfNotifyMsg)
+			if err != nil {
+				logger.Info(fmt.Sprintln("Unable to unmashal logicalIntfNotifyMsg:", Notif.Msg))
+				return
+			}
+			ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(logicalIntfNotifyMsg.LogicalIntfId), commonDefs.IfTypeLoopback)
+			if IntfIdNameMap == nil {
+				IntfIdNameMap = make(map[int32]IntfEntry)
+			}
+			intfEntry := IntfEntry{name: logicalIntfNotifyMsg.LogicalIntfName}
+             logger.Info(fmt.Sprintln("Updating IntfIdMap at index ", ifId, " with name ", logicalIntfNotifyMsg.LogicalIntfName))
+			IntfIdNameMap[int32(ifId)] = intfEntry
+			break
 		case asicdConstDefs.NOTIFY_VLAN_CREATE:
 			logger.Info("asicdConstDefs.NOTIFY_VLAN_CREATE")
 			var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
@@ -96,11 +112,6 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				break
 			case commonDefs.IfTypeLoopback:
 				nextHopIfTypeStr = "Loopback"
-				if IntfIdNameMap == nil {
-					IntfIdNameMap = make(map[int32]IntfEntry)
-				}
-				intfEntry := IntfEntry{}
-				IntfIdNameMap[msg.IfIndex] = intfEntry
 				break
 			}
 			cfg := ribd.IPv4Route{
