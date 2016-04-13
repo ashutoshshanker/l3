@@ -58,8 +58,6 @@ func DhcpRelayAgentOSSignalHandle() {
 }
 
 func DhcpRelayConnectToAsicd(client ClientJson) error {
-	logger.Info(fmt.Sprintln("DRA: Connecting to asicd at port",
-		client.Port))
 	var err error
 	asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
 	asicdClient.Transport, asicdClient.PtrProtocolFactory, err =
@@ -67,8 +65,6 @@ func DhcpRelayConnectToAsicd(client ClientJson) error {
 	if asicdClient.Transport == nil ||
 		asicdClient.PtrProtocolFactory == nil ||
 		err != nil {
-		logger.Err(fmt.Sprintln("DRA: Connecting to",
-			client.Name, "failed ", err))
 		return err
 	}
 	asicdClient.ClientHdl =
@@ -76,7 +72,6 @@ func DhcpRelayConnectToAsicd(client ClientJson) error {
 			asicdClient.Transport,
 			asicdClient.PtrProtocolFactory)
 	asicdClient.IsConnected = true
-	logger.Info("DRA: is connected to asicd")
 	return nil
 }
 
@@ -86,7 +81,6 @@ func DhcpRelayConnectToAsicd(client ClientJson) error {
  *	    connect to clients like asicd, etc..
  */
 func DhcpRelayAgentConnectToClients(client ClientJson) error {
-	logger.Info(fmt.Sprintln("DRA: Client name is", client.Name))
 	switch client.Name {
 	case "asicd":
 		return DhcpRelayConnectToAsicd(client)
@@ -106,8 +100,8 @@ func InitDhcpRelayPortPktHandler() error {
 	logger.Info(fmt.Sprintln("DRA: configFile is ", configFile))
 	bytes, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		logger.Err(fmt.Sprintln("DRA:Error while reading configuration file",
-			configFile))
+		logger.Err(fmt.Sprintln("DRA:Error while reading",
+			"configuration file", configFile))
 		return err
 	}
 	var unConnectedClients []ClientJson
@@ -118,26 +112,36 @@ func InitDhcpRelayPortPktHandler() error {
 	}
 
 	logger.Info("DRA: Connecting to Clients")
+	re_connect := 25
+	count := 0
 	// connect to client
 	for {
 		time.Sleep(time.Millisecond * 500)
 		for i := 0; i < len(unConnectedClients); i++ {
-			err := DhcpRelayAgentConnectToClients(unConnectedClients[i])
+			err := DhcpRelayAgentConnectToClients(
+				unConnectedClients[i])
 			if err == nil {
 				logger.Info("DRA: Connected to " +
 					unConnectedClients[i].Name)
-				unConnectedClients = append(unConnectedClients[:i],
+				unConnectedClients = append(
+					unConnectedClients[:i],
 					unConnectedClients[i+1:]...)
 
 			} else if err.Error() == CLIENT_CONNECTION_NOT_REQUIRED {
-				logger.Info("DRA: connection to " + unConnectedClients[i].Name +
-					" not required")
-				unConnectedClients = append(unConnectedClients[:i],
+				unConnectedClients = append(
+					unConnectedClients[:i],
 					unConnectedClients[i+1:]...)
+			} else {
+				count++
+				if count == re_connect {
+					logger.Err(fmt.Sprintln("Connecting to",
+						unConnectedClients[i].Name,
+						"failed ", err))
+					count = 0
+				}
 			}
 		}
 		if len(unConnectedClients) == 0 {
-			logger.Info("DRA: all clients connected successfully")
 			break
 		}
 	}
