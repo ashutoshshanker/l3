@@ -88,49 +88,54 @@ type BfdSession struct {
 	recvPcapHandle      *pcap.Handle
 	useDedicatedMac     bool
 	intfConfigChanged   bool
+	isServerActive      bool
+	isClientActive      bool
 	server              *BFDServer
 }
 
 type BfdGlobal struct {
-	Enabled              bool
-	NumInterfaces        uint32
-	Interfaces           map[int32]*BfdInterface
-	InterfacesIdSlice    []int32
-	NumSessions          uint32
-	Sessions             map[int32]*BfdSession
-	SessionsIdSlice      []int32
-	NumUpSessions        uint32
-	NumDownSessions      uint32
-	NumAdminDownSessions uint32
+	Enabled                 bool
+	NumInterfaces           uint32
+	Interfaces              map[int32]*BfdInterface
+	InterfacesIdSlice       []int32
+	NumSessions             uint32
+	Sessions                map[int32]*BfdSession
+	SessionsIdSlice         []int32
+	InactiveSessionsIdSlice []int32
+	NumUpSessions           uint32
+	NumDownSessions         uint32
+	NumAdminDownSessions    uint32
 }
 
 type BFDServer struct {
-	logger              *logging.Writer
-	ribdClient          RibdClient
-	asicdClient         AsicdClient
-	GlobalConfigCh      chan GlobalConfig
-	IntfConfigCh        chan IntfConfig
-	IntfConfigDeleteCh  chan int32
-	asicdSubSocket      *nanomsg.SubSocket
-	asicdSubSocketCh    chan []byte
-	asicdSubSocketErrCh chan error
-	ribdSubSocket       *nanomsg.SubSocket
-	ribdSubSocketCh     chan []byte
-	ribdSubSocketErrCh  chan error
-	portPropertyMap     map[int32]PortProperty
-	vlanPropertyMap     map[int32]VlanProperty
-	IPIntfPropertyMap   map[string]IPIntfProperty
-	CreateSessionCh     chan BfdSessionMgmt
-	DeleteSessionCh     chan BfdSessionMgmt
-	AdminUpSessionCh    chan BfdSessionMgmt
-	AdminDownSessionCh  chan BfdSessionMgmt
-	SessionConfigCh     chan SessionConfig
-	CreatedSessionCh    chan int32
-	bfddPubSocket       *nanomsg.PubSocket
-	lagPropertyMap      map[int32]LagProperty
-	notificationCh      chan []byte
-	ServerUpCh          chan bool
-	bfdGlobal           BfdGlobal
+	logger                *logging.Writer
+	ribdClient            RibdClient
+	asicdClient           AsicdClient
+	GlobalConfigCh        chan GlobalConfig
+	IntfConfigCh          chan IntfConfig
+	IntfConfigDeleteCh    chan int32
+	asicdSubSocket        *nanomsg.SubSocket
+	asicdSubSocketCh      chan []byte
+	asicdSubSocketErrCh   chan error
+	ribdSubSocket         *nanomsg.SubSocket
+	ribdSubSocketCh       chan []byte
+	ribdSubSocketErrCh    chan error
+	portPropertyMap       map[int32]PortProperty
+	vlanPropertyMap       map[int32]VlanProperty
+	IPIntfPropertyMap     map[string]IPIntfProperty
+	CreateSessionCh       chan BfdSessionMgmt
+	DeleteSessionCh       chan BfdSessionMgmt
+	AdminUpSessionCh      chan BfdSessionMgmt
+	AdminDownSessionCh    chan BfdSessionMgmt
+	SessionConfigCh       chan SessionConfig
+	CreatedSessionCh      chan int32
+	bfddPubSocket         *nanomsg.PubSocket
+	lagPropertyMap        map[int32]LagProperty
+	notificationCh        chan []byte
+	ServerUpCh            chan bool
+	FailedSessionServerCh chan int32
+	FailedSessionClientCh chan int32
+	bfdGlobal             BfdGlobal
 }
 
 func NewBFDServer(logger *logging.Writer) *BFDServer {
@@ -156,6 +161,7 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer.bfdGlobal.NumSessions = 0
 	bfdServer.bfdGlobal.Sessions = make(map[int32]*BfdSession)
 	bfdServer.bfdGlobal.SessionsIdSlice = []int32{}
+	bfdServer.bfdGlobal.InactiveSessionsIdSlice = []int32{}
 	bfdServer.bfdGlobal.NumUpSessions = 0
 	bfdServer.bfdGlobal.NumDownSessions = 0
 	bfdServer.bfdGlobal.NumAdminDownSessions = 0
