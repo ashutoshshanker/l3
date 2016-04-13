@@ -10,7 +10,7 @@ import (
 	//    "net"
 )
 
-func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobalConfig) bool {
+func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) bool {
 	gConf := config.GlobalConf{
 		RouterId:                 config.RouterId(ospfGlobalConf.RouterId),
 		AdminStat:                config.Status(ospfGlobalConf.AdminStat),
@@ -30,7 +30,7 @@ func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobalConfig) boo
 	return true
 }
 
-func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntryConfig) bool {
+func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) bool {
 	ifConf := config.InterfaceConf{
 		IfIpAddress:           config.IpAddress(ospfIfConf.IfIpAddress),
 		AddressLessIf:         config.InterfaceIndexOrZero(ospfIfConf.AddressLessIf),
@@ -53,7 +53,7 @@ func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntryConfig) bool {
 	return true
 }
 
-func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntryConfig) bool {
+func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntry) bool {
 	areaConf := config.AreaConf{
 		AreaId:                              config.AreaId(ospfAreaConf.AreaId),
 		AuthType:                            config.AuthType(ospfAreaConf.AuthType),
@@ -68,7 +68,7 @@ func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntryConfig) 
 
 }
 
-func (h *OSPFHandler) CreateOspfGlobalConfig(ospfGlobalConf *ospfd.OspfGlobalConfig) (bool, error) {
+func (h *OSPFHandler) CreateOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) (bool, error) {
 	if ospfGlobalConf == nil {
 		err := errors.New("Invalid Global Configuration")
 		return false, err
@@ -77,7 +77,7 @@ func (h *OSPFHandler) CreateOspfGlobalConfig(ospfGlobalConf *ospfd.OspfGlobalCon
 	return h.SendOspfGlobal(ospfGlobalConf), nil
 }
 
-func (h *OSPFHandler) CreateOspfAreaEntryConfig(ospfAreaConf *ospfd.OspfAreaEntryConfig) (bool, error) {
+func (h *OSPFHandler) CreateOspfAreaEntry(ospfAreaConf *ospfd.OspfAreaEntry) (bool, error) {
 	if ospfAreaConf == nil {
 		err := errors.New("Invalid Area Configuration")
 		return false, err
@@ -86,22 +86,22 @@ func (h *OSPFHandler) CreateOspfAreaEntryConfig(ospfAreaConf *ospfd.OspfAreaEntr
 	return h.SendOspfAreaConf(ospfAreaConf), nil
 }
 
-func (h *OSPFHandler) CreateOspfStubAreaEntryConfig(ospfStubAreaConf *ospfd.OspfStubAreaEntryConfig) (bool, error) {
+func (h *OSPFHandler) CreateOspfStubAreaEntry(ospfStubAreaConf *ospfd.OspfStubAreaEntry) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create Stub Area config attrs:", ospfStubAreaConf))
 	return true, nil
 }
 
-func (h *OSPFHandler) CreateOspfAreaRangeEntryConfig(ospfAreaRangeConf *ospfd.OspfAreaRangeEntryConfig) (bool, error) {
+func (h *OSPFHandler) CreateOspfAreaRangeEntry(ospfAreaRangeConf *ospfd.OspfAreaRangeEntry) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create address range config attrs:", ospfAreaRangeConf))
 	return true, nil
 }
 
-func (h *OSPFHandler) CreateOspfHostEntryConfig(ospfHostConf *ospfd.OspfHostEntryConfig) (bool, error) {
+func (h *OSPFHandler) CreateOspfHostEntry(ospfHostConf *ospfd.OspfHostEntry) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create host config attrs:", ospfHostConf))
 	return true, nil
 }
 
-func (h *OSPFHandler) CreateOspfIfEntryConfig(ospfIfConf *ospfd.OspfIfEntryConfig) (bool, error) {
+func (h *OSPFHandler) CreateOspfIfEntry(ospfIfConf *ospfd.OspfIfEntry) (bool, error) {
 	if ospfIfConf == nil {
 		err := errors.New("Invalid Interface Configuration")
 		return false, err
@@ -110,22 +110,22 @@ func (h *OSPFHandler) CreateOspfIfEntryConfig(ospfIfConf *ospfd.OspfIfEntryConfi
 	return h.SendOspfIfConf(ospfIfConf), nil
 }
 
-func (h *OSPFHandler) CreateOspfIfMetricEntryConfig(ospfIfMetricConf *ospfd.OspfIfMetricEntryConfig) (bool, error) {
+func (h *OSPFHandler) CreateOspfIfMetricEntry(ospfIfMetricConf *ospfd.OspfIfMetricEntry) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create interface metric config attrs:", ospfIfMetricConf))
 	return true, nil
 }
 
-func (h *OSPFHandler) CreateOspfVirtIfEntryConfig(ospfVirtIfConf *ospfd.OspfVirtIfEntryConfig) (bool, error) {
+func (h *OSPFHandler) CreateOspfVirtIfEntry(ospfVirtIfConf *ospfd.OspfVirtIfEntry) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create virtual interface config attrs:", ospfVirtIfConf))
 	return true, nil
 }
 
-func (h *OSPFHandler) CreateOspfNbrEntryConfig(ospfNbrConf *ospfd.OspfNbrEntryConfig) (bool, error) {
+func (h *OSPFHandler) CreateOspfNbrEntry(ospfNbrConf *ospfd.OspfNbrEntry) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create Neighbor Config attrs:", ospfNbrConf))
 	return true, nil
 }
 
-func (h *OSPFHandler) CreateOspfAreaAggregateEntryConfig(ospfAreaAggregateConf *ospfd.OspfAreaAggregateEntryConfig) (bool, error) {
+func (h *OSPFHandler) CreateOspfAreaAggregateEntry(ospfAreaAggregateConf *ospfd.OspfAreaAggregateEntry) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create Area Agggregate Config attrs:", ospfAreaAggregateConf))
 	return true, nil
 }
