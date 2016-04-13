@@ -924,7 +924,7 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		//call asicd to add
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
-             //routeServiceHandler.AsicdAddRouteCh <- routeInfoRecord
+             routeServiceHandler.AsicdAddRouteCh <- routeInfoRecord
 		}
 		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 			if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}) {
@@ -1057,7 +1057,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	//delete in asicd
 	if asicdclnt.IsConnected {
 		logger.Info(fmt.Sprintln("Calling asicd to delete this route- ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
-       // routeServiceHandler.AsicdDelRouteCh <- routeInfoRecord
+        routeServiceHandler.AsicdDelRouteCh <- routeInfoRecord
 	}
 	if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 		if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}) {
@@ -1233,7 +1233,7 @@ func createV4Route(destNetIp string,
 		//call asicd
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
-            //routeServiceHandler.AsicdAddRouteCh <- routeInfoRecord
+            routeServiceHandler.AsicdAddRouteCh <- routeInfoRecord
 		}
 		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 			if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}) {
