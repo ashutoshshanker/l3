@@ -486,6 +486,7 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 						NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
 						NextHopIp:         paths[0].reachabilityInfo.NextHop}
 					d.rib.ribdClient.OnewayCreateIPv4Route(&cfg)
+					//d.rib.routeBulkCreateChannel <- cfg
 				}
 				if idx == 0 {
 					locRibAction = RouteActionAdd
@@ -598,6 +599,7 @@ func (d *Destination) updateRoute(path *Path) {
 			NextHopIp:         nextHop}
 
 		d.rib.ribdClient.OnewayCreateIPv4Route(&cfg)
+		//d.rib.routeBulkCreateChannel <- cfg
 	}
 }
 

@@ -94,6 +94,7 @@ func (m RIBDServicesHandler) OnewayCreateIPv4Route(cfg *ribd.IPv4Route) (err err
 }
 func (m RIBDServicesHandler) OnewayCreateBulkIPv4Route(cfg []*ribdInt.IPv4Route) (err error) {
 	//logger.Info(fmt.Sprintln("OnewayCreateIPv4Route - Received create route request for ip", cfg.DestinationNw, " mask ", cfg.NetworkMask, "cfg.OutgoingIntfType: ", cfg.OutgoingIntfType, "cfg.OutgoingInterface: ", cfg.OutgoingInterface))
+     logger.Info(fmt.Sprintln("OnewayCreateBulkIPv4Route for ", len(cfg), " routes"))
     for i := 0;i<len(cfg);i++ {
 		newCfg := ribd.IPv4Route {cfg[i].DestinationNw, cfg[i].NetworkMask, cfg[i].NextHopIp, cfg[i].Cost, cfg[i].OutgoingIntfType, cfg[i].OutgoingInterface, cfg[i].Protocol}
 		m.CreateIPv4Route(&newCfg)

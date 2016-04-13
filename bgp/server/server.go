@@ -1126,6 +1126,7 @@ func (server *BGPServer) StartServer() {
 	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
 	go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
 	go server.listenForBFDNotifications(bfdSubSocket, bfdSubSocketCh, bfdSubSocketErrCh)
+	//go server.AdjRib.ProcessRIBdRouteRequests()
 
 	for {
 		select {
