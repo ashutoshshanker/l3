@@ -619,7 +619,7 @@ func (h *BGPHandler) DeleteBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (bool, err
 	return true, nil
 }
 
-func (h *BGPHandler) GetBGPRoute(network string, cidrLen int16, nextHop string) (*bgpd.BGPRoute, error) {
+func (h *BGPHandler) GetBGPRouteState(network string, cidrLen int16, nextHop string) (*bgpd.BGPRouteState, error) {
 	bgpRoute := h.server.AdjRib.GetBGPRoute(network)
 	var err error = nil
 	if bgpRoute == nil {
@@ -628,14 +628,14 @@ func (h *BGPHandler) GetBGPRoute(network string, cidrLen int16, nextHop string) 
 	return bgpRoute, err
 }
 
-func (h *BGPHandler) GetBulkBGPRoute(index bgpd.Int, count bgpd.Int) (*bgpd.BGPRouteGetInfo, error) {
+func (h *BGPHandler) GetBulkBGPRouteState(index bgpd.Int, count bgpd.Int) (*bgpd.BGPRouteStateGetInfo, error) {
 	nextIdx, currCount, bgpRoutes := h.server.AdjRib.BulkGetBGPRoutes(int(index), int(count))
 
-	bgpRoutesBulk := bgpd.NewBGPRouteGetInfo()
+	bgpRoutesBulk := bgpd.NewBGPRouteStateGetInfo()
 	bgpRoutesBulk.EndIdx = bgpd.Int(nextIdx)
 	bgpRoutesBulk.Count = bgpd.Int(currCount)
 	bgpRoutesBulk.More = (nextIdx != 0)
-	bgpRoutesBulk.BGPRouteList = bgpRoutes
+	bgpRoutesBulk.BGPRouteStateList = bgpRoutes
 
 	return bgpRoutesBulk, nil
 }
@@ -806,7 +806,7 @@ func (h *BGPHandler) GetBGPPolicyDefinitionState(name string) (*bgpd.BGPPolicyDe
 }
 
 func (h *BGPHandler) GetBulkBGPPolicyDefinitionState(fromIndex bgpd.Int, rcount bgpd.Int) (
-	policyStmts *bgpd.BGPPolicyDefinitionStateGetInfo, err error) { //(routes []*bgpd.BGPRoute, err error) {
+	policyStmts *bgpd.BGPPolicyDefinitionStateGetInfo, err error) { //(routes []*bgpd.BGPRouteState, err error) {
 	//return policy.GetBulkBGPPolicyDefinitionState(fromIndex, rcount)
 	return nil, nil
 }

@@ -64,7 +64,7 @@ func (d *Destination) GetLocRibPathRoute() *Route {
 	return d.LocRibPathRoute
 }
 
-func (d *Destination) GetBGPRoute() (route *bgpd.BGPRoute) {
+func (d *Destination) GetBGPRoute() (route *bgpd.BGPRouteState) {
 	if d.LocRibPathRoute != nil {
 		route = d.LocRibPathRoute.GetBGPRoute()
 	}
