@@ -86,7 +86,7 @@ func (n *NeighborConf) UpdateNeighborConf(nConf config.NeighborConfig, bgp *conf
 	n.Neighbor.NeighborAddress = nConf.NeighborAddress
 	n.Neighbor.Config = nConf
 	n.RunningConf = config.NeighborConfig{}
-	if nConf.PeerGroup != n.Group.Name {
+	if (n.Group == nil && nConf.PeerGroup != "") || (n.Group != nil && nConf.PeerGroup != n.Group.Name) {
 		if peerGroup, ok := bgp.PeerGroups[nConf.PeerGroup]; ok {
 			n.GetNeighConfFromPeerGroup(&peerGroup.Config, &n.RunningConf)
 		} else {
