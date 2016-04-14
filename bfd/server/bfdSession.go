@@ -27,7 +27,7 @@ func (server *BFDServer) StartSessionHandler() error {
 	server.FailedSessionClientCh = make(chan int32)
 	//go server.StartBfdSessionDiscoverer()
 	go server.StartBfdSessionRxTx()
-	//go server.StartSessionRetryHandler()
+	go server.StartSessionRetryHandler()
 	for {
 		select {
 		case sessionMgmt := <-server.CreateSessionCh:
@@ -108,7 +108,7 @@ func (server *BFDServer) StartBfdSessionRxTx() error {
 
 func (server *BFDServer) StartSessionRetryHandler() error {
 	server.logger.Info("Starting session retry handler")
-	retryTimer := time.NewTicker(time.Second * 300)
+	retryTimer := time.NewTicker(time.Second * 60)
 	for t := range retryTimer.C {
 		_ = t
 		for i := 0; i < len(server.bfdGlobal.InactiveSessionsIdSlice); i++ {
@@ -678,7 +678,9 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	session.EventHandler(event)
 	session.RemoteChangedDemandMode(bfdPacket)
 	session.ProcessPollSequence(bfdPacket)
-	session.sessionTimer.Stop()
+	if session.sessionTimer != nil {
+		session.sessionTimer.Stop()
+	}
 	if session.state.SessionState != STATE_ADMIN_DOWN &&
 		session.state.RemoteSessionState != STATE_ADMIN_DOWN {
 		sessionTimeoutMS := time.Duration(session.rxInterval)
@@ -956,11 +958,11 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 		server.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
+	defer Conn.Close()
 	sessionTimeoutMS := time.Duration(session.rxInterval)
 	txTimerMS := time.Duration(session.txInterval)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
 	session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session.state.SessionId })
-	defer Conn.Close()
 	for {
 		select {
 		case sessionId := <-session.TxTimeoutCh:
@@ -1031,7 +1033,9 @@ func (session *BfdSession) ProcessPollSequence(bfdPacket *BfdControlPacket) erro
 			session.server.logger.Info(fmt.Sprintln("Received packet with final bit for session ", session.state.SessionId))
 			session.pollSequence = false
 		}
-		session.txTimer.Reset(0)
+		if session.txTimer != nil {
+			session.txTimer.Reset(0)
+		}
 	}
 	return nil
 }
