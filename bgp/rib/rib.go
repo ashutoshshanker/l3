@@ -568,7 +568,7 @@ func (adjRib *AdjRib) ResetRouteList() {
 	adjRib.routeListDirty = false
 }
 
-func (adjRib *AdjRib) GetBGPRoute(prefix string) *bgpd.BGPRoute {
+func (adjRib *AdjRib) GetBGPRoute(prefix string) *bgpd.BGPRouteState {
 	defer adjRib.routeMutex.RUnlock()
 	adjRib.routeMutex.RLock()
 
@@ -579,7 +579,7 @@ func (adjRib *AdjRib) GetBGPRoute(prefix string) *bgpd.BGPRoute {
 	return nil
 }
 
-func (adjRib *AdjRib) BulkGetBGPRoutes(index int, count int) (int, int, []*bgpd.BGPRoute) {
+func (adjRib *AdjRib) BulkGetBGPRoutes(index int, count int) (int, int, []*bgpd.BGPRouteState) {
 	adjRib.timer.Stop()
 	if index == 0 && adjRib.activeGet {
 		adjRib.ResetRouteList()
@@ -591,7 +591,7 @@ func (adjRib *AdjRib) BulkGetBGPRoutes(index int, count int) (int, int, []*bgpd.
 
 	var i int
 	n := 0
-	result := make([]*bgpd.BGPRoute, count)
+	result := make([]*bgpd.BGPRouteState, count)
 	for i = index; i < len(adjRib.routeList) && n < count; i++ {
 		if adjRib.routeList[i] != nil && adjRib.routeList[i].path != nil {
 			result[n] = adjRib.routeList[i].GetBGPRoute()
