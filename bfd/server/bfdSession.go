@@ -166,11 +166,6 @@ func (server *BFDServer) processSessionConfig(sessionConfig SessionConfig) error
 func (server *BFDServer) SendAdminDownToAllNeighbors() error {
 	for _, session := range server.bfdGlobal.Sessions {
 		session.StopBfdSession()
-		sessionMgmt := BfdSessionMgmt{
-			DestIp:   session.state.IpAddr,
-			ForceDel: true,
-		}
-		server.DeleteBfdSession(sessionMgmt)
 	}
 	return nil
 }
@@ -747,8 +742,6 @@ func (session *BfdSession) CheckIfAnyProtocolRegistered() bool {
 func (session *BfdSession) StopBfdSession() error {
 	session.EventHandler(ADMIN_DOWN)
 	session.state.LocalDiagType = DIAG_ADMIN_DOWN
-	session.txTimer.Stop()
-	session.sessionTimer.Stop()
 	return nil
 }
 
