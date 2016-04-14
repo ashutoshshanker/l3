@@ -33,7 +33,7 @@ type NextHopInfoKey struct {
 	nextHopIp string
 }
 type NextHopInfo struct {
-	refCount int
+	refCount     int     //number of routes using this as a next hop
 }
 type RIBDServicesHandler struct {
 	RouteCreateConfCh            chan *ribd.IPv4Route
@@ -45,6 +45,7 @@ type RIBDServicesHandler struct {
 	AsicdDelRouteCh              chan RouteInfoRecord
 	ArpdResolveRouteCh           chan RouteInfoRecord
 	ArpdRemoveRouteCh            chan RouteInfoRecord
+	NotificationChannel          chan NotificationMsg
 	NextHopInfoMap               map[NextHopInfoKey]NextHopInfo
 	PolicyConditionCreateConfCh  chan *ribd.PolicyCondition
 	PolicyConditionDeleteConfCh  chan *ribd.PolicyCondition
@@ -548,15 +549,16 @@ func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
 	ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
 	PublisherInfoMap = make(map[string]PublisherMapInfo)
 	ribdServicesHandler.NextHopInfoMap = make(map[NextHopInfoKey]NextHopInfo)
-	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route, 1000)
+	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route,5000)
 	ribdServicesHandler.RouteDeleteConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteUpdateConfCh = make(chan UpdateRouteInfo)
-	ribdServicesHandler.NetlinkAddRouteCh = make(chan RouteInfoRecord, 1000)
-	ribdServicesHandler.NetlinkDelRouteCh = make(chan RouteInfoRecord, 100)
-	ribdServicesHandler.AsicdAddRouteCh = make(chan RouteInfoRecord, 1000)
-	ribdServicesHandler.AsicdDelRouteCh = make(chan RouteInfoRecord, 1000)
-	ribdServicesHandler.ArpdResolveRouteCh = make(chan RouteInfoRecord, 1000)
-	ribdServicesHandler.ArpdRemoveRouteCh = make(chan RouteInfoRecord, 1000)
+	ribdServicesHandler.NetlinkAddRouteCh = make(chan RouteInfoRecord,5000)
+	ribdServicesHandler.NetlinkDelRouteCh = make(chan RouteInfoRecord,100)
+	ribdServicesHandler.AsicdAddRouteCh = make(chan RouteInfoRecord,5000)
+	ribdServicesHandler.AsicdDelRouteCh = make(chan RouteInfoRecord,1000)
+	ribdServicesHandler.ArpdResolveRouteCh = make(chan RouteInfoRecord,5000)
+	ribdServicesHandler.ArpdRemoveRouteCh = make(chan RouteInfoRecord,1000)
+	ribdServicesHandler.NotificationChannel = make(chan NotificationMsg,5000)
 	ribdServicesHandler.PolicyConditionCreateConfCh = make(chan *ribd.PolicyCondition)
 	ribdServicesHandler.PolicyConditionDeleteConfCh = make(chan *ribd.PolicyCondition)
 	ribdServicesHandler.PolicyConditionUpdateConfCh = make(chan *ribd.PolicyCondition)

@@ -232,12 +232,14 @@ func (server *OSPFServer) installSummaryLsa() {
                                 if ret == false {
                                         server.updateSummaryLsa(lsdbKey, sKey, sEnt)
                                         //Flood Updated Summary LSA
+					server.lsdbToFloodMsg(sKey, lsdbKey.AreaId)
                                 } else {
                                         continue
                                 }
                         } else {
                                 server.insertSummaryLsa(lsdbKey, sKey, sEnt)
                                 //Flood New Summary LSA
+				server.lsdbToFloodMsg(sKey, lsdbKey.AreaId)
                         }
                 }
                 sLsa = nil
@@ -995,4 +997,22 @@ func (server *OSPFServer) processMaxAgeLsaMsg(msg maxAgeLsaMsg) {
 	case delMaxAgeLsa:
 		delete(maxAgeLsaMap, msg.lsaKey)
 	}
+}
+
+/*@fn lsdbToFloodMsg
+	This API sends flood message for Summary LSA
+*/
+func (server *OSPFServer) lsdbToFloodMsg(lsaKey LsaKey, areaId uint32) {
+	summaryMsg := newsummaryLsaUpdMsg()
+	lsadata := newsummaryLsamdata()
+	lsadata.areaId = areaId
+	lsadata.lsaKey = lsaKey
+	summaryMsg.lsa_data = append(summaryMsg.lsa_data, *lsadata)
+	server.logger.Info(fmt.Sprintln("LSDB: Summary flood area id ", areaId, 
+					 " lsakey ", lsaKey))
+	msg := ospfFloodMsg{
+		summaryUpdMsg: *summaryMsg,
+		lsOp : LSASUMMARYFLOOD,
+	}
+	server.ospfNbrLsaUpdSendCh <- msg
 }
