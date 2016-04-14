@@ -7,6 +7,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"l3/bfd/bfddCommonDefs"
 	"math/rand"
@@ -22,8 +23,11 @@ func (server *BFDServer) StartSessionHandler() error {
 	server.AdminUpSessionCh = make(chan BfdSessionMgmt)
 	server.AdminDownSessionCh = make(chan BfdSessionMgmt)
 	server.CreatedSessionCh = make(chan int32)
+	server.FailedSessionServerCh = make(chan int32)
+	server.FailedSessionClientCh = make(chan int32)
 	//go server.StartBfdSessionDiscoverer()
 	go server.StartBfdSessionRxTx()
+	go server.StartSessionRetryHandler()
 	for {
 		select {
 		case sessionMgmt := <-server.CreateSessionCh:
@@ -80,11 +84,63 @@ func (server *BFDServer) StartBfdSessionRxTx() error {
 					server.logger.Info(fmt.Sprintln("Starting client for session ", createdSessionId))
 					go session.StartSessionClient(server)
 				}
+				session.isServerActive = true
+				session.isClientActive = true
 			} else {
 				server.logger.Info(fmt.Sprintf("Bfd session could not be initiated for ", createdSessionId))
 			}
+		case failedServerSessionId := <-server.FailedSessionServerCh:
+			session := server.bfdGlobal.Sessions[failedServerSessionId]
+			if session != nil {
+				session.isServerActive = false
+				server.bfdGlobal.InactiveSessionsIdSlice = append(server.bfdGlobal.InactiveSessionsIdSlice, failedServerSessionId)
+			}
+		case failedClientSessionId := <-server.FailedSessionClientCh:
+			session := server.bfdGlobal.Sessions[failedClientSessionId]
+			if session != nil {
+				session.isClientActive = false
+				server.bfdGlobal.InactiveSessionsIdSlice = append(server.bfdGlobal.InactiveSessionsIdSlice, failedClientSessionId)
+			}
 		}
 	}
+	return nil
+}
+
+func (server *BFDServer) StartSessionRetryHandler() error {
+	server.logger.Info("Starting session retry handler")
+	retryTimer := time.NewTicker(time.Second * 60)
+	for t := range retryTimer.C {
+		_ = t
+		for i := 0; i < len(server.bfdGlobal.InactiveSessionsIdSlice); i++ {
+			sessionId := server.bfdGlobal.InactiveSessionsIdSlice[i]
+			session := server.bfdGlobal.Sessions[sessionId]
+			if session != nil {
+				if session.isServerActive == false {
+					if session.state.PerLinkSession {
+						server.logger.Info(fmt.Sprintln("Starting PerLink server for inactive session ", sessionId))
+						go session.StartPerLinkSessionServer(server)
+					} else {
+						server.logger.Info(fmt.Sprintln("Starting server for inactive session ", sessionId))
+						go session.StartSessionServer(server)
+					}
+					session.isServerActive = true
+					server.bfdGlobal.InactiveSessionsIdSlice = append(server.bfdGlobal.InactiveSessionsIdSlice[:i], server.bfdGlobal.InactiveSessionsIdSlice[i+1:]...)
+				}
+				if session.isClientActive == false {
+					if session.state.PerLinkSession {
+						server.logger.Info(fmt.Sprintln("Starting PerLink client for inactive session ", sessionId))
+						go session.StartPerLinkSessionClient(server)
+					} else {
+						server.logger.Info(fmt.Sprintln("Starting client for inactive session ", sessionId))
+						go session.StartSessionClient(server)
+					}
+					session.isClientActive = true
+					server.bfdGlobal.InactiveSessionsIdSlice = append(server.bfdGlobal.InactiveSessionsIdSlice[:i], server.bfdGlobal.InactiveSessionsIdSlice[i+1:]...)
+				}
+			}
+		}
+	}
+	server.logger.Info("Session retry handler exiting ...")
 	return nil
 }
 
@@ -464,18 +520,20 @@ func (server *BFDServer) HandleNextHopChange(DestIp string, IfIndex int32) error
 }
 
 func (session *BfdSession) StartSessionServer(server *BFDServer) error {
+	sessionId := session.state.SessionId
 	destAddr := session.state.LocalIpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", destAddr, err))
+		server.FailedSessionServerCh <- sessionId
 		return err
 	}
 	ServerConn, err := net.ListenUDP("udp", ServerAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ListenUDP ", err))
+		server.FailedSessionServerCh <- sessionId
 		return err
 	}
-	sessionId := session.state.SessionId
 	defer ServerConn.Close()
 	buf := make([]byte, 1024)
 	for {
@@ -620,7 +678,9 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	session.EventHandler(event)
 	session.RemoteChangedDemandMode(bfdPacket)
 	session.ProcessPollSequence(bfdPacket)
-	session.sessionTimer.Stop()
+	if session.sessionTimer != nil {
+		session.sessionTimer.Stop()
+	}
 	if session.state.SessionState != STATE_ADMIN_DOWN &&
 		session.state.RemoteSessionState != STATE_ADMIN_DOWN {
 		sessionTimeoutMS := time.Duration(session.rxInterval)
@@ -728,6 +788,14 @@ func (session *BfdSession) StartBfdSession() error {
 	return nil
 }
 
+func (session *BfdSession) IsSessionActive() bool {
+	if session.isServerActive && session.isClientActive {
+		return true
+	} else {
+		return false
+	}
+}
+
 /* State Machine
                              +--+
                              |  | UP, TIMER
@@ -750,9 +818,15 @@ func (session *BfdSession) StartBfdSession() error {
 */
 // EventHandler is called after receiving a BFD packet from remote.
 func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
+	var err error
+	if session.IsSessionActive() == false {
+		session.server.logger.Info(fmt.Sprintln("Cannot process event ", event, " Session ", session.state.SessionId, " not active"))
+		err = errors.New("Session is not active. No event can be processed.")
+		return err
+	}
 	switch session.state.SessionState {
 	case STATE_ADMIN_DOWN:
-		fmt.Printf("Received %d event in ADMINDOWN state\n", event)
+		session.server.logger.Info(fmt.Sprintln("Received ", event, " event for an admindown session"))
 	case STATE_DOWN:
 		switch event {
 		case REMOTE_DOWN:
@@ -790,7 +864,7 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 		case REMOTE_INIT, REMOTE_UP, ADMIN_UP:
 		}
 	}
-	return nil
+	return err
 }
 
 func (session *BfdSession) LocalAdminDown() error {
@@ -855,9 +929,11 @@ func (session *BfdSession) ApplyTxJitter() time.Duration {
 func (session *BfdSession) NeedBfdPacketUpdate() bool {
 	if session.intfConfigChanged == true || session.pollSequence == true || session.pollSequenceFinal == true {
 		return true
-	} else {
-		return false
 	}
+	if session.state.SessionState != STATE_UP || session.state.RemoteSessionState != STATE_UP {
+		return true
+	}
+	return false
 }
 
 func (session *BfdSession) StartSessionClient(server *BFDServer) error {
@@ -866,24 +942,27 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", destAddr, err))
+		server.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
 	localAddr := session.state.LocalIpAddr + ":" + strconv.Itoa(SRC_PORT)
 	ClientAddr, err := net.ResolveUDPAddr("udp", localAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", localAddr, err))
+		server.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
 	Conn, err := net.DialUDP("udp", ClientAddr, ServerAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("Failed DialUDP ", ClientAddr, ServerAddr, err))
+		server.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
+	defer Conn.Close()
 	sessionTimeoutMS := time.Duration(session.rxInterval)
 	txTimerMS := time.Duration(session.txInterval)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
 	session.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { session.TxTimeoutCh <- session.state.SessionId })
-	defer Conn.Close()
 	for {
 		select {
 		case sessionId := <-session.TxTimeoutCh:
@@ -954,7 +1033,9 @@ func (session *BfdSession) ProcessPollSequence(bfdPacket *BfdControlPacket) erro
 			session.server.logger.Info(fmt.Sprintln("Received packet with final bit for session ", session.state.SessionId))
 			session.pollSequence = false
 		}
-		session.txTimer.Reset(0)
+		if session.txTimer != nil {
+			session.txTimer.Reset(0)
+		}
 	}
 	return nil
 }
