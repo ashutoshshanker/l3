@@ -68,6 +68,11 @@ func (p *Peer) StopFSM(msg string) {
 	p.fsmManager.StopFSMCh <- msg
 }
 
+func (p *Peer) MaxPrefixesExceeded() {
+	if p.NeighborConf.RunningConf.MaxPrefixesDisconnect {
+		p.Command(int(fsm.BGPEventAutoStop), fsm.BGPCmdReasonMaxPrefixExceeded)
+	}
+}
 func (p *Peer) setIfIdx(ifIdx int32) {
 	p.ifIdx = ifIdx
 }
@@ -91,13 +96,13 @@ func (p *Peer) AcceptConn(conn *net.TCPConn) {
 	p.fsmManager.AcceptCh <- conn
 }
 
-func (p *Peer) Command(command int) {
+func (p *Peer) Command(command int, reason int) {
 	if p.fsmManager == nil {
 		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s\n",
 			p.NeighborConf.Neighbor.NeighborAddress))
 		return
 	}
-	p.fsmManager.CommandCh <- command
+	p.fsmManager.CommandCh <- fsm.PeerFSMCommand{command, reason}
 }
 
 func (p *Peer) getAddPathsMaxTx() int {
@@ -179,6 +184,7 @@ func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 	p.NeighborConf.Neighbor.State.KeepaliveTime = p.NeighborConf.RunningConf.KeepaliveTime
 	p.NeighborConf.Neighbor.State.AddPathsRx = false
 	p.NeighborConf.Neighbor.State.AddPathsMaxTx = 0
+	p.NeighborConf.Neighbor.State.TotalPrefixes = 0
 	p.clearRibOut()
 }
 
