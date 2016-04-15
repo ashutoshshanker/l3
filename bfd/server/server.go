@@ -412,6 +412,7 @@ func (server *BFDServer) SigHandler() {
 			case syscall.SIGHUP:
 				server.logger.Info("Received SIGHUP signal")
 				server.SendAdminDownToAllNeighbors()
+				time.Sleep(250 * time.Millisecond)
 				server.logger.Info("Exiting!!!")
 				os.Exit(0)
 			default:
