@@ -670,6 +670,7 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	case STATE_ADMIN_DOWN:
 		event = REMOTE_ADMIN_DOWN
 	}
+	session.server.logger.Info(fmt.Sprintln("Received packet ", session.state.SessionState, session.state.RemoteSessionState))
 	session.EventHandler(event)
 	session.RemoteChangedDemandMode(bfdPacket)
 	session.ProcessPollSequence(bfdPacket)
@@ -726,6 +727,7 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 		session.bfdPacket.AuthPresent = false
 	}
 	session.intfConfigChanged = false
+	session.stateChanged = false
 	return nil
 }
 
@@ -862,6 +864,7 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 
 func (session *BfdSession) LocalAdminDown() error {
 	session.state.SessionState = STATE_ADMIN_DOWN
+	session.stateChanged = true
 	session.SendBfdNotification()
 	session.txInterval = STARTUP_TX_INTERVAL / 1000
 	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
@@ -883,6 +886,7 @@ func (session *BfdSession) RemoteAdminDown() error {
 
 func (session *BfdSession) MoveToDownState() error {
 	session.state.SessionState = STATE_DOWN
+	session.stateChanged = true
 	if session.authType == BFD_AUTH_TYPE_KEYED_MD5 || session.authType == BFD_AUTH_TYPE_KEYED_SHA1 {
 		session.authSeqNum++
 	}
@@ -896,6 +900,7 @@ func (session *BfdSession) MoveToDownState() error {
 
 func (session *BfdSession) MoveToInitState() error {
 	session.state.SessionState = STATE_INIT
+	session.stateChanged = true
 	session.useDedicatedMac = true
 	session.txTimer.Reset(0)
 	return nil
@@ -903,6 +908,7 @@ func (session *BfdSession) MoveToInitState() error {
 
 func (session *BfdSession) MoveToUpState() error {
 	session.state.SessionState = STATE_UP
+	session.stateChanged = true
 	session.state.LocalDiagType = DIAG_NONE
 	session.SendBfdNotification()
 	session.txTimer.Reset(0)
@@ -920,10 +926,10 @@ func (session *BfdSession) ApplyTxJitter() time.Duration {
 }
 
 func (session *BfdSession) NeedBfdPacketUpdate() bool {
-	if session.intfConfigChanged == true || session.pollSequence == true || session.pollSequenceFinal == true {
-		return true
-	}
-	if session.state.SessionState != STATE_UP || session.state.RemoteSessionState != STATE_UP {
+	if session.intfConfigChanged == true ||
+		session.stateChanged == true ||
+		session.pollSequence == true ||
+		session.pollSequenceFinal == true {
 		return true
 	}
 	return false
@@ -963,22 +969,21 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 			if bfdSession.NeedBfdPacketUpdate() {
 				bfdSession.UpdateBfdSessionControlPacket()
 				bfdSession.bfdPacketBuf, err = bfdSession.bfdPacket.CreateBfdControlPacket()
-			}
-			if err != nil {
-				server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", bfdSession.state.SessionId))
-			} else {
-				_, err = Conn.Write(bfdSession.bfdPacketBuf)
 				if err != nil {
-					server.logger.Info(fmt.Sprintln("failed to send control packet for session ", bfdSession.state.SessionId))
-				} else {
-					bfdSession.state.NumTxPackets++
+					server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", bfdSession.state.SessionId))
 				}
-				bfdSession.txTimer.Stop()
-				if session.state.SessionState != STATE_ADMIN_DOWN &&
-					session.state.RemoteSessionState != STATE_ADMIN_DOWN {
-					txTimerMS = bfdSession.ApplyTxJitter()
-					bfdSession.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { bfdSession.TxTimeoutCh <- bfdSession.state.SessionId })
-				}
+			}
+			_, err = Conn.Write(bfdSession.bfdPacketBuf)
+			if err != nil {
+				server.logger.Info(fmt.Sprintln("failed to send control packet for session ", bfdSession.state.SessionId))
+			} else {
+				bfdSession.state.NumTxPackets++
+			}
+			bfdSession.txTimer.Stop()
+			if session.state.SessionState != STATE_ADMIN_DOWN &&
+				session.state.RemoteSessionState != STATE_ADMIN_DOWN {
+				txTimerMS = bfdSession.ApplyTxJitter()
+				bfdSession.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { bfdSession.TxTimeoutCh <- bfdSession.state.SessionId })
 			}
 		case sessionId := <-session.SessionTimeoutCh:
 			bfdSession := server.bfdGlobal.Sessions[sessionId]

@@ -19,7 +19,7 @@ import (
 	"time"
 	"utils/dbutils"
 	"utils/ipcutils"
-	"utils/keepalive"
+	//"utils/keepalive"
 	"utils/logging"
 )
 
@@ -89,6 +89,7 @@ type BfdSession struct {
 	recvPcapHandle      *pcap.Handle
 	useDedicatedMac     bool
 	intfConfigChanged   bool
+	stateChanged        bool
 	isServerActive      bool
 	isClientActive      bool
 	server              *BFDServer
@@ -440,7 +441,7 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	// Initialize and run notification publisher
 	go server.PublishSessionNotifications()
 	// Start keepalive routine
-	go keepalive.InitKeepAlive("bfdd", paramFile)
+	//go keepalive.InitKeepAlive("bfdd", paramFile)
 
 	// Now, wait on below channels to process
 	for {
