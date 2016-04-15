@@ -19,7 +19,6 @@ import (
 	"time"
 	"utils/dbutils"
 	"utils/ipcutils"
-	//"utils/keepalive"
 	"utils/logging"
 )
 
@@ -440,8 +439,6 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	go server.StartSessionHandler()
 	// Initialize and run notification publisher
 	go server.PublishSessionNotifications()
-	// Start keepalive routine
-	//go keepalive.InitKeepAlive("bfdd", paramFile)
 
 	// Now, wait on below channels to process
 	for {
