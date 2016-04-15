@@ -19,6 +19,7 @@ import (
 	"time"
 	"utils/dbutils"
 	"utils/ipcutils"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -42,7 +43,7 @@ type BfdClientBase struct {
 }
 
 type RibdClient struct {
-	BfdClientBase
+	ipcutils.IPCClientBase
 	ClientHdl *ribd.RIBDServicesClient
 }
 
@@ -187,13 +188,13 @@ func (server *BFDServer) ConnectToServers(paramsFile string) {
 		if client.Name == "asicd" {
 			server.logger.Info(fmt.Sprintln("found asicd at port", client.Port))
 			server.asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
+			server.asicdClient.TTransport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
 			if err != nil {
 				server.logger.Info(fmt.Sprintf("Failed to connect to Asicd, retrying until connection is successful"))
 				count := 0
 				ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
 				for _ = range ticker.C {
-					server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
+					server.asicdClient.TTransport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
 					if err == nil {
 						ticker.Stop()
 						break
@@ -204,21 +205,21 @@ func (server *BFDServer) ConnectToServers(paramsFile string) {
 					}
 				}
 			}
-			if server.asicdClient.Transport != nil && server.asicdClient.PtrProtocolFactory != nil {
-				server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
+			if server.asicdClient.TTransport != nil && server.asicdClient.PtrProtocolFactory != nil {
+				server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.TTransport, server.asicdClient.PtrProtocolFactory)
 				server.asicdClient.IsConnected = true
 				server.logger.Info("Bfdd is connected to Asicd")
 			}
 		} else if client.Name == "ribd" {
 			server.logger.Info(fmt.Sprintln("found ribd at port", client.Port))
 			server.ribdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
+			server.ribdClient.TTransport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
 			if err != nil {
 				server.logger.Info(fmt.Sprintf("Failed to connect to Ribd, retrying until connection is successful"))
 				count := 0
 				ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
 				for _ = range ticker.C {
-					server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
+					server.ribdClient.TTransport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
 					if err == nil {
 						ticker.Stop()
 						break
@@ -229,8 +230,8 @@ func (server *BFDServer) ConnectToServers(paramsFile string) {
 					}
 				}
 			}
-			if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {
-				server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
+			if server.ribdClient.TTransport != nil && server.ribdClient.PtrProtocolFactory != nil {
+				server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.TTransport, server.ribdClient.PtrProtocolFactory)
 				server.ribdClient.IsConnected = true
 				server.logger.Info("Bfdd is connected to Ribd")
 			}
@@ -438,6 +439,8 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	go server.StartSessionHandler()
 	// Initialize and run notification publisher
 	go server.PublishSessionNotifications()
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("bfdd", paramFile)
 
 	// Now, wait on below channels to process
 	for {
