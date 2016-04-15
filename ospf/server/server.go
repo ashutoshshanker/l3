@@ -291,6 +291,10 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 func (server *OSPFServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Ospf Server"))
 	server.ConnectToClients(paramFile)
+        server.logger.Info("Listen for ASICd updates")
+       server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
+       go server.createASICdSubscriber()
+
 	server.BuildPortPropertyMap()
 	server.initOspfGlobalConfDefault()
 	server.logger.Info(fmt.Sprintln("GlobalConf:", server.ospfGlobalConf))
@@ -303,13 +307,10 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	   go createRIBSubscriber()
 	   server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
 	*/
-	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
 	err := server.initAsicdForRxMulticastPkt()
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to initialize asicd for receiving multicast packets", err))
 	}
-	go server.createASICdSubscriber()
 	go server.spfCalculation()
 
 }
