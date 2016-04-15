@@ -93,23 +93,6 @@ func newospfNeighborLSAUpdPkt() *ospfNeighborLSAUpdPkt {
 	return &ospfNeighborLSAUpdPkt{}
 }
 
-type summaryLsamdata struct {
-	areaId uint32
-	lsaKey LsaKey
-}
-
-func newsummaryLsamdata() *summaryLsamdata {
-	return &summaryLsamdata{}
-}
-
-type summaryLsaUpdMsg struct {
-	lsa_data []summaryLsamdata
-}
-
-func newsummaryLsaUpdMsg() *summaryLsaUpdMsg {
-	return &summaryLsaUpdMsg{}
-}
-
 func getLsaHeaderFromLsa(ls_age uint16, options uint8, ls_type uint8, link_state_id uint32,
 	adv_router_id uint32, ls_sequence_num uint32, ls_checksum uint16, ls_len uint16) ospfLSAHeader {
 
