@@ -869,7 +869,6 @@ func (session *BfdSession) LocalAdminDown() error {
 	session.txInterval = STARTUP_TX_INTERVAL / 1000
 	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
 	session.sessionTimer.Stop()
-	session.txTimer.Reset(0)
 	return nil
 }
 
@@ -880,7 +879,6 @@ func (session *BfdSession) RemoteAdminDown() error {
 	session.txInterval = STARTUP_TX_INTERVAL / 1000
 	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
 	session.sessionTimer.Stop()
-	session.txTimer.Reset(0)
 	return nil
 }
 
@@ -894,7 +892,6 @@ func (session *BfdSession) MoveToDownState() error {
 	session.SendBfdNotification()
 	session.txInterval = STARTUP_TX_INTERVAL / 1000
 	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
-	session.txTimer.Reset(0)
 	return nil
 }
 
@@ -902,7 +899,6 @@ func (session *BfdSession) MoveToInitState() error {
 	session.state.SessionState = STATE_INIT
 	session.stateChanged = true
 	session.useDedicatedMac = true
-	session.txTimer.Reset(0)
 	return nil
 }
 
@@ -911,18 +907,17 @@ func (session *BfdSession) MoveToUpState() error {
 	session.stateChanged = true
 	session.state.LocalDiagType = DIAG_NONE
 	session.SendBfdNotification()
-	session.txTimer.Reset(0)
 	return nil
 }
 
-func (session *BfdSession) ApplyTxJitter() time.Duration {
+func (session *BfdSession) ApplyTxJitter() int32 {
 	var txInterval int32
 	if session.state.DetectionMultiplier == 1 {
-		txInterval = session.txInterval * (1 - session.txJitter/100)
+		txInterval = int32(float32(session.txInterval) * (1 - float32(session.txJitter)/100))
 	} else {
-		txInterval = session.txInterval * (1 + session.txJitter/100)
+		txInterval = int32(float32(session.txInterval) * (1 + float32(session.txJitter)/100))
 	}
-	return time.Duration(txInterval)
+	return txInterval
 }
 
 func (session *BfdSession) NeedBfdPacketUpdate() bool {
@@ -979,11 +974,10 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 			} else {
 				bfdSession.state.NumTxPackets++
 			}
-			bfdSession.txTimer.Stop()
 			if session.state.SessionState != STATE_ADMIN_DOWN &&
 				session.state.RemoteSessionState != STATE_ADMIN_DOWN {
-				txTimerMS = bfdSession.ApplyTxJitter()
-				bfdSession.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { bfdSession.TxTimeoutCh <- bfdSession.state.SessionId })
+				txTimer := bfdSession.ApplyTxJitter()
+				bfdSession.txTimer.Reset(time.Millisecond * time.Duration(txTimer))
 			}
 		case sessionId := <-session.SessionTimeoutCh:
 			bfdSession := server.bfdGlobal.Sessions[sessionId]
@@ -1017,7 +1011,6 @@ func (session *BfdSession) RemoteChangedDemandMode(bfdPacket *BfdControlPacket) 
 func (session *BfdSession) InitiatePollSequence() error {
 	session.server.logger.Info(fmt.Sprintln("Starting poll sequence for session ", session.state.SessionId))
 	session.pollSequence = true
-	session.txTimer.Reset(0)
 	return nil
 }
 
@@ -1030,9 +1023,6 @@ func (session *BfdSession) ProcessPollSequence(bfdPacket *BfdControlPacket) erro
 		if bfdPacket.Final {
 			session.server.logger.Info(fmt.Sprintln("Received packet with final bit for session ", session.state.SessionId))
 			session.pollSequence = false
-		}
-		if session.txTimer != nil {
-			session.txTimer.Reset(0)
 		}
 	}
 	return nil
