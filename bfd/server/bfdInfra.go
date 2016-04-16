@@ -189,9 +189,9 @@ func (server *BFDServer) updateLagPropertyMap(msg asicdConstDefs.LagNotifyMsg, m
 
 func (server *BFDServer) getLinuxIntfName(ifIndex int32) (ifName string, err error) {
 	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(ifIndex)
-	if ifType == commonDefs.L2RefTypeVlan { // Vlan
+	if ifType == commonDefs.IfTypeVlan { // Vlan
 		ifName = server.vlanPropertyMap[ifIndex].Name
-	} else if ifType == commonDefs.L2RefTypePort { // PHY
+	} else if ifType == commonDefs.IfTypePort { // PHY
 		ifName = server.portPropertyMap[int32(ifIndex)].Name
 	} else {
 		ifName = ""

@@ -13,7 +13,7 @@ func (server *ARPServer) processResolveIPv4(conf ResolveIPv4) {
 		return
 	}
 	IfIndex := int(asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(conf.IfId, conf.IfType))
-	if conf.IfType == commonDefs.L2RefTypeVlan {
+	if conf.IfType == commonDefs.IfTypeVlan {
 		vlanEnt := server.vlanPropMap[IfIndex]
 		for port, _ := range vlanEnt.UntagPortMap {
 			server.arpEntryUpdateCh <- UpdateArpEntryMsg{
@@ -24,7 +24,7 @@ func (server *ARPServer) processResolveIPv4(conf ResolveIPv4) {
 			}
 			server.sendArpReq(conf.TargetIP, port)
 		}
-	} else if conf.IfType == commonDefs.L2RefTypeLag {
+	} else if conf.IfType == commonDefs.IfTypeLag {
 		lagEnt := server.lagPropMap[IfIndex]
 		for port, _ := range lagEnt.PortMap {
 			server.arpEntryUpdateCh <- UpdateArpEntryMsg{
@@ -35,7 +35,7 @@ func (server *ARPServer) processResolveIPv4(conf ResolveIPv4) {
 			}
 			server.sendArpReq(conf.TargetIP, port)
 		}
-	} else if conf.IfType == commonDefs.L2RefTypePort {
+	} else if conf.IfType == commonDefs.IfTypePort {
 		server.arpEntryUpdateCh <- UpdateArpEntryMsg{
 			PortNum: IfIndex,
 			IpAddr:  conf.TargetIP,
