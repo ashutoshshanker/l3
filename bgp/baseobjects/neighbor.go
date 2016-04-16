@@ -226,7 +226,7 @@ func (n *NeighborConf) SetPrefixCount(count uint32) {
 	n.Neighbor.State.TotalPrefixes = 0
 }
 
-func (n *NeighborConf) CanAcceptNewPrefix(incr bool) bool {
+func (n *NeighborConf) CanAcceptNewPrefix() bool {
 	if n.RunningConf.MaxPrefixes > 0 {
 		if n.Neighbor.State.TotalPrefixes >= n.RunningConf.MaxPrefixes {
 			n.logger.Warning(fmt.Sprintf("Neighbor %s Number of prefixes received %d exceeds the max prefix limit %d",
@@ -240,9 +240,6 @@ func (n *NeighborConf) CanAcceptNewPrefix(incr bool) bool {
 		}
 	}
 
-	if incr {
-		n.IncrPrefixCount()
-	}
 	return true
 }
 

@@ -863,7 +863,7 @@ func NewFSM(fsmManager *FSMManager, id uint8, neighborConf *base.NeighborConf) *
 
 	fsm.pktTxCh = make(chan *packet.BGPMessage)
 	fsm.pktRxCh = make(chan *packet.BGPPktInfo, 2)
-	fsm.eventRxCh = make(chan PeerFSMEvent)
+	fsm.eventRxCh = make(chan PeerFSMEvent, 5)
 	fsm.connectRetryTimer = time.NewTimer(time.Duration(fsm.connectRetryTime) * time.Second)
 	fsm.connectRetryTimer.Stop()
 
@@ -934,6 +934,8 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 			fsm.ProcessPacket(bgpPktInfo.Msg, bgpPktInfo.MsgError)
 
 		case fsmEvent := <-fsm.eventRxCh:
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+				"Received event", fsmEvent.event, "reason", fsmEvent.reason))
 			if fsmEvent.reason == BGPCmdReasonMaxPrefixExceeded {
 				fsm.restartTime = uint32(fsm.neighborConf.RunningConf.MaxPrefixesRestartTimer)
 			}
