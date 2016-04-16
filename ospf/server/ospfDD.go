@@ -109,10 +109,10 @@ func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptio
 			num_headers := int(headers_len / 20)
 			fmt.Println("DBD: Received ", num_headers, " LSA headers.")
 			header_byte := make([]byte, num_headers*OSPF_LSA_HEADER_SIZE)
-			var start_index uint8
+			var start_index uint16
 			var lsa_header ospfLSAHeader
 			for i := 0; i < num_headers; i++ {
-				start_index = uint8(OSPF_DBD_MIN_SIZE + (i * OSPF_LSA_HEADER_SIZE))
+				start_index = uint16(OSPF_DBD_MIN_SIZE + (i * OSPF_LSA_HEADER_SIZE))
 				copy(header_byte, data[start_index:start_index+20])
 				lsa_header = decodeLSAHeader(header_byte)
 				fmt.Println("DBD: Header decoded ",

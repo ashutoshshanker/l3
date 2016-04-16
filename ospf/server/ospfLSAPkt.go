@@ -246,7 +246,7 @@ func (server *OSPFServer) BuildAndSendLSAReq(nbrId uint32, nbrConf OspfNeighborE
 
 		lsid := convertUint32ToIPv4(req.link_state_id)
 		adv_rtr := convertUint32ToIPv4(req.adv_router_id)
-		server.logger.Info(fmt.Sprintln("LSA request: Appended to nbr ", nbrId,
+		server.logger.Info(fmt.Sprintln("LSA request: Send req to nbr ", nbrId,
 			" lsid ", lsid, " rtrid ", adv_rtr, " lstype ", req.ls_type))
 	}
 	server.logger.Info(fmt.Sprintln("LSA request: total requests out, req_list_len, current req_list_index ", add_items, len(msg.lsa_slice), nbrConf.ospfNbrLsaReqIndex))
@@ -447,11 +447,6 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			server.logger.Info(fmt.Sprintln("Decoded summary Lsa Packet :", slsa))
 			dslsa, ret := server.getSummaryLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckSummaryLsa(*slsa, dslsa, nbr, intf, ret, lsa_max_age)
-			if server.ospfGlobalConf.isABR {
-				server.logger.Info(fmt.Sprintln("LSAUPD: I am ABR so flood the LSA after spf changes."))
-				/* TODO - fix this as it is always detecrted as  ABR */
-				//lsop = LSASUMMARYFLOOD
-			}
 
 		case ASExternalLSA:
 			alsa := NewASExternalLsa()
@@ -853,7 +848,7 @@ func (server *OSPFServer) ProcessRxLSAReqPkt(data []byte, ospfHdrMd *OspfHdrMeta
 */
 
 func (server *OSPFServer) DecodeLSAReq(msg ospfNeighborLSAreqMsg) {
-	//server.logger.Info(fmt.Sprintln("LSAREQ: Receieved lsa_req packet for nbr ", msg.nbrKey, " data ", msg.lsa_slice))
+	server.logger.Info(fmt.Sprintln("LSAREQ: Receieved lsa_req packet for nbr ", msg.nbrKey, " data ", msg.lsa_slice))
 	nbrConf, exists := server.NeighborConfigMap[msg.nbrKey]
 	if exists {
 		intf := server.IntfConfMap[nbrConf.intfConfKey]
@@ -866,7 +861,7 @@ func (server *OSPFServer) DecodeLSAReq(msg ospfNeighborLSAreqMsg) {
 			if !isDiscard {
 				areaid := convertIPv4ToUint32(intf.IfAreaId)
 				server.generateLsaUpdUnicast(req, msg.nbrKey, areaid)
-				server.logger.Info(fmt.Sprintln("LSAREQ: Flood . adv_router  ", adv_router, " lsid ", lsid, " discard ", isDiscard))
+				server.logger.Info(fmt.Sprintln("LSAREQ: send LSAUPD . adv_router  ", adv_router, " lsid ", lsid, " discard ", isDiscard))
 			} else {
 				server.logger.Info(fmt.Sprintln("LSAREQ: DONT flood . adv_router  ", adv_router, " lsid ", lsid, " discard ", isDiscard))
 			}
@@ -906,10 +901,10 @@ func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey uint32, a
 		dslsa, ret := server.getSummaryLsaFromLsdb(areaid, *lsa_key)
 		if ret == LsdbEntryFound {
 			lsa_pkt = encodeSummaryLsa(dslsa, *lsa_key)
-                        flood = true
+			flood = true
 		} else {
 			server.logger.Info(fmt.Sprintln("LSAREQ: Summary lsa not found. lsaid ", req.link_state_id, " lstype ", lsa_key.LSType))
-                }
+		}
 	case ASExternalLSA:
 		dalsa, ret := server.getASExternalLsaFromLsdb(areaid, *lsa_key)
 		if ret == LsdbEntryFound {
@@ -920,7 +915,7 @@ func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey uint32, a
 	lsid := convertUint32ToIPv4(req.link_state_id)
 	router_id := convertUint32ToIPv4(req.adv_router_id)
 
-	server.logger.Info(fmt.Sprintln("LSAREQ: lsid ", lsid, " router_id ", router_id, " flood ", flood))
+	server.logger.Info(fmt.Sprintln("LSAUPD: lsid ", lsid, " router_id ", router_id, " flood ", flood))
 
 	if flood {
 		checksumOffset := uint16(14)
