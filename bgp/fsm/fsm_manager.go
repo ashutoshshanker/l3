@@ -80,7 +80,7 @@ func NewFSMManager(logger *logging.Writer, neighborConf *base.NeighborConf, bgpP
 	mgr.acceptConn = false
 	mgr.CloseCh = make(chan bool)
 	mgr.StopFSMCh = make(chan string)
-	mgr.CommandCh = make(chan PeerFSMCommand)
+	mgr.CommandCh = make(chan PeerFSMCommand, 5)
 	mgr.activeFSM = uint8(config.ConnDirInvalid)
 	mgr.newConnCh = make(chan PeerFSMConnState)
 	mgr.fsmMutex = sync.RWMutex{}
@@ -142,10 +142,14 @@ func (mgr *FSMManager) Init() {
 
 		case fsmCommand := <-mgr.CommandCh:
 			event := BGPFSMEvent(fsmCommand.Command)
+			mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s: Received FSM command %d",
+				mgr.pConf.NeighborAddress, event))
 			if (event == BGPEventManualStart) || (event == BGPEventManualStop) || (event == BGPEventAutoStop) ||
 				(event == BGPEventManualStartPassTcpEst) {
-				for _, fsm := range mgr.fsms {
+				for id, fsm := range mgr.fsms {
 					if fsm != nil {
+						mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s: FSM %d Send command %d",
+							mgr.pConf.NeighborAddress, id, event))
 						fsm.eventRxCh <- PeerFSMEvent{event, fsmCommand.Reason}
 					}
 				}
