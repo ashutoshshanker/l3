@@ -225,8 +225,8 @@ func (p *PeerConn) readPartialPkt(length int) ([]byte, error) {
 			return buf, err
 		}
 		totalRead += read
-		p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id, "conn:readPartialPkt -",
-			"read", read, "bytes, total read", totalRead, "bytes, lenght =", length))
+		//p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id, "conn:readPartialPkt -",
+		//	"read", read, "bytes, total read", totalRead, "bytes, lenght =", length))
 	}
 	return buf, err
 }

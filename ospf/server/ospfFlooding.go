@@ -321,7 +321,6 @@ func (server *OSPFServer) processSummaryLSAFlood(areaId uint32, lsaKey LsaKey) {
 		areaId, " adv_router ", adv_router, " lsid ",
 		lsid))
 	server.floodSummaryLsa(lsaEncPkt, areaId)
-	server.logger.Info(fmt.Sprintln("SUMMARY: Done with flooding summary LSAs."))
 }
 
 func (server *OSPFServer) encodeSummaryLsa(areaid uint32, lsakey LsaKey) []byte {
@@ -351,15 +350,10 @@ func (server *OSPFServer) floodSummaryLsa(pkt []byte, areaid uint32) {
 			continue
 		}
 		ifArea := convertIPv4ToUint32(intf.IfAreaId)
-		server.logger.Info(fmt.Sprintln("SUMMARY: After converting area id to 32 bit ", ifArea))
-
 		if ifArea == areaid {
 			// flood to your own area
-			server.logger.Info(fmt.Sprintln("SUMMARY: Before checking the nbr map "))
 			nbrMdata, ok := ospfIntfToNbrMap[key]
-			server.logger.Info(fmt.Sprintln("SUMMARY: After checking the nbr map "))
 			if ok && len(nbrMdata.nbrList) > 0 {
-				server.logger.Info(fmt.Sprintln("SUMMARY: Build pkt ", pkt))
 				send_pkt := server.BuildLsaUpdPkt(key, intf, dstMac, dstIp, len(pkt), pkt)
 				server.logger.Info(fmt.Sprintln("SUMMARY: Send  LSA to interface ", intf.IfIpAddr, " area ", intf.IfAreaId))
 				server.SendOspfPkt(key, send_pkt)

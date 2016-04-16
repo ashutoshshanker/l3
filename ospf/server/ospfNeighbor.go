@@ -628,7 +628,6 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 				intConf, exist := server.IntfConfMap[nbrConf.intfConfKey]
 				if exist {
 					dstMac, _ := ospfNeighborIPToMAC[lsa_data.nbrKey]
-					server.logger.Info(fmt.Sprintln("Send LSAREQ: nbrconf ,  lsa_data", nbrConf, lsa_data.lsa_slice))
 					data := server.EncodeLSAReqPkt(nbrConf.intfConfKey, intConf, nbrConf, lsa_data.lsa_slice, dstMac)
 					server.SendOspfPkt(nbrConf.intfConfKey, data)
 				}
@@ -732,43 +731,39 @@ This function will attach summary LSAs if the router is ABR
 */
 func (server *OSPFServer) generateDbsummaryLsaList(self_areaId uint32) []*ospfNeighborDBSummary {
 	db_list := []*ospfNeighborDBSummary{}
-	for areaid, _ := range server.AreaConfMap {
-		areaId := convertAreaOrRouterIdUint32(string(areaid.AreaId))
-		lsdbKey := LsdbKey{
-			AreaId: areaId,
+
+	lsdbKey := LsdbKey{
+		AreaId: self_areaId,
+	}
+
+	area_lsa, exist := server.AreaLsdb[lsdbKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("negotiation: Summary LSA doesnt exist"))
+		return nil
+	}
+	summary_lsdb := area_lsa.Summary3LsaMap
+	selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+
+	for lsaKey, _ := range summary_lsdb {
+		_, exist := selfOrigLsaEnt[lsaKey]
+		if exist && !server.ospfGlobalConf.isABR {
+			continue // dont add self gen LSA if I am not ABR
 		}
-		if areaId != self_areaId { // attach to only eligible interfaces
+		// check if lsa instance is marked true
+		db_summary := newospfNeighborDBSummary()
+		drlsa, ret := server.getSummaryLsaFromLsdb(self_areaId, lsaKey)
+		if ret == LsdbEntryNotFound {
 			continue
 		}
-		area_lsa, exist := server.AreaLsdb[lsdbKey]
-		if !exist {
-			server.logger.Err(fmt.Sprintln("negotiation: Summary LSA doesnt exist"))
-			return nil
-		}
-		summary_lsdb := area_lsa.Summary3LsaMap
-		selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
-
-		for lsaKey, _ := range summary_lsdb {
-			_, exist := selfOrigLsaEnt[lsaKey]
-			if exist && !server.ospfGlobalConf.isABR {
-				continue // dont add self gen LSA if I am not ABR
-			}
-			// check if lsa instance is marked true
-			db_summary := newospfNeighborDBSummary()
-			drlsa, ret := server.getSummaryLsaFromLsdb(areaId, lsaKey)
-			if ret == LsdbEntryNotFound {
-				continue
-			}
-			db_summary.lsa_headers = getLsaHeaderFromLsa(drlsa.LsaMd.LSAge, drlsa.LsaMd.Options,
-				Summary3LSA, lsaKey.LSId, lsaKey.AdvRouter,
-				uint32(drlsa.LsaMd.LSSequenceNum), drlsa.LsaMd.LSChecksum,
-				drlsa.LsaMd.LSLen)
-			db_summary.valid = true
-			/* add entry to the db summary list  */
-			db_list = append(db_list, db_summary)
-			lsid := convertUint32ToIPv4(lsaKey.LSId)
-			server.logger.Info(fmt.Sprintln("negotiation: db_list summary append router lsid  ", lsid))
-		} // end of for
+		db_summary.lsa_headers = getLsaHeaderFromLsa(drlsa.LsaMd.LSAge, drlsa.LsaMd.Options,
+			Summary3LSA, lsaKey.LSId, lsaKey.AdvRouter,
+			uint32(drlsa.LsaMd.LSSequenceNum), drlsa.LsaMd.LSChecksum,
+			drlsa.LsaMd.LSLen)
+		db_summary.valid = true
+		/* add entry to the db summary list  */
+		db_list = append(db_list, db_summary)
+		lsid := convertUint32ToIPv4(lsaKey.LSId)
+		server.logger.Info(fmt.Sprintln("negotiation: db_list summary append router lsid  ", lsid))
 
 		/*  TODO - check if we want to add Summary4 LSA */
 	}
