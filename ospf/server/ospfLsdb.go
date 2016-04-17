@@ -145,7 +145,12 @@ func (server *OSPFServer) StopLSDatabase() {
 
 func (server *OSPFServer) compareSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEnt SummaryLsa) bool {
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-	sLsa, _ := lsDbEnt.Summary3LsaMap[lsaKey]
+	var sLsa SummaryLsa
+	if lsaKey.LSType == Summary3LSA {
+		sLsa, _ = lsDbEnt.Summary3LsaMap[lsaKey]
+	} else if lsaKey.LSType == Summary4LSA {
+		sLsa, _ = lsDbEnt.Summary4LsaMap[lsaKey]
+	}
 	if sLsa.Netmask != lsaEnt.Netmask {
 		return false
 	}
@@ -159,7 +164,12 @@ func (server *OSPFServer) compareSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaE
 func (server *OSPFServer) updateSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEnt SummaryLsa) {
 	server.logger.Info(fmt.Sprintln("Need to update Summary Lsa in LSDB:", lsdbKey, lsaKey, lsaEnt))
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-	sLsa, _ := lsDbEnt.Summary3LsaMap[lsaKey]
+	var sLsa SummaryLsa
+	if lsaKey.LSType == Summary3LSA {
+		sLsa, _ = lsDbEnt.Summary3LsaMap[lsaKey]
+	} else if lsaKey.LSType == Summary4LSA {
+		sLsa, _ = lsDbEnt.Summary4LsaMap[lsaKey]
+	}
 
 	sLsa.Netmask = lsaEnt.Netmask
 	sLsa.Metric = lsaEnt.Metric
@@ -172,7 +182,11 @@ func (server *OSPFServer) updateSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEn
 	LsaEnc := encodeSummaryLsa(sLsa, lsaKey)
 	checksumOffset := uint16(14)
 	sLsa.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc[2:], checksumOffset)
-	lsDbEnt.Summary3LsaMap[lsaKey] = sLsa
+	if lsaKey.LSType == Summary3LSA {
+		lsDbEnt.Summary3LsaMap[lsaKey] = sLsa
+	} else if lsaKey.LSType == Summary4LSA {
+		lsDbEnt.Summary4LsaMap[lsaKey] = sLsa
+	}
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 }
 
@@ -180,7 +194,12 @@ func (server *OSPFServer) insertSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEn
 	server.logger.Info(fmt.Sprintln("Need to Insert Summary Lsa in LSDB:", lsdbKey, lsaKey, lsaEnt))
 	selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-	sLsa, _ := lsDbEnt.Summary3LsaMap[lsaKey]
+	var sLsa SummaryLsa
+	if lsaKey.LSType == Summary3LSA {
+		sLsa, _ = lsDbEnt.Summary3LsaMap[lsaKey]
+	} else if lsaKey.LSType == Summary4LSA {
+		sLsa, _ = lsDbEnt.Summary4LsaMap[lsaKey]
+	}
 
 	sLsa.Netmask = lsaEnt.Netmask
 	sLsa.Metric = lsaEnt.Metric
@@ -193,7 +212,11 @@ func (server *OSPFServer) insertSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEn
 	LsaEnc := encodeSummaryLsa(sLsa, lsaKey)
 	checksumOffset := uint16(14)
 	sLsa.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc[2:], checksumOffset)
-	lsDbEnt.Summary3LsaMap[lsaKey] = sLsa
+	if lsaKey.LSType == Summary3LSA {
+		lsDbEnt.Summary3LsaMap[lsaKey] = sLsa
+	} else if lsaKey.LSType == Summary4LSA {
+		lsDbEnt.Summary4LsaMap[lsaKey] = sLsa
+	}
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 	selfOrigLsaEnt[lsaKey] = true
 	server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
@@ -211,7 +234,11 @@ func (server *OSPFServer) flushSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey) {
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
 	delete(selfOrigLsaEnt, lsaKey)
 	server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
-	delete(lsDbEnt.Summary3LsaMap, lsaKey)
+	if lsaKey.LSType == Summary3LSA {
+		delete(lsDbEnt.Summary3LsaMap, lsaKey)
+	} else if lsaKey.LSType == Summary4LSA {
+		delete(lsDbEnt.Summary4LsaMap, lsaKey)
+	}
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 
 }
@@ -222,7 +249,8 @@ func (server *OSPFServer) installSummaryLsa() {
 		selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
 		oldSelfOrigSummaryLsa := make(map[LsaKey]bool)
 		for sKey, _ := range selfOrigLsaEnt {
-			if sKey.LSType == Summary3LSA {
+			if sKey.LSType == Summary3LSA ||
+				sKey.LSType == Summary4LSA {
 				oldSelfOrigSummaryLsa[sKey] = true
 			}
 		}

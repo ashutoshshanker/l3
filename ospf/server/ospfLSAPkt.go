@@ -746,10 +746,10 @@ func (server *OSPFServer) ProcessRxLSAAckPkt(data []byte, ospfHdrMd *OspfHdrMeta
 		num_headers := int(headers_len / 20)
 		server.logger.Info(fmt.Sprintln("LSAACK: Received ", num_headers, " LSA headers."))
 		header_byte := make([]byte, num_headers*OSPF_LSA_HEADER_SIZE)
-		var start_index uint8
+		var start_index uint32
 		var lsa_header ospfLSAHeader
 		for i := 0; i < num_headers; i++ {
-			start_index = uint8(i * OSPF_LSA_HEADER_SIZE)
+			start_index = uint32(i * OSPF_LSA_HEADER_SIZE)
 			copy(header_byte, data[start_index:start_index+20])
 			lsa_header = decodeLSAHeader(header_byte)
 			server.logger.Info(fmt.Sprintln("LSAACK: Header decoded ",

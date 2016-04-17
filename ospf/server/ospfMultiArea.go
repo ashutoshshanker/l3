@@ -172,6 +172,11 @@ func (server *OSPFServer) GenerateSummaryLsa() {
 			// If DestType == ASBdrRouter
 			// If Routing Table Entry Describes the preferred path to
 			// AS Boundary Router
+			if rKey.DestType == ASAreaBdrRouter ||
+				rKey.DestType == ASBdrRouter {
+				lsaKey, summaryLsa := server.GenerateType4SummaryLSA(rKey, rEnt)
+				sEnt[lsaKey] = summaryLsa
+			}
 
 			// Dest Type Network, Inter Area Routes
 			if rKey.DestType == Network &&
