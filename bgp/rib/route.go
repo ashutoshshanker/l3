@@ -16,7 +16,7 @@ const (
 )
 
 type Route struct {
-	BGPRouteState         *bgpd.BGPRouteState
+	BGPRouteState    *bgpd.BGPRouteState
 	dest             *Destination
 	path             *Path
 	routeListIdx     int
@@ -40,7 +40,7 @@ func NewRoute(dest *Destination, path *Path, action RouteAction, inPathId, outPa
 		UpdatedTime: currTime.String(),
 	}
 	return &Route{
-		BGPRouteState:         bgpRoute,
+		BGPRouteState:    bgpRoute,
 		dest:             dest,
 		path:             path,
 		routeListIdx:     -1,

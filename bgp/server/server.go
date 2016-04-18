@@ -227,12 +227,18 @@ func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 	reader := bytes.NewReader(rxBuf)
 	decoder := json.NewDecoder(reader)
 	msg := ribdCommonDefs.RibdNotifyMsg{}
+	updateMsg := "Add"
+	if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
+		updateMsg = "Remove"
+	}
+
 	for err := decoder.Decode(&msg); err == nil; err = decoder.Decode(&msg) {
 		err = json.Unmarshal(msg.MsgBuf, &routeListInfo)
 		if err != nil {
 			server.logger.Err(fmt.Sprintf("Unmarshal RIB route update failed with err %s", err))
 		}
-		server.logger.Info(fmt.Sprintln("Remove connected route, dest:", routeListInfo.RouteInfo.Ipaddr, "netmask:", routeListInfo.RouteInfo.Mask, "nexthop:", routeListInfo.RouteInfo.NextHopIp))
+		server.logger.Info(fmt.Sprintln(updateMsg, "connected route, dest:", routeListInfo.RouteInfo.Ipaddr, "netmask:",
+			routeListInfo.RouteInfo.Mask, "nexthop:", routeListInfo.RouteInfo.NextHopIp))
 		routes = append(routes, &routeListInfo.RouteInfo)
 	}
 
