@@ -7,10 +7,11 @@ import (
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
 	"utils/commonDefs"
+	"utils/ipcutils"
 )
 
 type AsicdClient struct {
-	BfdClientBase
+	ipcutils.IPCClientBase
 	ClientHdl *asicdServices.ASICDServicesClient
 }
 

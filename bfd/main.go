@@ -8,6 +8,7 @@ import (
 	"l3/bfd/rpc"
 	"l3/bfd/server"
 	"utils/logging"
+	//"utils.keepalive"
 )
 
 func main() {
@@ -27,6 +28,9 @@ func main() {
 	}
 	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
+
+	// Start keepalive routine
+	//go keepalive.InitKeepAlive("bfdd", fileName)
 
 	dbName := fileName + "UsrConfDb.db"
 	fmt.Println("BFDd opening Config DB: ", dbName)
