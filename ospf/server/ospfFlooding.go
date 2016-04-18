@@ -153,7 +153,8 @@ func (server *OSPFServer) processFloodMsg(lsa_data ospfFloodMsg) {
 		server.logger.Info(fmt.Sprintln("LSASELFLOOD: Received lsid ", lsid, " lstype ", lsa_data.lsType))
 		var lsaEncPkt []byte
 		for key, intf := range server.IntfConfMap {
-			if intf.IfIpAddr.Equal(rxIntf.IfIpAddr) {
+			areaid := convertIPv4ToUint32(intf.IfAreaId)
+			if intf.IfIpAddr.Equal(rxIntf.IfIpAddr) || lsa_data.areaId != areaid {
 				server.logger.Info(fmt.Sprintln("LSASELFLOOD:Dont flood on rx intf ", rxIntf.IfIpAddr))
 				continue // dont flood the LSA on the interface it is received.
 			}
@@ -307,7 +308,7 @@ func (server *OSPFServer) processSummaryLSAFlood(areaId uint32, lsaKey LsaKey) {
 
 	ospfLsaPkt.no_lsas = 0
 
-	server.logger.Info(fmt.Sprintln("Summary: Start flooding. Area ",
+	server.logger.Info(fmt.Sprintln("Summary: Start flooding algorithm. Area ",
 		areaId, " lsa ", lsaKey))
 	LsaEnc = server.encodeSummaryLsa(areaId, lsaKey)
 	no_lsas := uint32(1)
@@ -321,6 +322,7 @@ func (server *OSPFServer) processSummaryLSAFlood(areaId uint32, lsaKey LsaKey) {
 		areaId, " adv_router ", adv_router, " lsid ",
 		lsid))
 	server.floodSummaryLsa(lsaEncPkt, areaId)
+	server.logger.Info(fmt.Sprintln("SUMMARY: End flooding process. lsa", lsaKey))
 }
 
 func (server *OSPFServer) encodeSummaryLsa(areaid uint32, lsakey LsaKey) []byte {
