@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"l3/dhcp_relay/server"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -28,6 +29,9 @@ func main() {
 	}
 	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("dhcprelayd", fileName)
 
 	var addr = IP + ":" + DHCP_RELAY_PORT
 	fmt.Println("DHCP RELAY address is", addr)

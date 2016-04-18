@@ -381,7 +381,7 @@ func getPortInfo() {
 		logger.Info(fmt.Sprintln("len(bulkInfo.PortStateList)  = %d, num objects returned = %d\n", len(bulkInfo.PortStateList), bulkInfo.Count))
 		for i := 0; i < int(bulkInfo.Count); i++ {
 			portNum := bulkInfo.PortStateList[i].PortNum
-			ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(portNum), commonDefs.L2RefTypePort)
+			ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(portNum), commonDefs.IfTypePort)
 			logger.Info(fmt.Sprintln("portNum = ", portNum, "ifId = ", ifId))
 			if IntfIdNameMap == nil {
 				IntfIdNameMap = make(map[int32]IntfEntry)

@@ -175,7 +175,7 @@ func DhcpRelayAgentAllocateMemory() {
 	dhcprelayLogicalIntf2IfIndex = make(map[int32]int32, 10)
 
 	// Ipv4Intf map
-	dhcprelayIntfIpv4Map = make(map[int32]asicdServices.IPv4Intf, 3)
+	dhcprelayIntfIpv4Map = make(map[int32]IPv4Intf, 3)
 }
 
 func DhcpRelayAgentGetPortList() {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"l3/ospf/rpc"
 	"l3/ospf/server"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -26,6 +27,9 @@ func main() {
 	}
 	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("ospfd", fileName)
 
 	fileName = fileName + "clients.json"
 

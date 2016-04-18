@@ -67,7 +67,7 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 	result := make([]config.LsdbState, cnt)
 	var i int
 	var j int
-	server.logger.Info(fmt.Sprintln("idx:", idx, "cnt:", cnt, "length of Ls DB Slice:", length))
+	//server.logger.Info(fmt.Sprintln("idx:", idx, "cnt:", cnt, "length of Ls DB Slice:", length))
 	for i, j = 0, idx; i < cnt && j < length; j++ {
 		var lsaEnc []byte
 		var lsaMd LsaMetadata
@@ -124,9 +124,9 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 		}
 
 		server.logger.Info(fmt.Sprintln(lsaEnc))
-		server.logger.Info(fmt.Sprintln("lsaEnc:", lsaEnc))
+		//server.logger.Info(fmt.Sprintln("lsaEnc:", lsaEnc))
 		adv := convertByteToOctetString(lsaEnc[OSPF_LSA_HEADER_SIZE:])
-		server.logger.Info(fmt.Sprintln("adv:", adv))
+		//server.logger.Info(fmt.Sprintln("adv:", adv))
 		result[i].LsdbAreaId = config.AreaId(convertUint32ToIPv4(lsdbKey.AreaId))
 		result[i].LsdbType = config.LsaType(lsaKey.LSType)
 		result[i].LsdbLsid = config.IpAddress(convertUint32ToIPv4(lsaKey.LSId))
@@ -135,7 +135,7 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 		result[i].LsdbAge = int(lsaMd.LSAge)
 		result[i].LsdbCheckSum = int(lsaMd.LSChecksum)
 		result[i].LsdbAdvertisement = adv
-		server.logger.Info(fmt.Sprintln("Result of GetBulk:", result))
+		//server.logger.Info(fmt.Sprintln("Result of GetBulk:", result))
 		i++
 	}
 
@@ -145,7 +145,7 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 	count = i
 
 	server.LsdbStateTimer.Reset(server.RefreshDuration)
-	server.logger.Info(fmt.Sprintln("length:", length, "count:", count, "nextIdx:", nextIdx, "result:", result))
+	//server.logger.Info(fmt.Sprintln("length:", length, "count:", count, "nextIdx:", nextIdx, "result:", result))
 	return nextIdx, count, result
 }
 

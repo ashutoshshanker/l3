@@ -25,7 +25,7 @@ func (h *OSPFHandler) convertAreaEntryStateToThrift(ent config.AreaState) *ospfd
 }
 
 func (h *OSPFHandler) convertLsdbEntryStateToThrift(ent config.LsdbState) *ospfd.OspfLsdbEntryState {
-	h.logger.Info(fmt.Sprintln("Converting Lsdb entry to Thrift", ent))
+	//h.logger.Info(fmt.Sprintln("Converting Lsdb entry to Thrift", ent))
 	lsdbEntry := ospfd.NewOspfLsdbEntryState()
 	lsdbEntry.LsdbType = int32(ent.LsdbType)
 	lsdbEntry.LsdbLsid = string(ent.LsdbLsid)
@@ -125,9 +125,9 @@ func (h *OSPFHandler) GetBulkOspfLsdbEntryState(fromIdx ospfd.Int, count ospfd.I
 	}
 	ospfLsdbEntryStateResponse := make([]*ospfd.OspfLsdbEntryState, len(ospfLsdbEntryStates))
 	for idx, item := range ospfLsdbEntryStates {
-		h.logger.Info(fmt.Sprintln("converting Lsdb Entry into thrift format", item))
+		//h.logger.Info(fmt.Sprintln("converting Lsdb Entry into thrift format", item))
 		ospfLsdbEntryStateResponse[idx] = h.convertLsdbEntryStateToThrift(item)
-		h.logger.Info(fmt.Sprintln("After converting Lsdb Entry into thrift format", idx))
+		//h.logger.Info(fmt.Sprintln("After converting Lsdb Entry into thrift format", idx))
 	}
 	ospfLsdbEntryStateGetInfo := ospfd.NewOspfLsdbEntryStateGetInfo()
 	ospfLsdbEntryStateGetInfo.Count = ospfd.Int(currCount)

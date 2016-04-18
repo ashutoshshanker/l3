@@ -291,7 +291,7 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
 			if exist {
 				ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(l3IntfIdx))
 				flag := false
-				if ifType == commonDefs.L2RefTypeVlan {
+				if ifType == commonDefs.IfTypeVlan {
 					vlanEnt, exist := server.vlanPropMap[l3IntfIdx]
 					if exist {
 						vlanId := int(asicdConstDefs.GetIntfIdFromIfIndex(int32(l3IntfIdx)))
@@ -304,12 +304,12 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
 					} else {
 						flag = false
 					}
-				} else if ifType == commonDefs.L2RefTypePort {
+				} else if ifType == commonDefs.IfTypePort {
 					if l3IntfIdx == port &&
 						arpEnt.VlanId == asicdConstDefs.SYS_RSVD_VLAN {
 						flag = true
 					}
-				} else if ifType == commonDefs.L2RefTypeLag {
+				} else if ifType == commonDefs.IfTypeLag {
 					lagEnt, exist := server.lagPropMap[l3IntfIdx]
 					if exist {
 						for p, _ := range lagEnt.PortMap {
@@ -343,17 +343,17 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
 func (server *ARPServer) sendArpReqL3Intf(ip string, l3IfIdx int) {
 
 	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(l3IfIdx))
-	if ifType == commonDefs.L2RefTypeVlan {
+	if ifType == commonDefs.IfTypeVlan {
 		vlanEnt, _ := server.vlanPropMap[l3IfIdx]
 		for port, _ := range vlanEnt.UntagPortMap {
 			server.sendArpReq(ip, port)
 		}
-	} else if ifType == commonDefs.L2RefTypeLag {
+	} else if ifType == commonDefs.IfTypeLag {
 		lagEnt, _ := server.lagPropMap[l3IfIdx]
 		for port, _ := range lagEnt.PortMap {
 			server.sendArpReq(ip, port)
 		}
-	} else if ifType == commonDefs.L2RefTypePort {
+	} else if ifType == commonDefs.IfTypePort {
 		server.sendArpReq(ip, l3IfIdx)
 	}
 }
