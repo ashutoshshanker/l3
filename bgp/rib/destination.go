@@ -329,6 +329,7 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 	addedRoutes := make([]*Route, 0)
 	updatedRoutes := make([]*Route, 0)
 	deletedRoutes := make([]*Route, 0)
+	createRibRoutes := make([]*Path, 0)
 	maxPref := uint32(0)
 	routeSrc := RouteSrcUnknown
 	locRibAction := RouteActionNone
@@ -448,13 +449,16 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 				if route, ok := d.ecmpPaths[path]; ok {
 					// Update path
 					found = true
-					if (path.IsAggregate() || !path.IsLocal()) && path.IsUpdated() {
-						d.logger.Info(fmt.Sprintf("Update route for ip=%s\n", d.IPPrefix.Prefix.String()))
-						d.updateRoute(path)
-						route.update()
-					}
+					/*
+						if (path.IsAggregate() || !path.IsLocal()) && path.IsUpdated() {
+							d.logger.Info(fmt.Sprintf("Update route for ip=%s\n", d.IPPrefix.Prefix.String()))
+							d.updateRoute(path)
+							route.update()
+						}
+					*/
 
-					if (idx == 0) && (path.IsAggregate() || (d.LocRibPath != path)) {
+					//if (idx == 0) && (path.IsAggregate() || (d.LocRibPath != path)) {
+					if (idx == 0) && path.IsAggregate() {
 						locRibAction = RouteActionReplace
 					}
 					updatedRoutes = append(updatedRoutes, route)
@@ -475,21 +479,24 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 				if paths[0].IsAggregate() || !paths[0].IsLocal() {
 					d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s\n", d.IPPrefix.Prefix.String(),
 						constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(), paths[0].reachabilityInfo.NextHop))
-					protocol := "IBGP"
-					if paths[0].IsExternal() {
-						protocol = "EBGP"
-					}
-					nextHopIfTypeStr, _ := ribdCommonDefs.GetNextHopIfTypeStr(ribdInt.Int(paths[0].reachabilityInfo.NextHopIfType))
-					cfg := ribd.IPv4Route{
-						DestinationNw:     d.IPPrefix.Prefix.String(),
-						Protocol:          protocol,
-						OutgoingInterface: strconv.Itoa(int(paths[0].reachabilityInfo.NextHopIfIdx)),
-						OutgoingIntfType:  nextHopIfTypeStr,
-						Cost:              int32(paths[0].reachabilityInfo.Metric),
-						NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
-						NextHopIp:         paths[0].reachabilityInfo.NextHop}
-					d.rib.ribdClient.OnewayCreateIPv4Route(&cfg)
-					//d.rib.routeBulkCreateChannel <- cfg
+					/*
+						protocol := "IBGP"
+						if paths[0].IsExternal() {
+							protocol = "EBGP"
+						}
+						nextHopIfTypeStr, _ := ribdCommonDefs.GetNextHopIfTypeStr(ribdInt.Int(paths[0].reachabilityInfo.NextHopIfType))
+						cfg := ribd.IPv4Route{
+							DestinationNw:     d.IPPrefix.Prefix.String(),
+							Protocol:          protocol,
+							OutgoingInterface: strconv.Itoa(int(paths[0].reachabilityInfo.NextHopIfIdx)),
+							OutgoingIntfType:  nextHopIfTypeStr,
+							Cost:              int32(paths[0].reachabilityInfo.Metric),
+							NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
+							NextHopIp:         paths[0].reachabilityInfo.NextHop}
+						//d.rib.ribdClient.OnewayCreateIPv4Route(&cfg)
+						//d.rib.routeBulkCreateChannel <- cfg
+					*/
+					createRibRoutes = append(createRibRoutes, paths[0])
 				}
 				if idx == 0 {
 					locRibAction = RouteActionAdd
@@ -559,6 +566,26 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 		} else {
 			route.setAction(RouteActionNone)
 		}
+	}
+
+	for _, path := range createRibRoutes {
+		d.logger.Info(fmt.Sprintf("Add route for ip=%s, mask=%s, next hop=%s\n", d.IPPrefix.Prefix.String(),
+			constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(), path.reachabilityInfo.NextHop))
+		protocol := "IBGP"
+		if path.IsExternal() {
+			protocol = "EBGP"
+		}
+		nextHopIfTypeStr, _ := ribdCommonDefs.GetNextHopIfTypeStr(ribdInt.Int(path.reachabilityInfo.NextHopIfType))
+		cfg := ribd.IPv4Route{
+			DestinationNw:     d.IPPrefix.Prefix.String(),
+			Protocol:          protocol,
+			OutgoingInterface: strconv.Itoa(int(path.reachabilityInfo.NextHopIfIdx)),
+			OutgoingIntfType:  nextHopIfTypeStr,
+			Cost:              int32(path.reachabilityInfo.Metric),
+			NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
+			NextHopIp:         path.reachabilityInfo.NextHop}
+		d.rib.ribdClient.OnewayCreateIPv4Route(&cfg)
+		//d.rib.routeBulkCreateChannel <- cfg
 	}
 	return locRibAction, addPathsUpdated, addedRoutes, updatedRoutes, deletedRoutes
 }
