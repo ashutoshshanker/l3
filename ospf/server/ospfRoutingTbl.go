@@ -196,6 +196,9 @@ func (server *OSPFServer) UpdateRoutingTblForRouter(areaIdKey AreaIdKey, vKey Ve
 	rEnt.Type2Cost = 0 //TODO
 	rEnt.LSOrigin = gEnt.LsaKey
 	rEnt.NumOfPaths = tVertex.NumOfPaths
+	if rEnt.NumOfPaths == 0 {
+		server.logger.Info("==============Hello2===========")
+	}
 	rEnt.NextHops = make(map[NextHop]bool, tVertex.NumOfPaths)
 	for i := 0; i < tVertex.NumOfPaths; i++ {
 		pathlen := len(tVertex.Paths[i])
@@ -267,6 +270,9 @@ func (server *OSPFServer) UpdateRoutingTblForSNetwork(areaIdKey AreaIdKey, vKey 
 	rEnt.Type2Cost = 0 //TODO
 	rEnt.LSOrigin = sEnt.LsaKey
 	rEnt.NumOfPaths = tVertex.NumOfPaths
+	if rEnt.NumOfPaths == 0 {
+		server.logger.Info("==============Hello1===========")
+	}
 	rEnt.NextHops = make(map[NextHop]bool, tVertex.NumOfPaths)
 	for i := 0; i < tVertex.NumOfPaths; i++ {
 		pathlen := len(tVertex.Paths[i])
@@ -344,6 +350,9 @@ func (server *OSPFServer) UpdateRoutingTblForTNetwork(areaIdKey AreaIdKey, vKey 
 	rEnt.Type2Cost = 0 //TODO
 	rEnt.LSOrigin = gEnt.LsaKey
 	rEnt.NumOfPaths = tVertex.NumOfPaths
+	if rEnt.NumOfPaths == 0 {
+		server.logger.Info("==============Hello3===========")
+	}
 	rEnt.NextHops = make(map[NextHop]bool, tVertex.NumOfPaths)
 	for i := 0; i < tVertex.NumOfPaths; i++ {
 		pathlen := len(tVertex.Paths[i])

@@ -645,10 +645,10 @@ func (server *OSPFServer) spfCalculation() {
 				//flag = true
 				continue
 			}
-			//server.logger.Info("=========================Start before Dijkstra=================")
-			//server.dumpAreaGraph()
-			//server.dumpAreaStubs()
-			//server.logger.Info("=========================End before Dijkstra=================")
+			server.logger.Info("=========================Start before Dijkstra=================")
+			server.dumpAreaGraph()
+			server.dumpAreaStubs()
+			server.logger.Info("=========================End before Dijkstra=================")
 			//server.printRouterLsa()
 			err = server.ExecuteDijkstra(vKey, areaId)
 			if err != nil {
@@ -656,11 +656,11 @@ func (server *OSPFServer) spfCalculation() {
 				//flag = true
 				continue
 			}
-			//server.logger.Info("=========================Start after Dijkstra=================")
-			//server.dumpAreaGraph()
-			//server.dumpAreaStubs()
-			//server.dumpSPFTree()
-			//server.logger.Info("=========================End after Dijkstra=================")
+			server.logger.Info("=========================Start after Dijkstra=================")
+			server.dumpAreaGraph()
+			server.dumpAreaStubs()
+			server.dumpSPFTree()
+			server.logger.Info("=========================End after Dijkstra=================")
 			server.UpdateRoutingTbl(vKey, areaId)
 			server.HandleSummaryLsa(areaId)
 			server.AreaGraph = nil
@@ -725,6 +725,7 @@ func (server *OSPFServer) spfCalculation() {
 			server.HandleTransitAreaSummaryLsa()
 			server.logger.Info("Generate Summary LSA...")
 			server.GenerateSummaryLsa()
+			server.logger.Info(fmt.Sprintln("========", server.SummaryLsDb, "=========="))
 		}
 		server.DoneCalcSPFCh <- true
 	}

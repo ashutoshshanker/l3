@@ -136,7 +136,7 @@ func (server *OSPFServer) HandleASExternalLsa(areaId uint32) {
 				rEnt.NumOfPaths = numOfNextHops
 				rEnt.NextHops = make(map[NextHop]bool)
 				for key, _ := range nextHopMap {
-					key.AdvRtr = 0
+					key.AdvRtr = lsaKey.AdvRouter
 					rEnt.NextHops[key] = true
 				}
 			} else {
@@ -144,7 +144,7 @@ func (server *OSPFServer) HandleASExternalLsa(areaId uint32) {
 				for key, _ := range nextHopMap {
 					_, exist = rEnt.NextHops[key]
 					if !exist {
-						key.AdvRtr = 0
+						key.AdvRtr = lsaKey.AdvRouter
 						rEnt.NextHops[key] = true
 						cnt++
 					}
@@ -164,7 +164,7 @@ func (server *OSPFServer) HandleASExternalLsa(areaId uint32) {
 			rEnt.NumOfPaths = numOfNextHops
 			rEnt.NextHops = make(map[NextHop]bool)
 			for key, _ := range nextHopMap {
-				key.AdvRtr = 0
+				key.AdvRtr = lsaKey.AdvRouter
 				rEnt.NextHops[key] = true
 			}
 		}
@@ -285,4 +285,23 @@ func (server *OSPFServer) CalcASBorderRoutes(areaId uint32) {
 		tempAreaRoutingTbl.RoutingTblMap[rKey] = rEnt
 		server.TempAreaRoutingTbl[areaIdKey] = tempAreaRoutingTbl
 	}
+}
+
+func (server *OSPFServer) GenerateType4SummaryLSA(rKey RoutingTblEntryKey, rEnt GlobalRoutingTblEntry) (LsaKey, SummaryLsa) {
+	var summaryLsa SummaryLsa
+
+	AdvRouter := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
+	lsaKey := LsaKey{
+		LSType:    Summary4LSA,
+		LSId:      rKey.DestId,
+		AdvRouter: AdvRouter,
+	}
+	summaryLsa.LsaMd.Options = uint8(2) // Need to be re-visited
+	summaryLsa.LsaMd.LSAge = 0
+	summaryLsa.LsaMd.LSSequenceNum = InitialSequenceNumber
+	summaryLsa.LsaMd.LSLen = uint16(OSPF_LSA_HEADER_SIZE + 8)
+	summaryLsa.Netmask = rKey.AddrMask
+	summaryLsa.Metric = uint32(rEnt.RoutingTblEnt.Cost)
+
+	return lsaKey, summaryLsa
 }

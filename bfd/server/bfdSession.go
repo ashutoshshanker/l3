@@ -302,7 +302,7 @@ func (server *BFDServer) NewBfdSession(DestIp string, Protocol bfddCommonDefs.Bf
 	intf, exist := server.bfdGlobal.Interfaces[IfIndex]
 	if exist {
 		if intf.Enabled {
-			if IfType == commonDefs.L2RefTypeLag && PerLink {
+			if IfType == commonDefs.IfTypeLag && PerLink {
 				server.NewPerLinkBfdSessions(IfIndex, DestIp, Protocol)
 			} else {
 				bfdSession := server.NewNormalBfdSession(IfIndex, DestIp, false, Protocol)

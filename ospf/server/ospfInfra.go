@@ -44,10 +44,10 @@ type IpProperty struct {
 
 func (server *OSPFServer) computeMinMTU(msg IPv4IntfNotifyMsg) int32 {
 	var minMtu int32 = 10000                    //in bytes
-	if msg.IfType == commonDefs.L2RefTypePort { // PHY
+	if msg.IfType == commonDefs.IfTypePort { // PHY
 		ent, _ := server.portPropertyMap[int32(msg.IfId)]
 		minMtu = ent.Mtu
-	} else if msg.IfType == commonDefs.L2RefTypeVlan { // Vlan
+	} else if msg.IfType == commonDefs.IfTypeVlan { // Vlan
 		ent, _ := server.vlanPropertyMap[msg.IfId]
 		for _, portNum := range ent.UntagPorts {
 			entry, _ := server.portPropertyMap[portNum]
@@ -179,9 +179,9 @@ func (server *OSPFServer) BuildPortPropertyMap() {
 }
 
 func (server *OSPFServer) getLinuxIntfName(ifId uint16, ifType uint8) (ifName string, err error) {
-	if ifType == commonDefs.L2RefTypeVlan { // Vlan
+	if ifType == commonDefs.IfTypeVlan { // Vlan
 		ifName = server.vlanPropertyMap[ifId].Name
-	} else if ifType == commonDefs.L2RefTypePort { // PHY
+	} else if ifType == commonDefs.IfTypePort { // PHY
 		ifName = server.portPropertyMap[int32(ifId)].Name
 	} else {
 		ifName = ""
