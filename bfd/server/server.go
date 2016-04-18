@@ -84,6 +84,7 @@ type BfdSession struct {
 	authSeqNum          uint32
 	authKeyId           uint32
 	authData            string
+	txConn              net.Conn
 	sendPcapHandle      *pcap.Handle
 	recvPcapHandle      *pcap.Handle
 	useDedicatedMac     bool
@@ -414,6 +415,7 @@ func (server *BFDServer) SigHandler() {
 				server.logger.Info("Received SIGHUP signal")
 				server.SendAdminDownToAllNeighbors()
 				time.Sleep(250 * time.Millisecond)
+				server.SendDeleteToAllSessions()
 				server.logger.Info("Exiting!!!")
 				os.Exit(0)
 			default:
