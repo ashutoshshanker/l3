@@ -374,7 +374,8 @@ func (m RIBDServicesHandler) GetBulkRoutesForProtocol(srcProtocol string, fromIn
 }
 func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.IPv4RouteStateGetInfo, err error) { //(routes []*ribdInt.Routes, err error) {
 	logger.Info("GetBulkIPv4RouteState")
-	var i, validCount, toIndex ribd.Int
+	var i, validCount ribd.Int
+	//var toIndex ribd.Int
 	var temproute []ribd.IPv4RouteState = make([]ribd.IPv4RouteState, rcount)
 	var nextRoute *ribd.IPv4RouteState
 	var returnRoutes []*ribd.IPv4RouteState
@@ -468,7 +469,7 @@ func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ri
 					nextRoute.PolicyList = append(nextRoute.PolicyList, routePolicyListInfo)
 				}
 			}
-			toIndex = ribd.Int(prefixNodeRoute.sliceIdx)
+			//toIndex = ribd.Int(prefixNodeRoute.sliceIdx)
 			if len(returnRoutes) == 0 {
 				returnRoutes = make([]*ribd.IPv4RouteState, 0)
 			}
@@ -479,7 +480,7 @@ func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ri
 	logger.Info(fmt.Sprintf("Returning %d list of routes\n", validCount))
 	routes.IPv4RouteStateList = returnRoutes
 	routes.StartIdx = fromIndex
-	routes.EndIdx = toIndex + 1
+	routes.EndIdx = i//toIndex + 1
 	routes.More = moreRoutes
 	routes.Count = validCount
 	return routes, err
