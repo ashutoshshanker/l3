@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"l3/vrrp/rpc"
 	"l3/vrrp/server"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -25,6 +26,9 @@ func main() {
 	}
 	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("vrrpd", fileName)
 
 	logger.Info("Starting VRRP server....")
 	// Create vrrp server handler
