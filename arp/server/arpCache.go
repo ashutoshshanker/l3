@@ -104,7 +104,7 @@ func (server *ARPServer) processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
 			server.logger.Info(fmt.Sprintln("Port", msg.PortNum, "doesnot belong to L3 Interface"))
 			return
 		}
-		if ifType == commonDefs.L2RefTypeVlan {
+		if ifType == commonDefs.IfTypeVlan {
 			vlanId = ifId
 		} else {
 			vlanId = asicdConstDefs.SYS_RSVD_VLAN

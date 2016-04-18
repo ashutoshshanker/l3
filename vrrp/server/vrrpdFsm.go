@@ -68,7 +68,7 @@ func (svr *VrrpServer) VrrpUpdateSubIntf(gblInfo VrrpGlobalInfo, configure bool)
 	}
 	config := asicdServices.SubIPv4Intf{
 		IpAddr:  vip,
-		IfIndex: gblInfo.IntfConfig.IfIndex,
+		IntfRef: strconv.Itoa(int(gblInfo.IntfConfig.IfIndex)),
 		Enable:  configure,
 		MacAddr: gblInfo.VirtualRouterMACAddress,
 	}

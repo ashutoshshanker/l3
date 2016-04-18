@@ -143,115 +143,148 @@ func (server *OSPFServer) StopLSDatabase() {
 	lsdbTickerCh.Stop()
 }
 
-func (server *OSPFServer)compareSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEnt SummaryLsa) bool {
-        lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-        sLsa, _ := lsDbEnt.Summary3LsaMap[lsaKey]
-        if sLsa.Netmask != lsaEnt.Netmask {
-                return false
-        }
-        if sLsa.Metric != lsaEnt.Metric {
-                return false
-        }
-        // TODO : More garnular comparision
-        return true
+func (server *OSPFServer) compareSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEnt SummaryLsa) bool {
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+	var sLsa SummaryLsa
+	if lsaKey.LSType == Summary3LSA {
+		sLsa, _ = lsDbEnt.Summary3LsaMap[lsaKey]
+	} else if lsaKey.LSType == Summary4LSA {
+		sLsa, _ = lsDbEnt.Summary4LsaMap[lsaKey]
+	}
+	if sLsa.Netmask != lsaEnt.Netmask {
+		return false
+	}
+	if sLsa.Metric != lsaEnt.Metric {
+		return false
+	}
+	// TODO : More garnular comparision
+	return true
 }
 
-func (server *OSPFServer)updateSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEnt SummaryLsa) {
-        server.logger.Info(fmt.Sprintln("Need to update Summary Lsa in LSDB:", lsdbKey, lsaKey, lsaEnt))
-        lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-        sLsa, _ := lsDbEnt.Summary3LsaMap[lsaKey]
+func (server *OSPFServer) updateSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEnt SummaryLsa) {
+	server.logger.Info(fmt.Sprintln("Need to update Summary Lsa in LSDB:", lsdbKey, lsaKey, lsaEnt))
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+	var sLsa SummaryLsa
+	if lsaKey.LSType == Summary3LSA {
+		sLsa, _ = lsDbEnt.Summary3LsaMap[lsaKey]
+	} else if lsaKey.LSType == Summary4LSA {
+		sLsa, _ = lsDbEnt.Summary4LsaMap[lsaKey]
+	}
 
-        sLsa.Netmask = lsaEnt.Netmask
-        sLsa.Metric = lsaEnt.Metric
+	sLsa.Netmask = lsaEnt.Netmask
+	sLsa.Metric = lsaEnt.Metric
 
-        sLsa.LsaMd.LSAge = 0
-        sLsa.LsaMd.LSSequenceNum = sLsa.LsaMd.LSSequenceNum + 1
+	sLsa.LsaMd.LSAge = 0
+	sLsa.LsaMd.LSSequenceNum = sLsa.LsaMd.LSSequenceNum + 1
 	sLsa.LsaMd.LSLen = lsaEnt.LsaMd.LSLen
-        sLsa.LsaMd.Options = lsaEnt.LsaMd.Options
-        sLsa.LsaMd.LSChecksum = 0
+	sLsa.LsaMd.Options = lsaEnt.LsaMd.Options
+	sLsa.LsaMd.LSChecksum = 0
 	LsaEnc := encodeSummaryLsa(sLsa, lsaKey)
 	checksumOffset := uint16(14)
 	sLsa.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc[2:], checksumOffset)
-	lsDbEnt.Summary3LsaMap[lsaKey] = sLsa
+	if lsaKey.LSType == Summary3LSA {
+		lsDbEnt.Summary3LsaMap[lsaKey] = sLsa
+	} else if lsaKey.LSType == Summary4LSA {
+		lsDbEnt.Summary4LsaMap[lsaKey] = sLsa
+	}
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 }
 
-func (server *OSPFServer)insertSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEnt SummaryLsa) {
-        server.logger.Info(fmt.Sprintln("Need to Insert Summary Lsa in LSDB:", lsdbKey, lsaKey, lsaEnt))
-        selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
-        lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-        sLsa, _ := lsDbEnt.Summary3LsaMap[lsaKey]
+func (server *OSPFServer) insertSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey, lsaEnt SummaryLsa) {
+	server.logger.Info(fmt.Sprintln("Need to Insert Summary Lsa in LSDB:", lsdbKey, lsaKey, lsaEnt))
+	selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+	var sLsa SummaryLsa
+	if lsaKey.LSType == Summary3LSA {
+		sLsa, _ = lsDbEnt.Summary3LsaMap[lsaKey]
+	} else if lsaKey.LSType == Summary4LSA {
+		sLsa, _ = lsDbEnt.Summary4LsaMap[lsaKey]
+	}
 
-        sLsa.Netmask = lsaEnt.Netmask
-        sLsa.Metric = lsaEnt.Metric
+	sLsa.Netmask = lsaEnt.Netmask
+	sLsa.Metric = lsaEnt.Metric
 
-        sLsa.LsaMd.LSAge = 0
-        sLsa.LsaMd.LSSequenceNum = InitialSequenceNumber
+	sLsa.LsaMd.LSAge = 0
+	sLsa.LsaMd.LSSequenceNum = InitialSequenceNumber
 	sLsa.LsaMd.LSLen = lsaEnt.LsaMd.LSLen
-        sLsa.LsaMd.Options = lsaEnt.LsaMd.Options
-        sLsa.LsaMd.LSChecksum = 0
+	sLsa.LsaMd.Options = lsaEnt.LsaMd.Options
+	sLsa.LsaMd.LSChecksum = 0
 	LsaEnc := encodeSummaryLsa(sLsa, lsaKey)
 	checksumOffset := uint16(14)
 	sLsa.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc[2:], checksumOffset)
-	lsDbEnt.Summary3LsaMap[lsaKey] = sLsa
+	if lsaKey.LSType == Summary3LSA {
+		lsDbEnt.Summary3LsaMap[lsaKey] = sLsa
+	} else if lsaKey.LSType == Summary4LSA {
+		lsDbEnt.Summary4LsaMap[lsaKey] = sLsa
+	}
 	server.AreaLsdb[lsdbKey] = lsDbEnt
-        selfOrigLsaEnt[lsaKey] = true
-        server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
-        var val LsdbSliceEnt
-        val.AreaId = lsdbKey.AreaId
-        val.LSType = lsaKey.LSType
-        val.LSId = lsaKey.LSId
-        val.AdvRtr = lsaKey.AdvRouter
-        server.LsdbSlice = append(server.LsdbSlice, val)
+	selfOrigLsaEnt[lsaKey] = true
+	server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
+	var val LsdbSliceEnt
+	val.AreaId = lsdbKey.AreaId
+	val.LSType = lsaKey.LSType
+	val.LSId = lsaKey.LSId
+	val.AdvRtr = lsaKey.AdvRouter
+	server.LsdbSlice = append(server.LsdbSlice, val)
 }
 
-func (server *OSPFServer)flushSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey) {
-        server.logger.Info(fmt.Sprintln("Need to flush Summary Lsa:", lsdbKey, lsaKey))
-        selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
-        lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-        delete(selfOrigLsaEnt, lsaKey)
-        server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
-        delete(lsDbEnt.Summary3LsaMap, lsaKey)
-        server.AreaLsdb[lsdbKey] = lsDbEnt
+func (server *OSPFServer) flushSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey) {
+	server.logger.Info(fmt.Sprintln("Need to flush Summary Lsa:", lsdbKey, lsaKey))
+	selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+	delete(selfOrigLsaEnt, lsaKey)
+	server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
+	if lsaKey.LSType == Summary3LSA {
+		delete(lsDbEnt.Summary3LsaMap, lsaKey)
+	} else if lsaKey.LSType == Summary4LSA {
+		delete(lsDbEnt.Summary4LsaMap, lsaKey)
+	}
+	server.AreaLsdb[lsdbKey] = lsDbEnt
 
 }
 
 func (server *OSPFServer) installSummaryLsa() {
-        for lsdbKey, sLsa := range server.SummaryLsDb {
-                selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
-                oldSelfOrigSummaryLsa := make(map[LsaKey]bool)
-                for sKey, _ := range selfOrigLsaEnt {
-                        if sKey.LSType == Summary3LSA {
-                                oldSelfOrigSummaryLsa[sKey] = true
-                        }
-                }
-                for sKey, sEnt := range sLsa {
-                        if selfOrigLsaEnt[sKey] == true {
-                                oldSelfOrigSummaryLsa[sKey] = false
-                                ret := server.compareSummaryLsa(lsdbKey, sKey, sEnt)
-                                if ret == false {
-                                        server.updateSummaryLsa(lsdbKey, sKey, sEnt)
-                                        //Flood Updated Summary LSA
-					server.lsdbToFloodMsg(sKey, lsdbKey.AreaId)
-                                } else {
-                                        continue
-                                }
-                        } else {
-                                server.insertSummaryLsa(lsdbKey, sKey, sEnt)
-                                //Flood New Summary LSA
-				server.lsdbToFloodMsg(sKey, lsdbKey.AreaId)
-                        }
-                }
-                sLsa = nil
-                server.SummaryLsDb[lsdbKey] = sLsa
-                for sKey, ent := range oldSelfOrigSummaryLsa {
-                        if ent == true {
-                                server.flushSummaryLsa(lsdbKey, sKey)
-                        }
-                }
-                oldSelfOrigSummaryLsa = nil
-        }
-        server.SummaryLsDb = nil
+	ifkey := IntfConfKey{}
+	for lsdbKey, sLsa := range server.SummaryLsDb {
+		selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+		oldSelfOrigSummaryLsa := make(map[LsaKey]bool)
+		for sKey, _ := range selfOrigLsaEnt {
+			if sKey.LSType == Summary3LSA ||
+				sKey.LSType == Summary4LSA {
+				oldSelfOrigSummaryLsa[sKey] = true
+			}
+		}
+
+		for sKey, sEnt := range sLsa {
+			if selfOrigLsaEnt[sKey] == true {
+				oldSelfOrigSummaryLsa[sKey] = false
+				ret := server.compareSummaryLsa(lsdbKey, sKey, sEnt)
+				if ret == false {
+					server.updateSummaryLsa(lsdbKey, sKey, sEnt)
+					//Flood Updated Summary LSA
+					server.logger.Info(fmt.Sprintln("LSDB: Send message to flood ", sKey, lsdbKey.AreaId))
+					server.sendLsdbToNeighborEvent(ifkey, 0, lsdbKey.AreaId, 0, 0, sKey, LSASUMMARYFLOOD)
+				} else {
+					continue
+				}
+			} else {
+				server.insertSummaryLsa(lsdbKey, sKey, sEnt)
+				//Flood New Summary LSA
+				server.sendLsdbToNeighborEvent(ifkey, 0, lsdbKey.AreaId, 0, 0, sKey, LSASUMMARYFLOOD)
+				server.logger.Info(fmt.Sprintln("LSDB: Send message to flood ", sKey, lsdbKey.AreaId))
+
+			}
+		}
+		sLsa = nil
+		server.SummaryLsDb[lsdbKey] = sLsa
+		for sKey, ent := range oldSelfOrigSummaryLsa {
+			if ent == true {
+				server.flushSummaryLsa(lsdbKey, sKey)
+			}
+		}
+		oldSelfOrigSummaryLsa = nil
+	}
+	server.SummaryLsDb = nil
 }
 
 func (server *OSPFServer) flushNetworkLSA(areaId uint32, key IntfConfKey) {
@@ -442,10 +475,10 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 	LSAge := 0
 	AdvRouter := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
 	BitE := false //not an AS boundary router (Todo)
-        BitB := false
-        if server.ospfGlobalConf.AreaBdrRtrStatus == true {
-                BitB = true
-        }
+	BitB := false
+	if server.ospfGlobalConf.AreaBdrRtrStatus == true {
+		BitB = true
+	}
 	lsaKey := LsaKey{
 		LSType:    LSType,
 		LSId:      LSId,
@@ -820,9 +853,9 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 				server.StartCalcSPFCh <- true
 				spfStatus := <-server.DoneCalcSPFCh
 				server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
-                                if server.ospfGlobalConf.AreaBdrRtrStatus == true {
-                                        server.installSummaryLsa()
-                                }
+				if server.ospfGlobalConf.AreaBdrRtrStatus == true {
+					server.installSummaryLsa()
+				}
 			} else if msg.MsgType == LsdbDel {
 				server.logger.Info("Deleting LS in the Lsdb")
 				ret := server.processDeleteLsa(msg.Data, msg.AreaId)
@@ -831,9 +864,9 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 				server.StartCalcSPFCh <- true
 				spfStatus := <-server.DoneCalcSPFCh
 				server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
-                                if server.ospfGlobalConf.AreaBdrRtrStatus == true {
-                                        server.installSummaryLsa()
-                                }
+				if server.ospfGlobalConf.AreaBdrRtrStatus == true {
+					server.installSummaryLsa()
+				}
 			} else if msg.MsgType == LsdbUpdate {
 				server.logger.Info("Deleting LS in the Lsdb")
 				ret := server.processRecvdLsa(msg.Data, msg.AreaId)
@@ -842,9 +875,9 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 				server.StartCalcSPFCh <- true
 				spfStatus := <-server.DoneCalcSPFCh
 				server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
-                                if server.ospfGlobalConf.AreaBdrRtrStatus == true {
-                                        server.installSummaryLsa()
-                                }
+				if server.ospfGlobalConf.AreaBdrRtrStatus == true {
+					server.installSummaryLsa()
+				}
 			}
 		case msg := <-server.IntfStateChangeCh:
 			server.logger.Info(fmt.Sprintf("Interface State change msg", msg))
@@ -853,9 +886,9 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 			server.StartCalcSPFCh <- true
 			spfStatus := <-server.DoneCalcSPFCh
 			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
-                        if server.ospfGlobalConf.AreaBdrRtrStatus == true {
-                                server.installSummaryLsa()
-                        }
+			if server.ospfGlobalConf.AreaBdrRtrStatus == true {
+				server.installSummaryLsa()
+			}
 		case msg := <-server.NetworkDRChangeCh:
 			server.logger.Info(fmt.Sprintf("Network DR change msg", msg))
 			// Create a new router LSA
@@ -864,9 +897,9 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 			server.StartCalcSPFCh <- true
 			spfStatus := <-server.DoneCalcSPFCh
 			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
-                        if server.ospfGlobalConf.AreaBdrRtrStatus == true {
-                                server.installSummaryLsa()
-                        }
+			if server.ospfGlobalConf.AreaBdrRtrStatus == true {
+				server.installSummaryLsa()
+			}
 		case msg := <-server.CreateNetworkLSACh:
 			server.logger.Info(fmt.Sprintf("Create Network LSA msg", msg))
 			server.processNeighborFullEvent(msg)
@@ -879,9 +912,9 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 			server.StartCalcSPFCh <- true
 			spfStatus := <-server.DoneCalcSPFCh
 			server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
-                        if server.ospfGlobalConf.AreaBdrRtrStatus == true {
-                                server.installSummaryLsa()
-                        }
+			if server.ospfGlobalConf.AreaBdrRtrStatus == true {
+				server.installSummaryLsa()
+			}
 		/*
 			case msg := <-server.FlushNetworkLsACh:
 				server.logger.Info(fmt.Sprintf("Flush Network LSA msg", msg))
@@ -911,14 +944,18 @@ Send message for LSAFLOOD which will flood
 router (and network) LSA
 */
 func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
+	lsaKey := LsaKey{}
+
+	rtr_id := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
+	intConf := server.IntfConfMap[msg.intf]
 	server.logger.Info(fmt.Sprintln("LSDB: Nbr full. Generate router and network LSA  area id  ",
-		msg.areaId, " intf ", msg.intf, " isDr ", msg.isDR, " nbrList ", msg.nbrList))
-	if msg.isDR {
+		msg.areaId, " intf ", intConf.IfIpAddr))
+	if intConf.IfDRtrId == rtr_id {
 		server.logger.Info(fmt.Sprintln("Generate network LSA ", msg.intf))
-		server.generateNetworkLSA(msg.areaId, msg.intf, msg.isDR)
+		server.generateNetworkLSA(msg.areaId, msg.intf, true)
 	}
 	server.generateRouterLSA(msg.areaId)
-	server.sendLsdbToNeighborEvent(msg.intf, 0, msg.areaId, 0, 0, LSAFLOOD)
+	server.sendLsdbToNeighborEvent(msg.intf, 0, msg.areaId, 0, 0, lsaKey, LSAFLOOD)
 }
 
 /* @fn processDrBdrChangeMsg
@@ -930,7 +967,7 @@ network LSA is I am become DR to no DR.
 func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 	/* check if any nbr attached to the intf if not dont generate network LSA
 	 */
-
+	lsaKey := LsaKey{}
 	intf, _ := server.IntfConfMap[msg.intfKey]
 	server.logger.Info(fmt.Sprintln("LSDB: received DR BDR change message ",
 		intf.IfIpAddr, "dr ip ", intf.IfDRIp, " bdr ip ", intf.IfBDRIp))
@@ -946,8 +983,8 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 			server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
 		}
 	}
-        server.generateRouterLSA(msg.areaId)
-        server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, LSAFLOOD)
+	server.generateRouterLSA(msg.areaId)
+	server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, lsaKey, LSAFLOOD)
 
 	/*
 		if msg.oldstate != msg.newstate {
@@ -997,22 +1034,4 @@ func (server *OSPFServer) processMaxAgeLsaMsg(msg maxAgeLsaMsg) {
 	case delMaxAgeLsa:
 		delete(maxAgeLsaMap, msg.lsaKey)
 	}
-}
-
-/*@fn lsdbToFloodMsg
-	This API sends flood message for Summary LSA
-*/
-func (server *OSPFServer) lsdbToFloodMsg(lsaKey LsaKey, areaId uint32) {
-	summaryMsg := newsummaryLsaUpdMsg()
-	lsadata := newsummaryLsamdata()
-	lsadata.areaId = areaId
-	lsadata.lsaKey = lsaKey
-	summaryMsg.lsa_data = append(summaryMsg.lsa_data, *lsadata)
-	server.logger.Info(fmt.Sprintln("LSDB: Summary flood area id ", areaId, 
-					 " lsakey ", lsaKey))
-	msg := ospfFloodMsg{
-		summaryUpdMsg: *summaryMsg,
-		lsOp : LSASUMMARYFLOOD,
-	}
-	server.ospfNbrLsaUpdSendCh <- msg
 }

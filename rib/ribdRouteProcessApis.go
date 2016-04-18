@@ -193,10 +193,10 @@ func getConnectedRoutes() {
 			logger.Info(fmt.Sprintln("Calling createv4Route with ipaddr ", ipAddrStr, " mask ", ipMaskStr, "ifIndex : ", IPIntfBulk.IPv4IntfStateList[i].IfIndex))
 			nextHopIfTypeStr := ""
 			switch asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex) {
-			case commonDefs.L2RefTypePort:
+			case commonDefs.IfTypePort:
 				nextHopIfTypeStr = "PHY"
 				break
-			case commonDefs.L2RefTypeVlan:
+			case commonDefs.IfTypeVlan:
 				nextHopIfTypeStr = "VLAN"
 				break
 			case commonDefs.IfTypeNull:
@@ -1342,9 +1342,9 @@ func (m RIBDServicesHandler) ProcessRouteCreateConfig(cfg *ribd.IPv4Route) (val 
 	var nextHopIfType ribd.Int
 	var nextHopIf int
 	if cfg.OutgoingIntfType == "VLAN" {
-		nextHopIfType = commonDefs.L2RefTypeVlan
+		nextHopIfType = commonDefs.IfTypeVlan
 	} else if cfg.OutgoingIntfType == "PHY" {
-		nextHopIfType = commonDefs.L2RefTypePort
+		nextHopIfType = commonDefs.IfTypePort
 	} else if cfg.OutgoingIntfType == "NULL" {
 		nextHopIfType = commonDefs.IfTypeNull
 	} else if cfg.OutgoingIntfType == "Loopback" {
@@ -1489,9 +1489,9 @@ func (m RIBDServicesHandler) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route
 					}
 					var nextHopIfType ribd.Int
 					if newconfig.OutgoingIntfType == "VLAN" {
-						nextHopIfType = commonDefs.L2RefTypeVlan
+						nextHopIfType = commonDefs.IfTypeVlan
 					} else if newconfig.OutgoingIntfType == "PHY" {
-						nextHopIfType = commonDefs.L2RefTypePort
+						nextHopIfType = commonDefs.IfTypePort
 					}
 					routeInfoRecord.nextHopIfType = int8(nextHopIfType)
 					callUpdate = false
@@ -1537,10 +1537,10 @@ func (m RIBDServicesHandler) PrintV4Routes() (err error) {
 func (m RIBDServicesHandler) GetNextHopIfTypeStr(nextHopIfType ribdInt.Int) (nextHopIfTypeStr string, err error) {
 	nextHopIfTypeStr = ""
 	switch nextHopIfType {
-	case commonDefs.L2RefTypePort:
+	case commonDefs.IfTypePort:
 		nextHopIfTypeStr = "PHY"
 		break
-	case commonDefs.L2RefTypeVlan:
+	case commonDefs.IfTypeVlan:
 		nextHopIfTypeStr = "VLAN"
 		break
 	case commonDefs.IfTypeNull:

@@ -27,10 +27,10 @@ func policyEngineActionRejectRoute(params interface{}) {
 	logger.Info(fmt.Sprintln("policyEngineActionRejectRoute for route ", routeInfo.destNetIp, " ", routeInfo.networkMask))
 	nextHopIfTypeStr := ""
 	switch routeInfo.nextHopIfType {
-	case commonDefs.L2RefTypePort:
+	case commonDefs.IfTypePort:
 		nextHopIfTypeStr = "PHY"
 		break
-	case commonDefs.L2RefTypeVlan:
+	case commonDefs.IfTypeVlan:
 		nextHopIfTypeStr = "VLAN"
 		break
 	case commonDefs.IfTypeNull:
@@ -85,9 +85,9 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 			outIntf, _ := strconv.Atoi(ipRoute.OutgoingInterface)
 			var outIntfType ribd.Int
 			if ipRoute.OutgoingIntfType == "VLAN" {
-				outIntfType = commonDefs.L2RefTypeVlan
+				outIntfType = commonDefs.IfTypeVlan
 			} else {
-				outIntfType = commonDefs.L2RefTypePort
+				outIntfType = commonDefs.IfTypePort
 			}
 			proto, _ := strconv.Atoi(ipRoute.Protocol)
 			tempRoute.Ipaddr = ipRoute.DestinationNw
@@ -159,10 +159,10 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 				tempRoute.NextHopIfType = ribdInt.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))
 				nextHopIfTypeStr := ""
 				switch tempRoute.NextHopIfType {
-				case commonDefs.L2RefTypePort:
+				case commonDefs.IfTypePort:
 					nextHopIfTypeStr = "PHY"
 					break
-				case commonDefs.L2RefTypeVlan:
+				case commonDefs.IfTypeVlan:
 					nextHopIfTypeStr = "VLAN"
 					break
 				case commonDefs.IfTypeNull:
@@ -289,10 +289,10 @@ func policyEngineUpdateRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, han
 	//route := ribdInt.Routes{Ipaddr:selectedRouteInfoRecord.destNetIp.String() , Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(selectedRouteInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(selectedRouteInfoRecord.metric), Prototype: ribdInt.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid: rmapInfoRecordList.isPolicyBasedStateValid}
 	nextHopIfTypeStr := ""
 	switch selectedRouteInfoRecord.nextHopIfType {
-	case commonDefs.L2RefTypePort:
+	case commonDefs.IfTypePort:
 		nextHopIfTypeStr = "PHY"
 		break
-	case commonDefs.L2RefTypeVlan:
+	case commonDefs.IfTypeVlan:
 		nextHopIfTypeStr = "VLAN"
 		break
 	case commonDefs.IfTypeNull:

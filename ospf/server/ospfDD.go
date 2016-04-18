@@ -103,16 +103,16 @@ func decodeDatabaseDescriptionData(data []byte, dbd_data *ospfDatabaseDescriptio
 		// negotiation is done. Check if we have LSA headers
 
 		headers_len := pktlen - (OSPF_DBD_MIN_SIZE + OSPF_HEADER_SIZE)
-		//fmt.Println("DBD: Received headers_len ", headers_len, " pktLen", pktlen)
+		fmt.Println("DBD: Received headers_len ", headers_len, " pktLen", pktlen, " data len ", len(data))
 		if headers_len >= 20 && headers_len < pktlen {
-			//	fmt.Println("DBD: LSA headers length ", headers_len)
+			fmt.Println("DBD: LSA headers length ", headers_len)
 			num_headers := int(headers_len / 20)
-			//	fmt.Sprintln("DBD: Received ", num_headers, " LSA headers.")
+			fmt.Println("DBD: Received ", num_headers, " LSA headers.")
 			header_byte := make([]byte, num_headers*OSPF_LSA_HEADER_SIZE)
-			var start_index uint8
+			var start_index uint16
 			var lsa_header ospfLSAHeader
 			for i := 0; i < num_headers; i++ {
-				start_index = uint8(OSPF_DBD_MIN_SIZE + (i * OSPF_LSA_HEADER_SIZE))
+				start_index = uint16(OSPF_DBD_MIN_SIZE + (i * OSPF_LSA_HEADER_SIZE))
 				copy(header_byte, data[start_index:start_index+20])
 				lsa_header = decodeLSAHeader(header_byte)
 				fmt.Println("DBD: Header decoded ",
