@@ -26,6 +26,7 @@ func (server *BFDServer) StartSessionHandler() error {
 	server.FailedSessionServerCh = make(chan int32)
 	server.FailedSessionClientCh = make(chan int32)
 	//go server.StartBfdSessionDiscoverer()
+	go server.StartBfdSesionServer()
 	go server.StartBfdSessionRxTx()
 	go server.StartSessionRetryHandler()
 	for {
@@ -64,6 +65,50 @@ func (server *BFDServer) StartBfdSessionDiscoverer() error {
 	return nil
 }
 
+func (server *BFDServer) DispatchReceivedBfdPacket(bfdPacket *BfdControlPacket) error {
+	sessionId := int32(bfdPacket.YourDiscriminator)
+	session := server.bfdGlobal.Sessions[sessionId]
+	if session != nil {
+		session.ReceivedPacketCh <- bfdPacket
+	}
+	return nil
+}
+
+func (server *BFDServer) StartBfdSesionServer() error {
+	destAddr := ":" + strconv.Itoa(DEST_PORT)
+	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
+	if err != nil {
+		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", destAddr, err))
+		return err
+	}
+	ServerConn, err := net.ListenUDP("udp", ServerAddr)
+	if err != nil {
+		server.logger.Info(fmt.Sprintln("Failed ListenUDP ", err))
+		return err
+	}
+	defer ServerConn.Close()
+	buf := make([]byte, 1024)
+	for {
+		len, _, err := ServerConn.ReadFromUDP(buf)
+		if err != nil {
+			server.logger.Info(fmt.Sprintln("Failed to read from ", ServerAddr))
+		} else {
+			if len >= DEFAULT_CONTROL_PACKET_LEN {
+				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
+				if err != nil {
+					server.logger.Info(fmt.Sprintln("Failed to decode packet - ", err))
+				} else {
+					err = server.DispatchReceivedBfdPacket(bfdPacket)
+					if err != nil {
+						server.logger.Info(fmt.Sprintln("Failed to dispatch received packet"))
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (server *BFDServer) StartBfdSessionRxTx() error {
 	for {
 		select {
@@ -71,14 +116,15 @@ func (server *BFDServer) StartBfdSessionRxTx() error {
 			session := server.bfdGlobal.Sessions[createdSessionId]
 			if session != nil {
 				session.SessionStopClientCh = make(chan bool)
+				session.ReceivedPacketCh = make(chan *BfdControlPacket, 10)
 				if session.state.PerLinkSession {
-					server.logger.Info(fmt.Sprintln("Starting PerLink server for session ", createdSessionId))
+					//server.logger.Info(fmt.Sprintln("Starting PerLink server for session ", createdSessionId))
 					go session.StartPerLinkSessionServer(server)
 					server.logger.Info(fmt.Sprintln("Starting PerLink client for session ", createdSessionId))
 					go session.StartPerLinkSessionClient(server)
 				} else {
-					server.logger.Info(fmt.Sprintln("Starting server for session ", createdSessionId))
-					go session.StartSessionServer(server)
+					//server.logger.Info(fmt.Sprintln("Starting server for session ", createdSessionId))
+					go session.StartSessionServer()
 					server.logger.Info(fmt.Sprintln("Starting client for session ", createdSessionId))
 					go session.StartSessionClient(server)
 				}
@@ -119,7 +165,7 @@ func (server *BFDServer) StartSessionRetryHandler() error {
 						go session.StartPerLinkSessionServer(server)
 					} else {
 						server.logger.Info(fmt.Sprintln("Starting server for inactive session ", sessionId))
-						go session.StartSessionServer(server)
+						go session.StartSessionServer()
 					}
 					session.isServerActive = true
 					server.bfdGlobal.InactiveSessionsIdSlice = append(server.bfdGlobal.InactiveSessionsIdSlice[:i], server.bfdGlobal.InactiveSessionsIdSlice[i+1:]...)
@@ -519,42 +565,15 @@ func (server *BFDServer) HandleNextHopChange(DestIp string, IfIndex int32) error
 	return nil
 }
 
-func (session *BfdSession) StartSessionServer(server *BFDServer) error {
-	sessionId := session.state.SessionId
-	destAddr := session.state.LocalIpAddr + ":" + strconv.Itoa(DEST_PORT)
-	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
-	if err != nil {
-		server.logger.Info(fmt.Sprintln("Failed ResolveUDPAddr ", destAddr, err))
-		server.FailedSessionServerCh <- sessionId
-		return err
-	}
-	ServerConn, err := net.ListenUDP("udp", ServerAddr)
-	if err != nil {
-		server.logger.Info(fmt.Sprintln("Failed ListenUDP ", err))
-		server.FailedSessionServerCh <- sessionId
-		return err
-	}
-	defer ServerConn.Close()
-	buf := make([]byte, 1024)
+func (session *BfdSession) StartSessionServer() error {
 	for {
-		if server.bfdGlobal.Sessions[sessionId] == nil {
-			return nil
-		}
-		len, _, err := ServerConn.ReadFromUDP(buf)
-		if err != nil {
-			server.logger.Info(fmt.Sprintln("Failed to read from ", ServerAddr))
-		} else {
-			if len >= DEFAULT_CONTROL_PACKET_LEN {
-				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
-				if err == nil {
-					session.state.NumRxPackets++
-					session.ProcessBfdPacket(bfdPacket)
-				} else {
-					server.logger.Info(fmt.Sprintln("Failed to decode packet - ", err))
-				}
-			}
+		select {
+		case bfdPacket := <-session.ReceivedPacketCh:
+			session.state.NumRxPackets++
+			session.ProcessBfdPacket(bfdPacket)
 		}
 	}
+
 	return nil
 }
 
@@ -684,7 +703,6 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	session.EventHandler(event)
 	if session.state.SessionState != STATE_ADMIN_DOWN &&
 		session.state.RemoteSessionState != STATE_ADMIN_DOWN {
-		session.server.logger.Info(fmt.Sprintln("Resetting session timer to ", session.rxInterval, "ms", time.Now()))
 		session.sessionTimer.Reset(time.Duration(session.rxInterval) * time.Millisecond)
 	}
 	return nil

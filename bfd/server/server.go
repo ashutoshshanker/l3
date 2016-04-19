@@ -76,6 +76,7 @@ type BfdSession struct {
 	SessionTimeoutCh    chan int32
 	bfdPacket           *BfdControlPacket
 	bfdPacketBuf        []byte
+	ReceivedPacketCh    chan *BfdControlPacket
 	SessionStopClientCh chan bool
 	pollSequence        bool
 	pollSequenceFinal   bool
