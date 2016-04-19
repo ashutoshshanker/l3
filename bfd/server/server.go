@@ -91,7 +91,6 @@ type BfdSession struct {
 	useDedicatedMac     bool
 	intfConfigChanged   bool
 	stateChanged        bool
-	isServerActive      bool
 	isClientActive      bool
 	server              *BFDServer
 }
@@ -142,7 +141,6 @@ type BFDServer struct {
 	lagPropertyMap        map[int32]LagProperty
 	notificationCh        chan []byte
 	ServerUpCh            chan bool
-	FailedSessionServerCh chan int32
 	FailedSessionClientCh chan int32
 	BfdPacketRecvCh       chan RecvedBfdPacket
 	bfdGlobal             BfdGlobal
