@@ -27,6 +27,7 @@ func (server *BFDServer) StartSessionHandler() error {
 	server.FailedSessionClientCh = make(chan int32)
 	//go server.StartBfdSessionDiscoverer()
 	go server.StartBfdSesionServer()
+	go server.StartBfdSesionServerQueuer()
 	go server.StartBfdSessionRxTx()
 	go server.StartSessionRetryHandler()
 	for {
@@ -65,13 +66,46 @@ func (server *BFDServer) StartBfdSessionDiscoverer() error {
 	return nil
 }
 
-func (server *BFDServer) DispatchReceivedBfdPacket(bfdPacket *BfdControlPacket) error {
+func (server *BFDServer) DispatchReceivedBfdPacket(ipAddr string, bfdPacket *BfdControlPacket) error {
+	var session *BfdSession
 	sessionId := int32(bfdPacket.YourDiscriminator)
-	session := server.bfdGlobal.Sessions[sessionId]
+	server.logger.Info(fmt.Sprintln("Received packet for session ", ipAddr, sessionId))
+	if sessionId == 0 {
+		for _, session = range server.bfdGlobal.Sessions {
+			if session.state.LocalIpAddr == ipAddr {
+				break
+			}
+		}
+	} else {
+		session = server.bfdGlobal.Sessions[sessionId]
+	}
 	if session != nil {
 		session.ReceivedPacketCh <- bfdPacket
 	}
 	return nil
+}
+
+func (server *BFDServer) StartBfdSesionServerQueuer() error {
+	server.BfdPacketRecvCh = make(chan RecvedBfdPacket, 10)
+	for {
+		select {
+		case packet := <-server.BfdPacketRecvCh:
+			ip := packet.IpAddr
+			len := packet.Len
+			buf := packet.PacketBuf
+			if len >= DEFAULT_CONTROL_PACKET_LEN {
+				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
+				if err != nil {
+					server.logger.Info(fmt.Sprintln("Failed to decode packet - ", err))
+				} else {
+					err = server.DispatchReceivedBfdPacket(ip, bfdPacket)
+					if err != nil {
+						server.logger.Info(fmt.Sprintln("Failed to dispatch received packet"))
+					}
+				}
+			}
+		}
+	}
 }
 
 func (server *BFDServer) StartBfdSesionServer() error {
@@ -89,21 +123,16 @@ func (server *BFDServer) StartBfdSesionServer() error {
 	defer ServerConn.Close()
 	buf := make([]byte, 1024)
 	for {
-		len, _, err := ServerConn.ReadFromUDP(buf)
+		len, uda, err := ServerConn.ReadFromUDP(buf)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Failed to read from ", ServerAddr))
 		} else {
-			if len >= DEFAULT_CONTROL_PACKET_LEN {
-				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
-				if err != nil {
-					server.logger.Info(fmt.Sprintln("Failed to decode packet - ", err))
-				} else {
-					err = server.DispatchReceivedBfdPacket(bfdPacket)
-					if err != nil {
-						server.logger.Info(fmt.Sprintln("Failed to dispatch received packet"))
-					}
-				}
+			packet := RecvedBfdPacket{
+				IpAddr:    uda.IP.String(),
+				Len:       int32(len),
+				PacketBuf: buf[0:len],
 			}
+			server.BfdPacketRecvCh <- packet
 		}
 	}
 	return nil
@@ -679,7 +708,7 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 	session.state.RemoteSessionState = bfdPacket.State
 	session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
 	session.state.RemoteMinRxInterval = int32(bfdPacket.RequiredMinRxInterval)
-	if session.state.SessionState != STATE_UP && session.state.RemoteSessionState != STATE_UP {
+	if session.state.SessionState != STATE_UP || session.state.RemoteSessionState != STATE_UP {
 		session.rxInterval = (STARTUP_RX_INTERVAL * int32(bfdPacket.DetectMult)) / 1000
 	} else {
 		session.rxInterval = (int32(bfdPacket.DesiredMinTxInterval) * int32(bfdPacket.DetectMult)) / 1000
@@ -701,8 +730,10 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 		event = REMOTE_ADMIN_DOWN
 	}
 	session.EventHandler(event)
-	if session.state.SessionState != STATE_ADMIN_DOWN &&
-		session.state.RemoteSessionState != STATE_ADMIN_DOWN {
+	if session.state.SessionState == STATE_ADMIN_DOWN ||
+		session.state.RemoteSessionState == STATE_ADMIN_DOWN {
+		session.sessionTimer.Stop()
+	} else {
 		session.sessionTimer.Reset(time.Duration(session.rxInterval) * time.Millisecond)
 	}
 	return nil
