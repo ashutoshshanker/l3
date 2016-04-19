@@ -23,9 +23,7 @@ func (server *BFDServer) StartSessionHandler() error {
 	server.AdminUpSessionCh = make(chan BfdSessionMgmt)
 	server.AdminDownSessionCh = make(chan BfdSessionMgmt)
 	server.CreatedSessionCh = make(chan int32)
-	server.FailedSessionServerCh = make(chan int32)
 	server.FailedSessionClientCh = make(chan int32)
-	//go server.StartBfdSessionDiscoverer()
 	go server.StartBfdSesionServer()
 	go server.StartBfdSesionServerQueuer()
 	go server.StartBfdSessionRxTx()
@@ -46,33 +44,12 @@ func (server *BFDServer) StartSessionHandler() error {
 	return nil
 }
 
-func (server *BFDServer) StartBfdSessionDiscoverer() error {
-	destAddr := ":" + strconv.Itoa(DEST_PORT)
-	DefaultListener, err := net.Listen("udp", destAddr)
-	if err != nil {
-		server.logger.Info(fmt.Sprintln("Failed Listener creation - ", err))
-		return nil
-	}
-	defer DefaultListener.Close()
-	for {
-		conn, err := DefaultListener.Accept()
-		if err != nil {
-			server.logger.Info(fmt.Sprintln("Failed to accept connection - ", err))
-		} else {
-			server.logger.Info(fmt.Sprintln("Received connection from ", conn.RemoteAddr().String()))
-			go server.ReadFromConnection(conn)
-		}
-	}
-	return nil
-}
-
 func (server *BFDServer) DispatchReceivedBfdPacket(ipAddr string, bfdPacket *BfdControlPacket) error {
 	var session *BfdSession
 	sessionId := int32(bfdPacket.YourDiscriminator)
-	server.logger.Info(fmt.Sprintln("Received packet for session ", ipAddr, sessionId))
 	if sessionId == 0 {
 		for _, session = range server.bfdGlobal.Sessions {
-			if session.state.LocalIpAddr == ipAddr {
+			if session.state.IpAddr == ipAddr {
 				break
 			}
 		}
@@ -157,16 +134,9 @@ func (server *BFDServer) StartBfdSessionRxTx() error {
 					server.logger.Info(fmt.Sprintln("Starting client for session ", createdSessionId))
 					go session.StartSessionClient(server)
 				}
-				session.isServerActive = true
 				session.isClientActive = true
 			} else {
 				server.logger.Info(fmt.Sprintf("Bfd session could not be initiated for ", createdSessionId))
-			}
-		case failedServerSessionId := <-server.FailedSessionServerCh:
-			session := server.bfdGlobal.Sessions[failedServerSessionId]
-			if session != nil {
-				session.isServerActive = false
-				server.bfdGlobal.InactiveSessionsIdSlice = append(server.bfdGlobal.InactiveSessionsIdSlice, failedServerSessionId)
 			}
 		case failedClientSessionId := <-server.FailedSessionClientCh:
 			session := server.bfdGlobal.Sessions[failedClientSessionId]
@@ -188,17 +158,6 @@ func (server *BFDServer) StartSessionRetryHandler() error {
 			sessionId := server.bfdGlobal.InactiveSessionsIdSlice[i]
 			session := server.bfdGlobal.Sessions[sessionId]
 			if session != nil {
-				if session.isServerActive == false {
-					if session.state.PerLinkSession {
-						server.logger.Info(fmt.Sprintln("Starting PerLink server for inactive session ", sessionId))
-						go session.StartPerLinkSessionServer(server)
-					} else {
-						server.logger.Info(fmt.Sprintln("Starting server for inactive session ", sessionId))
-						go session.StartSessionServer()
-					}
-					session.isServerActive = true
-					server.bfdGlobal.InactiveSessionsIdSlice = append(server.bfdGlobal.InactiveSessionsIdSlice[:i], server.bfdGlobal.InactiveSessionsIdSlice[i+1:]...)
-				}
 				if session.isClientActive == false {
 					if session.state.PerLinkSession {
 						server.logger.Info(fmt.Sprintln("Starting PerLink client for inactive session ", sessionId))
@@ -247,18 +206,6 @@ func (server *BFDServer) SendDeleteToAllSessions() error {
 	for _, session := range server.bfdGlobal.Sessions {
 		session.SessionStopClientCh <- true
 	}
-	return nil
-}
-
-func (server *BFDServer) ReadFromConnection(conn net.Conn) error {
-	defer conn.Close()
-	sessionConf := SessionConfig{
-		DestIp:    conn.RemoteAddr().String(),
-		PerLink:   false,
-		Protocol:  bfddCommonDefs.DISC,
-		Operation: bfddCommonDefs.CREATE,
-	}
-	server.processSessionConfig(sessionConf)
 	return nil
 }
 
@@ -705,14 +652,14 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 		session.server.logger.Info(fmt.Sprintln("Can't process received bfd packet for session ", session.state.SessionId))
 		return nil
 	}
-	session.state.RemoteSessionState = bfdPacket.State
-	session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
-	session.state.RemoteMinRxInterval = int32(bfdPacket.RequiredMinRxInterval)
 	if session.state.SessionState != STATE_UP || session.state.RemoteSessionState != STATE_UP {
 		session.rxInterval = (STARTUP_RX_INTERVAL * int32(bfdPacket.DetectMult)) / 1000
 	} else {
 		session.rxInterval = (int32(bfdPacket.DesiredMinTxInterval) * int32(bfdPacket.DetectMult)) / 1000
 	}
+	session.state.RemoteSessionState = bfdPacket.State
+	session.state.RemoteDiscriminator = bfdPacket.MyDiscriminator
+	session.state.RemoteMinRxInterval = int32(bfdPacket.RequiredMinRxInterval)
 	session.RemoteChangedDemandMode(bfdPacket)
 	session.ProcessPollSequence(bfdPacket)
 	switch session.state.RemoteSessionState {
@@ -836,7 +783,7 @@ func (session *BfdSession) StartBfdSession() error {
 }
 
 func (session *BfdSession) IsSessionActive() bool {
-	if session.isServerActive && session.isClientActive {
+	if session.isClientActive {
 		return true
 	} else {
 		return false
