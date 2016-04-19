@@ -10,7 +10,7 @@ import (
 )
 
 const IP = "localhost"
-const DHCP_RELAY_PORT = "9000"
+const DHCP_RELAY_PORT = "10007" //@jgheewala said he would fix it tonight:)
 
 func main() {
 	fmt.Println("Starting dhcprelay daemon")
