@@ -117,6 +117,8 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 		bfdServer.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
+	session.TxTimeoutCh = make(chan int32)
+	session.SessionTimeoutCh = make(chan int32)
 	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier / 1000)
 	txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
