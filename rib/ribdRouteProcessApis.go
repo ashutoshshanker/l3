@@ -40,7 +40,6 @@ type RouteOpInfoRecord struct {
 	routeInfoRecord RouteInfoRecord
 	opType          int
 }
-
 //implement priority queue of the routes
 type RouteInfoRecordList struct {
 	selectedRouteProtocol   string
@@ -194,10 +193,10 @@ func getConnectedRoutes() {
 			logger.Info(fmt.Sprintln("Calling createv4Route with ipaddr ", ipAddrStr, " mask ", ipMaskStr, "ifIndex : ", IPIntfBulk.IPv4IntfStateList[i].IfIndex))
 			nextHopIfTypeStr := ""
 			switch asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex) {
-			case commonDefs.L2RefTypePort:
+			case commonDefs.IfTypePort:
 				nextHopIfTypeStr = "PHY"
 				break
-			case commonDefs.L2RefTypeVlan:
+			case commonDefs.IfTypeVlan:
 				nextHopIfTypeStr = "VLAN"
 				break
 			case commonDefs.IfTypeNull:
@@ -442,7 +441,7 @@ func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ri
 			nextRoute.Protocol = ReverseRouteProtoTypeMapDB[int(prefixNodeRoute.protocol)]
 			nextRoute.RouteCreatedTime = prefixNodeRoute.routeCreatedTime
 			nextRoute.RouteUpdatedTime = prefixNodeRoute.routeUpdatedTime
-			nextRoute.IsNetworkReachable = true//prefixNodeRoute.resolvedNextHopIpIntf.IsReachable
+			nextRoute.IsNetworkReachable = prefixNodeRoute.resolvedNextHopIpIntf.IsReachable
 			nextRoute.PolicyList = make([]string, 0)
 			routePolicyListInfo := ""
 			if prefixNodeRouteList.policyList != nil {
@@ -485,93 +484,7 @@ func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ri
 	routes.Count = validCount
 	return routes, err
 }
-
-/*func (m RIBDServicesHandler) GetBulkRoutes(fromIndex ribdInt.Int, rcount ribdInt.Int) (routes *ribdInt.RoutesGetInfo, err error) { //(routes []*ribdInt.Routes, err error) {
-	logger.Info("GetBulkRoutes")
-	var i, validCount, toIndex ribdInt.Int
-	var temproute []ribdInt.Routes = make([]ribdInt.Routes, rcount)
-	var nextRoute *ribdInt.Routes
-	var returnRoutes []*ribdInt.Routes
-	var returnRouteGetInfo ribdInt.RoutesGetInfo
-	var prefixNodeRouteList RouteInfoRecordList
-	var prefixNodeRoute RouteInfoRecord
-	i = 0
-	sel := 0
-	found := false
-	routes = &returnRouteGetInfo
-	moreRoutes := true
-	if destNetSlice == nil {
-		logger.Info("destNetSlice not initialized")
-		return routes, err
-	}
-	for ; ; i++ {
-		logger.Info(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
-		found = false
-		if i+fromIndex >= ribdInt.Int(len(destNetSlice)) {
-			logger.Info("All the routes fetched")
-			moreRoutes = false
-			break
-		}
-		if destNetSlice[i+fromIndex].isValid == false {
-			logger.Info("Invalid route")
-			continue
-		}
-		if validCount == rcount {
-			logger.Info("Enough routes fetched")
-			break
-		}
-		logger.Info(fmt.Sprintf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (destNetSlice[i+fromIndex].prefix)))
-		prefixNode := RouteInfoMap.Get(destNetSlice[i+fromIndex].prefix)
-		if prefixNode != nil {
-			prefixNodeRouteList = prefixNode.(RouteInfoRecordList)
-			if prefixNodeRouteList.isPolicyBasedStateValid == false {
-				logger.Info("Route invalidated based on policy")
-				continue
-			}
-			logger.Info(fmt.Sprintln("selectedRouteProtocol = ", prefixNodeRouteList.selectedRouteProtocol))
-			if prefixNodeRouteList.routeInfoProtocolMap == nil || prefixNodeRouteList.selectedRouteProtocol == "INVALID" || prefixNodeRouteList.routeInfoProtocolMap[prefixNodeRouteList.selectedRouteProtocol] == nil {
-				logger.Info("selected route not valid")
-				continue
-			}
-			routeInfoList := prefixNodeRouteList.routeInfoProtocolMap[prefixNodeRouteList.selectedRouteProtocol]
-			for sel = 0; sel < len(routeInfoList); sel++ {
-				if routeInfoList[sel].nextHopIp.String() == destNetSlice[i+fromIndex].nextHopIp {
-					logger.Info("Found the entry corresponding to the nextHop ip")
-					found = true
-					break
-				}
-			}
-			if !found {
-				logger.Info("The corresponding route with nextHopIP was not found in the record DB")
-				continue
-			}
-			prefixNodeRoute = routeInfoList[sel] //prefixNodeRouteList.routeInfoList[prefixNodeRouteList.selectedRouteIdx]
-			nextRoute = &temproute[validCount]
-			nextRoute.Ipaddr = prefixNodeRoute.destNetIp.String()
-			nextRoute.Mask = prefixNodeRoute.networkMask.String()
-			nextRoute.DestNetIp = prefixNodeRoute.networkAddr
-			nextRoute.NextHopIp = prefixNodeRoute.nextHopIp.String()
-			nextRoute.NextHopIfType = ribdInt.Int(prefixNodeRoute.nextHopIfType)
-			nextRoute.IfIndex = ribdInt.Int(prefixNodeRoute.nextHopIfIndex)
-			nextRoute.Metric = ribdInt.Int(prefixNodeRoute.metric)
-			nextRoute.RoutePrototypeString = ReverseRouteProtoTypeMapDB[int(prefixNodeRoute.protocol)]
-			nextRoute.IsValid = destNetSlice[i+fromIndex].isValid
-			toIndex = ribdInt.Int(prefixNodeRoute.sliceIdx)
-			if len(returnRoutes) == 0 {
-				returnRoutes = make([]*ribdInt.Routes, 0)
-			}
-			returnRoutes = append(returnRoutes, nextRoute)
-			validCount++
-		}
-	}
-	logger.Info(fmt.Sprintf("Returning %d list of routes\n", validCount))
-	routes.RouteList = returnRoutes
-	routes.StartIdx = fromIndex
-	routes.EndIdx = toIndex + 1
-	routes.More = moreRoutes
-	routes.Count = validCount
-	return routes, err
-}
+/*
 func (m RIBDServicesHandler) GetConnectedRoutesInfo() (routes []*ribdInt.Routes, err error) {
 	var returnRoutes []*ribdInt.Routes
 	var nextRoute *ribdInt.Routes
@@ -589,6 +502,7 @@ func (m RIBDServicesHandler) GetConnectedRoutesInfo() (routes []*ribdInt.Routes,
 	routes = returnRoutes
 	return routes, err
 }*/
+//API called by external applications interested in tracking reachability status of a network
 func (m RIBDServicesHandler) TrackReachabilityStatus(ipAddr string, protocol string, op string) error {
 	logger.Info(fmt.Sprintln("TrackReachabilityStatus for ipAddr: ", ipAddr, " by protocol ", protocol, " op = ", op))
 	if op != "add" && op != "del" {
@@ -701,7 +615,9 @@ func (m RIBDServicesHandler) GetRoute(destNetIp string, networkMask string) (rou
 	route.Prototype = ribdInt.Int(routeInfoRecord.protocol)
 	return route, err
 }
-func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.Item, item patriciaDB.Item) (err error) {
+func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix,                       //prefix of the node being traversed
+                                   handle patriciaDB.Item,                         //data interface (routeInforRecordList) for this node
+								  item patriciaDB.Item)                           /*RouteReachabilityStatusInfo data */ (err error) {
 
 	if handle == nil {
 		logger.Err(fmt.Sprintln("nil handle"))
@@ -744,37 +660,49 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, handle patriciaDB.I
 					v[i].resolvedNextHopIpIntf.IsReachable = false
 					rmapInfoRecordList.routeInfoProtocolMap[k] = v
 					RouteInfoMap.Set(prefix, rmapInfoRecordList)
-					RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, RouteReachabilityStatusInfo{v[i].networkAddr, "Down", k, nextHopIntf})
 					logger.Info(fmt.Sprintln("Bringing down route : ip: ", v[i].networkAddr))
 					RouteReachabilityStatusUpdate(k, RouteReachabilityStatusInfo{v[i].networkAddr, "Down", k, nextHopIntf})
+					if routeServiceHandler.NextHopInfoMap[NextHopInfoKey{string(prefix)}].refCount > 0 {
+						logger.Info(fmt.Sprintln("There are dependent routes for this ip ", v[i].networkAddr))
+					    RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, RouteReachabilityStatusInfo{v[i].networkAddr, "Down", k, nextHopIntf})
+					}
 				} else if routeReachabilityStatusInfo.status == "Up" && v[i].resolvedNextHopIpIntf.IsReachable == false {
 					logger.Info(fmt.Sprintln("Bringing up route : ip: ", v[i].networkAddr))
 					v[i].resolvedNextHopIpIntf.IsReachable = true
 					rmapInfoRecordList.routeInfoProtocolMap[k] = v
 					RouteInfoMap.Set(prefix, rmapInfoRecordList)
-					RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, RouteReachabilityStatusInfo{v[i].networkAddr, "Up", k, nextHopIntf})
 					RouteReachabilityStatusUpdate(k, RouteReachabilityStatusInfo{v[i].networkAddr, "Up", k, nextHopIntf})
+					if routeServiceHandler.NextHopInfoMap[NextHopInfoKey{string(prefix)}].refCount > 0 {
+						logger.Info(fmt.Sprintln("There are dependent routes for this ip ", v[i].networkAddr))
+					    RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, RouteReachabilityStatusInfo{v[i].networkAddr, "Up", k, nextHopIntf})
+					}
 				}
 			}
 		}
 	}
 	return err
 }
-func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, err error) {
+func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, resolvedNextHopIntf ribdInt.NextHopInfo, err error) {
 	logger.Info(fmt.Sprintln("ResolveNextHop for ", ipAddr))
 	var prev_intf ribdInt.NextHopInfo
 	nextHopIntf.NextHopIp = ipAddr
 	prev_intf.NextHopIp = ipAddr
+	first := true
 	if ipAddr == "0.0.0.0" {
 		nextHopIntf.IsReachable = true
-		return nextHopIntf, err
+		return nextHopIntf, nextHopIntf, err
 	}
 	ip := ipAddr
 	for {
 		intf, err := routeServiceHandler.GetRouteReachabilityInfo(ip)
 		if err != nil {
 			logger.Err(fmt.Sprintln("next hop ", ip, " not reachable"))
-			return nextHopIntf, err
+			return nextHopIntf, nextHopIntf, err
+		}
+		if first {
+			nextHopIntf = *intf
+			first = false
+			logger.Info(fmt.Sprintln("First nexthop network is : ", nextHopIntf.Ipaddr))
 		}
 		logger.Info(fmt.Sprintln("intf.nextHopIp ", intf.NextHopIp, " intf.Ipaddr:", intf.Ipaddr))
 		if intf.NextHopIp == "0.0.0.0" {
@@ -782,12 +710,12 @@ func ResolveNextHop(ipAddr string) (nextHopIntf ribdInt.NextHopInfo, err error) 
 			intf.NextHopIp = intf.Ipaddr
 			intf.IsReachable = true
 			prev_intf.IsReachable = true
-			return prev_intf, err //*intf,err
+			return nextHopIntf, prev_intf, err //*intf,err
 		}
 		ip = intf.NextHopIp
 		prev_intf = *intf
 	}
-	return nextHopIntf, err
+	return nextHopIntf, nextHopIntf, err
 }
 func SelectBestRoute(routeInfoRecordList RouteInfoRecordList) (addRouteList []RouteOpInfoRecord, deleteRouteList []RouteOpInfoRecord, newSelectedProtocol string) {
 	logger.Info(fmt.Sprintln("SelectBestRoute, the current selected route protocol is ", routeInfoRecordList.selectedRouteProtocol))
@@ -989,7 +917,8 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIp = routeInfoRecord.nextHopIp.String()
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType = ribdInt.Int(routeInfoRecord.nextHopIfType)
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex = ribdInt.Int(routeInfoRecord.nextHopIfIndex)
-	    //routeInfoRecord.resolvedNextHopIpIntf,_ = ResolveNextHop(routeInfoRecord.nextHopIp.String())
+	    nhIntf,resolvedNextHopIntf,res_err := ResolveNextHop(routeInfoRecord.nextHopIp.String())
+		routeInfoRecord.resolvedNextHopIpIntf = resolvedNextHopIntf
 		logger.Info("Adding message to NetlinkAddRouteCh")
 		routeServiceHandler.NetlinkAddRouteCh <- routeInfoRecord
 		//call asicd to add
@@ -998,29 +927,41 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
              routeServiceHandler.AsicdAddRouteCh <- routeInfoRecord
 		}
 		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
-			if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.nextHopIp.String()}) {
+			if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}) {
 			    //call arpd to resolve the ip
-				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.nextHopIp.String(), " to ArpdResolveRouteCh"))
+				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, " to ArpdResolveRouteCh"))
 			    routeServiceHandler.ArpdResolveRouteCh <- routeInfoRecord
 		    }
-		    updateNextHopMap(NextHopInfoKey{routeInfoRecord.nextHopIp.String()},add)
+		    updateNextHopMap(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp},add)
 		}
 		//update in the event log
 		eventInfo := "Installed " + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)] + " route " + policyRoute.Ipaddr + ":" + policyRoute.Mask + " nextHopIp :" + routeInfoRecord.nextHopIp.String() + " in Hardware and RIB "
 		t1 := time.Now()
 		routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
 		localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
-		/*		if routeInfoRecord.resolvedNextHopIpIntf.IsReachable {
-					logger.Info(fmt.Sprintln("Mark this network reachable"))
-					nextHopIntf := ribdInt.NextHopInfo {
-							        NextHopIfType :ribdInt.Int(routeInfoRecord.nextHopIfType),
-		                            NextHopIp : routeInfoRecord.nextHopIp.String(),
-		                            NextHopIfIndex : ribdInt.Int(routeInfoRecord.nextHopIfIndex),
-					            }
-					routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up",ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)],nextHopIntf}
-			        RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
-					RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
-				}*/
+		
+		//get the network address associated with the nexthop and update its refcount
+		//nhIntf,err := routeServiceHandler.GetRouteReachabilityInfo(routeInfoRecord.nextHopIp.String())
+		if res_err == nil {
+			    nhPrefix,err := getNetowrkPrefixFromStrings(nhIntf.Ipaddr, nhIntf.Mask)
+			    if err == nil {
+				updateNextHopMap(NextHopInfoKey{string(nhPrefix)},add)
+			}
+		}
+		if routeInfoRecord.resolvedNextHopIpIntf.IsReachable {
+			logger.Info(fmt.Sprintln("Mark this network reachable"))
+			nextHopIntf := ribdInt.NextHopInfo {
+						   NextHopIfType :ribdInt.Int(routeInfoRecord.nextHopIfType),
+		                    NextHopIp : routeInfoRecord.nextHopIp.String(),
+		                    NextHopIfIndex : ribdInt.Int(routeInfoRecord.nextHopIfIndex),
+			}
+			//check if there are routes depending on this network as next hop
+			if routeServiceHandler.NextHopInfoMap[NextHopInfoKey{string(destNetPrefix)}].refCount > 0 {
+			    routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up",ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)],nextHopIntf}
+			    RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
+			    RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
+			}
+		}
 	}
 	params.deleteType = Invalid
 	PolicyEngineFilter(policyRoute, policyPath, params)
@@ -1044,7 +985,6 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	delType int) {
 	logger.Info(" deleteRoute")
 	deleteNode := true
-	deleteLinuxRoute := true
 	if destNetSlice == nil || int(routeInfoRecord.sliceIdx) >= len(destNetSlice) {
 		logger.Info(fmt.Sprintln("Destination slice not found at the expected slice index ", routeInfoRecord.sliceIdx))
 		return
@@ -1053,7 +993,6 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	//the following operations delete this node from the RIB DB
 	if delType != FIBOnly {
 		logger.Info("Del type != FIBOnly, so delete the entry in RIB DB")
-		deleteLinuxRoute = false
 		routeInfoList := routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]]
 		found, _, index := findRouteWithNextHop(routeInfoList, routeInfoRecord.nextHopIp.String())
 		if !found || index == -1 {
@@ -1071,7 +1010,6 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 			logger.Info(fmt.Sprintln("All routes for this destination from protocol ", ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)], " deleted"))
 			routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]] = nil
 			deleteNode = true
-			deleteLinuxRoute = true
 			for k, v := range routeInfoRecordList.routeInfoProtocolMap {
 				if v != nil && len(v) != 0 {
 					logger.Info(fmt.Sprintln("There are still other protocol ", k, " routes for this destination"))
@@ -1081,10 +1019,21 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 			if deleteNode == true {
 				logger.Info("No routes to this destination , delete node")
 				logger.Info(fmt.Sprintln("Route deleted for this destination, traverse dependent routes to update routeReachability status"))
-				/*nextHopIntf := ribdInt.NextHopInfo {}
-				                routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Down",ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)],nextHopIntf}
-					            RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
-					            RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)*/
+				//check if there are routes dependent on this network
+				if routeServiceHandler.NextHopInfoMap[NextHopInfoKey{string(destNetPrefix)}].refCount > 0 {
+				    nextHopIntf := ribdInt.NextHopInfo {}
+				    routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Down",ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)],nextHopIntf}
+			        RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
+			        RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
+				}
+		        //get the network address associated with the nexthop and update its refcount
+				nhIntf,err := routeServiceHandler.GetRouteReachabilityInfo(routeInfoRecord.nextHopIp.String())
+				if err == nil {
+			        nhPrefix,err := getNetowrkPrefixFromStrings(nhIntf.Ipaddr, nhIntf.Mask)
+					if err == nil {
+						updateNextHopMap(NextHopInfoKey{string(nhPrefix)},del)
+				    }
+				}
 				RouteInfoMap.Delete(destNetPrefix)
 			} else {
 				RouteInfoMap.Set(destNetPrefix, routeInfoRecordList)
@@ -1108,21 +1057,18 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
         routeServiceHandler.AsicdDelRouteCh <- routeInfoRecord
 	}
 	if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
-		if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.nextHopIp.String()}) {
+		if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}) {
 			logger.Info(fmt.Sprintln("ARP resolve was never called for ", routeInfoRecord.nextHopIp.String()))
 		} else {
-		    refCount := updateNextHopMap(NextHopInfoKey{routeInfoRecord.nextHopIp.String()},del)
+		    refCount := updateNextHopMap(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp},del)
 			if refCount == 0{
-				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.nextHopIp.String(), " to ArpdRemoveRouteCh"))
+				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, " to ArpdRemoveRouteCh"))
 				routeServiceHandler.ArpdRemoveRouteCh <- routeInfoRecord
 			}
 		}
 	}
 	//delLinuxRoute(routeInfoRecord)
-	logger.Info(fmt.Sprintln("deleteLinuxRoute: ", deleteLinuxRoute))
-	if deleteLinuxRoute {
-	    routeServiceHandler.NetlinkDelRouteCh <- routeInfoRecord
-	}
+	routeServiceHandler.NetlinkDelRouteCh <- routeInfoRecord
 	//update in the event log
 	delStr := "Route Uninstalled in Hardware "
 	if delType == FIBAndRIB {
@@ -1246,7 +1192,8 @@ func createV4Route(destNetIp string,
 	routeInfoRecord.resolvedNextHopIpIntf.NextHopIp = routeInfoRecord.nextHopIp.String()
 	routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType = ribdInt.Int(routeInfoRecord.nextHopIfType)
 	routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex = ribdInt.Int(routeInfoRecord.nextHopIfIndex)
-	//routeInfoRecord.resolvedNextHopIpIntf,_ = ResolveNextHop(routeInfoRecord.nextHopIp.String())
+	nhIntf, resolvedNextHopIntf,res_err := ResolveNextHop(routeInfoRecord.nextHopIp.String())
+	routeInfoRecord.resolvedNextHopIpIntf = resolvedNextHopIntf
 	routeInfoRecord.routeCreatedTime = time.Now().String()
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
 	if routeInfoRecordListItem == nil {
@@ -1283,12 +1230,13 @@ func createV4Route(destNetIp string,
             routeServiceHandler.AsicdAddRouteCh <- routeInfoRecord
 		}
 		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
-			if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.nextHopIp.String()}) {
+			if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}) {
 			    //call arpd to resolve the ip
-				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.nextHopIp.String()," to ArpdResolveRouteCh"))
+				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp," to ArpdResolveRouteCh"))
 			    routeServiceHandler.ArpdResolveRouteCh <- routeInfoRecord
 		    }
-		    updateNextHopMap(NextHopInfoKey{routeInfoRecord.nextHopIp.String()},add)
+			//update the ref count for the resolved next hop ip
+		    updateNextHopMap(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp},add)
 		}
 		//update in the event log
 		eventInfo := "Installed " + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)] + " route " + policyRoute.Ipaddr + ":" + policyRoute.Mask + " nextHopIp :" + routeInfoRecord.nextHopIp.String() +" in Hardware and RIB " 
@@ -1296,17 +1244,29 @@ func createV4Route(destNetIp string,
 		routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
 		localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
 
-		/*if routeInfoRecord.resolvedNextHopIpIntf.IsReachable {
-					logger.Info(fmt.Sprintln("Mark this network reachable"))
-					nextHopIntf := ribdInt.NextHopInfo {
-							        NextHopIfType :ribdInt.Int(routeInfoRecord.nextHopIfType),
-		                            NextHopIp : routeInfoRecord.nextHopIp.String(),
-		                            NextHopIfIndex : ribdInt.Int(routeInfoRecord.nextHopIfIndex),
-					            }
-					routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up",ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)],nextHopIntf}
-			        RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
-					RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
-				}*/
+		//update the ref count for the next hop ip
+		//nhIntf,err := routeServiceHandler.GetRouteReachabilityInfo(routeInfoRecord.nextHopIp.String())
+		if res_err == nil {
+			nhPrefix,err := getNetowrkPrefixFromStrings(nhIntf.Ipaddr, nhIntf.Mask)
+			if err == nil {
+			    logger.Info(fmt.Sprintln("network address of the nh route: ", nhPrefix))
+				updateNextHopMap(NextHopInfoKey{string(nhPrefix)},add)
+			}
+		}
+		if routeInfoRecord.resolvedNextHopIpIntf.IsReachable {
+            logger.Info(fmt.Sprintln("Mark this network reachable"))
+			nextHopIntf := ribdInt.NextHopInfo {
+							    NextHopIfType :ribdInt.Int(routeInfoRecord.nextHopIfType),
+		                         NextHopIp : routeInfoRecord.nextHopIp.String(),
+		                         NextHopIfIndex : ribdInt.Int(routeInfoRecord.nextHopIfIndex),
+		    }
+			if routeServiceHandler.NextHopInfoMap[NextHopInfoKey{string(destNet)}].refCount > 0 {
+			    routeReachabilityStatusInfo := RouteReachabilityStatusInfo{routeInfoRecord.networkAddr,"Up",ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)],nextHopIntf}
+			    RouteReachabilityStatusUpdate(routeReachabilityStatusInfo.protocol,routeReachabilityStatusInfo)
+				//If there are dependent routes for this ip, then bring them up
+			    RouteInfoMap.VisitAndUpdate(UpdateRouteReachabilityStatus, routeReachabilityStatusInfo)
+			}
+		}
 
 		var params RouteParams
 		params.destNetIp = destNetIp
@@ -1381,9 +1341,9 @@ func (m RIBDServicesHandler) ProcessRouteCreateConfig(cfg *ribd.IPv4Route) (val 
 	var nextHopIfType ribd.Int
 	var nextHopIf int
 	if cfg.OutgoingIntfType == "VLAN" {
-		nextHopIfType = commonDefs.L2RefTypeVlan
+		nextHopIfType = commonDefs.IfTypeVlan
 	} else if cfg.OutgoingIntfType == "PHY" {
-		nextHopIfType = commonDefs.L2RefTypePort
+		nextHopIfType = commonDefs.IfTypePort
 	} else if cfg.OutgoingIntfType == "NULL" {
 		nextHopIfType = commonDefs.IfTypeNull
 	} else if cfg.OutgoingIntfType == "Loopback" {
@@ -1528,9 +1488,9 @@ func (m RIBDServicesHandler) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route
 					}
 					var nextHopIfType ribd.Int
 					if newconfig.OutgoingIntfType == "VLAN" {
-						nextHopIfType = commonDefs.L2RefTypeVlan
+						nextHopIfType = commonDefs.IfTypeVlan
 					} else if newconfig.OutgoingIntfType == "PHY" {
-						nextHopIfType = commonDefs.L2RefTypePort
+						nextHopIfType = commonDefs.IfTypePort
 					}
 					routeInfoRecord.nextHopIfType = int8(nextHopIfType)
 					callUpdate = false
@@ -1576,10 +1536,10 @@ func (m RIBDServicesHandler) PrintV4Routes() (err error) {
 func (m RIBDServicesHandler) GetNextHopIfTypeStr(nextHopIfType ribdInt.Int) (nextHopIfTypeStr string, err error) {
 	nextHopIfTypeStr = ""
 	switch nextHopIfType {
-	case commonDefs.L2RefTypePort:
+	case commonDefs.IfTypePort:
 		nextHopIfTypeStr = "PHY"
 		break
-	case commonDefs.L2RefTypeVlan:
+	case commonDefs.IfTypeVlan:
 		nextHopIfTypeStr = "VLAN"
 		break
 	case commonDefs.IfTypeNull:

@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"bytes"
-	"time"
 	"utils/netUtils"
 	"utils/patriciaDB"
 	"utils/policy"
@@ -140,6 +139,13 @@ func arpResolveCalled(key NextHopInfoKey) (bool) {
 	return true
 }
 func updateNextHopMap(key NextHopInfoKey, op int) (count int){
+	opStr := ""
+	if op == add {
+		opStr = "incrementing"
+	} else if op == del {
+		opStr = "decrementing"
+	}
+	logger.Info(fmt.Sprintln(opStr, " nextHop Map for ", key.nextHopIp))
 	if routeServiceHandler.NextHopInfoMap == nil {
 		return -1
 	}
@@ -156,6 +162,7 @@ func updateNextHopMap(key NextHopInfoKey, op int) (count int){
 	    routeServiceHandler.NextHopInfoMap[key] = info
 		count = info.refCount
 	}
+	logger.Info(fmt.Sprintln("Updated refcount = ", count))
 	return count
 }
 func findElement(list []string, element string) (int) {
@@ -483,20 +490,17 @@ func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes
 		eventInfo = " Advertise Network Statement "
 	}
 	eventInfo = eventInfo + evtStr + " for route " + route.Ipaddr + " " + route.Mask + " type" + ReverseRouteProtoTypeMapDB[int(route.Prototype)]
-	logger.Info(fmt.Sprintln("Sending ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " ", buf))
-	t1 := time.Now()
-	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
-	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
-	PUB.Send(buf, nanomsg.DontWait)
+	logger.Info(fmt.Sprintln("Adding ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " to notification channel"))
+	routeServiceHandler.NotificationChannel <- NotificationMsg{PUB,buf,eventInfo}
 }
 func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteReachabilityStatusInfo) {
 	logger.Info(fmt.Sprintln("RouteReachabilityStatusNotificationSend for protocol ", targetProtocol))
-	evt := ribdCommonDefs.NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE
 	publisherInfo,ok := PublisherInfoMap[targetProtocol]
 	if !ok {
-		logger.Err(fmt.Sprintln("Publisher not found for protocol ", targetProtocol))
+		logger.Info(fmt.Sprintln("Publisher not found for protocol ", targetProtocol))
 		return
 	}
+	evt := ribdCommonDefs.NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE
 	PUB := publisherInfo.pub_socket
 	msgInfo := ribdCommonDefs.RouteReachabilityStatusMsgInfo{}
 	msgInfo.Network = info.destNet
@@ -516,11 +520,8 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 	if info.status == "Up" {
 		eventInfo = eventInfo + " NextHop IP: " + info.nextHopIntf.NextHopIp + " IfType/Index: " + strconv.Itoa(int(info.nextHopIntf.NextHopIfType)) + "/" + strconv.Itoa(int(info.nextHopIntf.NextHopIfIndex ))
 	}
-	logger.Info(fmt.Sprintln("Sending  NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE with status ",info.status, " for network ", info.destNet))
-	t1 := time.Now()
-	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
-	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
-	PUB.Send(buf, nanomsg.DontWait)
+	logger.Info(fmt.Sprintln("Adding  NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE with status ",info.status, " for network ", info.destNet, " to notification channel"))
+	routeServiceHandler.NotificationChannel <- NotificationMsg{PUB,buf,eventInfo}
 }
 func RouteReachabilityStatusUpdate(targetProtocol string, info RouteReachabilityStatusInfo) {
 	logger.Info(fmt.Sprintln("RouteReachabilityStatusUpdate targetProtocol ", targetProtocol))
@@ -542,7 +543,7 @@ func RouteReachabilityStatusUpdate(targetProtocol string, info RouteReachability
 		logger.Err(fmt.Sprintln("Error getting ip prefix for ip:", ipAddrStr, " mask:", ipMaskStr))
 		return 
 	}
-	//check the TrackReachabilityMap to see if any other protocols are interested in receiving updates for this ipAddr 
+	//check the TrackReachabilityMap to see if any other protocols are interested in receiving updates for this network 
 	for k,list := range TrackReachabilityMap {
 		prefix,err := getNetowrkPrefixFromStrings(k,ipMaskStr)
 	    if err != nil {

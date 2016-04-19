@@ -48,7 +48,7 @@ func addLinuxRoute(route RouteInfoRecord) {
 	logger.Info("addLinuxRoute")
 	if route.protocol == ribdCommonDefs.CONNECTED {
 		logger.Info("This is a connected route, do nothing")
-		//return
+		return
 	}
 	mask := net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
 	maskedIP := route.destNetIp.Mask(mask)
@@ -73,12 +73,16 @@ func addLinuxRoute(route RouteInfoRecord) {
 	}
 
 	logger.Info(fmt.Sprintln("adding linux route for dst.ip= ", dst.IP.String(), " mask: ", dst.Mask.String(), "Gw: ", route.nextHopIp, " maskedIP: ",maskedIP))
-	_,err = netlink.RouteGet(maskedIP)
-	if err == nil {
-		logger.Info(fmt.Sprintln("No route for ip ", dst))
-	}
 	lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst, Gw: route.nextHopIp}
-	err = netlink.RouteAdd(&lxroute)
+    routeList,err := netlink.RouteListFiltered(netlink.FAMILY_V4, &netlink.Route{Dst:dst},netlink.RT_FILTER_DST)	
+	logger.Info(fmt.Sprintln("After RouteListFiltered call  err :", err ," len(routeList) :", len(routeList)))
+    if routeList != nil && len(routeList) > 0{
+        logger.Info(fmt.Sprintln("Appending to existing route"))
+		err = netlink.RouteAppend(&lxroute)
+	} else {
+		logger.Info(fmt.Sprintln("Adding new route"))
+	    err = netlink.RouteAdd(&lxroute)
+	}
 	if err != nil {
 		logger.Err(fmt.Sprintln("Route add call failed with error ", err))
 	}

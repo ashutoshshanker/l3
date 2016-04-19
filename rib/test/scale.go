@@ -10,6 +10,7 @@ import (
 )
 
 func handleClient(client *ribd.RIBDServicesClient) (err error) {
+	fmt.Println("handleClient")
 	var count int = 1
 	var maxCount int = 30000
 	intByt2 := 1
@@ -38,7 +39,7 @@ func handleClient(client *ribd.RIBDServicesClient) (err error) {
 		route.DestinationNw = rtNet
 		route.NetworkMask = "255.255.255.0"
 		route.NextHopIp = "40.0.1.2"
-		route.OutgoingInterface = "0"
+		route.OutgoingInterface = "4"
 		route.OutgoingIntfType = "VLAN"
 		route.Protocol = "STATIC"
 		//fmt.Println("Creating Route ", route)
@@ -66,13 +67,13 @@ func handleBulkClient(client *ribd.RIBDServicesClient) (err error) {
 	var maxCount int = 30000
 	intByt2 := 1
 	intByt3 := 1
-	byte1 := "32"
+	byte1 := "42"
 	byte4 := "0"
 	start := time.Now()
 	var route ribdInt.IPv4Route
 	var routeList [] *ribdInt.IPv4Route
-	routeList = make([] 	*ribdInt.IPv4Route,1000)
-	var temprouteList [1000] ribdInt.IPv4Route
+	routeList = make([] 	*ribdInt.IPv4Route,5000)
+	var temprouteList [5000] ribdInt.IPv4Route
 	curr := 0
 	for {
 		if intByt3 > 254 {
@@ -101,11 +102,11 @@ func handleBulkClient(client *ribd.RIBDServicesClient) (err error) {
 		temprouteList[curr]=route
 		routeList[curr] = &temprouteList[curr]
 		curr++ 
-		if curr == 1000 {
+		if curr == 5000 {
 			fmt.Println("calling count ", count, "routes")
 		    rv := client.OnewayCreateBulkIPv4Route(routeList)
 		    if rv == nil {
-			    count+=1000
+			    count+=5000
 		    } else {
 			    fmt.Println("Call failed", rv, "count: ", count)
 	            elapsed := time.Since(start)
@@ -128,6 +129,6 @@ func handleBulkClient(client *ribd.RIBDServicesClient) (err error) {
 func main() {
 	transport, protocolFactory, err := ipcutils.CreateIPCHandles("localhost:5000")
 	fmt.Println("### Calling client ", transport, protocolFactory, err)
-	//handleClient(ribd.NewRIBDServicesClientFactory(transport, protocolFactory))
-	handleBulkClient(ribd.NewRIBDServicesClientFactory(transport, protocolFactory))
+	handleClient(ribd.NewRIBDServicesClientFactory(transport, protocolFactory))
+	//handleBulkClient(ribd.NewRIBDServicesClientFactory(transport, protocolFactory))
 }

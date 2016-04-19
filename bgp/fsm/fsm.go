@@ -738,7 +738,6 @@ func (st *EstablishedState) enter() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "FSM:", st.fsm.id,
 		"State: Established - enter"))
 	st.fsm.SetIdleHoldTime(BGPIdleHoldTimeDefault)
-	st.fsm.ConnEstablished()
 }
 
 func (st *EstablishedState) leave() {
@@ -746,7 +745,6 @@ func (st *EstablishedState) leave() {
 		"State: Established - leave"))
 	st.fsm.SetHoldTime(st.fsm.neighborConf.RunningConf.HoldTime,
 		st.fsm.neighborConf.RunningConf.KeepaliveTime)
-	st.fsm.ConnBroken()
 }
 
 func (st *EstablishedState) state() BGPFSMState {
@@ -773,6 +771,11 @@ type PeerFSMConnState struct {
 	id            uint8
 	connDir       config.ConnDir
 	conn          *net.Conn
+}
+
+type PeerFSMEvent struct {
+	event  BGPFSMEvent
+	reason int
 }
 
 type FSM struct {
@@ -805,6 +808,9 @@ type FSM struct {
 	keepAliveTime  uint32
 	keepAliveTimer *time.Timer
 
+	restartTime  uint32
+	restartTimer *time.Timer
+
 	autoStart       bool
 	autoStop        bool
 	passiveTcpEst   bool
@@ -820,7 +826,7 @@ type FSM struct {
 	afiSafiMap map[uint32]bool
 	pktTxCh    chan *packet.BGPMessage
 	pktRxCh    chan *packet.BGPPktInfo
-	eventRxCh  chan BGPFSMEvent
+	eventRxCh  chan PeerFSMEvent
 	rxPktsFlag bool
 
 	cleanup bool
@@ -837,6 +843,7 @@ func NewFSM(fsmManager *FSMManager, id uint8, neighborConf *base.NeighborConf) *
 		connectRetryTime: neighborConf.RunningConf.ConnectRetryTime, // seconds
 		holdTime:         neighborConf.RunningConf.HoldTime,         // seconds
 		keepAliveTime:    neighborConf.RunningConf.KeepaliveTime,    // seconds
+		restartTime:      0,                                         // seconds
 		rxPktsFlag:       false,
 		outConnCh:        make(chan net.Conn),
 		outConnErrCh:     make(chan error, 2),
@@ -856,16 +863,22 @@ func NewFSM(fsmManager *FSMManager, id uint8, neighborConf *base.NeighborConf) *
 
 	fsm.pktTxCh = make(chan *packet.BGPMessage)
 	fsm.pktRxCh = make(chan *packet.BGPPktInfo, 2)
-	fsm.eventRxCh = make(chan BGPFSMEvent)
+	fsm.eventRxCh = make(chan PeerFSMEvent, 5)
 	fsm.connectRetryTimer = time.NewTimer(time.Duration(fsm.connectRetryTime) * time.Second)
-	fsm.holdTimer = time.NewTimer(time.Duration(fsm.holdTime) * time.Second)
-	fsm.keepAliveTimer = time.NewTimer(time.Duration(fsm.keepAliveTime) * time.Second)
-	fsm.idleHoldTimer = time.NewTimer(time.Duration(fsm.idleHoldTime) * time.Second)
-
 	fsm.connectRetryTimer.Stop()
+
+	fsm.holdTimer = time.NewTimer(time.Duration(fsm.holdTime) * time.Second)
 	fsm.holdTimer.Stop()
+
+	fsm.keepAliveTimer = time.NewTimer(time.Duration(fsm.keepAliveTime) * time.Second)
 	fsm.keepAliveTimer.Stop()
+
+	fsm.idleHoldTimer = time.NewTimer(time.Duration(fsm.idleHoldTime) * time.Second)
 	fsm.idleHoldTimer.Stop()
+
+	fsm.restartTimer = time.NewTimer(time.Duration(5) * time.Second)
+	fsm.restartTimer.Stop()
+
 	return &fsm
 }
 
@@ -920,8 +933,16 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 		case bgpPktInfo := <-fsm.pktRxCh:
 			fsm.ProcessPacket(bgpPktInfo.Msg, bgpPktInfo.MsgError)
 
-		case event := <-fsm.eventRxCh:
-			fsm.ProcessEvent(event, nil)
+		case fsmEvent := <-fsm.eventRxCh:
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+				"Received event", fsmEvent.event, "reason", fsmEvent.reason))
+			if fsmEvent.reason == BGPCmdReasonMaxPrefixExceeded {
+				fsm.restartTime = uint32(fsm.neighborConf.RunningConf.MaxPrefixesRestartTimer)
+			}
+			fsm.ProcessEvent(fsmEvent.event, nil)
+			if fsmEvent.reason != BGPCmdReasonNone {
+				fsm.restartTime = 0
+			}
 
 		case <-fsm.connectRetryTimer.C:
 			fsm.ProcessEvent(BGPEventConnRetryTimerExp, nil)
@@ -934,6 +955,9 @@ func (fsm *FSM) StartFSM(state BaseStateIface) {
 
 		case <-fsm.idleHoldTimer.C:
 			fsm.ProcessEvent(BGPEventIdleHoldTimerExp, nil)
+
+		case <-fsm.restartTimer.C:
+			fsm.ProcessEvent(BGPEventAutoStart, nil)
 		}
 	}
 }
@@ -992,28 +1016,49 @@ func (fsm *FSM) ChangeState(newState BaseStateIface) {
 	if fsm.cleanup {
 		return
 	}
+	oldState := fsm.State.state()
 	fsm.State.leave()
 	fsm.State = newState
 	fsm.State.enter()
 	fsm.Manager.fsmStateChange(fsm.id, fsm.State.state())
+	if oldState == BGPFSMEstablished && fsm.State.state() != BGPFSMEstablished {
+		fsm.ConnBroken()
+	} else if oldState != BGPFSMEstablished && fsm.State.state() == BGPFSMEstablished {
+		fsm.ConnEstablished()
+	}
+}
+
+func (fsm *FSM) sendAutoStartEvent() {
+	event := BGPEventAutoStart
+
+	if fsm.passiveTcpEst {
+		if fsm.dampPeerOscl {
+			event = BGPEventAutoStartDampPeerOsclPassTcpEst
+		} else {
+			event = BGPEventAutoStartPassTcpEst
+		}
+	} else if fsm.dampPeerOscl {
+		event = BGPEventAutoStartDampPeerOscl
+	}
+
+	fsm.ProcessEvent(event, nil)
 }
 
 func (fsm *FSM) ApplyAutomaticStart() {
-	if fsm.autoStart {
-		event := BGPEventAutoStart
-
-		if fsm.passiveTcpEst {
-			if fsm.dampPeerOscl {
-				event = BGPEventAutoStartDampPeerOsclPassTcpEst
-			} else {
-				event = BGPEventAutoStartPassTcpEst
-			}
-		} else if fsm.dampPeerOscl {
-			event = BGPEventAutoStartDampPeerOscl
-		}
-
-		fsm.ProcessEvent(event, nil)
+	if fsm.restartTime != 0 {
+		fsm.StartRestartTimer()
 	}
+	if fsm.autoStart {
+		fsm.sendAutoStartEvent()
+	}
+}
+
+func (fsm *FSM) StartRestartTimer() {
+	fsm.restartTimer.Reset(time.Duration(fsm.restartTime) * time.Second)
+}
+
+func (fsm *FSM) StopRestartTimer() {
+	fsm.restartTimer.Stop()
 }
 
 func (fsm *FSM) SetPassiveTcpEstablishment(flag bool) {

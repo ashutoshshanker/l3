@@ -307,13 +307,14 @@ func (server *OSPFServer) updateNeighborMdata(intf IntfConfKey, nbr uint32) {
 }
 
 func (server *OSPFServer) sendLsdbToNeighborEvent(intfKey IntfConfKey, nbrKey uint32,
-	areaId uint32, lsType uint8, linkId uint32, op uint8) {
+	areaId uint32, lsType uint8, linkId uint32, lsaKey LsaKey, op uint8) {
 	msg := ospfFloodMsg{
 		intfKey: intfKey,
 		nbrKey:  nbrKey,
 		areaId:  areaId,
 		lsType:  lsType,
 		linkid:  linkId,
+		lsaKey:  lsaKey,
 		lsOp:    op,
 	}
 	server.ospfNbrLsaUpdSendCh <- msg
