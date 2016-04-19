@@ -72,6 +72,8 @@ func (server *OSPFServer) UpdateAreaGraphNetworkLsa(lsaEnt NetworkLsa, lsaKey Ls
 		server.logger.Info(fmt.Sprintln("SPF Graph:", server.AreaGraph))
 		return nil
 	}
+	netmask := lsaEnt.Netmask
+	network := lsaKey.LSId & netmask
 	ent.NbrVertexKey = make([]VertexKey, 0)
 	ent.NbrVertexCost = make([]uint16, 0)
 	ent.LinkData = make(map[VertexKey]uint32)
@@ -128,6 +130,24 @@ func (server *OSPFServer) UpdateAreaGraphNetworkLsa(lsaEnt NetworkLsa, lsaKey Ls
 				continue
 			}
 			return err
+		} else {
+			flag := false
+			for i := 0; i < int(lsaEnt.NumOfLinks); i++ {
+				if (lsaEnt.LinkDetails[i].LinkId & netmask) == network {
+					if lsaEnt.LinkDetails[i].LinkType == StubLink {
+						server.logger.Err(fmt.Sprintln("Have router lsa which still has a stub link in the network, hence ignoring it, lsaKey:", lsaKey, "lsaEnt:", lsaEnt))
+						break
+					} else if lsaEnt.LinkDetails[i].LinkType == TransitLink {
+						server.logger.Err(fmt.Sprintln("Have router lsa which has a transit link in the network, hence processing it, lsaKey:", lsaKey, "lsaEnt:", lsaEnt))
+						flag = true
+						break
+					}
+				}
+			}
+			if flag == false {
+				server.logger.Info(fmt.Sprintln("Not able to find the valid router lsa. The Router lsa which we have is the stale one", lsaEnt, lsaKey))
+				continue
+			}
 		}
 		err := server.UpdateAreaGraphRouterLsa(lsaEnt, lsaKey, areaId)
 		if err != nil {
@@ -182,6 +202,7 @@ func (server *OSPFServer) UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaK
 		aEnt, exist := server.AreaConfMap[areaConfKey]
 		if exist && aEnt.TransitCapability == false {
 			aEnt.TransitCapability = true
+			server.AreaConfMap[areaConfKey] = aEnt
 		}
 	}
 	ent.NbrVertexKey = make([]VertexKey, 0)
@@ -202,7 +223,7 @@ func (server *OSPFServer) UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaK
 			}
 			nLsaKey, err := server.findNetworkLsa(areaId, vKey.ID)
 			if err != nil {
-				server.logger.Info(fmt.Sprintln("Err:", err))
+				server.logger.Info(fmt.Sprintln("Err:", err, vKey.ID))
 				if check == true {
 					continue
 				}
@@ -235,6 +256,10 @@ func (server *OSPFServer) UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaK
 		} else if linkDetail.LinkType == P2PLink {
 			// TODO
 		}
+	}
+	if len(ent.NbrVertexKey) == 0 {
+		err := errors.New(fmt.Sprintln("None of the Network LSA are found"))
+		return err
 	}
 	ent.AreaId = areaId
 	ent.LsaKey = lsaKey
@@ -645,10 +670,10 @@ func (server *OSPFServer) spfCalculation() {
 				//flag = true
 				continue
 			}
-			server.logger.Info("=========================Start before Dijkstra=================")
-			server.dumpAreaGraph()
-			server.dumpAreaStubs()
-			server.logger.Info("=========================End before Dijkstra=================")
+			//server.logger.Info("=========================Start before Dijkstra=================")
+			//server.dumpAreaGraph()
+			//server.dumpAreaStubs()
+			//server.logger.Info("=========================End before Dijkstra=================")
 			//server.printRouterLsa()
 			err = server.ExecuteDijkstra(vKey, areaId)
 			if err != nil {
