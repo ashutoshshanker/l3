@@ -10,5 +10,10 @@ func (h *ARPHandler) GetArpEntryState(ipAddr string) (*arpd.ArpEntryState, error
 	arpEntryResponse := arpd.NewArpEntryState()
 	/* FIXME: When get is implemented return "Internal Vlan" for vlanId during display
 	 * when vlan == asicdConstDefs.SYS_RSVD_VLAN */
+	arpEntry, err := h.server.GetArpEntry(ipAddr)
+	if err != nil {
+		return nil, err
+	}
+	arpEntryResponse = h.convertArpEntryToThrift(arpEntry)
 	return arpEntryResponse, nil
 }
