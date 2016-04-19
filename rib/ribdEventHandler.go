@@ -123,7 +123,7 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				NetworkMask:       ipMaskStr,
 				NextHopIp:         "0.0.0.0"}
 
-			_, err = routeServiceHandler.CreateIPv4Route(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
+			_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
 			//_, err = createV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 			if err != nil {
 				logger.Info(fmt.Sprintln("Route create failed with err %s\n", err))
@@ -177,7 +177,7 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				Cost:              0,
 				NetworkMask:       ipMaskStr,
 				NextHopIp:         "0.0.0.0"}
-			_, err = routeServiceHandler.DeleteIPv4Route(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
+			_, err = routeServiceHandler.ProcessRouteDeleteConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
 			if err != nil {
 				logger.Info(fmt.Sprintln("Route delete failed with err %s\n", err))
 				return
