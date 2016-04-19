@@ -110,6 +110,12 @@ type BfdGlobal struct {
 	NumAdminDownSessions    uint32
 }
 
+type RecvedBfdPacket struct {
+	IpAddr    string
+	Len       int32
+	PacketBuf []byte
+}
+
 type BFDServer struct {
 	logger                *logging.Writer
 	ribdClient            RibdClient
@@ -138,6 +144,7 @@ type BFDServer struct {
 	ServerUpCh            chan bool
 	FailedSessionServerCh chan int32
 	FailedSessionClientCh chan int32
+	BfdPacketRecvCh       chan RecvedBfdPacket
 	bfdGlobal             BfdGlobal
 }
 
