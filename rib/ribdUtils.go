@@ -110,23 +110,6 @@ func BuildProtocolAdminDistanceSlice() {
 	sort.Sort(ProtocolAdminDistanceSlice)
 }
 
-/*func isBetterRoute(selectedRoute RouteInfoRecord, routeInfoRecord RouteInfoRecord) (isBetter bool){
-   logger.Println("isBetterRoute ")
-   if (selectedRoute.protocol == PROTOCOL_NONE && routeInfoRecord.protocol != PROTOCOL_NONE) {
-      logger.Println("new route is better route because the the current route protocol is ", PROTOCOL_NONE)
-      isBetter = true
-   } else if ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].configuredDistance < ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].configuredDistance {
-      logger.Println("New route is better because configured admin distance", ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].configuredDistance ," of new route ", ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)], " is lower than the current protocol ",ReverseRouteProtoTypeMapDB[int(selectedRoute.protocol)],"'s configured admin distane: ", ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].configuredDistance)
-      isBetter = true
-   } else if ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].defaultDistance < ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].defaultDistance {
-      logger.Println("New route is better because default admin distance", ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].defaultDistance ," of new route ", ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)], " is lower than the current protocol ",ReverseRouteProtoTypeMapDB[int(selectedRoute.protocol)],"'s default admin distane: ", ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].defaultDistance)
-      isBetter = true
-   } else if routeInfoRecord.metric < selectedRoute.metric {
-      logger.Println("New route is better becayse its cost: ", routeInfoRecord.metric, " is lower than the selected route's cost ", selectedRoute.metric)
-      isBetter = true
-   }
-   return isBetter
-}*/
 func arpResolveCalled(key NextHopInfoKey) (bool) {
 	if routeServiceHandler.NextHopInfoMap == nil {
 		return false
