@@ -31,6 +31,16 @@ type PeerAttrs struct {
 	AddPathFamily map[packet.AFI]map[packet.SAFI]uint8
 }
 
+const (
+	BGPCmdReasonNone int = iota
+	BGPCmdReasonMaxPrefixExceeded
+)
+
+type PeerFSMCommand struct {
+	Command int
+	Reason  int
+}
+
 type FSMManager struct {
 	logger         *logging.Writer
 	neighborConf   *base.NeighborConf
@@ -47,7 +57,7 @@ type FSMManager struct {
 	CloseCh        chan bool
 	StopFSMCh      chan string
 	acceptConn     bool
-	CommandCh      chan int
+	CommandCh      chan PeerFSMCommand
 	activeFSM      uint8
 	newConnCh      chan PeerFSMConnState
 	fsmMutex       sync.RWMutex
@@ -70,7 +80,7 @@ func NewFSMManager(logger *logging.Writer, neighborConf *base.NeighborConf, bgpP
 	mgr.acceptConn = false
 	mgr.CloseCh = make(chan bool)
 	mgr.StopFSMCh = make(chan string)
-	mgr.CommandCh = make(chan int)
+	mgr.CommandCh = make(chan PeerFSMCommand, 5)
 	mgr.activeFSM = uint8(config.ConnDirInvalid)
 	mgr.newConnCh = make(chan PeerFSMConnState)
 	mgr.fsmMutex = sync.RWMutex{}
@@ -130,13 +140,17 @@ func (mgr *FSMManager) Init() {
 			mgr.Cleanup()
 			return
 
-		case command := <-mgr.CommandCh:
-			event := BGPFSMEvent(command)
-			if (event == BGPEventManualStart) || (event == BGPEventManualStop) ||
+		case fsmCommand := <-mgr.CommandCh:
+			event := BGPFSMEvent(fsmCommand.Command)
+			mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s: Received FSM command %d",
+				mgr.pConf.NeighborAddress, event))
+			if (event == BGPEventManualStart) || (event == BGPEventManualStop) || (event == BGPEventAutoStop) ||
 				(event == BGPEventManualStartPassTcpEst) {
-				for _, fsm := range mgr.fsms {
+				for id, fsm := range mgr.fsms {
 					if fsm != nil {
-						fsm.eventRxCh <- event
+						mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s: FSM %d Send command %d",
+							mgr.pConf.NeighborAddress, id, event))
+						fsm.eventRxCh <- PeerFSMEvent{event, fsmCommand.Reason}
 					}
 				}
 			}
@@ -233,7 +247,7 @@ func (mgr *FSMManager) StopFSM(stopMsg string) {
 	for id, fsm := range mgr.fsms {
 		if fsm != nil {
 			mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s FSM %d - Stop FSM", mgr.pConf.NeighborAddress, id))
-			fsm.eventRxCh <- BGPEventTcpConnFails
+			fsm.eventRxCh <- PeerFSMEvent{BGPEventTcpConnFails, BGPCmdReasonNone}
 			mgr.fsmBroken(id, false)
 		}
 	}

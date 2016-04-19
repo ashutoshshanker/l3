@@ -1,13 +1,14 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"ribd"
+	"utils/keepalive"
 	"utils/logging"
 	"utils/policy"
-	"database/sql"
 )
 
 var logger *logging.Writer
@@ -36,6 +37,9 @@ func main() {
 	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
 
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("ribd", fileName)
+
 	dbName := fileName + "UsrConfDb.db"
 	fmt.Println("RIBd opening Config DB: ", dbName)
 	dbHdl, err := sql.Open("sqlite3", dbName)
@@ -45,7 +49,7 @@ func main() {
 	}
 	if err = dbHdl.Ping(); err != nil {
 		fmt.Println(fmt.Sprintln("Failed to keep DB connection alive"))
-		return 
+		return
 	}
 	transport, err = thrift.NewTServerSocket(addr)
 	if err != nil {
@@ -57,10 +61,11 @@ func main() {
 		return
 	}
 	routeServiceHandler = handler
-	go routeServiceHandler.StartServer(*paramsDir)
+	go routeServiceHandler.NotificationServer()
 	go routeServiceHandler.StartNetlinkServer()
 	go routeServiceHandler.StartAsicdServer()
 	go routeServiceHandler.StartArpdServer()
+	go routeServiceHandler.StartServer(*paramsDir)
 	up := <-routeServiceHandler.ServerUpCh
 	dbHdl.Close()
 	logger.Info(fmt.Sprintln("RIBD server is up: ", up))

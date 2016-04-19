@@ -42,10 +42,10 @@ type RouteReachabilityStatusMsgInfo struct {
 func GetNextHopIfTypeStr(nextHopIfType ribdInt.Int) (nextHopIfTypeStr string, err error) {
 	nextHopIfTypeStr = ""
 	switch nextHopIfType {
-	case commonDefs.L2RefTypePort:
+	case commonDefs.IfTypePort:
 		nextHopIfTypeStr = "PHY"
 		break
-	case commonDefs.L2RefTypeVlan:
+	case commonDefs.IfTypeVlan:
 		nextHopIfTypeStr = "VLAN"
 		break
 	case commonDefs.IfTypeNull:

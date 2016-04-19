@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"l3/arp/rpc"
 	"l3/arp/server"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -25,6 +26,9 @@ func main() {
 	}
 	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("arpd", fileName)
 
 	logger.Info(fmt.Sprintln("Starting ARP server..."))
 	arpServer := server.NewARPServer(logger)

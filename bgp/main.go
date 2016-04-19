@@ -120,7 +120,6 @@ func bgpConnectToFlexSwitchClients(logger *logging.Writer,
 		logger.Info("Connected to ASICd")
 	}
 
-	var ribdClient *ribd.RIBDServicesClient = nil
 	ribdClientChan := make(chan *ribd.RIBDServicesClient)
 
 	logger.Info("Connecting to RIBd")
@@ -128,12 +127,11 @@ func bgpConnectToFlexSwitchClients(logger *logging.Writer,
 	ribdClient = <-ribdClientChan
 	if ribdClient == nil {
 		logger.Err("Failed to connect to RIBd\n")
-		return nil, nil, nil, errors.New("Failed to connect to BFDd")
+		return nil, nil, nil, errors.New("Failed to connect to RIBd")
 	} else {
 		logger.Info("Connected to RIBd")
 	}
 
-	var bfddClient *bfdd.BFDDServicesClient = nil
 	bfddClientChan := make(chan *bfdd.BFDDServicesClient)
 
 	logger.Info("Connecting to BFDd")
@@ -141,7 +139,7 @@ func bgpConnectToFlexSwitchClients(logger *logging.Writer,
 	bfddClient = <-bfddClientChan
 	if bfddClient == nil {
 		logger.Err("Failed to connect to BFDd\n")
-		return
+		return nil, nil, nil, errors.New("Failed to connect to BFDd")
 	} else {
 		logger.Info("Connected to BFDd")
 	}

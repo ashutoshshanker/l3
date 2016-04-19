@@ -31,6 +31,22 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			return
 		}
 		switch Notif.MsgType {
+		case asicdConstDefs.NOTIFY_LOGICAL_INTF_CREATE:
+			logger.Info("NOTIFY_LOGICAL_INTF_CREATE received")
+			var logicalIntfNotifyMsg asicdConstDefs.LogicalIntfNotifyMsg
+			err = json.Unmarshal(Notif.Msg, &logicalIntfNotifyMsg)
+			if err != nil {
+				logger.Info(fmt.Sprintln("Unable to unmashal logicalIntfNotifyMsg:", Notif.Msg))
+				return
+			}
+			ifId := logicalIntfNotifyMsg.IfIndex
+			if IntfIdNameMap == nil {
+				IntfIdNameMap = make(map[int32]IntfEntry)
+			}
+			intfEntry := IntfEntry{name: logicalIntfNotifyMsg.LogicalIntfName}
+			logger.Info(fmt.Sprintln("Updating IntfIdMap at index ", ifId, " with name ", logicalIntfNotifyMsg.LogicalIntfName))
+			IntfIdNameMap[int32(ifId)] = intfEntry
+			break
 		case asicdConstDefs.NOTIFY_VLAN_CREATE:
 			logger.Info("asicdConstDefs.NOTIFY_VLAN_CREATE")
 			var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
@@ -39,7 +55,7 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				logger.Info(fmt.Sprintln("Unable to unmashal vlanNotifyMsg:", Notif.Msg))
 				return
 			}
-			ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(vlanNotifyMsg.VlanId), commonDefs.L2RefTypeVlan)
+			ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(vlanNotifyMsg.VlanId), commonDefs.IfTypeVlan)
 			logger.Info(fmt.Sprintln("vlanId ", vlanNotifyMsg.VlanId, " ifId:", ifId))
 			if IntfIdNameMap == nil {
 				IntfIdNameMap = make(map[int32]IntfEntry)
@@ -85,10 +101,10 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			logger.Info(fmt.Sprintln("Calling createv4Route with ipaddr ", ipAddrStr, " mask ", ipMaskStr))
 			nextHopIfTypeStr := ""
 			switch asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex) {
-			case commonDefs.L2RefTypePort:
+			case commonDefs.IfTypePort:
 				nextHopIfTypeStr = "PHY"
 				break
-			case commonDefs.L2RefTypeVlan:
+			case commonDefs.IfTypeVlan:
 				nextHopIfTypeStr = "VLAN"
 				break
 			case commonDefs.IfTypeNull:
@@ -96,11 +112,6 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				break
 			case commonDefs.IfTypeLoopback:
 				nextHopIfTypeStr = "Loopback"
-				if IntfIdNameMap == nil {
-					IntfIdNameMap = make(map[int32]IntfEntry)
-				}
-				intfEntry := IntfEntry{}
-				IntfIdNameMap[msg.IfIndex] = intfEntry
 				break
 			}
 			cfg := ribd.IPv4Route{
@@ -127,7 +138,7 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				logger.Info(fmt.Sprintln("Error in reading msg ", err))
 				return
 			}
-			logger.Info(fmt.Sprintln("Received ipv4 intf delete with ipAddr ", msg.IpAddr,  " ifIndex = ", msg.IfIndex, " ifType ",asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex), " ifId ", asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)))
+			logger.Info(fmt.Sprintln("Received ipv4 intf delete with ipAddr ", msg.IpAddr, " ifIndex = ", msg.IfIndex, " ifType ", asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex), " ifId ", asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)))
 			var ipMask net.IP
 			ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
 			if err != nil {
@@ -138,26 +149,26 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 			ipAddrStr := ip.String()
 			ipMaskStr := net.IP(ipMask).String()
 			logger.Info(fmt.Sprintln("Calling deletev4Route with ipaddr ", ipAddrStr, " mask ", ipMaskStr))
-				nextHopIfTypeStr := ""
-				switch asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex) {
-					case commonDefs.L2RefTypePort:
-					    nextHopIfTypeStr = "PHY"
-						break
-					case commonDefs.L2RefTypeVlan:
-						nextHopIfTypeStr = "VLAN"
-						break
-					case commonDefs.IfTypeNull:
-						nextHopIfTypeStr = "NULL"
-						break
-					case commonDefs.IfTypeLoopback:
-					   nextHopIfTypeStr = "Loopback"
-			           if IntfIdNameMap == nil {
-				          IntfIdNameMap = make(map[int32]IntfEntry)
-			           }
-			           intfEntry := IntfEntry{}
-			           IntfIdNameMap[msg.IfIndex] = intfEntry
-					   break
+			nextHopIfTypeStr := ""
+			switch asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex) {
+			case commonDefs.IfTypePort:
+				nextHopIfTypeStr = "PHY"
+				break
+			case commonDefs.IfTypeVlan:
+				nextHopIfTypeStr = "VLAN"
+				break
+			case commonDefs.IfTypeNull:
+				nextHopIfTypeStr = "NULL"
+				break
+			case commonDefs.IfTypeLoopback:
+				nextHopIfTypeStr = "Loopback"
+				if IntfIdNameMap == nil {
+					IntfIdNameMap = make(map[int32]IntfEntry)
 				}
+				intfEntry := IntfEntry{}
+				IntfIdNameMap[msg.IfIndex] = intfEntry
+				break
+			}
 			cfg := ribd.IPv4Route{
 				DestinationNw:     ipAddrStr,
 				Protocol:          "CONNECTED",
@@ -166,7 +177,7 @@ func processAsicdEvents(sub *nanomsg.SubSocket) {
 				Cost:              0,
 				NetworkMask:       ipMaskStr,
 				NextHopIp:         "0.0.0.0"}
-			_, err = routeServiceHandler.DeleteIPv4Route(&cfg)//ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
+			_, err = routeServiceHandler.DeleteIPv4Route(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
 			if err != nil {
 				logger.Info(fmt.Sprintln("Route delete failed with err %s\n", err))
 				return

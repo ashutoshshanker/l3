@@ -7,6 +7,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"l3/bfd/rpc"
 	"l3/bfd/server"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -27,6 +28,9 @@ func main() {
 	}
 	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("bfdd", fileName)
 
 	dbName := fileName + "UsrConfDb.db"
 	fmt.Println("BFDd opening Config DB: ", dbName)
