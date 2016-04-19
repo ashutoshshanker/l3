@@ -10,7 +10,6 @@ import (
 	"utils/keepalive"
 	"utils/logging"
 	"utils/policy"
-	"database/sql"
 	"io/ioutil"
 	"encoding/json"
 )
