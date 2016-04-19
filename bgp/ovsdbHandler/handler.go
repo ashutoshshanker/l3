@@ -112,68 +112,15 @@ func (svr *BGPOvsdbHandler) BGPOvsdbTransact(operations []ovsdb.Operation) error
 /*  BGP OVS DB handle update information
  */
 func (svr *BGPOvsdbHandler) BGPOvsdbUpdateInfo(updates ovsdb.TableUpdates) {
-	fmt.Println("Dump tables")
-	table, ok := updates.Updates["VRF"]
+	table, ok := updates.Updates["BGP_Router"]
 	if ok {
 		fmt.Println(table)
 	}
-	/*
-		if ok {
-			req := m.handleVrfUpdate(t)
-			if req != nil {
-				m.grpcQueue = append(m.grpcQueue, req)
-			}
-		}
-	*/
-	table, ok = updates.Updates["BGP_Router"]
-	if ok {
-		fmt.Println(table)
-	}
-	/*
-		if ok {
-			routerReqs := m.handleBgpRouterUpdate(t)
-			if len(routerReqs) > 0 {
-				m.grpcQueue = append(m.grpcQueue, routerReqs...)
-			}
-		}
-	*/
 	table, ok = updates.Updates["BGP_Neighbor"]
 	if ok {
 		fmt.Println(table)
 	}
-	/*
-		if ok {
-			neighborReqs := m.handleNeighborUpdate(t)
-			if len(neighborReqs) > 0 {
-				m.grpcQueue = append(m.grpcQueue, neighborReqs...)
-			}
-		}
-	*/
 	table, ok = updates.Updates["BGP_Route"]
-	if ok {
-		fmt.Println(table)
-	}
-	/*
-		if ok {
-			routeReqs := m.handleRouteUpdate(t)
-			if len(routeReqs) > 0 {
-				m.grpcQueue = append(m.grpcQueue, routeReqs...)
-			}
-		}
-	*/
-	table, ok = updates.Updates["Route"]
-	if ok {
-		fmt.Println(table)
-	}
-	table, ok = updates.Updates["Port"]
-	if ok {
-		fmt.Println(table)
-	}
-	table, ok = updates.Updates["Bridge"]
-	if ok {
-		fmt.Println(table)
-	}
-	table, ok = updates.Updates["Item"]
 	if ok {
 		fmt.Println(table)
 	}
@@ -198,7 +145,6 @@ func (svr *BGPOvsdbHandler) BGPOvsdbServe() error {
 		select {
 		case updates := <-svr.ovsUpdateCh:
 			svr.BGPPopulateOvsdbCache(*updates)
-			fmt.Println("received update")
 			svr.BGPOvsdbUpdateInfo(*updates)
 		case oper := <-svr.operCh:
 			if err := svr.BGPOvsdbTransact(oper.operations); err != nil {

@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	IP          string = "10.1.10.229" //"localhost"
+	IP          string = "10.1.10.229"
 	BGPPort     string = "179"
 	CONF_PORT   string = "2001"
 	BGPConfPort string = "4050"
