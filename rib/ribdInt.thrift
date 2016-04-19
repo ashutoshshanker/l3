@@ -37,6 +37,16 @@ struct RoutesGetInfo {
 	4: bool More,
 	5: list<Routes> RouteList,
 }
+struct PolicyAction {
+	1 : string Name
+	2 : string ActionType
+	3 : i32 SetAdminDistanceValue
+	4 : bool Accept
+	5 : bool Reject
+	6 : string RedistributeAction
+	7 : string RedistributeTargetProtocol
+	8 : string NetworkStatementTargetProtocol
+}
 struct PolicyPrefix {
 	1 : string	IpPrefix,
 	2 : string 	MasklengthRange,
@@ -82,5 +92,8 @@ service RIBDINTServices
 	void intfUp(1:string ipAddr);
 	void intfDown(1:string ipAddr);
 	oneway void OnewayCreateBulkIPv4Route(1: list<IPv4Route> config);
+	bool CreatePolicyAction(1: PolicyAction config);
+	bool UpdatePolicyAction(1: PolicyAction origconfig, 2: PolicyAction newconfig, 3: list<bool> attrset);
+	bool DeletePolicyAction(1: PolicyAction config);
 	
 }

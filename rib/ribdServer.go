@@ -50,9 +50,9 @@ type RIBDServicesHandler struct {
 	PolicyConditionCreateConfCh  chan *ribd.PolicyCondition
 	PolicyConditionDeleteConfCh  chan *ribd.PolicyCondition
 	PolicyConditionUpdateConfCh  chan *ribd.PolicyCondition
-	PolicyActionCreateConfCh     chan *ribd.PolicyAction
-	PolicyActionDeleteConfCh     chan *ribd.PolicyAction
-	PolicyActionUpdateConfCh     chan *ribd.PolicyAction
+	PolicyActionCreateConfCh     chan *ribdInt.PolicyAction
+	PolicyActionDeleteConfCh     chan *ribdInt.PolicyAction
+	PolicyActionUpdateConfCh     chan *ribdInt.PolicyAction
 	PolicyStmtCreateConfCh       chan *ribd.PolicyStmt
 	PolicyStmtDeleteConfCh       chan *ribd.PolicyStmt
 	PolicyStmtUpdateConfCh       chan *ribd.PolicyStmt
@@ -562,9 +562,9 @@ func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
 	ribdServicesHandler.PolicyConditionCreateConfCh = make(chan *ribd.PolicyCondition)
 	ribdServicesHandler.PolicyConditionDeleteConfCh = make(chan *ribd.PolicyCondition)
 	ribdServicesHandler.PolicyConditionUpdateConfCh = make(chan *ribd.PolicyCondition)
-	ribdServicesHandler.PolicyActionCreateConfCh = make(chan *ribd.PolicyAction)
-	ribdServicesHandler.PolicyActionDeleteConfCh = make(chan *ribd.PolicyAction)
-	ribdServicesHandler.PolicyActionUpdateConfCh = make(chan *ribd.PolicyAction)
+	ribdServicesHandler.PolicyActionCreateConfCh = make(chan *ribdInt.PolicyAction)
+	ribdServicesHandler.PolicyActionDeleteConfCh = make(chan *ribdInt.PolicyAction)
+	ribdServicesHandler.PolicyActionUpdateConfCh = make(chan *ribdInt.PolicyAction)
 	ribdServicesHandler.PolicyStmtCreateConfCh = make(chan *ribd.PolicyStmt)
 	ribdServicesHandler.PolicyStmtDeleteConfCh = make(chan *ribd.PolicyStmt)
 	ribdServicesHandler.PolicyStmtUpdateConfCh = make(chan *ribd.PolicyStmt)

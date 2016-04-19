@@ -3,42 +3,42 @@ package main
 
 import (
 	"fmt"
-	"ribd"
+	"ribdInt"
 	"utils/policy"
 )
 
-func (m RIBDServicesHandler) CreatePolicyAction(cfg *ribd.PolicyAction) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyAction(cfg *ribdInt.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	//m.PolicyActionCreateConfCh <- cfg
 	val, err = m.ProcessPolicyActionConfigCreate(cfg)
 	return val, err
 }
 
-func (m RIBDServicesHandler) ProcessPolicyActionConfigCreate(cfg *ribd.PolicyAction) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyActionConfigCreate(cfg *ribdInt.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigCreate:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name, ActionType: cfg.ActionType, SetAdminDistanceValue: int(cfg.SetAdminDistanceValue), Accept: cfg.Accept, Reject: cfg.Reject, RedistributeAction: cfg.RedistributeAction, RedistributeTargetProtocol: cfg.RedistributeTargetProtocol, NetworkStatementTargetProtocol: cfg.NetworkStatementTargetProtocol}
 	val, err = PolicyEngineDB.CreatePolicyAction(newAction)
 	return val, err
 }
 
-func (m RIBDServicesHandler) DeletePolicyAction(cfg *ribd.PolicyAction) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyAction(cfg *ribdInt.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	//m.PolicyActionDeleteConfCh <- cfg
 	val, err = m.ProcessPolicyActionConfigDelete(cfg)
 	return val, err
 }
 
-func (m RIBDServicesHandler) ProcessPolicyActionConfigDelete(cfg *ribd.PolicyAction) (val bool, err error) {
+func (m RIBDServicesHandler) ProcessPolicyActionConfigDelete(cfg *ribdInt.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigDelete:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name}
 	val, err = PolicyEngineDB.DeletePolicyAction(newAction)
 	return val, err
 }
-func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribd.PolicyAction, newconfig *ribd.PolicyAction, attrset []bool) (val bool, err error) {
+func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribdInt.PolicyAction, newconfig *ribdInt.PolicyAction, attrset []bool) (val bool, err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyAction"))
 	return true, err
 }
-func (m RIBDServicesHandler) GetPolicyActionState(name string) (*ribd.PolicyActionState, error) {
+/*func (m RIBDServicesHandler) GetPolicyActionState(name string) (*ribd.PolicyActionState, error) {
 	logger.Info("Get state for Policy Action")
 	retState := ribd.NewPolicyActionState()
 	return retState, nil
@@ -103,3 +103,4 @@ func (m RIBDServicesHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount
 	policyActions.Count = validCount
 	return policyActions, err
 }
+*/
