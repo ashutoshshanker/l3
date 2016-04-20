@@ -70,3 +70,12 @@ func (h *BFDHandler) CreateBfdSession(bfdSessionConf *bfdd.BfdSession) (bool, er
 	h.logger.Info(fmt.Sprintln("Create session config attrs:", bfdSessionConf))
 	return h.SendBfdSessionConfig(bfdSessionConf), nil
 }
+
+func (h *BFDHandler) CreateBfdSessionParam(bfdSessionParamConf *bfdd.BfdSessionParam) (bool, error) {
+	if bfdSessionParamConf == nil {
+		err := errors.New("Invalid Session Param Configuration")
+		return false, err
+	}
+	h.logger.Info(fmt.Sprintln("Create session param config attrs:", bfdSessionParamConf))
+	return true, nil
+}

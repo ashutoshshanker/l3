@@ -80,3 +80,11 @@ type SessionState struct {
 	NumTxPackets          uint32
 	NumRxPackets          uint32
 }
+
+type SessionParamConfig struct {
+	Name string
+}
+
+type SessionParamState struct {
+	Name string
+}

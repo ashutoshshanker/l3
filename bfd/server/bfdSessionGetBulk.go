@@ -55,3 +55,15 @@ func (server *BFDServer) GetBfdSessionState(ipAddr string) *SessionState {
 
 	return sessionState
 }
+
+func (server *BFDServer) GetBulkBfdSessionParamStates(idx int, cnt int) (int, int, []SessionParamState) {
+	var nextIdx int
+	var count int
+	result := make([]SessionParamState, count)
+	return nextIdx, count, result
+}
+
+func (server *BFDServer) GetBfdSessionParamState(ipAddr string) *SessionParamState {
+	sessionParamState := new(SessionParamState)
+	return sessionParamState
+}
