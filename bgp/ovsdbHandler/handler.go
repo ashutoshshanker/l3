@@ -17,6 +17,7 @@ const (
 
 	// OVSDB macro defines
 	OVSDB_HANDLER_OPERATIONS_SIZE = 1024
+	OVSDB_FS_INITIAL_SIZE         = 100
 )
 
 type BGPOvsdbNotifier struct {
@@ -28,10 +29,11 @@ type BGPOvsOperations struct {
 }
 
 type BGPOvsdbHandler struct {
-	bgpovs      *ovsdb.OvsdbClient
-	ovsUpdateCh chan *ovsdb.TableUpdates
-	cache       map[string]map[string]ovsdb.Row
-	operCh      chan *BGPOvsOperations
+	bgpovs         *ovsdb.OvsdbClient
+	ovsUpdateCh    chan *ovsdb.TableUpdates
+	cache          map[string]map[string]ovsdb.Row
+	operCh         chan *BGPOvsOperations
+	bgpCachedOvsdb map[UUID]BGPFlexSwitch
 }
 
 func NewBGPOvsdbNotifier(ch chan *ovsdb.TableUpdates) *BGPOvsdbNotifier {
@@ -50,17 +52,18 @@ func NewBGPOvsdbHandler() (*BGPOvsdbHandler, error) {
 	ovs.Register(n)
 
 	return &BGPOvsdbHandler{
-		bgpovs:      ovs,
-		ovsUpdateCh: ovsUpdateCh,
-		operCh:      make(chan *BGPOvsOperations, OVSDB_HANDLER_OPERATIONS_SIZE),
-		cache:       make(map[string]map[string]ovsdb.Row),
+		bgpovs:         ovs,
+		ovsUpdateCh:    ovsUpdateCh,
+		operCh:         make(chan *BGPOvsOperations, OVSDB_HANDLER_OPERATIONS_SIZE),
+		cache:          make(map[string]map[string]ovsdb.Row),
+		bgpCachedOvsdb: make(map[UUID]BGPFlexSwitch, OVSDB_FS_INITIAL_SIZE),
 	}, nil
 }
 
 /*  BGP OVS DB populate cache with the latest update information from the
  *  notification channel
  */
-func (svr *BGPOvsdbHandler) BGPPopulateOvsdbCache(updates ovsdb.TableUpdates) {
+func (svr *BGPOvsdbHandler) PopulateOvsdbCache(updates ovsdb.TableUpdates) {
 	for table, tableUpdate := range updates.Updates {
 		if _, ok := svr.cache[table]; !ok {
 			svr.cache[table] = make(map[string]ovsdb.Row)
@@ -105,24 +108,24 @@ func (svr BGPOvsdbNotifier) Disconnected(client *ovsdb.OvsdbClient) {
 
 /*  BGP OVS DB transaction api handler
  */
-func (svr *BGPOvsdbHandler) BGPOvsdbTransact(operations []ovsdb.Operation) error {
+func (svr *BGPOvsdbHandler) Transact(operations []ovsdb.Operation) error {
 	return nil
 }
 
 /*  BGP OVS DB handle update information
  */
-func (svr *BGPOvsdbHandler) BGPOvsdbUpdateInfo(updates ovsdb.TableUpdates) {
+func (svr *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
 	table, ok := updates.Updates["BGP_Router"]
 	if ok {
 		fmt.Println(table)
 	}
 	table, ok = updates.Updates["BGP_Neighbor"]
 	if ok {
-		fmt.Println(table)
-	}
-	table, ok = updates.Updates["BGP_Route"]
-	if ok {
-		fmt.Println(table)
+		err := svr.HandleBGPNeighborUpd(table)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 }
 
@@ -131,7 +134,7 @@ func (svr *BGPOvsdbHandler) BGPOvsdbUpdateInfo(updates ovsdb.TableUpdates) {
  *	This API will handle reading operations from table... It can also do
  *	transactions.... In short its read/write bgp ovsdb handler
  */
-func (svr *BGPOvsdbHandler) BGPOvsdbServe() error {
+func (svr *BGPOvsdbHandler) Serve() error {
 	initial, err := svr.bgpovs.MonitorAll(OVSDB_HANDLER_DB_TABLE, "")
 	if err != nil {
 		return err
@@ -144,10 +147,10 @@ func (svr *BGPOvsdbHandler) BGPOvsdbServe() error {
 	for {
 		select {
 		case updates := <-svr.ovsUpdateCh:
-			svr.BGPPopulateOvsdbCache(*updates)
-			svr.BGPOvsdbUpdateInfo(*updates)
+			svr.PopulateOvsdbCache(*updates)
+			svr.UpdateInfo(*updates)
 		case oper := <-svr.operCh:
-			if err := svr.BGPOvsdbTransact(oper.operations); err != nil {
+			if err := svr.Transact(oper.operations); err != nil {
 				//@FIXME: add some error message if needed
 			}
 		}
