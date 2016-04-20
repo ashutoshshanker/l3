@@ -34,7 +34,7 @@ func sameUUID(src UUID, dst string) bool {
 
 /*  Get object uuid from the map
  */
-func (svr *BGPOvsdbHandler) getObjUUID(val interface{}) UUID {
+func (ovsHdl *BGPOvsdbHandler) getObjUUID(val interface{}) UUID {
 	retVal, exists := val.([]interface{})
 	if !exists {
 		return ""
@@ -47,11 +47,11 @@ func (svr *BGPOvsdbHandler) getObjUUID(val interface{}) UUID {
 
 /*  Lets get asn number for the local bgp and also get the ovsdb BGP_Router uuid
  */
-func (svr *BGPOvsdbHandler) GetBGPRouterInfo() (uint32, UUID, error) {
+func (ovsHdl *BGPOvsdbHandler) GetBGPRouterInfo() (uint32, UUID, error) {
 	var asn uint32
 	var id UUID
 
-	vrfs, exists := svr.cache[OVSDB_VRF_TABLE]
+	vrfs, exists := ovsHdl.cache[OVSDB_VRF_TABLE]
 	if !exists {
 		return asn, id, errors.New("vrf table doesn't exists")
 	}
@@ -69,7 +69,7 @@ func (svr *BGPOvsdbHandler) GetBGPRouterInfo() (uint32, UUID, error) {
 			}
 			for key, value := range bgpRouters {
 				asn = uint32(key.(float64))
-				id = svr.getObjUUID(value)
+				id = ovsHdl.getObjUUID(value)
 				if id == "" {
 					return asn, id, errors.New("invalid uuid")
 				}
@@ -83,9 +83,9 @@ func (svr *BGPOvsdbHandler) GetBGPRouterInfo() (uint32, UUID, error) {
 
 /*  Get bgp neighbor uuids and addrs information
  */
-func (svr *BGPOvsdbHandler) GetBGPNeighborInfo(rtUuid UUID) ([]net.IP,
+func (ovsHdl *BGPOvsdbHandler) GetBGPNeighborInfo(rtUuid UUID) ([]net.IP,
 	[]UUID, error) {
-	bgpRouterEntries, exists := svr.cache[OVSDB_BGP_ROUTER_TABLE]
+	bgpRouterEntries, exists := ovsHdl.cache[OVSDB_BGP_ROUTER_TABLE]
 	if !exists {
 		return nil, nil, errors.New("There is no bgp router table entry")
 	}
@@ -103,7 +103,7 @@ func (svr *BGPOvsdbHandler) GetBGPNeighborInfo(rtUuid UUID) ([]net.IP,
 			uuids := make([]UUID, 0, len(neighbors))
 			for key, value := range neighbors {
 				addresses = append(addresses, net.ParseIP(key.(string)))
-				id := svr.getObjUUID(value)
+				id := ovsHdl.getObjUUID(value)
 				if id == "" {
 					addresses = nil
 					uuids = nil
@@ -118,36 +118,36 @@ func (svr *BGPOvsdbHandler) GetBGPNeighborInfo(rtUuid UUID) ([]net.IP,
 	return nil, nil, nil
 }
 
-func (svr *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
+func (ovsHdl *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 	table ovsdb.TableUpdate) {
 	for key, value := range table.Rows {
 		for idx, uuid := range uuids {
 			if sameUUID(uuid, key) {
-				//svr.logger.Info(fmt.Sprintln("new value:", value.New))
-				//svr.logger.Info(fmt.Sprintln("old value:", value.Old))
-				//svr.logger.Info(fmt.Sprintln("uuid", uuid, "key uuid", key))
+				//ovsHdl.logger.Info(fmt.Sprintln("new value:", value.New))
+				//ovsHdl.logger.Info(fmt.Sprintln("old value:", value.Old))
+				//ovsHdl.logger.Info(fmt.Sprintln("uuid", uuid, "key uuid", key))
 				newPeerAS, ok := value.New.Fields["remote_as"].(float64)
 				if !ok {
-					svr.logger.Warning("no asn")
+					ovsHdl.logger.Warning("no asn")
 					continue
 				}
 				newNeighborAddr := addrs[idx].String()
-				svr.logger.Info(fmt.Sprintln("PeerAS",
+				ovsHdl.logger.Info(fmt.Sprintln("PeerAS",
 					newPeerAS))
-				svr.logger.Info(fmt.Sprintln("Neighbor Addr",
+				ovsHdl.logger.Info(fmt.Sprintln("Neighbor Addr",
 					newNeighborAddr))
 				newDesc, ok := value.New.Fields["description"].(string)
 				if ok {
-					svr.logger.Info(fmt.Sprintln("Description", newDesc))
+					ovsHdl.logger.Info(fmt.Sprintln("Description", newDesc))
 				}
 				newLocalAS, ok := value.New.Fields["local_as"].(ovsdb.OvsSet)
 				if ok {
-					svr.logger.Info(fmt.Sprintln("Local AS:", newLocalAS))
+					ovsHdl.logger.Info(fmt.Sprintln("Local AS:", newLocalAS))
 				}
 
 				newAdverInt, ok := value.New.Fields["advertisement_interval"].(float64)
 				if ok {
-					svr.logger.Info(fmt.Sprintln("Advertisement Interval",
+					ovsHdl.logger.Info(fmt.Sprintln("Advertisement Interval",
 						newAdverInt))
 				}
 			}
@@ -157,23 +157,23 @@ func (svr *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 
 /*  BGP neighbor update in ovsdb... we will update our backend object
  */
-func (svr *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) error {
-	asn, bgpRouterUUID, err := svr.GetBGPRouterInfo()
+func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) error {
+	asn, bgpRouterUUID, err := ovsHdl.GetBGPRouterInfo()
 	if err != nil {
 		return err
 	}
-	svr.logger.Info(fmt.Sprintln("asn:", asn, "BGP_Router UUID:",
+	ovsHdl.logger.Info(fmt.Sprintln("asn:", asn, "BGP_Router UUID:",
 		bgpRouterUUID))
-	neighborAddrs, neighborUUIDs, err := svr.GetBGPNeighborInfo(bgpRouterUUID)
+	neighborAddrs, neighborUUIDs, err := ovsHdl.GetBGPNeighborInfo(bgpRouterUUID)
 	if err != nil {
 		return err
 	}
-	svr.logger.Info(fmt.Sprintln("neighborAddrs:", neighborAddrs, "uuid's:",
+	ovsHdl.logger.Info(fmt.Sprintln("neighborAddrs:", neighborAddrs, "uuid's:",
 		neighborUUIDs))
-	svr.DumpBgpNeighborInfo(neighborAddrs, neighborUUIDs, table)
+	ovsHdl.DumpBgpNeighborInfo(neighborAddrs, neighborUUIDs, table)
 	return nil
 }
 
-func (svr *BGPOvsdbHandler) HandleBGPRouteUpd() error {
+func (ovsHdl *BGPOvsdbHandler) HandleBGPRouteUpd() error {
 	return nil
 }

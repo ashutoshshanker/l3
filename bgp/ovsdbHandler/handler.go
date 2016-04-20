@@ -66,18 +66,18 @@ func NewBGPOvsdbHandler(logger *logging.Writer) (*BGPOvsdbHandler, error) {
 /*  BGP OVS DB populate cache with the latest update information from the
  *  notification channel
  */
-func (svr *BGPOvsdbHandler) PopulateOvsdbCache(updates ovsdb.TableUpdates) {
+func (ovsHdl *BGPOvsdbHandler) PopulateOvsdbCache(updates ovsdb.TableUpdates) {
 	for table, tableUpdate := range updates.Updates {
-		if _, ok := svr.cache[table]; !ok {
-			svr.cache[table] = make(map[string]ovsdb.Row)
+		if _, ok := ovsHdl.cache[table]; !ok {
+			ovsHdl.cache[table] = make(map[string]ovsdb.Row)
 		}
 
 		for uuid, row := range tableUpdate.Rows {
 			empty := ovsdb.Row{}
 			if !reflect.DeepEqual(row.New, empty) {
-				svr.cache[table][uuid] = row.New
+				ovsHdl.cache[table][uuid] = row.New
 			} else {
-				delete(svr.cache[table], uuid)
+				delete(ovsHdl.cache[table], uuid)
 			}
 		}
 	}
@@ -85,48 +85,48 @@ func (svr *BGPOvsdbHandler) PopulateOvsdbCache(updates ovsdb.TableUpdates) {
 
 /* Stub interfaces for ovsdb library notifier
  */
-func (svr BGPOvsdbNotifier) Update(context interface{}, tableUpdates ovsdb.TableUpdates) {
-	svr.updateCh <- &tableUpdates
+func (ovsHdl BGPOvsdbNotifier) Update(context interface{}, tableUpdates ovsdb.TableUpdates) {
+	ovsHdl.updateCh <- &tableUpdates
 }
 
 /* Stub interfaces for ovsdb library notifier
  */
-func (svr BGPOvsdbNotifier) Locked([]interface{}) {
+func (ovsHdl BGPOvsdbNotifier) Locked([]interface{}) {
 }
 
 /* Stub interfaces for ovsdb library notifier
  */
-func (svr BGPOvsdbNotifier) Stolen([]interface{}) {
+func (ovsHdl BGPOvsdbNotifier) Stolen([]interface{}) {
 }
 
 /* Stub interfaces for ovsdb library notifier
  */
-func (svr BGPOvsdbNotifier) Echo([]interface{}) {
+func (ovsHdl BGPOvsdbNotifier) Echo([]interface{}) {
 }
 
 /* Stub interfaces for ovsdb library notifier
  */
-func (svr BGPOvsdbNotifier) Disconnected(client *ovsdb.OvsdbClient) {
+func (ovsHdl BGPOvsdbNotifier) Disconnected(client *ovsdb.OvsdbClient) {
 }
 
 /*  BGP OVS DB transaction api handler
  */
-func (svr *BGPOvsdbHandler) Transact(operations []ovsdb.Operation) error {
+func (ovsHdl *BGPOvsdbHandler) Transact(operations []ovsdb.Operation) error {
 	return nil
 }
 
 /*  BGP OVS DB handle update information
  */
-func (svr *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
+func (ovsHdl *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
 	table, ok := updates.Updates[OVSDB_BGP_ROUTER_TABLE]
 	if ok {
 		//fmt.Println(table)
 	}
 	table, ok = updates.Updates[OVSDB_BGP_NEIGHBOR_TABLE]
 	if ok {
-		err := svr.HandleBGPNeighborUpd(table)
+		err := ovsHdl.HandleBGPNeighborUpd(table)
 		if err != nil {
-			svr.logger.Err(fmt.Sprintln(err))
+			ovsHdl.logger.Err(fmt.Sprintln(err))
 			return
 		}
 	}
@@ -137,23 +137,23 @@ func (svr *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
  *	This API will handle reading operations from table... It can also do
  *	transactions.... In short its read/write bgp ovsdb handler
  */
-func (svr *BGPOvsdbHandler) Serve() error {
-	initial, err := svr.bgpovs.MonitorAll(OVSDB_HANDLER_DB_TABLE, "")
+func (ovsHdl *BGPOvsdbHandler) Serve() error {
+	initial, err := ovsHdl.bgpovs.MonitorAll(OVSDB_HANDLER_DB_TABLE, "")
 	if err != nil {
 		return err
 	}
 
 	go func() {
-		svr.ovsUpdateCh <- initial
+		ovsHdl.ovsUpdateCh <- initial
 	}()
 
 	for {
 		select {
-		case updates := <-svr.ovsUpdateCh:
-			svr.PopulateOvsdbCache(*updates)
-			svr.UpdateInfo(*updates)
-		case oper := <-svr.operCh:
-			if err := svr.Transact(oper.operations); err != nil {
+		case updates := <-ovsHdl.ovsUpdateCh:
+			ovsHdl.PopulateOvsdbCache(*updates)
+			ovsHdl.UpdateInfo(*updates)
+		case oper := <-ovsHdl.operCh:
+			if err := ovsHdl.Transact(oper.operations); err != nil {
 				//@FIXME: add some error message if needed
 			}
 		}
