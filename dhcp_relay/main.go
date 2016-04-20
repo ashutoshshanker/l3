@@ -17,7 +17,6 @@ func main() {
 	if fileName[len(fileName)-1] != '/' {
 		fileName = fileName + "/"
 	}
-	quit := make(chan bool)
 	fmt.Println("Start logger")
 	logger, err := logging.NewLogger(fileName, "dhcprelayd", "DRA")
 	if err != nil {
@@ -38,5 +37,4 @@ func main() {
 		logger.Err(fmt.Sprintln("DRA: Cannot start dhcp server", err))
 		return
 	}
-	<-quit
 }
