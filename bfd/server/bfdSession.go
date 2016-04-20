@@ -178,9 +178,11 @@ func (server *BFDServer) StartSessionRetryHandler() error {
 
 func (server *BFDServer) processSessionConfig(sessionConfig SessionConfig) error {
 	sessionMgmt := BfdSessionMgmt{
-		DestIp:   sessionConfig.DestIp,
-		Protocol: sessionConfig.Protocol,
-		PerLink:  sessionConfig.PerLink,
+		DestIp:    sessionConfig.DestIp,
+		ParamName: sessionConfig.ParamName,
+		Interface: sessionConfig.Interface,
+		Protocol:  sessionConfig.Protocol,
+		PerLink:   sessionConfig.PerLink,
 	}
 	switch sessionConfig.Operation {
 	case bfddCommonDefs.CREATE:

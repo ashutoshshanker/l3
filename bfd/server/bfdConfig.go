@@ -48,6 +48,8 @@ type IntfState struct {
 
 type SessionConfig struct {
 	DestIp    string
+	ParamName string
+	Interface string
 	PerLink   bool
 	Protocol  bfddCommonDefs.BfdSessionOwner
 	Operation bfddCommonDefs.BfdSessionOperation
@@ -57,7 +59,9 @@ type SessionState struct {
 	IpAddr                string
 	SessionId             int32
 	LocalIpAddr           string
+	InterfaceName         string
 	InterfaceId           int32
+	ParamName             string
 	PerLinkSession        bool
 	LocalMacAddr          net.HardwareAddr
 	RemoteMacAddr         net.HardwareAddr
@@ -82,9 +86,28 @@ type SessionState struct {
 }
 
 type SessionParamConfig struct {
-	Name string
+	Name                      string
+	LocalMultiplier           int32
+	DesiredMinTxInterval      int32
+	RequiredMinRxInterval     int32
+	RequiredMinEchoRxInterval int32
+	DemandEnabled             bool
+	AuthenticationEnabled     bool
+	AuthenticationType        AuthenticationType
+	AuthenticationKeyId       int32
+	AuthenticationData        string
 }
 
 type SessionParamState struct {
-	Name string
+	Name                      string
+	NumSessions               int32
+	LocalMultiplier           int32
+	DesiredMinTxInterval      int32
+	RequiredMinRxInterval     int32
+	RequiredMinEchoRxInterval int32
+	DemandEnabled             bool
+	AuthenticationEnabled     bool
+	AuthenticationType        AuthenticationType
+	AuthenticationKeyId       int32
+	AuthenticationData        string
 }

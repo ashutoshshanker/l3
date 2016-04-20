@@ -46,5 +46,7 @@ func (h *BFDHandler) DeleteBfdSessionParam(bfdSessionParamConf *bfdd.BfdSessionP
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Delete session param config attrs:", bfdSessionParamConf))
+	paramName := bfdSessionParamConf.Name
+	h.server.SessionParamDeleteCh <- paramName
 	return true, nil
 }
