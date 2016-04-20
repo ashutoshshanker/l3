@@ -144,6 +144,12 @@ func (svr *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 				if ok {
 					svr.logger.Info(fmt.Sprintln("Local AS:", newLocalAS))
 				}
+
+				newAdverInt, ok := value.New.Fields["advertisement_interval"].(float64)
+				if ok {
+					svr.logger.Info(fmt.Sprintln("Advertisement Interval",
+						newAdverInt))
+				}
 			}
 		}
 	}
