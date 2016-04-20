@@ -65,7 +65,7 @@ func main() {
 			fmt.Println("Starting OVDB client failed ERROR:", err)
 			return
 		}
-		err = ovsdbManager.BGPOvsdbServe()
+		err = ovsdbManager.Serve()
 		if err != nil {
 			fmt.Println("OVSDB Serve failed ERROR:", err)
 			return
