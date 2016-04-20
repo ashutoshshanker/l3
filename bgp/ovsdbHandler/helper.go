@@ -4,8 +4,8 @@ import (
 	"bgpd"
 	"errors"
 	"fmt"
-	_ "github.com/nu7hatch/gouuid"
 	ovsdb "github.com/socketplane/libovsdb"
+	"net"
 )
 
 const (
@@ -21,7 +21,7 @@ type BGPFlexSwitch struct {
 
 /*  Get object uuid from the map
  */
-func (svr *BGPOvsdbHandler) getObjUUID(val interface{}) string {
+func (svr *BGPOvsdbHandler) getObjUUID(val interface{}) UUID {
 	retVal, exists := val.([]interface{})
 	if !exists {
 		return ""
@@ -29,14 +29,14 @@ func (svr *BGPOvsdbHandler) getObjUUID(val interface{}) string {
 	if len(retVal) != 2 || retVal[0].(string) != "uuid" {
 		return ""
 	}
-	return retVal[1].(string)
+	return UUID(retVal[1].(string))
 }
 
 /*  Lets get asn number for the local bgp and also get the ovsdb BGP_Router uuid
  */
-func (svr *BGPOvsdbHandler) GetBGPRouterUUID() (uint32, string, error) {
+func (svr *BGPOvsdbHandler) GetBGPRouterInfo() (uint32, UUID, error) {
 	var asn uint32
-	var id string
+	var id UUID
 
 	vrfs, exists := svr.cache["VRF"]
 	if !exists {
@@ -68,14 +68,23 @@ func (svr *BGPOvsdbHandler) GetBGPRouterUUID() (uint32, string, error) {
 	return asn, id, errors.New("no entry found in vrf table")
 }
 
+/*  Get bgp neighbor uuids and addrs information
+ */
+func (svr *BGPOvsdbHandler) GetBGPNeighborInfo(rtUuid UUID) ([]net.IP,
+	[]UUID, error) {
+	return nil, nil, nil
+}
+
 /*  BGP neighbor update in ovsdb... we will update our backend object
  */
 func (svr *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) error {
-	asn, bgpRouterUUID, err := svr.GetBGPRouterUUID()
+	asn, bgpRouterUUID, err := svr.GetBGPRouterInfo()
 	if err != nil {
 		return err
 	}
 	fmt.Println("asn:", asn, "BGP_Router UUID:", bgpRouterUUID)
+	neighborAddrs, neighborUUIDs, err := svr.GetBGPNeighborInfo(bgpRouterUUID)
+	fmt.Println("neighborAddrs:", neighborAddrs, "uuid's:", neighborUUIDs)
 	return nil
 }
 
