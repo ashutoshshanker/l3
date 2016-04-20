@@ -118,6 +118,37 @@ func (svr *BGPOvsdbHandler) GetBGPNeighborInfo(rtUuid UUID) ([]net.IP,
 	return nil, nil, nil
 }
 
+func (svr *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
+	table ovsdb.TableUpdate) {
+	for key, value := range table.Rows {
+		for idx, uuid := range uuids {
+			if sameUUID(uuid, key) {
+				//svr.logger.Info(fmt.Sprintln("new value:", value.New))
+				//svr.logger.Info(fmt.Sprintln("old value:", value.Old))
+				//svr.logger.Info(fmt.Sprintln("uuid", uuid, "key uuid", key))
+				newPeerAS, ok := value.New.Fields["remote_as"].(float64)
+				if !ok {
+					svr.logger.Warning("no asn")
+					continue
+				}
+				newNeighborAddr := addrs[idx].String()
+				svr.logger.Info(fmt.Sprintln("PeerAS",
+					newPeerAS))
+				svr.logger.Info(fmt.Sprintln("Neighbor Addr",
+					newNeighborAddr))
+				newDesc, ok := value.New.Fields["description"].(string)
+				if ok {
+					svr.logger.Info(fmt.Sprintln("Description", newDesc))
+				}
+				newLocalAS, ok := value.New.Fields["local_as"].(ovsdb.OvsSet)
+				if ok {
+					svr.logger.Info(fmt.Sprintln("Local AS:", newLocalAS))
+				}
+			}
+		}
+	}
+}
+
 /*  BGP neighbor update in ovsdb... we will update our backend object
  */
 func (svr *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) error {
@@ -128,8 +159,12 @@ func (svr *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) error 
 	svr.logger.Info(fmt.Sprintln("asn:", asn, "BGP_Router UUID:",
 		bgpRouterUUID))
 	neighborAddrs, neighborUUIDs, err := svr.GetBGPNeighborInfo(bgpRouterUUID)
+	if err != nil {
+		return err
+	}
 	svr.logger.Info(fmt.Sprintln("neighborAddrs:", neighborAddrs, "uuid's:",
 		neighborUUIDs))
+	svr.DumpBgpNeighborInfo(neighborAddrs, neighborUUIDs, table)
 	return nil
 }
 
