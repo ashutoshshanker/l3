@@ -5,6 +5,7 @@ import (
 
 	"fmt"
 	"reflect"
+	"utils/logging"
 )
 
 const (
@@ -29,6 +30,7 @@ type BGPOvsOperations struct {
 }
 
 type BGPOvsdbHandler struct {
+	logger         *logging.Writer
 	bgpovs         *ovsdb.OvsdbClient
 	ovsUpdateCh    chan *ovsdb.TableUpdates
 	cache          map[string]map[string]ovsdb.Row
@@ -42,7 +44,7 @@ func NewBGPOvsdbNotifier(ch chan *ovsdb.TableUpdates) *BGPOvsdbNotifier {
 	}
 }
 
-func NewBGPOvsdbHandler() (*BGPOvsdbHandler, error) {
+func NewBGPOvsdbHandler(logger *logging.Writer) (*BGPOvsdbHandler, error) {
 	ovs, err := ovsdb.Connect(OVSDB_HANDLER_HOST_IP, OVSDB_HANDLER_HOST_PORT)
 	if err != nil {
 		return nil, err
@@ -52,6 +54,7 @@ func NewBGPOvsdbHandler() (*BGPOvsdbHandler, error) {
 	ovs.Register(n)
 
 	return &BGPOvsdbHandler{
+		logger:         logger,
 		bgpovs:         ovs,
 		ovsUpdateCh:    ovsUpdateCh,
 		operCh:         make(chan *BGPOvsOperations, OVSDB_HANDLER_OPERATIONS_SIZE),
@@ -115,15 +118,15 @@ func (svr *BGPOvsdbHandler) Transact(operations []ovsdb.Operation) error {
 /*  BGP OVS DB handle update information
  */
 func (svr *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
-	table, ok := updates.Updates["BGP_Router"]
+	table, ok := updates.Updates[OVSDB_BGP_ROUTER_TABLE]
 	if ok {
-		fmt.Println(table)
+		//fmt.Println(table)
 	}
-	table, ok = updates.Updates["BGP_Neighbor"]
+	table, ok = updates.Updates[OVSDB_BGP_NEIGHBOR_TABLE]
 	if ok {
 		err := svr.HandleBGPNeighborUpd(table)
 		if err != nil {
-			fmt.Println(err)
+			svr.logger.Err(fmt.Sprintln(err))
 			return
 		}
 	}

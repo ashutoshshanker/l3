@@ -125,9 +125,11 @@ func (svr *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) error 
 	if err != nil {
 		return err
 	}
-	fmt.Println("asn:", asn, "BGP_Router UUID:", bgpRouterUUID)
+	svr.logger.Info(fmt.Sprintln("asn:", asn, "BGP_Router UUID:",
+		bgpRouterUUID))
 	neighborAddrs, neighborUUIDs, err := svr.GetBGPNeighborInfo(bgpRouterUUID)
-	fmt.Println("neighborAddrs:", neighborAddrs, "uuid's:", neighborUUIDs)
+	svr.logger.Info(fmt.Sprintln("neighborAddrs:", neighborAddrs, "uuid's:",
+		neighborUUIDs))
 	return nil
 }
 
