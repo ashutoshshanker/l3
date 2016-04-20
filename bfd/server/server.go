@@ -399,12 +399,6 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.BuildPortPropertyMap()
 	server.BuildLagPropertyMap()
 	server.BuildIPv4InterfacesMap()
-	/*
-		server.logger.Info("Listen for RIBd updates")
-		server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
-		go createRIBSubscriber()
-		server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
-	*/
 }
 
 func (server *BFDServer) SigHandler() {
@@ -420,8 +414,9 @@ func (server *BFDServer) SigHandler() {
 			case syscall.SIGHUP:
 				server.logger.Info("Received SIGHUP signal")
 				server.SendAdminDownToAllNeighbors()
-				time.Sleep(250 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 				server.SendDeleteToAllSessions()
+				time.Sleep(500 * time.Millisecond)
 				server.logger.Info("Exiting!!!")
 				os.Exit(0)
 			default:
@@ -474,17 +469,6 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 		case sessionConfig := <-server.SessionConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Session Configuration", sessionConfig))
 			server.processSessionConfig(sessionConfig)
-			/*
-				case ribrxBuf := <-server.ribSubSocketCh:
-					server.processRibdNotification(ribdrxBuf)
-				case <-server.connRoutesTimer.C:
-					routes, _ := server.ribdClient.ClientHdl.GetConnectedRoutesInfo()
-					server.logger.Info(fmt.Sprintln("Received Connected Routes:", routes))
-					//server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
-					//server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
-
-				case <-server.ribSubSocketErrCh:
-			*/
 		}
 	}
 }
