@@ -60,7 +60,7 @@ func main() {
 	case OVSDB_PLUGIN:
 		// if plugin used is ovs db then lets start ovsdb client listener
 		quit := make(chan bool)
-		ovsdbManager, err := ovsdbHandler.NewBGPOvsdbHandler()
+		ovsdbManager, err := ovsdbHandler.NewBGPOvsdbHandler(logger)
 		if err != nil {
 			fmt.Println("Starting OVDB client failed ERROR:", err)
 			return
