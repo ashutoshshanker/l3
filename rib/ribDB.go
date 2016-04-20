@@ -108,7 +108,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 	}
 	var stmt ribd.PolicyStmt
 	for rows.Next() {
-		if err = rows.Scan(&stmt.Name, &stmt.MatchConditions); err != nil {
+		if err = rows.Scan(&stmt.Name, &stmt.MatchConditions,&stmt.Action); err != nil {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
@@ -134,26 +134,6 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			stmt.Conditions = append(stmt.Conditions, Conditions)
 		}
 
-		dbCmdAction := "select * from PolicyStmtActions"
-		actionrows, err := dbHdl.Query(dbCmdAction)
-		if err != nil {
-			logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmdAction, err))
-			return err
-		}
-		stmt.Action = make([]string, 0)
-		var Action string
-		for actionrows.Next() {
-			if err = actionrows.Scan(&stmtName, &Action); err != nil {
-				logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyStmtConfigActions rows with error %s\n", err))
-				return err
-			}
-			if stmtName != stmt.Name {
-				logger.Info(fmt.Sprintln("Not a action for this statement"))
-				continue
-			}
-			logger.Info(fmt.Sprintln("Fetching action ", Action))
-			stmt.Action = append(stmt.Action, Action)
-		}
 		err = routeServiceHandler.ProcessPolicyStmtConfigCreate(&stmt)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
@@ -183,7 +163,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Query failed for %s with err %s\n", dbCmdPrecedence, err))
 			return err
 		}
-		policy.StatementList = make([]*ribd.PolicyDefinitionStmtPrecedence, 0)
+		policy.StatementList = make([]*ribd.PolicyDefinitionStmtPriority, 0)
 		var stmt, policyName string
 		var precedence int32
 		for conditionrows.Next() {
@@ -196,7 +176,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 				continue
 			}
 			logger.Info(fmt.Sprintln("Fetching stmt ", stmt, "Priority:", precedence))
-			policyStmtPrecedence := ribd.PolicyDefinitionStmtPrecedence{Priority: int32(precedence), Statement: stmt}
+			policyStmtPrecedence := ribd.PolicyDefinitionStmtPriority{Priority: int32(precedence), Statement: stmt}
 			policy.StatementList = append(policy.StatementList, &policyStmtPrecedence)
 		}
 
