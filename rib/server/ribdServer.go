@@ -1,9 +1,8 @@
-package main
+package server
 
 import (
 	"arpd"
 	"asicd/asicdConstDefs"
-	"asicdInt"
 	"asicdServices"
 	"database/sql"
 	"encoding/json"
@@ -22,12 +21,18 @@ import (
 	"utils/patriciaDB"
 	"utils/policy"
 	"utils/policy/policyCommonDefs"
+	"utils/logging"
 )
 
 type UpdateRouteInfo struct {
-	origRoute *ribd.IPv4Route
-	newRoute  *ribd.IPv4Route
-	attrset   []bool
+	OrigRoute *ribd.IPv4Route
+	NewRoute  *ribd.IPv4Route
+	Attrset   []bool
+}
+type TrackReachabilityInfo struct {
+	IpAddr string
+	Protocol string 
+	Op string
 }
 type NextHopInfoKey struct {
 	nextHopIp string
@@ -35,7 +40,10 @@ type NextHopInfoKey struct {
 type NextHopInfo struct {
 	refCount     int     //number of routes using this as a next hop
 }
-type RIBDServicesHandler struct {
+type RIBDServer struct {
+    Logger                       *logging.Writer
+	PolicyEngineDB               *policy.PolicyEngineDB
+	TrackReachabilityCh          chan TrackReachabilityInfo
 	RouteCreateConfCh            chan *ribd.IPv4Route
 	RouteDeleteConfCh            chan *ribd.IPv4Route
 	RouteUpdateConfCh            chan UpdateRouteInfo
@@ -137,13 +145,14 @@ var asicdclnt AsicdClient
 var arpdclnt ArpdClient
 var count int
 var ConnectedRoutes []*ribdInt.Routes
+var logger *logging.Writer
 var AsicdSub *nanomsg.SubSocket
-var RIBD_PUB *nanomsg.PubSocket
-
-//var RIBD_BGPD_PUB *nanomsg.PubSocket
+var routeServiceHandler *RIBDServer
 var IntfIdNameMap map[int32]IntfEntry
+var	PolicyEngineDB  *policy.PolicyEngineDB
+var PARAMSDIR string
 
-func processL3IntfDownEvent(ipAddr string) {
+func (ribdServiceHandler *RIBDServer) ProcessL3IntfDownEvent(ipAddr string) {
 	logger.Println("processL3IntfDownEvent")
 	var ipMask net.IP
 	ip, ipNet, err := net.ParseCIDR(ipAddr)
@@ -163,7 +172,7 @@ func processL3IntfDownEvent(ipAddr string) {
 	}
 }
 
-func processL3IntfUpEvent(ipAddr string) {
+func (ribdServiceHandler *RIBDServer) ProcessL3IntfUpEvent(ipAddr string) {
 	logger.Println("processL3IntfUpEvent")
 	var ipMask net.IP
 	ip, ipNet, err := net.ParseCIDR(ipAddr)
@@ -189,113 +198,6 @@ func processL3IntfUpEvent(ipAddr string) {
 	}
 }
 
-func processLinkDownEvent(ifType ribd.Int, ifIndex ribd.Int) {
-	logger.Println("processLinkDownEvent")
-	for i := 0; i < len(ConnectedRoutes); i++ {
-		if ConnectedRoutes[i].NextHopIfType == ribdInt.Int(ifType) && ConnectedRoutes[i].IfIndex == ribdInt.Int(ifIndex) {
-			logger.Info(fmt.Sprintln("Delete this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask))
-			//Send a event
-			msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: *ConnectedRoutes[i]}
-			msgbufbytes, err := json.Marshal(msgBuf)
-			msg := ribdCommonDefs.RibdNotifyMsg{MsgType: ribdCommonDefs.NOTIFY_ROUTE_DELETED, MsgBuf: msgbufbytes}
-			buf, err := json.Marshal(msg)
-			if err != nil {
-				logger.Println("Error in marshalling Json")
-				return
-			}
-			logger.Info(fmt.Sprintln("buf", buf))
-			RIBD_PUB.Send(buf, nanomsg.DontWait)
-
-			//Delete this route
-			deleteV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, "CONNECTED", ConnectedRoutes[i].NextHopIp, FIBOnly, ribdCommonDefs.RoutePolicyStateChangeNoChange)
-		}
-	}
-}
-
-func processLinkUpEvent(ifType ribd.Int, ifIndex ribd.Int) {
-	logger.Println("processLinkUpEvent")
-	for i := 0; i < len(ConnectedRoutes); i++ {
-		if ConnectedRoutes[i].NextHopIfType == ribdInt.Int(ifType) && ConnectedRoutes[i].IfIndex == ribdInt.Int(ifIndex) && ConnectedRoutes[i].IsValid == false {
-			logger.Info(fmt.Sprintln("Add this route with destAddress = %s, nwMask = %s\n", ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask))
-
-			ConnectedRoutes[i].IsValid = true
-			//Send a event
-			msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: *ConnectedRoutes[i]}
-			msgbufbytes, err := json.Marshal(msgBuf)
-			msg := ribdCommonDefs.RibdNotifyMsg{MsgType: ribdCommonDefs.NOTIFY_ROUTE_CREATED, MsgBuf: msgbufbytes}
-			buf, err := json.Marshal(msg)
-			if err != nil {
-				logger.Println("Error in marshalling Json")
-				return
-			}
-			logger.Info(fmt.Sprintln("buf", buf))
-			RIBD_PUB.Send(buf, nanomsg.DontWait)
-
-			//Add this route - should call install
-			createV4Route(ConnectedRoutes[i].Ipaddr, ConnectedRoutes[i].Mask, ribd.Int(ConnectedRoutes[i].Metric), ConnectedRoutes[i].NextHopIp, ribd.Int(ConnectedRoutes[i].NextHopIfType), ribd.Int(ConnectedRoutes[i].IfIndex), ribd.Int(ConnectedRoutes[i].Prototype), FIBOnly, ribdCommonDefs.RoutePolicyStateChangeNoChange, ribd.Int(ConnectedRoutes[i].SliceIdx))
-		}
-	}
-}
-
-func (m RIBDServicesHandler) LinkDown(ifType ribdInt.Int, ifIndex ribdInt.Int) (err error) {
-	logger.Println("LinkDown")
-	processLinkDownEvent(ribd.Int(ifType), ribd.Int(ifIndex))
-	return nil
-}
-
-func (m RIBDServicesHandler) LinkUp(ifType ribdInt.Int, ifIndex ribdInt.Int) (err error) {
-	logger.Println("LinkUp")
-	processLinkUpEvent(ribd.Int(ifType), ribd.Int(ifIndex))
-	return nil
-}
-
-func (m RIBDServicesHandler) IntfDown(ipAddr string) (err error) {
-	logger.Println("IntfDown")
-	processL3IntfDownEvent(ipAddr)
-	return nil
-}
-
-func (m RIBDServicesHandler) IntfUp(ipAddr string) (err error) {
-	logger.Println("IntfUp")
-	processL3IntfUpEvent(ipAddr)
-	return nil
-}
-
-//used at init time after connecting to ASICD so as to install any routes (static) read from DB in ASICd
-func installRoutesInASIC() {
-	logger.Println("installRoutesinASIC")
-	if destNetSlice == nil {
-		logger.Println("No routes installed in RIB")
-		return
-	}
-	for i := 0; i < len(destNetSlice); i++ {
-		if destNetSlice[i].isValid == false {
-			logger.Println("Invalid route")
-			continue
-		}
-		prefixNode := RouteInfoMap.Get(destNetSlice[i].prefix)
-		if prefixNode != nil {
-			prefixNodeRouteList := prefixNode.(RouteInfoRecordList)
-			if prefixNodeRouteList.routeInfoProtocolMap == nil || prefixNodeRouteList.selectedRouteProtocol == "INVALID" || prefixNodeRouteList.routeInfoProtocolMap[prefixNodeRouteList.selectedRouteProtocol] == nil {
-				logger.Println("selected route not valid")
-				continue
-			}
-			routeInfoList := prefixNodeRouteList.routeInfoProtocolMap[prefixNodeRouteList.selectedRouteProtocol]
-			for sel := 0; sel < len(routeInfoList); sel++ {
-				routeInfoRecord := routeInfoList[sel]
-				asicdclnt.ClientHdl.OnewayCreateIPv4Route([]*asicdInt.IPv4Route{
-					&asicdInt.IPv4Route{
-						routeInfoRecord.destNetIp.String(),
-						routeInfoRecord.networkMask.String(),
-						routeInfoRecord.nextHopIp.String(),
-						int32(routeInfoRecord.nextHopIfType),
-					},
-				})
-			}
-		}
-
-	}
-}
 func getLogicalIntfInfo() {
 	logger.Println("Getting Logical Interfaces from asicd")
 	var currMarker asicdServices.Int
@@ -390,7 +292,7 @@ func getPortInfo() {
 			IntfIdNameMap[ifId] = intfEntry
 		}
 		if bulkInfo.More == false {
-			logger.Println("more returned as false, so no more get bulks")
+			logger.Info(fmt.Sprintln("more returned as false, so no more get bulks"))
 			return
 		}
 		currMarker = asicdServices.Int(bulkInfo.EndIdx)
@@ -401,16 +303,16 @@ func getIntfInfo() {
 	getVlanInfo()
 	getLogicalIntfInfo()
 }
-func AcceptConfigActions() {
+func (ribdServiceHandler *RIBDServer)  AcceptConfigActions() {
 	logger.Println("AcceptConfigActions: Setting AcceptConfig to true")
 	routeServiceHandler.AcceptConfig = true
 	getIntfInfo()
 	getConnectedRoutes()
-	UpdateRoutesFromDB()
-	go SetupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
-	routeServiceHandler.ServerUpCh <- true
+	ribdServiceHandler.UpdateRoutesFromDB()
+	go ribdServiceHandler.SetupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
+	ribdServiceHandler.ServerUpCh <- true
 }
-func connectToClient(client ClientJson) {
+func (ribdServiceHandler *RIBDServer) connectToClient(client ClientJson) {
 	var timer *time.Timer
 	logger.Info(fmt.Sprintln("in go routine ConnectToClient for connecting to %s\n", client.Name))
 	for {
@@ -426,7 +328,7 @@ func connectToClient(client ClientJson) {
 				asicdclnt.IsConnected = true
 				if arpdclnt.IsConnected == true {
 					logger.Info(fmt.Sprintln(" Connected to all clients: call AcceptConfigActions"))
-					AcceptConfigActions()
+					ribdServiceHandler.AcceptConfigActions()
 				}
 				timer.Stop()
 				return
@@ -442,7 +344,7 @@ func connectToClient(client ClientJson) {
 				arpdclnt.IsConnected = true
 				if asicdclnt.IsConnected == true {
 					logger.Info(fmt.Sprintln(" Connected to all clients: call AcceptConfigActions"))
-					AcceptConfigActions()
+					ribdServiceHandler.AcceptConfigActions()
 				}
 				timer.Stop()
 				return
@@ -450,7 +352,7 @@ func connectToClient(client ClientJson) {
 		}
 	}
 }
-func ConnectToClients(paramsFile string) {
+func (ribdServiceHandler *RIBDServer) ConnectToClients(paramsFile string) {
 	var clientsList []ClientJson
 
 	bytes, err := ioutil.ReadFile(paramsFile)
@@ -477,10 +379,10 @@ func ConnectToClients(paramsFile string) {
 				asicdclnt.IsConnected = true
 				if arpdclnt.IsConnected == true {
 					logger.Info(fmt.Sprintln(" Connected to all clients: call AcceptConfigActions"))
-					AcceptConfigActions()
+					ribdServiceHandler.AcceptConfigActions()
 				}
 			} else {
-				go connectToClient(client)
+				go ribdServiceHandler.connectToClient(client)
 			}
 		}
 		if client.Name == "arpd" {
@@ -493,55 +395,40 @@ func ConnectToClients(paramsFile string) {
 				arpdclnt.IsConnected = true
 				if asicdclnt.IsConnected == true {
 					logger.Info(fmt.Sprintln(" Connected to all clients: call AcceptConfigActions"))
-					AcceptConfigActions()
+					ribdServiceHandler.AcceptConfigActions()
 				}
 			} else {
-				go connectToClient(client)
+				go ribdServiceHandler.connectToClient(client)
 			}
 		}
 	}
 }
 
-func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
-	logger.Info(fmt.Sprintln("Setting up %s", pub_str, "publisher"))
-	pub, err := nanomsg.NewPubSocket()
-	if err != nil {
-		logger.Println("Failed to open pub socket")
-		return nil
-	}
-	ep, err := pub.Bind(pub_str)
-	if err != nil {
-		logger.Info(fmt.Sprintln("Failed to bind pub socket - ", ep))
-		return nil
-	}
-	err = pub.SetSendBuffer(1024 * 1024)
-	if err != nil {
-		logger.Println("Failed to set send buffer size")
-		return nil
-	}
-	return pub
+func (ribdServiceHandler *RIBDServer) InitializePolicyDB() *policy.PolicyEngineDB {
+	ribdServiceHandler.PolicyEngineDB = policy.NewPolicyEngineDB(logger)
+	ribdServiceHandler.PolicyEngineDB.SetDefaultImportPolicyActionFunc(defaultImportPolicyEngineActionFunc)
+	ribdServiceHandler.PolicyEngineDB.SetDefaultExportPolicyActionFunc(defaultExportPolicyEngineActionFunc)
+	ribdServiceHandler.PolicyEngineDB.SetIsEntityPresentFunc(DoesRouteExist)
+	ribdServiceHandler.PolicyEngineDB.SetEntityUpdateFunc(UpdateRouteAndPolicyDB)
+	ribdServiceHandler.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineRouteDispositionAction)
+	ribdServiceHandler.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionRedistribute)
+	ribdServiceHandler.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise, policyEngineActionNetworkStatementAdvertise)
+	ribdServiceHandler.PolicyEngineDB.SetActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionSetAdminDistance)
+	ribdServiceHandler.PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineUndoRouteDispositionAction)
+	ribdServiceHandler.PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionUndoRedistribute)
+	ribdServiceHandler.PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionUndoSetAdminDistance)
+	ribdServiceHandler.PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise, policyEngineActionUndoNetworkStatemenAdvertiseAction)
+	ribdServiceHandler.PolicyEngineDB.SetTraverseAndApplyPolicyFunc(policyEngineTraverseAndApply)
+	ribdServiceHandler.PolicyEngineDB.SetTraverseAndReversePolicyFunc(policyEngineTraverseAndReverse)
+	ribdServiceHandler.PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
+	return ribdServiceHandler.PolicyEngineDB
 }
-func InitializePolicyDB() {
-	PolicyEngineDB = policy.NewPolicyEngineDB(logger)
-	PolicyEngineDB.SetDefaultImportPolicyActionFunc(defaultImportPolicyEngineActionFunc)
-	PolicyEngineDB.SetDefaultExportPolicyActionFunc(defaultExportPolicyEngineActionFunc)
-	PolicyEngineDB.SetIsEntityPresentFunc(DoesRouteExist)
-	PolicyEngineDB.SetEntityUpdateFunc(UpdateRouteAndPolicyDB)
-	PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineRouteDispositionAction)
-	PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionRedistribute)
-	PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise, policyEngineActionNetworkStatementAdvertise)
-	PolicyEngineDB.SetActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionSetAdminDistance)
-	PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineUndoRouteDispositionAction)
-	PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionUndoRedistribute)
-	PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionUndoSetAdminDistance)
-	PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise, policyEngineActionUndoNetworkStatemenAdvertiseAction)
-	PolicyEngineDB.SetTraverseAndApplyPolicyFunc(policyEngineTraverseAndApply)
-	PolicyEngineDB.SetTraverseAndReversePolicyFunc(policyEngineTraverseAndReverse)
-	PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
-}
-func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
+func NewRIBDServicesHandler(dbHdl *sql.DB, loggerC *logging.Writer) *RIBDServer {
+	fmt.Println("NewRIBDServicesHandler")
 	RouteInfoMap = patriciaDB.NewTrie()
-	ribdServicesHandler := &RIBDServicesHandler{}
+	ribdServicesHandler := &RIBDServer{}
+	ribdServicesHandler.Logger = loggerC
+	logger = loggerC
 	RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
 	TrackReachabilityMap = make(map[string][]string)
 	RouteProtocolTypeMapDB = make(map[string]int)
@@ -549,6 +436,7 @@ func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
 	ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
 	PublisherInfoMap = make(map[string]PublisherMapInfo)
 	ribdServicesHandler.NextHopInfoMap = make(map[NextHopInfoKey]NextHopInfo)
+	ribdServicesHandler.TrackReachabilityCh = make(chan TrackReachabilityInfo,1000)
 	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route,5000)
 	ribdServicesHandler.RouteDeleteConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteUpdateConfCh = make(chan UpdateRouteInfo)
@@ -573,23 +461,26 @@ func NewRIBDServicesHandler(dbHdl *sql.DB) *RIBDServicesHandler {
 	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.ServerUpCh = make(chan bool)
 	ribdServicesHandler.DbHdl = dbHdl
+	routeServiceHandler = ribdServicesHandler
 	//ribdServicesHandler.RouteInstallCh = make(chan RouteParams)
 	return ribdServicesHandler
 }
-func (ribdServiceHandler *RIBDServicesHandler) StartServer(paramsDir string) {
+func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
+	fmt.Println("StartServer")
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
 	PARAMSDIR = paramsDir
 	localRouteEventsDB = make([]RouteEventInfo, 0)
 	configFile := paramsDir + "/clients.json"
 	logger.Info(fmt.Sprintln("configfile = ", configFile))
+	fmt.Println("After using logger")
 	BuildRouteProtocolTypeMapDB()
 	BuildProtocolAdminDistanceMapDB()
 	BuildPublisherMap()
 	//RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	//CreateRoutes("RouteSetup.json")
-	InitializePolicyDB()
-	UpdatePolicyObjectsFromDB() //(paramsDir)
-	ConnectToClients(configFile)
+	PolicyEngineDB = ribdServiceHandler.InitializePolicyDB()
+	ribdServiceHandler.UpdatePolicyObjectsFromDB() //(paramsDir)
+	ribdServiceHandler.ConnectToClients(configFile)
 	logger.Println("Starting the server loop")
 	for {
 		if !routeServiceHandler.AcceptConfig {
@@ -605,7 +496,7 @@ func (ribdServiceHandler *RIBDServicesHandler) StartServer(paramsDir string) {
 			ribdServiceHandler.ProcessRouteDeleteConfig(routeDeleteConf)
 		case routeUpdateConf := <-ribdServiceHandler.RouteUpdateConfCh:
 			logger.Info("received message on RouteUpdateConfCh channel")
-			ribdServiceHandler.ProcessRouteUpdateConfig(routeUpdateConf.origRoute, routeUpdateConf.newRoute, routeUpdateConf.attrset)
+			ribdServiceHandler.ProcessRouteUpdateConfig(routeUpdateConf.OrigRoute, routeUpdateConf.NewRoute, routeUpdateConf.Attrset)
 			/*		case routeInfo := <-ribdServiceHandler.RouteInstallCh:
 			    logger.Println("received message on RouteInstallConfCh channel")
 				ribdServiceHandler.ProcessRouteInstall(routeInfo)*/
@@ -633,6 +524,9 @@ func (ribdServiceHandler *RIBDServicesHandler) StartServer(paramsDir string) {
 		case policyDeleteConf := <-ribdServiceHandler.PolicyDefinitionDeleteConfCh:
 			logger.Info("received message on PolicyDefinitionDeleteConfCh channel")
 			ribdServiceHandler.ProcessPolicyDefinitionConfigDelete(policyDeleteConf)
+		case info := <-ribdServiceHandler.TrackReachabilityCh:
+			logger.Info("received message on TrackReachabilityCh channel")
+			ribdServiceHandler.TrackReachabilityStatus(info.IpAddr,info.Protocol,info.Op)
 		}
 	}
 }

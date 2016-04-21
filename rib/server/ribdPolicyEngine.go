@@ -1,5 +1,5 @@
 // ribdPolicyEngine.go
-package main
+package server
 
 import (
 	"asicd/asicdConstDefs"
@@ -15,6 +15,7 @@ import (
 	"utils/patriciaDB"
 	"utils/policy"
 	"utils/policy/policyCommonDefs"
+	"strings"
 )
 
 type TraverseAndApplyPolicyData struct {
@@ -455,9 +456,13 @@ func policyEngineActionRedistribute(actionInfo interface{}, conditionInfo []inte
 			evt = ribdCommonDefs.NOTIFY_ROUTE_DELETED
 		}
 	}
+    if strings.Contains(ReverseRouteProtoTypeMapDB[int(RouteInfo.routeType)], redistributeActionInfo.RedistributeTargetProtocol) {
+		logger.Info("Redistribute target protocol same as route source, do nothing more here")
+		return
+	}
 	switch RouteProtocolTypeMapDB[redistributeActionInfo.RedistributeTargetProtocol] {
 	case ribdCommonDefs.BGP:
-		logger.Info(fmt.Sprintln("Redistribute to BGP"))
+		logger.Info(fmt.Sprintln("Redistribute target Protocol BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
 		route.RouteOrigin = ReverseRouteProtoTypeMapDB[int(RouteInfo.routeType)]
 		publisherInfo, ok := PublisherInfoMap["BGP"]
@@ -577,6 +582,9 @@ func policyEngineApplyForRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, t
 	}
 	for i := 0; i < len(selectedRouteList); i++ {
 		selectedRouteInfoRecord := selectedRouteList[i]
+		if destNetSlice[selectedRouteInfoRecord.sliceIdx].isValid == false {
+			continue
+		}
 		policyRoute := ribdInt.Routes{Ipaddr: selectedRouteInfoRecord.destNetIp.String(), Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(selectedRouteInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(selectedRouteInfoRecord.metric), Prototype: ribdInt.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid: rmapInfoRecordList.isPolicyBasedStateValid}
 		params := RouteParams{destNetIp: policyRoute.Ipaddr, networkMask: policyRoute.Mask, routeType: ribd.Int(policyRoute.Prototype), nextHopIp: selectedRouteInfoRecord.nextHopIp.String(), sliceIdx: ribd.Int(policyRoute.SliceIdx), createType: Invalid, deleteType: Invalid}
 		entity, err := buildPolicyEntityFromRoute(policyRoute, params)

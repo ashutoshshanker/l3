@@ -239,7 +239,7 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 				addedAllPrefixes = false
 				continue
 			}
-			adjRib.logger.Info(fmt.Sprintln("Increment prefix count for destination %s from Peer %s",
+			adjRib.logger.Info(fmt.Sprintf("Increment prefix count for destination %s from Peer %s",
 				nlri.GetPrefix().Prefix.String(), peerIP))
 			addPath.NeighborConf.IncrPrefixCount()
 		}

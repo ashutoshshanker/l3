@@ -123,6 +123,22 @@ func (h *BFDHandler) convertSessionStateToThrift(ent server.SessionState) *bfdd.
 	return sessionState
 }
 
+func (h *BFDHandler) convertSessionParamStateToThrift(ent server.SessionParamState) *bfdd.BfdSessionParamState {
+	sessionParamState := bfdd.NewBfdSessionParamState()
+	sessionParamState.Name = string(ent.Name)
+	sessionParamState.NumSessions = int32(ent.NumSessions)
+	sessionParamState.LocalMultiplier = int32(ent.LocalMultiplier)
+	sessionParamState.DesiredMinTxInterval = string(strconv.Itoa(int(ent.DesiredMinTxInterval)) + "(us)")
+	sessionParamState.RequiredMinRxInterval = string(strconv.Itoa(int(ent.RequiredMinRxInterval)) + "(us)")
+	sessionParamState.RequiredMinEchoRxInterval = string(strconv.Itoa(int(ent.RequiredMinEchoRxInterval)) + "(us)")
+	sessionParamState.DemandEnabled = ent.DemandEnabled
+	sessionParamState.AuthenticationEnabled = ent.AuthenticationEnabled
+	sessionParamState.AuthenticationType = string(h.server.ConvertBfdAuthTypeValToStr(ent.AuthenticationType))
+	sessionParamState.AuthenticationKeyId = int32(ent.AuthenticationKeyId)
+	sessionParamState.AuthenticationData = string(ent.AuthenticationData)
+	return sessionParamState
+}
+
 func (h *BFDHandler) GetBulkBfdSessionState(fromIdx bfdd.Int, count bfdd.Int) (*bfdd.BfdSessionStateGetInfo, error) {
 	h.logger.Info(fmt.Sprintln("Get session states"))
 	nextIdx, currCount, bfdSessionStates := h.server.GetBulkBfdSessionStates(int(fromIdx), int(count))
@@ -141,4 +157,24 @@ func (h *BFDHandler) GetBulkBfdSessionState(fromIdx bfdd.Int, count bfdd.Int) (*
 	BfdSessionStateGetInfo.More = (nextIdx != 0)
 	BfdSessionStateGetInfo.BfdSessionStateList = bfdSessionResponse
 	return BfdSessionStateGetInfo, nil
+}
+
+func (h *BFDHandler) GetBulkBfdSessionParamState(fromIdx bfdd.Int, count bfdd.Int) (*bfdd.BfdSessionParamStateGetInfo, error) {
+	h.logger.Info(fmt.Sprintln("Get session param states"))
+	nextIdx, currCount, bfdSessionParamStates := h.server.GetBulkBfdSessionParamStates(int(fromIdx), int(count))
+	if bfdSessionParamStates == nil {
+		err := errors.New("Bfd server is busy")
+		return nil, err
+	}
+	bfdSessionParamResponse := make([]*bfdd.BfdSessionParamState, len(bfdSessionParamStates))
+	for idx, item := range bfdSessionParamStates {
+		bfdSessionParamResponse[idx] = h.convertSessionParamStateToThrift(item)
+	}
+	BfdSessionParamStateGetInfo := bfdd.NewBfdSessionParamStateGetInfo()
+	BfdSessionParamStateGetInfo.Count = bfdd.Int(currCount)
+	BfdSessionParamStateGetInfo.StartIdx = bfdd.Int(fromIdx)
+	BfdSessionParamStateGetInfo.EndIdx = bfdd.Int(nextIdx)
+	BfdSessionParamStateGetInfo.More = (nextIdx != 0)
+	BfdSessionParamStateGetInfo.BfdSessionParamStateList = bfdSessionParamResponse
+	return BfdSessionParamStateGetInfo, nil
 }

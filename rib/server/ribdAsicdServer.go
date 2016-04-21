@@ -1,5 +1,5 @@
 // ribdAsicdServer.go
-package main
+package server
 
 import (
 	"asicdInt"
@@ -27,7 +27,7 @@ func delAsicdRoute(routeInfoRecord RouteInfoRecord) {
 		},
 	})
 }
-func (ribdServiceHandler *RIBDServicesHandler) StartAsicdServer() {
+func (ribdServiceHandler *RIBDServer) StartAsicdServer() {
 	logger.Info("Starting the asicdserver loop")
 	for {
 		select {
