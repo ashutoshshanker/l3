@@ -63,6 +63,11 @@ type PolicyParams struct {
 	updatedAddPaths *([]*bgprib.Destination)
 }
 
+const (
+	FLEXSWITCH = "FlexSwitch"
+	OVSDB      = "ovsdb"
+)
+
 type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
@@ -93,10 +98,13 @@ type BGPServer struct {
 	ifaceIP        net.IP
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 	addPathCount   int
+
+	plugin string
 }
 
-func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine, ribdClient *ribd.RIBDServicesClient,
-	bfddClient *bfdd.BFDDServicesClient, asicdClient *asicdServices.ASICDServicesClient) *BGPServer {
+func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
+	ribdClient *ribd.RIBDServicesClient, bfddClient *bfdd.BFDDServicesClient,
+	asicdClient *asicdServices.ASICDServicesClient, plugin string) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.bgpPE = policyEngine
@@ -139,6 +147,7 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.bgpPE.SetActionFuncs(bgpServer.actionFuncMap)
 	bgpServer.bgpPE.SetTraverseFuncs(bgpServer.TraverseAndApplyBGPRib, bgpServer.TraverseAndReverseBGPRib)
 
+	bgpServer.plugin = plugin
 	return bgpServer
 }
 
@@ -1128,16 +1137,17 @@ func (server *BGPServer) StartServer() {
 	acceptCh := make(chan *net.TCPConn)
 	go server.listenForPeers(acceptCh)
 
-	//	routes, _ := server.ribdClient.GetConnectedRoutesInfo()
-	server.ProcessRoutesFromRIB()
-	//	server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
+	if server.plugin == FLEXSWITCH {
+		//	routes, _ := server.ribdClient.GetConnectedRoutesInfo()
+		server.ProcessRoutesFromRIB()
+		//	server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
 
-	go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
-	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
-	go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
-	go server.listenForBFDNotifications(bfdSubSocket, bfdSubSocketCh, bfdSubSocketErrCh)
-	//go server.AdjRib.ProcessRIBdRouteRequests()
-
+		go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
+		go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
+		go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
+		go server.listenForBFDNotifications(bfdSubSocket, bfdSubSocketCh, bfdSubSocketErrCh)
+		//go server.AdjRib.ProcessRIBdRouteRequests()
+	}
 	for {
 		select {
 		case gConf = <-server.GlobalConfigCh:

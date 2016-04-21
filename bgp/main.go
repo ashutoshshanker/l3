@@ -53,6 +53,11 @@ func main() {
 	// Start keepalive routine
 	go keepalive.InitKeepAlive("bgpd", fileName)
 
+	// starting bgp policy engine...
+	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
+	bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger)
+	go bgpPolicyEng.StartPolicyEngine()
+
 	// @FIXME: Plugin name should come for json readfile...
 	plugin := OVSDB_PLUGIN
 
@@ -60,7 +65,15 @@ func main() {
 	case OVSDB_PLUGIN:
 		// if plugin used is ovs db then lets start ovsdb client listener
 		quit := make(chan bool)
-		ovsdbManager, err := ovsdbHandler.NewBGPOvsdbHandler(logger)
+		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, nil,
+			nil, nil, plugin)
+		go bgpServer.StartServer()
+
+		logger.Info(fmt.Sprintln("Starting config listener..."))
+		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
+
+		// create and start ovsdb handler
+		ovsdbManager, err := ovsdbHandler.NewBGPOvsdbHandler(logger, confIface)
 		if err != nil {
 			fmt.Println("Starting OVDB client failed ERROR:", err)
 			return
@@ -80,15 +93,10 @@ func main() {
 			return
 		}
 
-		// Connection to clients sucess, starting bgp policy engine...
-		logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
-		bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger)
-		go bgpPolicyEng.StartPolicyEngine()
-
 		// Connection to clients success, lets start bgp backend server
 		logger.Info(fmt.Sprintln("Starting BGP Server..."))
 		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient,
-			bfddClient, asicdClient)
+			bfddClient, asicdClient, "FlexSwitch")
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
