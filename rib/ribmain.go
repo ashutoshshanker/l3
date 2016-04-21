@@ -2,16 +2,16 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"io/ioutil"
 	"ribd"
 	"strconv"
 	"utils/keepalive"
 	"utils/logging"
 	"utils/policy"
-	"io/ioutil"
-	"encoding/json"
 )
 
 var logger *logging.Writer
@@ -55,7 +55,7 @@ func main() {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
 	}
-	go logger.ListenForSysdNotifications()
+	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
 
 	// Start keepalive routine
@@ -76,7 +76,7 @@ func main() {
 	if err != nil || clientJson == nil {
 		return
 	}
-	var addr = "localhost:" + strconv.Itoa(clientJson.Port)//"localhost:5000"
+	var addr = "localhost:" + strconv.Itoa(clientJson.Port) //"localhost:5000"
 	fmt.Println("Starting rib daemon at addr ", addr)
 
 	transport, err = thrift.NewTServerSocket(addr)
