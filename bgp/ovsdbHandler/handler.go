@@ -29,6 +29,12 @@ type BGPOvsOperations struct {
 	operations []ovsdb.Operation
 }
 
+type BGPOvsRouterInfo struct {
+	asn      uint32 // this is bgp asn number
+	uuid     UUID   // this is key
+	routerId string // This is ip address
+}
+
 type BGPOvsdbHandler struct {
 	logger         *logging.Writer
 	bgpovs         *ovsdb.OvsdbClient
@@ -36,6 +42,7 @@ type BGPOvsdbHandler struct {
 	cache          map[string]map[string]ovsdb.Row
 	operCh         chan *BGPOvsOperations
 	bgpCachedOvsdb map[UUID]BGPFlexSwitch
+	routerInfo     *BGPOvsRouterInfo
 }
 
 func NewBGPOvsdbNotifier(ch chan *ovsdb.TableUpdates) *BGPOvsdbNotifier {
@@ -120,7 +127,11 @@ func (ovsHdl *BGPOvsdbHandler) Transact(operations []ovsdb.Operation) error {
 func (ovsHdl *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
 	table, ok := updates.Updates[OVSDB_BGP_ROUTER_TABLE]
 	if ok {
-		//fmt.Println(table)
+		err := ovsHdl.HandleBGPRouteUpd(table)
+		if err != nil {
+			ovsHdl.logger.Err(fmt.Sprintln(err))
+			return
+		}
 	}
 	table, ok = updates.Updates[OVSDB_BGP_NEIGHBOR_TABLE]
 	if ok {
@@ -129,6 +140,7 @@ func (ovsHdl *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
 			ovsHdl.logger.Err(fmt.Sprintln(err))
 			return
 		}
+		ovsHdl.logger.Info(fmt.Sprintln(ovsHdl.routerInfo))
 	}
 }
 
