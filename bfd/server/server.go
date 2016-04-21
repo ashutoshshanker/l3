@@ -376,15 +376,19 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 
 	for rows.Next() {
 		var dstIp string
+		var paramName string
+		var intfName string
 		var perLink string
 		var owner string
-		err = rows.Scan(&dstIp, &perLink, &owner)
+		err = rows.Scan(&dstIp, &paramName, &intfName, &perLink, &owner)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSession: ", err))
 			return err
 		}
 		sessionConf := SessionConfig{
 			DestIp:    dstIp,
+			ParamName: paramName,
+			Interface: intfName,
 			PerLink:   dbutils.ConvertStringToBool(perLink),
 			Protocol:  bfddCommonDefs.USER,
 			Operation: bfddCommonDefs.CREATE,
