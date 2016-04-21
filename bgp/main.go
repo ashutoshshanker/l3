@@ -66,7 +66,7 @@ func main() {
 		// if plugin used is ovs db then lets start ovsdb client listener
 		quit := make(chan bool)
 		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, nil,
-			nil, nil)
+			nil, nil, plugin)
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
@@ -96,7 +96,7 @@ func main() {
 		// Connection to clients success, lets start bgp backend server
 		logger.Info(fmt.Sprintln("Starting BGP Server..."))
 		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient,
-			bfddClient, asicdClient)
+			bfddClient, asicdClient, "FlexSwitch")
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
