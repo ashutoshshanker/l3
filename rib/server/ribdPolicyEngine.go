@@ -1,5 +1,5 @@
 // ribdPolicyEngine.go
-package main
+package server
 
 import (
 	"asicd/asicdConstDefs"

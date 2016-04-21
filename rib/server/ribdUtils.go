@@ -1,5 +1,5 @@
 // ribdUtils.go
-package main
+package server
 
 import (
 	"encoding/json"
@@ -16,7 +16,9 @@ import (
 	"utils/netUtils"
 	"utils/patriciaDB"
 	"utils/policy"
+	"utils/commonDefs"
 	"github.com/op/go-nanomsg"
+	"asicd/asicdConstDefs"
 )
 
 type RouteDistanceConfig struct {
@@ -39,6 +41,27 @@ var ReverseRouteProtoTypeMapDB map[int]string
 var ProtocolAdminDistanceMapDB map[string]RouteDistanceConfig
 var ProtocolAdminDistanceSlice AdminDistanceSlice
 var PublisherInfoMap map[string]PublisherMapInfo
+var RIBD_PUB *nanomsg.PubSocket
+
+func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
+	logger.Info(fmt.Sprintln("Setting up %s", pub_str, "publisher"))
+	pub, err := nanomsg.NewPubSocket()
+	if err != nil {
+		logger.Println("Failed to open pub socket")
+		return nil
+	}
+	ep, err := pub.Bind(pub_str)
+	if err != nil {
+		logger.Info(fmt.Sprintln("Failed to bind pub socket - ", ep))
+		return nil
+	}
+	err = pub.SetSendBuffer(1024 * 1024)
+	if err != nil {
+		logger.Println("Failed to set send buffer size")
+		return nil
+	}
+	return pub
+}
 
 func BuildPublisherMap() {
 	RIBD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_ADDR)
@@ -110,6 +133,71 @@ func BuildProtocolAdminDistanceSlice() {
 	sort.Sort(ProtocolAdminDistanceSlice)
 }
 
+func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (err error) {
+	logger.Info(fmt.Sprintln("RouteConfigValidationCheck"))
+	if op == "add" {
+  	    _, ok := RouteProtocolTypeMapDB[cfg.Protocol]
+	    if !ok {
+		    logger.Info(fmt.Sprintln("route type ", cfg.Protocol, " invalid"))
+		    err = errors.New("Invalid route protocol type")
+		    return err
+	    }
+	    var nextHopIfType int
+	    var nextHopIf int
+	    if cfg.OutgoingIntfType == "VLAN" {
+		    nextHopIfType = commonDefs.IfTypeVlan
+	    } else if cfg.OutgoingIntfType == "PHY" {
+		    nextHopIfType = commonDefs.IfTypePort
+	    } else if cfg.OutgoingIntfType == "NULL" {
+		    nextHopIfType = commonDefs.IfTypeNull
+	    } else if cfg.OutgoingIntfType == "Loopback" {
+		    nextHopIfType = commonDefs.IfTypeLoopback
+	    }
+	    nextHopIf, _ = strconv.Atoi(cfg.OutgoingInterface)
+	    ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(nextHopIf, nextHopIfType)
+	    logger.Info(fmt.Sprintln("IfId = ", ifId))
+	    _, ok = IntfIdNameMap[ifId]
+	    if !ok {
+		    logger.Err(fmt.Sprintln("Cannot create ip route on a unknown L3 interface"))
+		    return errors.New("Cannot create ip route on a unknown L3 interface")
+	    }
+	    _, err = getIP(cfg.NextHopIp)
+	    if err != nil {
+		    logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
+		    return errors.New("Invalid next hop ip address")
+	    }
+	}
+	isCidr := strings.Contains(cfg.DestinationNw, "/")
+	if isCidr { //the given address is in CIDR format
+	    ip, ipNet, err := net.ParseCIDR(cfg.DestinationNw)
+	    if err != nil {    
+		    logger.Err(fmt.Sprintln("Invalid Destination IP address"))
+			return errors.New("Invalid Desitnation IP address")
+	    }
+	    _, err = getNetworkPrefixFromCIDR(cfg.DestinationNw)
+	    if err != nil {
+		    return errors.New("Invalid destination ip/network Mask")
+	    }
+		cfg.DestinationNw = ip.String() 
+	    ipMask := make(net.IP, 4)
+		copy(ipMask, ipNet.Mask)
+		ipMaskStr := net.IP(ipMask).String()
+		cfg.NetworkMask = ipMaskStr
+	} 
+    destNet, err := getNetowrkPrefixFromStrings(cfg.DestinationNw, cfg.NetworkMask)
+	if err != nil {
+		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
+		return errors.New("Invalid destination ip address")
+	}	
+	if op == "del" || op == "update" {
+		ok := RouteInfoMap.Match(destNet)
+	    if !ok {
+		    err = errors.New("No route found")
+		    return err
+	    }
+	}
+	return nil
+}
 func arpResolveCalled(key NextHopInfoKey) (bool) {
 	if routeServiceHandler.NextHopInfoMap == nil {
 		return false

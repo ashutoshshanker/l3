@@ -1,5 +1,5 @@
 // ribdArpdServer.go
-package main
+package server
 
 import (
 	"arpdInt"
@@ -16,7 +16,7 @@ func arpdRemoveRoute(routeInfoRecord RouteInfoRecord) {
 	arpdclnt.ClientHdl.DeleteResolveArpIPv4(routeInfoRecord.resolvedNextHopIpIntf.NextHopIp)
 	logger.Info(fmt.Sprintln("ARP remove for ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, " returned "))
 }
-func (ribdServiceHandler *RIBDServicesHandler) StartArpdServer() {
+func (ribdServiceHandler *RIBDServer) StartArpdServer() {
 	logger.Info("Starting the arpdserver loop")
 	for {
 		select {
