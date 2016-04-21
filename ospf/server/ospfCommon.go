@@ -95,7 +95,7 @@ type IntfToNeighMsg struct {
 }
 
 type NbrStateChangeMsg struct {
-	RouterId uint32
+	nbrKey NeighborConfKey
 }
 
 const (
@@ -128,6 +128,7 @@ type AdjOKEvtMsg struct {
 type NbrFullStateMsg struct {
 	FullState bool
 	NbrRtrId  uint32
+	nbrKey NeighborConfKey
 }
 
 const (
