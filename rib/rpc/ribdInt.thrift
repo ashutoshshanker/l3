@@ -72,15 +72,11 @@ service RIBDINTServices
     NextHopInfo getRouteReachabilityInfo(1: string desIPv4MasktNet);
 	string GetNextHopIfTypeStr(1: int nextHopIfType);
 	//list<Routes> getConnectedRoutesInfo();
-    void printV4Routes();
+    //void printV4Routes();
 	RoutesGetInfo getBulkRoutesForProtocol(1: string srcProtocol, 2: int fromIndex ,3: int rcount)
     void TrackReachabilityStatus(1: string ipAddr, 2: string protocol, 3:string op) //op:"add"/"del"
 	//RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
-	void linkDown(1: int ifType, 2:int ifIndex);
-	void linkUp(1: int ifType, 2:int ifIndex);
-	void intfUp(1:string ipAddr);
-	void intfDown(1:string ipAddr);
 	oneway void OnewayCreateBulkIPv4Route(1: list<IPv4Route> config);
 	
 }
