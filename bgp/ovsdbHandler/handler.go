@@ -4,6 +4,7 @@ import (
 	ovsdb "github.com/socketplane/libovsdb"
 
 	"fmt"
+	"l3/bgp/rpc"
 	"reflect"
 	"utils/logging"
 )
@@ -43,6 +44,7 @@ type BGPOvsdbHandler struct {
 	operCh         chan *BGPOvsOperations
 	bgpCachedOvsdb map[UUID]BGPFlexSwitch
 	routerInfo     *BGPOvsRouterInfo
+	rpcHdl         *rpc.BGPHandler
 }
 
 func NewBGPOvsdbNotifier(ch chan *ovsdb.TableUpdates) *BGPOvsdbNotifier {
@@ -51,7 +53,7 @@ func NewBGPOvsdbNotifier(ch chan *ovsdb.TableUpdates) *BGPOvsdbNotifier {
 	}
 }
 
-func NewBGPOvsdbHandler(logger *logging.Writer) (*BGPOvsdbHandler, error) {
+func NewBGPOvsdbHandler(logger *logging.Writer, handler *rpc.BGPHandler) (*BGPOvsdbHandler, error) {
 	ovs, err := ovsdb.Connect(OVSDB_HANDLER_HOST_IP, OVSDB_HANDLER_HOST_PORT)
 	if err != nil {
 		return nil, err
@@ -67,6 +69,7 @@ func NewBGPOvsdbHandler(logger *logging.Writer) (*BGPOvsdbHandler, error) {
 		operCh:         make(chan *BGPOvsOperations, OVSDB_HANDLER_OPERATIONS_SIZE),
 		cache:          make(map[string]map[string]ovsdb.Row),
 		bgpCachedOvsdb: make(map[UUID]BGPFlexSwitch, OVSDB_FS_INITIAL_SIZE),
+		rpcHdl:         handler,
 	}, nil
 }
 
