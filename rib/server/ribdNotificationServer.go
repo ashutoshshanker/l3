@@ -1,5 +1,5 @@
 // ribNotify.go
-package main
+package server
 
 import (
 	"fmt"
@@ -11,10 +11,10 @@ type NotificationMsg struct {
 	msg    []byte
 	eventInfo string
 }
-func (ribdServiceHandler *RIBDServicesHandler) NotificationServer() {
+func (ribdServiceHandler *RIBDServer) NotificationServer() {
 	logger.Info(fmt.Sprintln("Starting notification server loop"))
 	for {
-		notificationMsg := <-routeServiceHandler.NotificationChannel
+		notificationMsg := <-ribdServiceHandler.NotificationChannel
 		logger.Info(fmt.Sprintln("Event received with eventInfo: ", notificationMsg.eventInfo))
 	    routeEventInfo := RouteEventInfo{timeStamp: time.Now().String(), eventInfo: notificationMsg.eventInfo}
 	    localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
