@@ -25,9 +25,10 @@ type NeighborData struct {
 	FullState    bool
 }
 
+/*
 type NeighborKey struct {
 	RouterId uint32
-}
+} */
 
 type BackupSeenMsg struct {
 	RouterId uint32
@@ -71,7 +72,7 @@ type IntfConf struct {
 	FSMCtrlStatusCh       chan bool
 	HelloIntervalTicker   *time.Ticker
 	BackupSeenCh          chan BackupSeenMsg
-	NeighborMap           map[NeighborKey]NeighborData
+	NeighborMap           map[NeighborConfKey]NeighborData
 	NeighCreateCh         chan NeighCreateMsg
 	NeighChangeCh         chan NeighChangeMsg
 	NbrStateChangeCh      chan NbrStateChangeMsg
@@ -138,7 +139,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		//ent.WaitTimerExpired = make(chan bool)
 		ent.WaitTimer = nil
 		ent.HelloIntervalTicker = nil
-		ent.NeighborMap = make(map[NeighborKey]NeighborData)
+		ent.NeighborMap = make(map[NeighborConfKey]NeighborData)
 		if ifType == broadcast {
 			ent.IfNetmask = ipIntfProp.NetMask
 			ent.IfIpAddr = ipIntfProp.IpAddr
@@ -422,7 +423,7 @@ func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
 		ent.WaitTimer = time.NewTimer(waitTime)
 	}
 	// rtrDeadInterval := time.Duration(ent.IfRtrDeadInterval * time.Second)
-	ent.NeighborMap = make(map[NeighborKey]NeighborData)
+	ent.NeighborMap = make(map[NeighborConfKey]NeighborData)
 	ent.IfEvents = ent.IfEvents + 1
 	if ent.IfType == config.Broadcast {
 		ent.IfFSMState = config.Waiting

@@ -180,10 +180,19 @@ func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packe
 
 func (server *OSPFServer) processOspfData(data []byte, ethHdrMd *EthHdrMetadata, ipHdrMd *IpHdrMetadata, ospfHdrMd *OspfHdrMetadata, key IntfConfKey) error {
 	var err error = nil
-	routerid := binary.BigEndian.Uint32(ospfHdrMd.routerId)
-	exist := server.neighborExist(routerid)
+	//routerid := binary.BigEndian.Uint32(ospfHdrMd.routerId)
+	NeighborIP := net.IPv4(ipHdrMd.srcIP[0], ipHdrMd.srcIP[1], ipHdrMd.srcIP[2], ipHdrMd.srcIP[3])
+	//ipaddr := convertByteToOctetString(ipHdrMd.srcIP)
+	ospfNbrConfKey := NeighborConfKey{
+		IPAddr:  config.IpAddress(NeighborIP.String()),
+		IntfIdx: key.IntfIdx,
+	}
+	exist := server.neighborExist(ospfNbrConfKey)
+	if !exist {
+		server.logger.Info(fmt.Sprintln("PACKET: neighbor doesnt exist..", NeighborIP, key.IntfIdx))
+	}
 	switch ospfHdrMd.pktType {
-	case HelloType:	
+	case HelloType:
 		err = server.processRxHelloPkt(data, ospfHdrMd, ipHdrMd, ethHdrMd, key)
 	case DBDescriptionType:
 		if exist {

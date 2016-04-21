@@ -92,6 +92,7 @@ type BfdSession struct {
 	recvPcapHandle      *pcap.Handle
 	useDedicatedMac     bool
 	intfConfigChanged   bool
+	paramConfigChanged  bool
 	stateChanged        bool
 	isClientActive      bool
 	server              *BFDServer
@@ -376,15 +377,19 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 
 	for rows.Next() {
 		var dstIp string
+		var paramName string
+		var intfName string
 		var perLink string
 		var owner string
-		err = rows.Scan(&dstIp, &perLink, &owner)
+		err = rows.Scan(&dstIp, &paramName, &intfName, &perLink, &owner)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSession: ", err))
 			return err
 		}
 		sessionConf := SessionConfig{
 			DestIp:    dstIp,
+			ParamName: paramName,
+			Interface: intfName,
 			PerLink:   dbutils.ConvertStringToBool(perLink),
 			Protocol:  bfddCommonDefs.USER,
 			Operation: bfddCommonDefs.CREATE,
@@ -485,8 +490,10 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 			server.processSessionConfig(sessionConfig)
 		case sessionParamConfig := <-server.SessionParamConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Session Param Configuration", sessionParamConfig))
+			server.processSessionParamConfig(sessionParamConfig)
 		case paramName := <-server.SessionParamDeleteCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Session Param Delete", paramName))
+			server.processSessionParamDelete(paramName)
 		}
 	}
 }

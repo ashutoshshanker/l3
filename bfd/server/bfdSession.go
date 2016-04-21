@@ -292,6 +292,7 @@ func (server *BFDServer) NewNormalBfdSession(IfIndex int32, DestIp string, PerLi
 		bfdSession.authData = intf.conf.AuthenticationData
 		bfdSession.intfConfigChanged = true
 	}
+	bfdSession.paramConfigChanged = true
 	bfdSession.server = server
 	bfdSession.bfdPacket = NewBfdControlPacketDefault()
 	server.bfdGlobal.Sessions[sessionId] = bfdSession
@@ -365,6 +366,33 @@ func (server *BFDServer) UpdateBfdSessionsOnInterface(ifIndex int32) error {
 					session.StopBfdSession()
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func (server *BFDServer) UpdateBfdSessionsUsingParam(paramName string) error {
+	sessionParam, paramExist := server.bfdGlobal.SessionParams[paramName]
+	for _, session := range server.bfdGlobal.Sessions {
+		if session.state.ParamName == paramName {
+			if paramExist {
+				session.state.DesiredMinTxInterval = sessionParam.state.DesiredMinTxInterval
+				session.state.RequiredMinRxInterval = sessionParam.state.RequiredMinRxInterval
+				session.state.DetectionMultiplier = sessionParam.state.LocalMultiplier
+				session.state.DemandMode = sessionParam.state.DemandEnabled
+				session.authEnabled = sessionParam.state.AuthenticationEnabled
+				session.authType = AuthenticationType(sessionParam.state.AuthenticationType)
+				session.authKeyId = uint32(sessionParam.state.AuthenticationKeyId)
+				session.authData = sessionParam.state.AuthenticationData
+			} else {
+				session.state.DesiredMinTxInterval = DEFAULT_DESIRED_MIN_TX_INTERVAL
+				session.state.RequiredMinRxInterval = DEFAULT_REQUIRED_MIN_RX_INTERVAL
+				session.state.DetectionMultiplier = DEFAULT_DETECT_MULTI
+				session.state.DemandMode = false
+				session.authEnabled = false
+			}
+			session.paramConfigChanged = true
+			session.InitiatePollSequence()
 		}
 	}
 	return nil
@@ -731,6 +759,7 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 		session.bfdPacket.AuthPresent = false
 	}
 	session.intfConfigChanged = false
+	session.paramConfigChanged = false
 	session.stateChanged = false
 	return nil
 }
@@ -925,6 +954,7 @@ func (session *BfdSession) ApplyTxJitter() int32 {
 
 func (session *BfdSession) NeedBfdPacketUpdate() bool {
 	if session.intfConfigChanged == true ||
+		session.paramConfigChanged == true ||
 		session.stateChanged == true ||
 		session.pollSequence == true ||
 		session.pollSequenceFinal == true {

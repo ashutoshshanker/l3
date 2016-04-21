@@ -15,7 +15,7 @@ const (
 for tx LSAUPD channel
 */
 type ospfFloodMsg struct {
-	nbrKey  uint32
+	nbrKey  NeighborConfKey
 	intfKey IntfConfKey
 	areaId  uint32
 	lsType  uint8
@@ -202,6 +202,11 @@ func (server *OSPFServer) processFloodMsg(lsa_data ospfFloodMsg) {
 	case LSASUMMARYFLOOD:
 		server.logger.Info(fmt.Sprintln("Flood: Summary LSA flood msg received."))
 		server.processSummaryLSAFlood(lsa_data.areaId, lsa_data.lsaKey)
+
+	case LSAEXTFLOOD: //flood AS External LSA
+		server.logger.Info(fmt.Sprintln("LSAEXTFLOOD: Flood external routes for lsa key ", lsa_data.lsaKey))
+		server.processAsExternalLSAFlood(lsa_data.lsaKey)
+
 	case LSAAGE: // Flood aged LSAs
 		server.constructAndSendLsaAgeFlood()
 
@@ -258,13 +263,13 @@ func (server *OSPFServer) constructAndSendLsaAgeFlood() {
 /* @fn interfaceFloodCheck
 Check if we need to flood the LSA on the interface
 */
-func (server *OSPFServer) nbrFloodCheck(nbrKey uint32, key IntfConfKey, intf IntfConf, lsType uint8) bool {
+func (server *OSPFServer) nbrFloodCheck(nbrKey NeighborConfKey, key IntfConfKey, intf IntfConf, lsType uint8) bool {
 	/* Check neighbor state */
 	flood_check := true
 	nbrConf := server.NeighborConfigMap[nbrKey]
 	//rtrid := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
 	if nbrConf.intfConfKey == key && nbrConf.isDRBDR && lsType != Summary3LSA && lsType != Summary4LSA {
-		server.logger.Info(fmt.Sprintln("IF FLOOD: Nbr is DR/BDR.   flood on this interface . nbr - ", nbrKey, nbrConf.OspfNbrIPAddr))
+		server.logger.Info(fmt.Sprintln("IF FLOOD: Nbr is DR/BDR.   flood on this interface . nbr - ", nbrKey.IPAddr, nbrConf.OspfNbrIPAddr))
 		return false
 	}
 	flood_check = server.interfaceFloodCheck(key)
@@ -302,11 +307,8 @@ func (server *OSPFServer) interfaceFloodCheck(key IntfConfKey) bool {
 This API takes care of flooding new summary LSAs that is added in the LSDB
 */
 func (server *OSPFServer) processSummaryLSAFlood(areaId uint32, lsaKey LsaKey) {
-	ospfLsaPkt := newospfNeighborLSAUpdPkt()
 	var lsaEncPkt []byte
 	LsaEnc := []byte{}
-
-	ospfLsaPkt.no_lsas = 0
 
 	server.logger.Info(fmt.Sprintln("Summary: Start flooding algorithm. Area ",
 		areaId, " lsa ", lsaKey))
@@ -361,6 +363,60 @@ func (server *OSPFServer) floodSummaryLsa(pkt []byte, areaid uint32) {
 				server.SendOspfPkt(key, send_pkt)
 			}
 
+		}
+	}
+}
+
+/*
+@fn processAsExternalLSAFlood
+	This API takes care of flooding external routes through
+	AS external LSA
+*/
+func (server *OSPFServer) processAsExternalLSAFlood(lsakey LsaKey) {
+	areaId := convertAreaOrRouterIdUint32("0.0.0.0")
+
+	var lsaEncPkt []byte
+	LsaEnc := []byte{}
+
+	entry, ret := server.getASExternalLsaFromLsdb(areaId, lsakey)
+	if ret == LsdbEntryNotFound {
+		server.logger.Info(fmt.Sprintln("ASBR: Lsa not found . Area",
+			areaId, " LSA key ", lsakey))
+		return
+	}
+	LsaEnc = encodeASExternalLsa(entry, lsakey)
+	pktLen := len(LsaEnc)
+	checksumOffset := uint16(14)
+	checkSum := computeFletcherChecksum(LsaEnc[2:], checksumOffset)
+	binary.BigEndian.PutUint16(LsaEnc[16:18], checkSum)
+	binary.BigEndian.PutUint16(LsaEnc[18:20], uint16(pktLen))
+
+	no_lsas := uint32(1)
+	lsas_enc := make([]byte, 4)
+	binary.BigEndian.PutUint32(lsas_enc, no_lsas)
+	lsaEncPkt = append(lsaEncPkt, lsas_enc...)
+	lsaEncPkt = append(lsaEncPkt, LsaEnc...)
+	lsid := convertUint32ToIPv4(lsakey.LSId)
+	adv_router := convertUint32ToIPv4(lsakey.AdvRouter)
+	server.logger.Info(fmt.Sprintln("ASBR: flood lsid ", lsid, " adv_router ", adv_router))
+	server.floodASExternalLsa(lsaEncPkt)
+}
+
+func (server *OSPFServer) floodASExternalLsa(pkt []byte) {
+	server.logger.Info(fmt.Sprintln("ASBR: Received for flood ", pkt))
+	dstMac := net.HardwareAddr{0x01, 0x00, 0x5e, 0x00, 0x00, 0x05}
+	dstIp := net.IP{224, 0, 0, 5}
+	for key, _ := range server.IntfConfMap {
+		intf, ok := server.IntfConfMap[key]
+		if !ok {
+			continue
+		}
+		// TODO check for stub area
+		nbrMdata, ok := ospfIntfToNbrMap[key]
+		if ok && len(nbrMdata.nbrList) > 0 {
+			send_pkt := server.BuildLsaUpdPkt(key, intf, dstMac, dstIp, len(pkt), pkt)
+			server.logger.Info(fmt.Sprintln("ASBR: Send  LSA to interface ", intf.IfIpAddr))
+			server.SendOspfPkt(key, send_pkt)
 		}
 	}
 }
