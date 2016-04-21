@@ -245,6 +245,7 @@ func (server *OSPFServer) flushSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey) {
 
 func (server *OSPFServer) installSummaryLsa() {
 	ifkey := IntfConfKey{}
+	server.logger.Info("Installing summary Lsa...")
 	for lsdbKey, sLsa := range server.SummaryLsDb {
 		selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
 		oldSelfOrigSummaryLsa := make(map[LsaKey]bool)

@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"asicdServices"
@@ -228,14 +228,14 @@ func getConnectedRoutes() {
 	}
 }
 
-func (m RIBDServicesHandler) GetRouteDistanceState(protocol string) (*ribd.RouteDistanceState, error) {
+func (m RIBDServer) GetRouteDistanceState(protocol string) (*ribd.RouteDistanceState, error) {
 	logger.Info("Get state for RouteDistanceState")
 	route := ribd.NewRouteDistanceState()
 	return route, nil
 }
 
 //thrift API definitions
-func (m RIBDServicesHandler) GetBulkRouteDistanceState(fromIndex ribd.Int, rcount ribd.Int) (routeDistanceStates *ribd.RouteDistanceStateGetInfo, err error) {
+func (m RIBDServer) GetBulkRouteDistanceState(fromIndex ribd.Int, rcount ribd.Int) (routeDistanceStates *ribd.RouteDistanceStateGetInfo, err error) {
 	logger.Info("GetBulkRouteDistanceState")
 	var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.RouteDistanceState = make([]ribd.RouteDistanceState, rcount)
@@ -281,13 +281,7 @@ func (m RIBDServicesHandler) GetBulkRouteDistanceState(fromIndex ribd.Int, rcoun
 	return routeDistanceStates, err
 }
 
-func (m RIBDServicesHandler) GetIPv4EventState(index int32) (*ribd.IPv4EventState, error) {
-	logger.Info("Get state for IPv4EventState")
-	route := ribd.NewIPv4EventState()
-	return route, nil
-}
-
-func (m RIBDServicesHandler) GetBulkIPv4EventState(fromIndex ribd.Int, rcount ribd.Int) (events *ribd.IPv4EventStateGetInfo, err error) {
+func (m RIBDServer) GetBulkIPv4EventState(fromIndex ribd.Int, rcount ribd.Int) (events *ribd.IPv4EventStateGetInfo, err error) {
 	logger.Info("GetBulkIPv4EventState")
 	var i, validCount, toIndex ribd.Int
 	var tempNode []ribd.IPv4EventState = make([]ribd.IPv4EventState, rcount)
@@ -331,7 +325,7 @@ func (m RIBDServicesHandler) GetBulkIPv4EventState(fromIndex ribd.Int, rcount ri
 	events.Count = validCount
 	return events, err
 }
-func (m RIBDServicesHandler) GetBulkRoutesForProtocol(srcProtocol string, fromIndex ribdInt.Int, rcount ribdInt.Int) (routes *ribdInt.RoutesGetInfo, err error) {
+func (m RIBDServer) GetBulkRoutesForProtocol(srcProtocol string, fromIndex ribdInt.Int, rcount ribdInt.Int) (routes *ribdInt.RoutesGetInfo, err error) {
 	logger.Info("GetBulkRoutesForProtocol")
 	var i, validCount, toIndex ribdInt.Int
 	var nextRoute *ribdInt.Routes
@@ -372,9 +366,10 @@ func (m RIBDServicesHandler) GetBulkRoutesForProtocol(srcProtocol string, fromIn
 	routes.Count = validCount
 	return routes, err
 }
-func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.IPv4RouteStateGetInfo, err error) { //(routes []*ribdInt.Routes, err error) {
+func (m RIBDServer) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.IPv4RouteStateGetInfo, err error) { //(routes []*ribdInt.Routes, err error) {
 	logger.Info("GetBulkIPv4RouteState")
-	var i, validCount, toIndex ribd.Int
+	var i, validCount ribd.Int
+	var toIndex ribd.Int
 	var temproute []ribd.IPv4RouteState = make([]ribd.IPv4RouteState, rcount)
 	var nextRoute *ribd.IPv4RouteState
 	var returnRoutes []*ribd.IPv4RouteState
@@ -468,7 +463,7 @@ func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ri
 					nextRoute.PolicyList = append(nextRoute.PolicyList, routePolicyListInfo)
 				}
 			}
-			toIndex = ribd.Int(prefixNodeRoute.sliceIdx)
+			toIndex = ribd.Int(i + fromIndex)
 			if len(returnRoutes) == 0 {
 				returnRoutes = make([]*ribd.IPv4RouteState, 0)
 			}
@@ -485,7 +480,7 @@ func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ri
 	return routes, err
 }
 /*
-func (m RIBDServicesHandler) GetConnectedRoutesInfo() (routes []*ribdInt.Routes, err error) {
+func (m RIBDServer) GetConnectedRoutesInfo() (routes []*ribdInt.Routes, err error) {
 	var returnRoutes []*ribdInt.Routes
 	var nextRoute *ribdInt.Routes
 	logger.Info("Received GetConnectedRoutesInfo")
@@ -503,7 +498,7 @@ func (m RIBDServicesHandler) GetConnectedRoutesInfo() (routes []*ribdInt.Routes,
 	return routes, err
 }*/
 //API called by external applications interested in tracking reachability status of a network
-func (m RIBDServicesHandler) TrackReachabilityStatus(ipAddr string, protocol string, op string) error {
+func (m RIBDServer) TrackReachabilityStatus(ipAddr string, protocol string, op string) error {
 	logger.Info(fmt.Sprintln("TrackReachabilityStatus for ipAddr: ", ipAddr, " by protocol ", protocol, " op = ", op))
 	if op != "add" && op != "del" {
 		logger.Err(fmt.Sprintln("Invalid operation ", op))
@@ -537,7 +532,7 @@ func (m RIBDServicesHandler) TrackReachabilityStatus(ipAddr string, protocol str
 	TrackReachabilityMap[ipAddr] = protocolList
 	return nil
 }
-func (m RIBDServicesHandler) GetRouteReachabilityInfo(destNet string) (nextHopIntf *ribdInt.NextHopInfo, err error) {
+func (m RIBDServer) GetRouteReachabilityInfo(destNet string) (nextHopIntf *ribdInt.NextHopInfo, err error) {
 	logger.Info(fmt.Sprintln("GetRouteReachabilityInfo of ", destNet))
 	t1 := time.Now()
 	var retnextHopIntf ribdInt.NextHopInfo
@@ -576,7 +571,7 @@ func (m RIBDServicesHandler) GetRouteReachabilityInfo(destNet string) (nextHopIn
 	logger.Info(fmt.Sprintln("time to get longestPrefixLen = ", duration.Nanoseconds(), " ipAddr of the route: ", nextHopIntf.Ipaddr, " next hop ip of the route = ", nextHopIntf.NextHopIp, " index: ", nextHopIntf.NextHopIfIndex, " nextHopIfType: ", nextHopIntf.NextHopIfType))
 	return nextHopIntf, err
 }
-func (m RIBDServicesHandler) GetRoute(destNetIp string, networkMask string) (route *ribdInt.Routes, err error) {
+func (m RIBDServer) GetRoute(destNetIp string, networkMask string) (route *ribdInt.Routes, err error) {
 	var returnRoute ribdInt.Routes
 	route = &returnRoute
 	destNetIpAddr, err := getIP(destNetIp)
@@ -1336,7 +1331,7 @@ func createV4Route(destNetIp string,
 
 }
 
-func (m RIBDServicesHandler) ProcessRouteCreateConfig(cfg *ribd.IPv4Route) (val bool, err error) {
+func (m RIBDServer) ProcessRouteCreateConfig(cfg *ribd.IPv4Route) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessRouteCreate: Received create route request for ip ", cfg.DestinationNw, " mask ", cfg.NetworkMask))
 	var nextHopIfType ribd.Int
 	var nextHopIf int
@@ -1425,11 +1420,11 @@ func deleteV4Route(destNetIp string,
 	return 0, err
 }
 
-/*func (m RIBDServicesHandler) DeleteV4Route(destNetIp string,
+/*func (m RIBDServer) DeleteV4Route(destNetIp string,
 networkMask string,
 routeTypeString string,
 nextHopIP string) (rc ribd.Int, err error) {*/
-func (m RIBDServicesHandler) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val bool, err error) {
+func (m RIBDServer) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessRouteDeleteConfig:Received Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHopIp, "Protocol ", cfg.Protocol))
 	if !routeServiceHandler.AcceptConfig {
 		logger.Info("Not ready to accept config")
@@ -1438,7 +1433,7 @@ func (m RIBDServicesHandler) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val 
 	_, err = deleteV4Route(cfg.DestinationNw, cfg.NetworkMask, cfg.Protocol, cfg.NextHopIp, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoInValid)
 	return true, err
 }
-func (m RIBDServicesHandler) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
+func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
 	logger.Info("ProcessRouteUpdateConfig:Received update route request")
 	if !routeServiceHandler.AcceptConfig {
 		logger.Info("Not ready to accept config")
@@ -1526,14 +1521,14 @@ func printRoutesInfo(prefix patriciaDB.Prefix, item patriciaDB.Item) (err error)
 	return nil
 }
 
-func (m RIBDServicesHandler) PrintV4Routes() (err error) {
+func (m RIBDServer) PrintV4Routes() (err error) {
 	count = 0
 	logger.Info("Received print route")
 	RouteInfoMap.Visit(printRoutesInfo)
 	logger.Info(fmt.Sprintf("total count = %d\n", count))
 	return nil
 }
-func (m RIBDServicesHandler) GetNextHopIfTypeStr(nextHopIfType ribdInt.Int) (nextHopIfTypeStr string, err error) {
+func (m RIBDServer) GetNextHopIfTypeStr(nextHopIfType ribdInt.Int) (nextHopIfTypeStr string, err error) {
 	nextHopIfTypeStr = ""
 	switch nextHopIfType {
 	case commonDefs.IfTypePort:

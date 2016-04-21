@@ -248,7 +248,26 @@ func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
 	dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index] = VlanId
 }
 
-func StartServer(log *logging.Writer, handler *DhcpRelayServiceHandler, addr string, params string) error {
+func DhcpRelayGetClient(logger *logging.Writer, fileName string,
+	process string) (*DhcpRelayClientJson, error) {
+	var allClients []DhcpRelayClientJson
+
+	data, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		logger.Err(fmt.Sprintln("Failed to open dhcpd config file",
+			err, fileName))
+		return nil, err
+	}
+	json.Unmarshal(data, &allClients)
+	for _, client := range allClients {
+		if client.Name == process {
+			return &client, nil
+		}
+	}
+	return nil, errors.New("couldn't find dhcprelay port info")
+}
+
+func StartServer(log *logging.Writer, handler *DhcpRelayServiceHandler, params string) error {
 	logger = log
 	paramsDir = params
 	// Allocate Memory for Global DS
@@ -264,10 +283,20 @@ func StartServer(log *logging.Writer, handler *DhcpRelayServiceHandler, addr str
 	// Initialize port information and packet handler for dhcp
 	go InitDhcpRelayPortPktHandler()
 	dhcprelayEnable = false
+	fileName := params + "/clients.json"
+	clientJson, err := DhcpRelayGetClient(logger, fileName, "dhcprelayd")
+	if err != nil || clientJson == nil {
+		return err
+	}
+
+	logger.Info(fmt.Sprintln("Got Client info for", clientJson.Name, "port",
+		clientJson.Port))
+
 	// create transport and protocol for server
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
-	transport, err := thrift.NewTServerSocket(addr)
+	transport, err := thrift.NewTServerSocket("localhost:" +
+		strconv.Itoa(clientJson.Port))
 	if err != nil {
 		logger.Info(fmt.Sprintln("DRA: StartServer: NewTServerSocket "+
 			"failed with error:", err))

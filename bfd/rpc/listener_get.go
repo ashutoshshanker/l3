@@ -31,3 +31,12 @@ func (h *BFDHandler) GetBfdSessionState(ipAddr string) (*bfdd.BfdSessionState, e
 	bfdSessionStateResponse = bfdSessionState
 	return bfdSessionStateResponse, nil
 }
+
+func (h *BFDHandler) GetBfdSessionParamState(paramName string) (*bfdd.BfdSessionParamState, error) {
+	h.logger.Info(fmt.Sprintln("Get Session Params attrs for ", paramName))
+	bfdSessionParamStateResponse := bfdd.NewBfdSessionParamState()
+	sessionParamState := h.server.GetBfdSessionParamState(paramName)
+	bfdSessionParamState := h.convertSessionParamStateToThrift(*sessionParamState)
+	bfdSessionParamStateResponse = bfdSessionParamState
+	return bfdSessionParamStateResponse, nil
+}

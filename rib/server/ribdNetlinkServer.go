@@ -1,5 +1,5 @@
 // ribNetlink.go
-package main
+package server
 
 import (
 	"net"
@@ -88,7 +88,7 @@ func addLinuxRoute(route RouteInfoRecord) {
 	}
 	return
 }
-func (ribdServiceHandler *RIBDServicesHandler) StartNetlinkServer() {
+func (ribdServiceHandler *RIBDServer) StartNetlinkServer() {
 	logger.Info("Starting the netlinkserver loop")
 	for {
 		select {

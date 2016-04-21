@@ -59,10 +59,12 @@ type BfdInterface struct {
 }
 
 type BfdSessionMgmt struct {
-	DestIp   string
-	Protocol bfddCommonDefs.BfdSessionOwner
-	PerLink  bool
-	ForceDel bool
+	DestIp    string
+	ParamName string
+	Interface string
+	Protocol  bfddCommonDefs.BfdSessionOwner
+	PerLink   bool
+	ForceDel  bool
 }
 
 type BfdSession struct {
@@ -76,6 +78,7 @@ type BfdSession struct {
 	SessionTimeoutCh    chan int32
 	bfdPacket           *BfdControlPacket
 	bfdPacketBuf        []byte
+	ReceivedPacketCh    chan *BfdControlPacket
 	SessionStopClientCh chan bool
 	pollSequence        bool
 	pollSequenceFinal   bool
@@ -90,9 +93,12 @@ type BfdSession struct {
 	useDedicatedMac     bool
 	intfConfigChanged   bool
 	stateChanged        bool
-	isServerActive      bool
 	isClientActive      bool
 	server              *BFDServer
+}
+
+type BfdSessionParam struct {
+	state SessionParamState
 }
 
 type BfdGlobal struct {
@@ -104,9 +110,17 @@ type BfdGlobal struct {
 	Sessions                map[int32]*BfdSession
 	SessionsIdSlice         []int32
 	InactiveSessionsIdSlice []int32
+	NumSessionParams        uint32
+	SessionParams           map[string]*BfdSessionParam
 	NumUpSessions           uint32
 	NumDownSessions         uint32
 	NumAdminDownSessions    uint32
+}
+
+type RecvedBfdPacket struct {
+	IpAddr    string
+	Len       int32
+	PacketBuf []byte
 }
 
 type BFDServer struct {
@@ -135,8 +149,10 @@ type BFDServer struct {
 	lagPropertyMap        map[int32]LagProperty
 	notificationCh        chan []byte
 	ServerUpCh            chan bool
-	FailedSessionServerCh chan int32
 	FailedSessionClientCh chan int32
+	BfdPacketRecvCh       chan RecvedBfdPacket
+	SessionParamConfigCh  chan SessionParamConfig
+	SessionParamDeleteCh  chan string
 	bfdGlobal             BfdGlobal
 }
 
@@ -156,6 +172,8 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer.SessionConfigCh = make(chan SessionConfig)
 	bfdServer.notificationCh = make(chan []byte)
 	bfdServer.ServerUpCh = make(chan bool)
+	bfdServer.SessionParamConfigCh = make(chan SessionParamConfig)
+	bfdServer.SessionParamDeleteCh = make(chan string)
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]*BfdInterface)
@@ -164,6 +182,8 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer.bfdGlobal.Sessions = make(map[int32]*BfdSession)
 	bfdServer.bfdGlobal.SessionsIdSlice = []int32{}
 	bfdServer.bfdGlobal.InactiveSessionsIdSlice = []int32{}
+	bfdServer.bfdGlobal.NumSessionParams = 0
+	bfdServer.bfdGlobal.SessionParams = make(map[string]*BfdSessionParam)
 	bfdServer.bfdGlobal.NumUpSessions = 0
 	bfdServer.bfdGlobal.NumDownSessions = 0
 	bfdServer.bfdGlobal.NumAdminDownSessions = 0
@@ -393,12 +413,6 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.BuildPortPropertyMap()
 	server.BuildLagPropertyMap()
 	server.BuildIPv4InterfacesMap()
-	/*
-		server.logger.Info("Listen for RIBd updates")
-		server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
-		go createRIBSubscriber()
-		server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
-	*/
 }
 
 func (server *BFDServer) SigHandler() {
@@ -414,8 +428,9 @@ func (server *BFDServer) SigHandler() {
 			case syscall.SIGHUP:
 				server.logger.Info("Received SIGHUP signal")
 				server.SendAdminDownToAllNeighbors()
-				time.Sleep(250 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 				server.SendDeleteToAllSessions()
+				time.Sleep(500 * time.Millisecond)
 				server.logger.Info("Exiting!!!")
 				os.Exit(0)
 			default:
@@ -468,17 +483,10 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 		case sessionConfig := <-server.SessionConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Session Configuration", sessionConfig))
 			server.processSessionConfig(sessionConfig)
-			/*
-				case ribrxBuf := <-server.ribSubSocketCh:
-					server.processRibdNotification(ribdrxBuf)
-				case <-server.connRoutesTimer.C:
-					routes, _ := server.ribdClient.ClientHdl.GetConnectedRoutesInfo()
-					server.logger.Info(fmt.Sprintln("Received Connected Routes:", routes))
-					//server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
-					//server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
-
-				case <-server.ribSubSocketErrCh:
-			*/
+		case sessionParamConfig := <-server.SessionParamConfigCh:
+			server.logger.Info(fmt.Sprintln("Received call for performing Session Param Configuration", sessionParamConfig))
+		case paramName := <-server.SessionParamDeleteCh:
+			server.logger.Info(fmt.Sprintln("Received call for performing Session Param Delete", paramName))
 		}
 	}
 }

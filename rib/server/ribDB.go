@@ -1,5 +1,5 @@
 // ribDB.go
-package main
+package server
 
 import (
 	"fmt"
@@ -10,9 +10,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func UpdateRoutesFromDB() (err error) {
+func (ribdServiceHandler *RIBDServer) UpdateRoutesFromDB() (err error) {
 	logger.Info(fmt.Sprintln("UpdateRoutesFromDB"))
-	dbHdl := routeServiceHandler.DbHdl
+	dbHdl := ribdServiceHandler.DbHdl
 	defer dbHdl.Close()
 	dbCmd := "select * from IPv4Route"
 	rows, err := dbHdl.Query(dbCmd)
@@ -34,7 +34,7 @@ func UpdateRoutesFromDB() (err error) {
 			Cost:              int32(ipRoute.Cost),
 			NetworkMask:       ipRoute.NetworkMask,
 			NextHopIp:         ipRoute.NextHopIp}
-		_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg) //ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
+		_, err = ribdServiceHandler.ProcessRouteCreateConfig(&cfg) //ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType, ribd.Int(outIntf), ipRoute.Protocol)
 		//_,err = createV4Route(ipRoute.DestinationNw, ipRoute.NetworkMask, ribd.Int(ipRoute.Cost), ipRoute.NextHopIp, outIntfType,ribd.Int(outIntf), ribd.Int(proto),  FIBAndRIB,ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
 		if err != nil {
 			logger.Info(fmt.Sprintf("Route create failed with err %s\n", err))
@@ -44,7 +44,7 @@ func UpdateRoutesFromDB() (err error) {
 	return err
 }
 
-func UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
+func (ribdServiceHandler *RIBDServer) UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyConditionsFromDB"))
 	dbCmd := "select * from PolicyCondition"
 	rows, err := dbHdl.Query(dbCmd)
@@ -67,7 +67,7 @@ func UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
 		//condition.MatchDstIpPrefixConditionInfo = &dstIpMatchPrefixconditionCfg
 		condition.IpPrefix = IpPrefix
 		condition.MaskLengthRange = MaskLengthRange
-		routeServiceHandler.ProcessPolicyConditionConfigCreate(&condition)
+		ribdServiceHandler.ProcessPolicyConditionConfigCreate(&condition)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Condition create failed with err %s\n", err))
 			return err
@@ -75,7 +75,7 @@ func UpdatePolicyConditionsFromDB(dbHdl *sql.DB) (err error) {
 	}
 	return err
 }
-func UpdatePolicyActionsFromDB(dbHdl *sql.DB) (err error) {
+func (ribdServiceHandler *RIBDServer) UpdatePolicyActionsFromDB(dbHdl *sql.DB) (err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyActionsFromDB"))
 	dbCmd := "select * from PolicyAction"
 	rows, err := dbHdl.Query(dbCmd)
@@ -89,7 +89,7 @@ func UpdatePolicyActionsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintf("DB Scan failed when iterating over PolicyDefinitionStmtMatchProtocolCondition rows with error %s\n", err))
 			return err
 		}
-		_,err = routeServiceHandler.ProcessPolicyActionConfigCreate(&action)
+		_,err = ribdServiceHandler.ProcessPolicyActionConfigCreate(&action)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -97,7 +97,7 @@ func UpdatePolicyActionsFromDB(dbHdl *sql.DB) (err error) {
 	}
 	return err
 }
-func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
+func (ribdServiceHandler *RIBDServer) UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyStmtsFromDB"))
 	dbCmd := "select * from PolicyStmt"
 	rows, err := dbHdl.Query(dbCmd)
@@ -153,7 +153,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 			logger.Info(fmt.Sprintln("Fetching action ", Actions))
 			stmt.Actions = append(stmt.Actions, Actions)
 		}
-		err = routeServiceHandler.ProcessPolicyStmtConfigCreate(&stmt)
+		err = ribdServiceHandler.ProcessPolicyStmtConfigCreate(&stmt)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Action create failed with err %s\n", err))
 			return err
@@ -161,7 +161,7 @@ func UpdatePolicyStmtsFromDB(dbHdl *sql.DB) (err error) {
 	}
 	return err
 }
-func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
+func (ribdServiceHandler *RIBDServer) UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyFromDB"))
 	dbCmd := "select * from PolicyDefinition"
 	rows, err := dbHdl.Query(dbCmd)
@@ -199,7 +199,7 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 			policy.StatementList = append(policy.StatementList, &policyStmtPrecedence)
 		}
 
-		err = routeServiceHandler.ProcessPolicyDefinitionConfigCreate(&policy)
+		err = ribdServiceHandler.ProcessPolicyDefinitionConfigCreate(&policy)
 		if err != nil {
 			logger.Info(fmt.Sprintf("policy create failed with err %s\n", err))
 			return err
@@ -207,12 +207,12 @@ func UpdatePolicyFromDB(dbHdl *sql.DB) (err error) {
 	}
 	return err
 }
-func UpdatePolicyObjectsFromDB() { //(paramsDir string) (err error) {
+func (ribdServiceHandler *RIBDServer) UpdatePolicyObjectsFromDB() { //(paramsDir string) (err error) {
 	logger.Info(fmt.Sprintln("UpdateFromDB"))
-	dbHdl := routeServiceHandler.DbHdl
-	UpdatePolicyConditionsFromDB(dbHdl) //paramsDir, dbHdl)
-	UpdatePolicyActionsFromDB(dbHdl)    //paramsDir, dbHdl)
-	UpdatePolicyStmtsFromDB(dbHdl)
-	UpdatePolicyFromDB(dbHdl)
+	dbHdl := ribdServiceHandler.DbHdl
+	ribdServiceHandler.UpdatePolicyConditionsFromDB(dbHdl) //paramsDir, dbHdl)
+	ribdServiceHandler.UpdatePolicyActionsFromDB(dbHdl)    //paramsDir, dbHdl)
+	ribdServiceHandler.UpdatePolicyStmtsFromDB(dbHdl)
+	ribdServiceHandler.UpdatePolicyFromDB(dbHdl)
 	return
 }

@@ -62,6 +62,11 @@ type IPv4Intf struct {
 	IfIndex int32
 }
 
+type DhcpRelayClientJson struct {
+	Name string `json:Name`
+	Port int    `json:Port`
+}
+
 /*
  * Global Variable
  */
