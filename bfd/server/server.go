@@ -92,6 +92,7 @@ type BfdSession struct {
 	recvPcapHandle      *pcap.Handle
 	useDedicatedMac     bool
 	intfConfigChanged   bool
+	paramConfigChanged  bool
 	stateChanged        bool
 	isClientActive      bool
 	server              *BFDServer
@@ -489,8 +490,10 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 			server.processSessionConfig(sessionConfig)
 		case sessionParamConfig := <-server.SessionParamConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Session Param Configuration", sessionParamConfig))
+			server.processSessionParamConfig(sessionParamConfig)
 		case paramName := <-server.SessionParamDeleteCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Session Param Delete", paramName))
+			server.processSessionParamDelete(paramName)
 		}
 	}
 }
