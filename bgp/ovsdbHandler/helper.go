@@ -163,6 +163,8 @@ func (ovsHdl *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 					ovsHdl.logger.Info(fmt.Sprintln("Advertisement Interval",
 						newAdverInt))
 				}
+
+				//neighborInfo := &bgpd.BGPNeighbor{}
 			}
 		}
 	}
@@ -172,7 +174,7 @@ func (ovsHdl *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
  *  parse/collected from ovsdb update
  */
 func (ovsHdl *BGPOvsdbHandler) CreateBgpGlobalConfig(
-	rtrInfo *BGPOvsRouterInfo) error {
+	rtrInfo *BGPOvsRouterInfo) *bgpd.BGPGlobal {
 	bgpGlobal := &bgpd.BGPGlobal{
 		ASNum:            int32(rtrInfo.asn),
 		RouterId:         rtrInfo.routerId,
@@ -181,7 +183,7 @@ func (ovsHdl *BGPOvsdbHandler) CreateBgpGlobalConfig(
 		IBGPMaxPaths:     32,
 	}
 	ovsHdl.rpcHdl.CreateBGPGlobal(bgpGlobal)
-	return nil
+	return bgpGlobal
 }
 
 /*  BGP neighbor update in ovsdb... we will update our backend object
@@ -202,12 +204,10 @@ func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) err
 		return err
 	}
 	ovsHdl.routerInfo = routerInfo
-	err = ovsHdl.CreateBgpGlobalConfig(ovsHdl.routerInfo)
-	if err != nil {
-		return err
-	}
+	bgpGlobal := ovsHdl.CreateBgpGlobalConfig(ovsHdl.routerInfo)
 	ovsHdl.logger.Info(fmt.Sprintln("neighborAddrs:", neighborAddrs, "uuid's:",
 		neighborUUIDs))
+	ovsHdl.logger.Info(fmt.Sprintln(bgpGlobal))
 	ovsHdl.DumpBgpNeighborInfo(neighborAddrs, neighborUUIDs, table)
 	return nil
 }
