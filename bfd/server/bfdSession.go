@@ -99,6 +99,7 @@ func (server *BFDServer) StartBfdSesionServer() error {
 	}
 	defer ServerConn.Close()
 	buf := make([]byte, 1024)
+	server.logger.Info(fmt.Sprintln("Started BFD session server on ", destAddr))
 	for {
 		len, uda, err := ServerConn.ReadFromUDP(buf)
 		if err != nil {
@@ -574,6 +575,7 @@ func (server *BFDServer) HandleNextHopChange(DestIp string, IfIndex int32) error
 }
 
 func (session *BfdSession) StartSessionServer() error {
+	session.server.logger.Info(fmt.Sprintln("Started session server for ", session.state.SessionId))
 	for {
 		select {
 		case bfdPacket := <-session.ReceivedPacketCh:
@@ -924,6 +926,8 @@ func (session *BfdSession) MoveToDownState() error {
 	session.SendBfdNotification()
 	session.txInterval = STARTUP_TX_INTERVAL / 1000
 	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
+	session.txTimer.Reset(time.Duration(session.txInterval) * time.Millisecond)
+	session.sessionTimer.Reset(time.Duration(session.rxInterval) * time.Millisecond)
 	return nil
 }
 
@@ -1015,6 +1019,7 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 		return err
 	}
 	session.txConn = Conn
+	server.logger.Info(fmt.Sprintln("Started session client for ", destAddr, localAddr))
 	defer session.txConn.Close()
 	session.txTimer = time.AfterFunc(time.Duration(session.txInterval)*time.Millisecond, func() { session.SendPeriodicControlPackets() })
 	session.sessionTimer = time.AfterFunc(time.Duration(session.rxInterval)*time.Millisecond, func() { session.HandleSessionTimeout() })
