@@ -12,6 +12,7 @@ import (
 	"utils/logging"
 
 	// Bgp packages
+	_ "l3/bgp/flexswitch"
 	"l3/bgp/ovs"
 	bgppolicy "l3/bgp/policy"
 	"l3/bgp/rpc"
@@ -65,20 +66,19 @@ func main() {
 	case OVSDB_PLUGIN:
 		// if plugin used is ovs db then lets start ovsdb client listener
 		quit := make(chan bool)
-		ovsmgr := ovsdbHandler.NewOvsIntfMgr()
-		if ovsmgr == nil {
-			fmt.Println("Not able to init ovs interface mgr")
-		}
+		rMgr := ovsMgr.NewOvsRouteMgr()
+		pMgr := ovsMgr.NewOvsPolicyMgr()
+		iMgr := ovsMgr.NewOvsIntfMgr()
+
 		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, nil,
-			nil, nil, plugin, &ovsmgr.IntfMgr, &ovsmgr.PolicyMgr,
-			&ovsmgr.RouteMgr)
+			nil, nil, plugin, iMgr, pMgr, rMgr)
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
 		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
 
 		// create and start ovsdb handler
-		ovsdbManager, err := ovsdbHandler.NewBGPOvsdbHandler(logger, confIface)
+		ovsdbManager, err := ovsMgr.NewBGPOvsdbHandler(logger, confIface)
 		if err != nil {
 			fmt.Println("Starting OVDB client failed ERROR:", err)
 			return
@@ -98,7 +98,14 @@ func main() {
 		if err != nil {
 			return
 		}
-
+		/*
+			fsRouteMgr := FSMgr.NewFSRouteMgr()
+			if fsRouteMgr == nil {
+				fmt.Println("Not able to init ovs interface mgr")
+			}
+			bgpServer := server.NewBGPServer(logger, bgpPolicyEng, nil, nil,
+				nil, "FlexSwitch", nil, nil, fsRouteMgr)
+		*/
 		// Connection to clients success, lets start bgp backend server
 		logger.Info(fmt.Sprintln("Starting BGP Server..."))
 		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient,

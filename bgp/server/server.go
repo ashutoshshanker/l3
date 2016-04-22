@@ -101,15 +101,15 @@ type BGPServer struct {
 
 	plugin string
 
-	intfMgr   *IntfMgrIntf
-	policyMgr *PolicyMgrIntf
-	routeMgr  *RouteMgrIntf
+	intfMgr   IntfMgrIntf
+	policyMgr PolicyMgrIntf
+	routeMgr  RouteMgrIntf
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
 	ribdClient *ribd.RIBDServicesClient, bfddClient *bfdd.BFDDServicesClient,
 	asicdClient *asicdServices.ASICDServicesClient, plugin string,
-	iMgr *IntfMgrIntf, pMgr *PolicyMgrIntf, rMgr *RouteMgrIntf) *BGPServer {
+	iMgr IntfMgrIntf, pMgr PolicyMgrIntf, rMgr RouteMgrIntf) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.bgpPE = policyEngine
@@ -1144,7 +1144,7 @@ func (server *BGPServer) StartServer() {
 	server.logger.Info("Setting up Peer connections")
 	acceptCh := make(chan *net.TCPConn)
 	go server.listenForPeers(acceptCh)
-
+	server.routeMgr.CreateRoute()
 	if server.plugin == FLEXSWITCH {
 		//	routes, _ := server.ribdClient.GetConnectedRoutesInfo()
 		server.ProcessRoutesFromRIB()

@@ -1,33 +1,60 @@
-package ovsdbHandler
+package ovsMgr
 
 import (
 	"fmt"
-	"l3/bgp/server"
 )
 
 type OvsIntfMgr struct {
-	IntfMgr   server.IntfMgrIntf
-	PolicyMgr server.PolicyMgrIntf
-	RouteMgr  server.RouteMgrIntf
+	plugin string
+}
+
+type OvsRouteMgr struct {
+	plugin string
+}
+
+type OvsPolicyMgr struct {
+	plugin string
 }
 
 func NewOvsIntfMgr() *OvsIntfMgr {
-	mgr := new(OvsIntfMgr)
+	mgr := &OvsIntfMgr{
+		plugin: "ovsdb",
+	}
+
+	return mgr
+}
+func NewOvsPolicyMgr() *OvsPolicyMgr {
+	mgr := &OvsPolicyMgr{
+		plugin: "ovsdb",
+	}
+
 	return mgr
 }
 
-func (mgr *OvsIntfMgr) CreateRoute() {
-	fmt.Println("Create Route called in ovsdb manager")
+func NewOvsRouteMgr() *OvsRouteMgr {
+	mgr := &OvsRouteMgr{
+		plugin: "ovsdb",
+	}
+
+	return mgr
 }
 
-func (mgr *OvsIntfMgr) DeleteRoute() {
+func (mgr *OvsRouteMgr) CreateRoute() {
+	fmt.Println("Create Route called in", mgr.plugin)
+}
+
+func (mgr *OvsRouteMgr) DeleteRoute() {
 
 }
 
-func (mgr *OvsIntfMgr) AddPolicy() {
+func (mgr *OvsPolicyMgr) AddPolicy() {
 
 }
 
-func (mgr *OvsIntfMgr) RemovePolicy() {
+func (mgr *OvsPolicyMgr) RemovePolicy() {
+
+}
+
+func (mgr *OvsIntfMgr) PortStateChange() {
 
 }
