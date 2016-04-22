@@ -27,6 +27,6 @@ func (m RIBDServicesHandler) GetPolicyConditionState(name string) (*ribd.PolicyC
 }
 func (m RIBDServicesHandler) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.Int) (policyConditions *ribd.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyConditionState"))
-	ret,err := m.server.GetBulkPolicyConditionState(fromIndex,rcount)
+	ret,err := m.server.GetBulkPolicyConditionState(fromIndex,rcount,m.server.GlobalPolicyEngineDB)
 	return ret, err
 }

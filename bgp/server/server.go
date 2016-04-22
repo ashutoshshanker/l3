@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"strings"
 	"utils/logging"
 	utilspolicy "utils/policy"
 	"utils/policy/policyCommonDefs"
@@ -1003,7 +1004,25 @@ func (server *BGPServer) UpdatePeerGroupInPeers(groupName string, peerGroup *con
 		peer.Init()
 	}
 }
-
+func (server *BGPServer) SetupRedistribution(gConf config.GlobalConfig) {
+	server.logger.Info("SetUpRedistribution")
+	if gConf.Redistribution == nil || len(gConf.Redistribution) == 0 {
+		server.logger.Info("No redistribution policies configured")
+		return
+	}
+	conditions := make([]*ribdInt.ConditionInfo,0)
+	for i := 0;i<len(gConf.Redistribution);i++ {
+	    sources := make([]string,0)
+		sources = strings.Split(gConf.Redistribution[i].Sources,",")
+		server.logger.Info(fmt.Sprintf("Setting up ", gConf.Redistribution[i].Policy, " as redistribution policy for source(s): "))
+		for j :=0;j<len(sources);j++ {
+			server.logger.Info(fmt.Sprintf("sources[j] "))
+			conditions = append(conditions,&ribdInt.ConditionInfo{ConditionType:"MatchProtocol",Protocol:sources[j]})
+		}
+		server.logger.Info(fmt.Sprintln(" "))
+		server.ribdClient.ApplyPolicy("BGP",gConf.Redistribution[i].Policy,"Redistribute",conditions)
+	}
+}
 func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.AS = gConf.AS
 	server.BgpConfig.Global.Config.RouterId = gConf.RouterId
@@ -1136,6 +1155,7 @@ func (server *BGPServer) StartServer() {
 	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
 	go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
 	go server.listenForBFDNotifications(bfdSubSocket, bfdSubSocketCh, bfdSubSocketErrCh)
+	server.SetupRedistribution(gConf)
 	//go server.AdjRib.ProcessRIBdRouteRequests()
 
 	for {
@@ -1151,6 +1171,7 @@ func (server *BGPServer) StartServer() {
 			packet.SetNextHopPathAttrs(server.connRoutesPath.PathAttrs, gConf.RouterId)
 			server.RemoveRoutesFromAllNeighbor()
 			server.copyGlobalConf(gConf)
+			server.SetupRedistribution(gConf)
 			server.constructBGPGlobalState(&gConf)
 			for _, peer := range server.PeerMap {
 				peer.Init()

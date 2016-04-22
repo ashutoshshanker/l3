@@ -4,6 +4,7 @@ package rpc
 import (
 	"fmt"
 	"ribd"
+	"ribdInt"
 )
 
 func (m RIBDServicesHandler) CreatePolicyStmt(cfg *ribd.PolicyStmt) (val bool, err error) {
@@ -28,7 +29,7 @@ func (m RIBDServicesHandler) GetPolicyStmtState(name string) (*ribd.PolicyStmtSt
 }
 func (m RIBDServicesHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyStmtStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyStmtState"))
-	policyStmts,err = m.server.GetBulkPolicyStmtState(fromIndex,rcount)
+	policyStmts,err = m.server.GetBulkPolicyStmtState(fromIndex,rcount,m.server.GlobalPolicyEngineDB)
 	return policyStmts, err
 }
 
@@ -54,6 +55,11 @@ func (m RIBDServicesHandler) GetPolicyDefinitionState(name string) (*ribd.Policy
 }
 func (m RIBDServicesHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd.Int) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyDefinitionState"))
-	policyStmts,err = m.server.GetBulkPolicyDefinitionState(fromIndex,rcount)
+	policyStmts,err = m.server.GetBulkPolicyDefinitionState(fromIndex,rcount,m.server.GlobalPolicyEngineDB)
 	return policyStmts, err
+}
+
+func (m RIBDServicesHandler) ApplyPolicy(source string ,policy string, action string , conditions []*ribdInt.ConditionInfo) (err error) {
+	logger.Info(fmt.Sprintln("ApplyPolicy source:", source, " policy:", policy, " action:", action," number of extra conditions:",len(conditions)))
+	return nil
 }

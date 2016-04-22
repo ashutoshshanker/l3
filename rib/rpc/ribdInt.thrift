@@ -76,6 +76,12 @@ struct IPv4Route {
 	7 : string Protocol
 	8 : string CreateTime
 }
+struct ConditionInfo {
+	1 : string ConditionType
+	2 : string Protocol
+	3 : string IpPrefix
+	4 : string MasklengthRange 
+}
 
 service RIBDINTServices 
 {
@@ -91,5 +97,5 @@ service RIBDINTServices
 	bool CreatePolicyAction(1: PolicyAction config);
 	bool UpdatePolicyAction(1: PolicyAction origconfig, 2: PolicyAction newconfig, 3: list<bool> attrset);
 	bool DeletePolicyAction(1: PolicyAction config);
-	
+	void ApplyPolicy(1: string source, 2: string policy, 3: string action, 4: list<ConditionInfo>conditions)
 }

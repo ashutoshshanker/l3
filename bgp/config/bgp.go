@@ -4,7 +4,10 @@ package config
 import (
 	"net"
 )
-
+type SourcePolicyMap struct {
+	Sources    string
+	Policy     string
+}
 type GlobalConfig struct {
 	AS                  uint32
 	RouterId            net.IP
@@ -12,6 +15,7 @@ type GlobalConfig struct {
 	EBGPMaxPaths        uint32
 	EBGPAllowMultipleAS bool
 	IBGPMaxPaths        uint32
+	Redistribution      []SourcePolicyMap
 }
 
 type GlobalState struct {

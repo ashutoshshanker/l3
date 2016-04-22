@@ -329,6 +329,13 @@ func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 		EBGPAllowMultipleAS: bgpGlobal.EBGPAllowMultipleAS,
 		IBGPMaxPaths:        uint32(bgpGlobal.IBGPMaxPaths),
 	}
+	if bgpGlobal.Redistribution != nil {
+		gConf.Redistribution = make([]config.SourcePolicyMap,0)
+		for i := 0;i<len(bgpGlobal.Redistribution);i++ {
+			redistribution := config.SourcePolicyMap{bgpGlobal.Redistribution[i].Sources, bgpGlobal.Redistribution[i].Policy}
+			gConf.Redistribution = append(gConf.Redistribution,redistribution)
+		}
+	}
 	h.server.GlobalConfigCh <- gConf
 	return true, err
 }
