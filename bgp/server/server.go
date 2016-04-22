@@ -100,11 +100,16 @@ type BGPServer struct {
 	addPathCount   int
 
 	plugin string
+
+	intfMgr   *IntfMgrIntf
+	policyMgr *PolicyMgrIntf
+	routeMgr  *RouteMgrIntf
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
 	ribdClient *ribd.RIBDServicesClient, bfddClient *bfdd.BFDDServicesClient,
-	asicdClient *asicdServices.ASICDServicesClient, plugin string) *BGPServer {
+	asicdClient *asicdServices.ASICDServicesClient, plugin string,
+	iMgr *IntfMgrIntf, pMgr *PolicyMgrIntf, rMgr *RouteMgrIntf) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.bgpPE = policyEngine
@@ -148,6 +153,9 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.bgpPE.SetTraverseFuncs(bgpServer.TraverseAndApplyBGPRib, bgpServer.TraverseAndReverseBGPRib)
 
 	bgpServer.plugin = plugin
+	bgpServer.intfMgr = iMgr
+	bgpServer.routeMgr = rMgr
+	bgpServer.policyMgr = pMgr
 	return bgpServer
 }
 

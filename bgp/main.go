@@ -12,7 +12,7 @@ import (
 	"utils/logging"
 
 	// Bgp packages
-	"l3/bgp/ovsdbHandler"
+	"l3/bgp/ovs"
 	bgppolicy "l3/bgp/policy"
 	"l3/bgp/rpc"
 	"l3/bgp/server"
@@ -65,8 +65,13 @@ func main() {
 	case OVSDB_PLUGIN:
 		// if plugin used is ovs db then lets start ovsdb client listener
 		quit := make(chan bool)
+		ovsmgr := ovsdbHandler.NewOvsIntfMgr()
+		if ovsmgr == nil {
+			fmt.Println("Not able to init ovs interface mgr")
+		}
 		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, nil,
-			nil, nil, plugin)
+			nil, nil, plugin, &ovsmgr.IntfMgr, &ovsmgr.PolicyMgr,
+			&ovsmgr.RouteMgr)
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
@@ -83,6 +88,7 @@ func main() {
 			fmt.Println("OVSDB Serve failed ERROR:", err)
 			return
 		}
+
 		<-quit
 	default:
 		// flexswitch plugin lets connect to clients first and then
@@ -96,7 +102,7 @@ func main() {
 		// Connection to clients success, lets start bgp backend server
 		logger.Info(fmt.Sprintln("Starting BGP Server..."))
 		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient,
-			bfddClient, asicdClient, "FlexSwitch")
+			bfddClient, asicdClient, "FlexSwitch", nil, nil, nil)
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
