@@ -444,7 +444,7 @@ func (server *OSPFServer) DeleteRoute(rKey RoutingTblEntryKey) {
 		ret, err := server.ribdClient.ClientHdl.DeleteIPv4Route(&cfg)
 		//destNetIp, networkMask, routeType, nextHopIp)
 		if err != nil {
-			server.logger.Err(fmt.Sprintln("Error Installing Route:", err))
+			server.logger.Err(fmt.Sprintln("Error Deleting Route:", err))
 		}
 		server.logger.Info(fmt.Sprintln("Return Value for RIB DeleteV4Route call: ", ret))
 	}
@@ -452,6 +452,10 @@ func (server *OSPFServer) DeleteRoute(rKey RoutingTblEntryKey) {
 
 func (server *OSPFServer) UpdateRoute(rKey RoutingTblEntryKey) {
 	server.logger.Info(fmt.Sprintln("Updating route for rKey:", rKey))
+	// Delete Old Route
+	server.DeleteRoute(rKey)
+	// Install New Route
+	server.InstallRoute(rKey)
 }
 
 func (server *OSPFServer) InstallRoute(rKey RoutingTblEntryKey) {

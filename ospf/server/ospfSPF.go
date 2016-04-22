@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"l3/ospf/config"
+	"sort"
 )
 
 type VertexKey struct {
@@ -46,7 +47,26 @@ const (
 	TNetworkVertex uint8 = 2 // Transit
 )
 
+type VertexData struct {
+	vKey     VertexKey
+	distance uint16
+}
+
 var check bool = true
+
+type VertexDataArr []VertexData
+
+func (v VertexDataArr) Len() int {
+	return len(v)
+}
+
+func (v VertexDataArr) Less(i, j int) bool {
+	return v[i].distance < v[j].distance
+}
+
+func (v VertexDataArr) Swap(i, j int) {
+	v[i], v[j] = v[j], v[i]
+}
 
 func findSelfOrigRouterLsaKey(ent map[LsaKey]bool) (LsaKey, error) {
 	var key LsaKey
@@ -121,9 +141,9 @@ func (server *OSPFServer) UpdateAreaGraphNetworkLsa(lsaEnt NetworkLsa, lsaKey Ls
 		lsaEnt, exist := lsDbEnt.RouterLsaMap[lsaKey]
 		if !exist {
 			server.logger.Err(fmt.Sprintln("Router LSA with LsaKey:", lsaKey, "not found in areaId:", areaId))
-			server.logger.Err(fmt.Sprintln(lsDbEnt))
-			server.logger.Err(fmt.Sprintln("======Router LsaMap====", lsDbEnt.RouterLsaMap))
-			server.logger.Err(fmt.Sprintln("========Network LsaMap====", lsDbEnt.NetworkLsaMap))
+			//server.logger.Err(fmt.Sprintln(lsDbEnt))
+			//server.logger.Err(fmt.Sprintln("======Router LsaMap====", lsDbEnt.RouterLsaMap))
+			//server.logger.Err(fmt.Sprintln("========Network LsaMap====", lsDbEnt.NetworkLsaMap))
 			err := errors.New(fmt.Sprintln("Router LSA with LsaKey:", lsaKey, "not found in areaId:", areaId))
 			// continue
 			if check == true {
@@ -390,7 +410,9 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 		ent.Paths[0] = path
 		server.SPFTree[vKey] = ent
 	}
+
 	for j := 0; j < len(treeVSlice); j++ {
+		verArr := make([]VertexData, 0)
 		ent, exist := server.AreaGraph[treeVSlice[j]]
 		if !exist {
 			server.logger.Info(fmt.Sprintln("No entry found for:", treeVSlice[j]))
@@ -398,6 +420,7 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 			//continue
 			return err
 		}
+
 		for i := 0; i < len(ent.NbrVertexKey); i++ {
 			verKey := ent.NbrVertexKey[i]
 			cost := ent.NbrVertexCost[i]
@@ -408,7 +431,8 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 				return err
 			} else {
 				if entry.Visited == true {
-					continue
+					//server.logger.Info(fmt.Sprintln("=====Entry already visited in the SPF Tree:"))
+					//continue
 				}
 			}
 			tEnt, exist := server.SPFTree[verKey]
@@ -427,6 +451,7 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 				return err
 			}
 			if tEnt.Distance > tEntry.Distance+cost {
+				//server.logger.Info(fmt.Sprintln("We have lower cost path via:", tEnt, "and old path was:", tEntry, " cost is:", cost))
 				tEnt.Distance = tEntry.Distance + cost
 				for l := 0; l < tEnt.NumOfPaths; l++ {
 					tEnt.Paths[l] = nil
@@ -444,6 +469,7 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 				}
 				tEnt.NumOfPaths = tEntry.NumOfPaths
 			} else if tEnt.Distance == tEntry.Distance+cost {
+				//server.logger.Info(fmt.Sprintln("We have equal cost path via:", tEnt, "and old path was:", tEntry, " cost is:", cost))
 				paths := make([]Path, (tEntry.NumOfPaths + tEnt.NumOfPaths))
 				for l := 0; l < tEnt.NumOfPaths; l++ {
 					var path Path
@@ -465,9 +491,32 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 				tEnt.Paths = paths
 				tEnt.NumOfPaths = tEntry.NumOfPaths + tEnt.NumOfPaths
 			}
+			if _, ok := server.SPFTree[verKey]; !ok {
+				//treeVSlice = append(treeVSlice, verKey)
+				vData := VertexData{
+					vKey:     verKey,
+					distance: tEnt.Distance,
+				}
+				verArr = append(verArr, vData)
+			}
 			server.SPFTree[verKey] = tEnt
-			treeVSlice = append(treeVSlice, verKey)
 		}
+		/*
+			server.logger.Info("==============verArr===========")
+			for _, v := range verArr {
+				server.logger.Info(fmt.Sprintln(v))
+			}
+			server.logger.Info("===============================")
+		*/
+		sort.Sort(VertexDataArr(verArr))
+		//		server.logger.Info("==============sorted verArr===========")
+		for _, v := range verArr {
+			treeVSlice = append(treeVSlice, v.vKey)
+			//			server.logger.Info(fmt.Sprintln(v))
+		}
+		//		server.logger.Info("===============================")
+		verArr = verArr[:0]
+		verArr = nil
 		ent.Visited = true
 		server.AreaGraph[treeVSlice[j]] = ent
 	}

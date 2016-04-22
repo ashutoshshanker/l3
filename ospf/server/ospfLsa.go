@@ -304,7 +304,7 @@ func encodeLinkData(lDetail LinkDetail, length int) []byte {
 }
 
 func encodeRouterLsa(lsa RouterLsa, lsakey LsaKey) []byte {
-	fmt.Println("lsa:", lsa, "LsaKey:", lsakey)
+	//fmt.Println("lsa:", lsa, "LsaKey:", lsakey)
 	rtrLsa := make([]byte, lsa.LsaMd.LSLen)
 	lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
 	copy(rtrLsa[0:20], lsaHdr)
@@ -357,7 +357,7 @@ func encodeRouterLsa(lsa RouterLsa, lsakey LsaKey) []byte {
 */
 
 func encodeNetworkLsa(lsa NetworkLsa, lsakey LsaKey) []byte {
-	fmt.Println("lsa:", lsa, "LsaKey:", lsakey)
+	//fmt.Println("lsa:", lsa, "LsaKey:", lsakey)
 	if lsa.LsaMd.LSLen == 0 {
 		return nil
 	}
@@ -420,7 +420,7 @@ func decodeNetworkLsa(data []byte, lsa *NetworkLsa, lsakey *LsaKey) {
 */
 
 func encodeSummaryLsa(lsa SummaryLsa, lsakey LsaKey) []byte {
-	fmt.Println("LsaKey:", lsakey, "lsa:", lsa)
+	//fmt.Println("LsaKey:", lsakey, "lsa:", lsa)
 	sLsa := make([]byte, lsa.LsaMd.LSLen)
 	lsaHdr := encodeLsaHeader(lsa.LsaMd, lsakey)
 	copy(sLsa[0:20], lsaHdr)
@@ -578,8 +578,8 @@ func decodeASExternalLsa(data []byte, lsa *ASExternalLsa, lsakey *LsaKey) {
 }
 
 func (server *OSPFServer) getRouterLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa RouterLsa, retVal int) {
-	server.logger.Info(fmt.Sprintln("1. LS DB:", server.AreaLsdb))
-	server.logger.Info(fmt.Sprintln("1. areaId:", areaId, "lsaKey:", lsaKey))
+	//server.logger.Info(fmt.Sprintln("1. LS DB:", server.AreaLsdb))
+	//server.logger.Info(fmt.Sprintln("1. areaId:", areaId, "lsaKey:", lsaKey))
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
@@ -592,8 +592,8 @@ func (server *OSPFServer) getRouterLsaFromLsdb(areaId uint32, lsaKey LsaKey) (ls
 }
 
 func (server *OSPFServer) getNetworkLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa NetworkLsa, retVal int) {
-	server.logger.Info(fmt.Sprintln("2. LS DB:", server.AreaLsdb))
-	server.logger.Info(fmt.Sprintln("2. areaId:", areaId, "lsaKey:", lsaKey))
+	//server.logger.Info(fmt.Sprintln("2. LS DB:", server.AreaLsdb))
+	//server.logger.Info(fmt.Sprintln("2. areaId:", areaId, "lsaKey:", lsaKey))
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
@@ -606,8 +606,8 @@ func (server *OSPFServer) getNetworkLsaFromLsdb(areaId uint32, lsaKey LsaKey) (l
 }
 
 func (server *OSPFServer) getSummaryLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa SummaryLsa, retVal int) {
-	server.logger.Info(fmt.Sprintln("3. LS DB:", server.AreaLsdb))
-	server.logger.Info(fmt.Sprintln("3. areaId:", areaId, "lsaKey:", lsaKey))
+	//server.logger.Info(fmt.Sprintln("3. LS DB:", server.AreaLsdb))
+	//server.logger.Info(fmt.Sprintln("3. areaId:", areaId, "lsaKey:", lsaKey))
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
@@ -632,8 +632,8 @@ func (server *OSPFServer) getSummaryLsaFromLsdb(areaId uint32, lsaKey LsaKey) (l
 }
 
 func (server *OSPFServer) getASExternalLsaFromLsdb(areaId uint32, lsaKey LsaKey) (lsa ASExternalLsa, retVal int) {
-	server.logger.Info(fmt.Sprintln("4. LS DB:", server.AreaLsdb))
-	server.logger.Info(fmt.Sprintln("4. areaId:", areaId, "lsaKey:", lsaKey))
+	//server.logger.Info(fmt.Sprintln("4. LS DB:", server.AreaLsdb))
+	//server.logger.Info(fmt.Sprintln("4. areaId:", areaId, "lsaKey:", lsaKey))
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
