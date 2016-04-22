@@ -16,6 +16,10 @@ type OvsPolicyMgr struct {
 	plugin string
 }
 
+type OvsBfdMgr struct {
+	plugin string
+}
+
 func NewOvsIntfMgr() *OvsIntfMgr {
 	mgr := &OvsIntfMgr{
 		plugin: "ovsdb",
@@ -23,6 +27,7 @@ func NewOvsIntfMgr() *OvsIntfMgr {
 
 	return mgr
 }
+
 func NewOvsPolicyMgr() *OvsPolicyMgr {
 	mgr := &OvsPolicyMgr{
 		plugin: "ovsdb",
@@ -33,6 +38,14 @@ func NewOvsPolicyMgr() *OvsPolicyMgr {
 
 func NewOvsRouteMgr() *OvsRouteMgr {
 	mgr := &OvsRouteMgr{
+		plugin: "ovsdb",
+	}
+
+	return mgr
+}
+
+func NewOvsBfdMgr() *OvsBfdMgr {
+	mgr := &OvsBfdMgr{
 		plugin: "ovsdb",
 	}
 

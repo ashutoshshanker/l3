@@ -2,7 +2,7 @@ package server
 
 /*  Port/Interface state change manager.
  */
-type IntfMgrIntf interface {
+type IntfStateMgrIntf interface {
 	PortStateChange()
 }
 
@@ -13,9 +13,14 @@ type RouteMgrIntf interface {
 	DeleteRoute()
 }
 
-/*  Inteface for handling policy related operations
+/*  Interface for handling policy related operations
  */
 type PolicyMgrIntf interface {
 	AddPolicy()
 	RemovePolicy()
+}
+
+/*  Interface for handling bfd state notifications
+ */
+type BfdMgrIntf interface {
 }
