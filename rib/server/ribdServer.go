@@ -40,6 +40,12 @@ type NextHopInfoKey struct {
 type NextHopInfo struct {
 	refCount     int     //number of routes using this as a next hop
 }
+type ApplyPolicyInfo struct {
+	Source         string
+	Policy         string
+	Action         string
+	Conditions     []*ribdInt.ConditionInfo
+}
 type RIBDServer struct {
     Logger                       *logging.Writer
 	PolicyEngineDB               *policy.PolicyEngineDB
@@ -68,6 +74,7 @@ type RIBDServer struct {
 	PolicyDefinitionCreateConfCh chan *ribd.PolicyDefinition
 	PolicyDefinitionDeleteConfCh chan *ribd.PolicyDefinition
 	PolicyDefinitionUpdateConfCh chan *ribd.PolicyDefinition
+	PolicyApplyCh                chan ApplyPolicyInfo
 	AcceptConfig                 bool
 	ServerUpCh                   chan bool
 	DbHdl                        *sql.DB
@@ -406,24 +413,44 @@ func (ribdServiceHandler *RIBDServer) ConnectToClients(paramsFile string) {
 	}
 }
 
-func (ribdServiceHandler *RIBDServer) InitializePolicyDB(db *policy.PolicyEngineDB) *policy.PolicyEngineDB {
-	db = policy.NewPolicyEngineDB(logger)
-	db.SetDefaultImportPolicyActionFunc(defaultImportPolicyEngineActionFunc)
-	db.SetDefaultExportPolicyActionFunc(defaultExportPolicyEngineActionFunc)
-	db.SetIsEntityPresentFunc(DoesRouteExist)
-	db.SetEntityUpdateFunc(UpdateRouteAndPolicyDB)
-	db.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineRouteDispositionAction)
-	db.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionRedistribute)
-	db.SetActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise, policyEngineActionNetworkStatementAdvertise)
-	db.SetActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionSetAdminDistance)
-	db.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineUndoRouteDispositionAction)
-	db.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionUndoRedistribute)
-	db.SetUndoActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionUndoSetAdminDistance)
-	db.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise, policyEngineActionUndoNetworkStatemenAdvertiseAction)
-	db.SetTraverseAndApplyPolicyFunc(policyEngineTraverseAndApply)
-	db.SetTraverseAndReversePolicyFunc(policyEngineTraverseAndReverse)
-	db.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
-	return db
+func (ribdServiceHandler *RIBDServer) InitializeGlobalPolicyDB() *policy.PolicyEngineDB {
+	ribdServiceHandler.GlobalPolicyEngineDB = policy.NewPolicyEngineDB(logger)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetDefaultImportPolicyActionFunc(defaultImportPolicyEngineActionFunc)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetDefaultExportPolicyActionFunc(defaultExportPolicyEngineActionFunc)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetIsEntityPresentFunc(DoesRouteExist)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetEntityUpdateFunc(UpdateRouteAndPolicyDB)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineRouteDispositionAction)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionRedistribute)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise, policyEngineActionNetworkStatementAdvertise)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionSetAdminDistance)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineUndoRouteDispositionAction)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionUndoRedistribute)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionUndoSetAdminDistance)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise, policyEngineActionUndoNetworkStatemenAdvertiseAction)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetTraverseAndApplyPolicyFunc(policyEngineTraverseAndApply)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetTraverseAndReversePolicyFunc(policyEngineTraverseAndReverse)
+	ribdServiceHandler.GlobalPolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
+	return ribdServiceHandler.GlobalPolicyEngineDB
+}
+
+func (ribdServiceHandler *RIBDServer) InitializePolicyDB() *policy.PolicyEngineDB {
+	ribdServiceHandler.PolicyEngineDB = policy.NewPolicyEngineDB(logger)
+	ribdServiceHandler.PolicyEngineDB.SetDefaultImportPolicyActionFunc(defaultImportPolicyEngineActionFunc)
+	ribdServiceHandler.PolicyEngineDB.SetDefaultExportPolicyActionFunc(defaultExportPolicyEngineActionFunc)
+	ribdServiceHandler.PolicyEngineDB.SetIsEntityPresentFunc(DoesRouteExist)
+	ribdServiceHandler.PolicyEngineDB.SetEntityUpdateFunc(UpdateRouteAndPolicyDB)
+	ribdServiceHandler.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineRouteDispositionAction)
+	ribdServiceHandler.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionRedistribute)
+	ribdServiceHandler.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise, policyEngineActionNetworkStatementAdvertise)
+	ribdServiceHandler.PolicyEngineDB.SetActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionSetAdminDistance)
+	ribdServiceHandler.PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteDisposition, policyEngineUndoRouteDispositionAction)
+	ribdServiceHandler.PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute, policyEngineActionUndoRedistribute)
+	ribdServiceHandler.PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PoilcyActionTypeSetAdminDistance, policyEngineActionUndoSetAdminDistance)
+	ribdServiceHandler.PolicyEngineDB.SetUndoActionFunc(policyCommonDefs.PolicyActionTypeNetworkStatementAdvertise, policyEngineActionUndoNetworkStatemenAdvertiseAction)
+	ribdServiceHandler.PolicyEngineDB.SetTraverseAndApplyPolicyFunc(policyEngineTraverseAndApply)
+	ribdServiceHandler.PolicyEngineDB.SetTraverseAndReversePolicyFunc(policyEngineTraverseAndReverse)
+	ribdServiceHandler.PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
+	return ribdServiceHandler.PolicyEngineDB
 }
 func NewRIBDServicesHandler(dbHdl *sql.DB, loggerC *logging.Writer) *RIBDServer {
 	fmt.Println("NewRIBDServicesHandler")
@@ -461,6 +488,7 @@ func NewRIBDServicesHandler(dbHdl *sql.DB, loggerC *logging.Writer) *RIBDServer 
 	ribdServicesHandler.PolicyDefinitionCreateConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.PolicyDefinitionDeleteConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan *ribd.PolicyDefinition)
+	ribdServicesHandler.PolicyApplyCh = make(chan ApplyPolicyInfo,100)
 	ribdServicesHandler.ServerUpCh = make(chan bool)
 	ribdServicesHandler.DbHdl = dbHdl
 	routeServiceHandler = ribdServicesHandler
@@ -480,8 +508,8 @@ func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 	BuildPublisherMap()
 	//RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	//CreateRoutes("RouteSetup.json")
-	PolicyEngineDB = ribdServiceHandler.InitializePolicyDB(ribdServiceHandler.PolicyEngineDB)
-	GlobalPolicyEngineDB = ribdServiceHandler.InitializePolicyDB(ribdServiceHandler.GlobalPolicyEngineDB)
+	PolicyEngineDB = ribdServiceHandler.InitializePolicyDB()
+	GlobalPolicyEngineDB = ribdServiceHandler.InitializeGlobalPolicyDB()
 	ribdServiceHandler.UpdatePolicyObjectsFromDB() //(paramsDir)
 	ribdServiceHandler.ConnectToClients(configFile)
 	logger.Println("Starting the server loop")
@@ -527,6 +555,9 @@ func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 		case policyDeleteConf := <-ribdServiceHandler.PolicyDefinitionDeleteConfCh:
 			logger.Info("received message on PolicyDefinitionDeleteConfCh channel")
 			ribdServiceHandler.ProcessPolicyDefinitionConfigDelete(policyDeleteConf,GlobalPolicyEngineDB)
+		case info := <-ribdServiceHandler.PolicyApplyCh:
+		    logger.Info("received message on PolicyApplyCh channel")
+			ribdServiceHandler.ApplyPolicy(info)
 		case info := <-ribdServiceHandler.TrackReachabilityCh:
 			logger.Info("received message on TrackReachabilityCh channel")
 			ribdServiceHandler.TrackReachabilityStatus(info.IpAddr,info.Protocol,info.Op)

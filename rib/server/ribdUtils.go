@@ -29,12 +29,16 @@ type AdminDistanceSlice []ribd.RouteDistanceState
 type RedistributeRouteInfo struct {
 	route ribdInt.Routes
 }
-
+type RedistributionPolicyInfo struct {
+	policy      string
+	policyStmt  string
+}
 type PublisherMapInfo struct {
 	pub_ipc    string
 	pub_socket *nanomsg.PubSocket
 }
 var RedistributeRouteMap map[string][]RedistributeRouteInfo
+var RedistributionPolicyMap map[string]RedistributionPolicyInfo
 var TrackReachabilityMap map[string][]string //map[ipAddr][]protocols
 var RouteProtocolTypeMapDB map[string]int
 var ReverseRouteProtoTypeMapDB map[int]string

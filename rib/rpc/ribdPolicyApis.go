@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"ribd"
 	"ribdInt"
+	"l3/rib/server"
 )
 
 func (m RIBDServicesHandler) CreatePolicyStmt(cfg *ribd.PolicyStmt) (val bool, err error) {
@@ -60,6 +61,17 @@ func (m RIBDServicesHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rc
 }
 
 func (m RIBDServicesHandler) ApplyPolicy(source string ,policy string, action string , conditions []*ribdInt.ConditionInfo) (err error) {
-	logger.Info(fmt.Sprintln("ApplyPolicy source:", source, " policy:", policy, " action:", action," number of extra conditions:",len(conditions)))
+	logger.Info(fmt.Sprintln("RIB handler ApplyPolicy source:", source, " policy:", policy, " action:", action," conditions: "))
+	for j:=0;j<len(conditions);j++ {
+		logger.Info(fmt.Sprintf("ConditionType = %s :", conditions[j].ConditionType))
+		switch conditions[j].ConditionType {
+			case "MatchProtocol":
+			    logger.Info(fmt.Sprintln(conditions[j].Protocol))
+			case "MatchDstIpPrefix":
+			case "MatchSrcIpPrefix":
+			    logger.Info(fmt.Sprintln("IpPrefix:", conditions[j].IpPrefix, "MasklengthRange:",conditions[j].MasklengthRange))
+		}
+	}
+	m.server.PolicyApplyCh <- server.ApplyPolicyInfo{source,policy,action,conditions}
 	return nil
 }

@@ -1012,15 +1012,16 @@ func (server *BGPServer) SetupRedistribution(gConf config.GlobalConfig) {
 	}
 	conditions := make([]*ribdInt.ConditionInfo,0)
 	for i := 0;i<len(gConf.Redistribution);i++ {
+		server.logger.Info(fmt.Sprintln("Sources: ",gConf.Redistribution[i].Sources))
 	    sources := make([]string,0)
 		sources = strings.Split(gConf.Redistribution[i].Sources,",")
-		server.logger.Info(fmt.Sprintf("Setting up ", gConf.Redistribution[i].Policy, " as redistribution policy for source(s): "))
+		server.logger.Info(fmt.Sprintf("Setting up %s as redistribution policy for source(s): ", gConf.Redistribution[i].Policy))
 		for j :=0;j<len(sources);j++ {
-			server.logger.Info(fmt.Sprintf("sources[j] "))
+			server.logger.Info(fmt.Sprintf("%s ",sources[j]))
 			conditions = append(conditions,&ribdInt.ConditionInfo{ConditionType:"MatchProtocol",Protocol:sources[j]})
 		}
-		server.logger.Info(fmt.Sprintln(" "))
-		server.ribdClient.ApplyPolicy("BGP",gConf.Redistribution[i].Policy,"Redistribute",conditions)
+		server.logger.Info(fmt.Sprintln(""))
+		server.ribdClient.ApplyPolicy("BGP",gConf.Redistribution[i].Policy,"Redistribution",conditions)
 	}
 }
 func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {

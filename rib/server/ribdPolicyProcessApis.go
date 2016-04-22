@@ -4,6 +4,7 @@ import (
 	"ribd"
 	"ribdInt"
 	"utils/policy"
+	"utils/patriciaDB"
 )
 type PolicyExtensions struct {
 	hitCounter    int
@@ -26,6 +27,8 @@ func (m RIBDServer) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition
 		newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{PrefixSet: cfg.MatchDstIpPrefixConditionInfo.PrefixSet, Prefix: matchPrefix}
 	}*/
 	val, err = db.CreatePolicyCondition(newPolicy)
+	//send event for condition create
+	PolicyEngineDB.CreatePolicyCondition(newPolicy)
 	return val, err
 }
 
@@ -33,6 +36,7 @@ func (m RIBDServer) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyCondition
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition: ", cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name}
 	val, err = db.DeletePolicyCondition(newPolicy)
+	//deleteInternalPolicyCondition(newPolicy)
 	return val, err
 }
 
@@ -60,6 +64,7 @@ func (m RIBDServer) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmt,db *polic
 	newPolicyStmt.Actions = make([]string, 0)
 	newPolicyStmt.Actions = append(newPolicyStmt.Actions,cfg.Action)
 	err = db.CreatePolicyStatement(newPolicyStmt)
+	PolicyEngineDB.CreatePolicyStatement(newPolicyStmt)
 	return err
 }
 
@@ -82,6 +87,7 @@ func (m RIBDServer) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefiniti
 	}
 	newPolicy.Extensions = PolicyExtensions{}
 	err = db.CreatePolicyDefinition(newPolicy)
+	PolicyEngineDB.CreatePolicyDefinition(newPolicy)
 	return err
 }
 
@@ -333,4 +339,64 @@ func (m RIBDServer) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd
 	policyStmts.More = more
 	policyStmts.Count = validCount
 	return policyStmts, err
+}
+
+func (m RIBDServer) ApplyPolicy(info ApplyPolicyInfo)  {
+	source := info.Source 
+	policyName := info.Policy
+	action := info.Action
+	conditions := make([]ribdInt.ConditionInfo,0)
+	for i:=0;i<len(info.Conditions);i++ {
+		conditions = append(conditions,*info.Conditions[i])
+	}
+	conditionNameList := make([]string,0)
+	k:=0
+	logger.Info(fmt.Sprintln("RIB handler ApplyPolicy source:", source, " policy:", policyName, " action:", action," conditions: "))
+	for j:=0;j<len(conditions);j++ {
+		logger.Info(fmt.Sprintf("ConditionType = %s :", conditions[j].ConditionType))
+		switch conditions[j].ConditionType {
+			case "MatchProtocol":
+			    logger.Info(fmt.Sprintln(conditions[j].Protocol))
+				conditionName := "Match"+conditions[j].Protocol
+				conditionNameList[k] = conditionName
+				k++
+				ok := PolicyEngineDB.PolicyConditionsDB.Match(patriciaDB.Prefix(conditionName))
+				if !ok {
+					logger.Info(fmt.Sprintln("Define condition ", conditionName))
+					policyCondition := ribd.PolicyCondition{Name:conditionName,ConditionType:conditions[j].ConditionType,Protocol:conditions[j].Protocol}
+					m.ProcessPolicyConditionConfigCreate(&policyCondition,PolicyEngineDB)
+				}
+			case "MatchDstIpPrefix":
+			case "MatchSrcIpPrefix":
+			    logger.Info(fmt.Sprintln("IpPrefix:", conditions[j].IpPrefix, "MasklengthRange:",conditions[j].MasklengthRange))
+		}
+	}
+	//define Action
+	switch action {
+		case "Redistribution":
+		    logger.Info("Setting up Redistribution action mep")
+		    /*actionName := "RedeistributeTo"+source
+		    ok := PolicyEngineDB.PolicyActionsDB.Match(actionName)
+			if !ok {
+				logger.Info(fmt.Sprintln("Define action ", actionName))
+				policyAction := ribdInt.PolicyAction{Name:actionName, ActionType:action,RedistributeAction:"allow",RedistributeTargetProtocol:source}
+				m.ProcessPolicyActionConfigCreate(&policyAction)
+			}*/
+			//check if the policy is configured
+			//get should happen from DB
+			ok := PolicyEngineDB.PolicyDB.Match(patriciaDB.Prefix(policyName))
+			if !ok {
+				logger.Err(fmt.Sprintln("Policy ", policyName, " not defined"))
+				return
+			}
+			policyNodeInfo := GlobalPolicyEngineDB.PolicyDB.Get(patriciaDB.Prefix(policyName))
+			if policyNodeInfo != nil {
+				policyNode := policyNodeInfo.(policy.Policy)
+				PolicyEngineDB.PolicyDB.Insert(patriciaDB.Prefix(policyName),policyNode)
+			}
+		    break
+		default:
+		    logger.Info(fmt.Sprintln("Action ", action, "currently a no-op"))
+	}
+	return 
 }
