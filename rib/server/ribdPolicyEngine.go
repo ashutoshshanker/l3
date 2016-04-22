@@ -257,7 +257,16 @@ func policyEngineActionUndoRedistribute(actionItem interface{}, conditionsList [
 		logger.Info(fmt.Sprintln("evt = NOTIFY_ROUTE_CREATED"))
 		evt = ribdCommonDefs.NOTIFY_ROUTE_CREATED
 	}
-	switch RouteProtocolTypeMapDB[redistributeActionInfo.RedistributeTargetProtocol] {
+	route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
+	route.RouteOrigin = ReverseRouteProtoTypeMapDB[int(RouteInfo.routeType)]
+	publisherInfo, ok := PublisherInfoMap[redistributeActionInfo.RedistributeTargetProtocol]
+	if ok {
+		logger.Info(fmt.Sprintln("ReditributeNotificationSend event called for target protocol - ",redistributeActionInfo.RedistributeTargetProtocol ))
+		RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+	} else {
+		logger.Info("Unknown target protocol")
+	}
+/*	switch RouteProtocolTypeMapDB[redistributeActionInfo.RedistributeTargetProtocol] {
 	case ribdCommonDefs.BGP:
 		logger.Info(fmt.Sprintln("Redistribute to BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
@@ -269,7 +278,7 @@ func policyEngineActionUndoRedistribute(actionItem interface{}, conditionsList [
 		break
 	default:
 		logger.Info(fmt.Sprintln("Unknown target protocol"))
-	}
+	}*/
 	UpdateRedistributeTargetMap(evt, redistributeActionInfo.RedistributeTargetProtocol, route)
 }
 func policyEngineUpdateRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, handle patriciaDB.Item) (err error) {
@@ -460,7 +469,17 @@ func policyEngineActionRedistribute(actionInfo interface{}, conditionInfo []inte
 		logger.Info("Redistribute target protocol same as route source, do nothing more here")
 		return
 	}
-	switch RouteProtocolTypeMapDB[redistributeActionInfo.RedistributeTargetProtocol] {
+	route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
+	route.RouteOrigin = ReverseRouteProtoTypeMapDB[int(RouteInfo.routeType)]
+	publisherInfo, ok := PublisherInfoMap[redistributeActionInfo.RedistributeTargetProtocol]
+	if ok {
+		logger.Info(fmt.Sprintln("ReditributeNotificationSend event called for target protocol - ",redistributeActionInfo.RedistributeTargetProtocol ))
+		RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+	} else {
+		logger.Info("Unknown target protocol")
+	}
+	
+/*	switch RouteProtocolTypeMapDB[redistributeActionInfo.RedistributeTargetProtocol] {
 	case ribdCommonDefs.BGP:
 		logger.Info(fmt.Sprintln("Redistribute target Protocol BGP"))
 		route = ribdInt.Routes{Ipaddr: RouteInfo.destNetIp, Mask: RouteInfo.networkMask, NextHopIp: RouteInfo.nextHopIp, NextHopIfType: ribdInt.Int(RouteInfo.nextHopIfType), IfIndex: ribdInt.Int(RouteInfo.nextHopIfIndex), Metric: ribdInt.Int(RouteInfo.metric), Prototype: ribdInt.Int(RouteInfo.routeType)}
@@ -472,7 +491,7 @@ func policyEngineActionRedistribute(actionInfo interface{}, conditionInfo []inte
 		break
 	default:
 		logger.Info(fmt.Sprintln("Unknown target protocol"))
-	}
+	}*/
 	UpdateRedistributeTargetMap(evt, redistributeActionInfo.RedistributeTargetProtocol, route)
 }
 
