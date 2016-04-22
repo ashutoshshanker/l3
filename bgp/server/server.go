@@ -98,19 +98,18 @@ type BGPServer struct {
 	ifaceIP        net.IP
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 	addPathCount   int
-
-	plugin string
+	intfMgr        IntfStateMgrIntf
+	policyMgr      PolicyMgrIntf
+	routeMgr       RouteMgrIntf
+	bfdMgr         BfdMgrIntf
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
-	ribdClient *ribd.RIBDServicesClient, bfddClient *bfdd.BFDDServicesClient,
-	asicdClient *asicdServices.ASICDServicesClient, plugin string) *BGPServer {
+	iMgr IntfStateMgrIntf, pMgr PolicyMgrIntf, rMgr RouteMgrIntf,
+	bMgr BfdMgrIntf) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.bgpPE = policyEngine
-	bgpServer.ribdClient = ribdClient
-	bgpServer.bfddClient = bfddClient
-	bgpServer.AsicdClient = asicdClient
 	bgpServer.BgpConfig = config.Bgp{}
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
 	bgpServer.AddPeerCh = make(chan PeerUpdate)
@@ -128,7 +127,8 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.NeighborMutex = sync.RWMutex{}
 	bgpServer.PeerMap = make(map[string]*Peer)
 	bgpServer.Neighbors = make([]*Peer, 0)
-	bgpServer.AdjRib = bgprib.NewAdjRib(logger, ribdClient, &bgpServer.BgpConfig.Global.Config)
+	//@TODO: jgheewala change ribdClient with router interface.....
+	//bgpServer.AdjRib = bgprib.NewAdjRib(logger, ribdClient, &bgpServer.BgpConfig.Global.Config)
 	bgpServer.ifacePeerMap = make(map[int32][]string)
 	bgpServer.ifaceIP = nil
 	bgpServer.actionFuncMap = make(map[int]bgppolicy.PolicyActionFunc)
@@ -145,9 +145,14 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.bgpPE.SetEntityUpdateFunc(bgpServer.UpdateRouteAndPolicyDB)
 	bgpServer.bgpPE.SetIsEntityPresentFunc(bgpServer.DoesRouteExist)
 	bgpServer.bgpPE.SetActionFuncs(bgpServer.actionFuncMap)
-	bgpServer.bgpPE.SetTraverseFuncs(bgpServer.TraverseAndApplyBGPRib, bgpServer.TraverseAndReverseBGPRib)
+	bgpServer.bgpPE.SetTraverseFuncs(bgpServer.TraverseAndApplyBGPRib,
+		bgpServer.TraverseAndReverseBGPRib)
 
-	bgpServer.plugin = plugin
+	bgpServer.intfMgr = iMgr
+	bgpServer.routeMgr = rMgr
+	bgpServer.policyMgr = pMgr
+	bgpServer.bfdMgr = bMgr
+
 	return bgpServer
 }
 
@@ -1136,18 +1141,17 @@ func (server *BGPServer) StartServer() {
 	server.logger.Info("Setting up Peer connections")
 	acceptCh := make(chan *net.TCPConn)
 	go server.listenForPeers(acceptCh)
+	// @TODO: move this go routine to appropriate place
+	//	routes, _ := server.ribdClient.GetConnectedRoutesInfo()
+	server.ProcessRoutesFromRIB()
+	//	server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
 
-	if server.plugin == FLEXSWITCH {
-		//	routes, _ := server.ribdClient.GetConnectedRoutesInfo()
-		server.ProcessRoutesFromRIB()
-		//	server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
+	go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
+	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
+	go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
+	go server.listenForBFDNotifications(bfdSubSocket, bfdSubSocketCh, bfdSubSocketErrCh)
+	//go server.AdjRib.ProcessRIBdRouteRequests()
 
-		go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
-		go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
-		go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
-		go server.listenForBFDNotifications(bfdSubSocket, bfdSubSocketCh, bfdSubSocketErrCh)
-		//go server.AdjRib.ProcessRIBdRouteRequests()
-	}
 	for {
 		select {
 		case gConf = <-server.GlobalConfigCh:

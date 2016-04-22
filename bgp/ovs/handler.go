@@ -1,4 +1,4 @@
-package ovsdbHandler
+package ovsMgr
 
 import (
 	ovsdb "github.com/socketplane/libovsdb"

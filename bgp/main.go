@@ -2,24 +2,16 @@
 package main
 
 import (
-	"asicdServices"
-	"bfdd"
-	"errors"
 	"flag"
 	"fmt"
-	_ "reflect"
-	"utils/keepalive"
-	"utils/logging"
-
-	// Bgp packages
-	"l3/bgp/ovsdbHandler"
+	"l3/bgp/flexswitch"
+	"l3/bgp/ovs"
 	bgppolicy "l3/bgp/policy"
 	"l3/bgp/rpc"
 	"l3/bgp/server"
 	"l3/bgp/utils"
-
-	// Ribd package
-	"ribd"
+	"utils/keepalive"
+	"utils/logging"
 )
 
 const (
@@ -65,15 +57,20 @@ func main() {
 	case OVSDB_PLUGIN:
 		// if plugin used is ovs db then lets start ovsdb client listener
 		quit := make(chan bool)
-		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, nil,
-			nil, nil, plugin)
+		rMgr := ovsMgr.NewOvsRouteMgr()
+		pMgr := ovsMgr.NewOvsPolicyMgr()
+		iMgr := ovsMgr.NewOvsIntfMgr()
+		bMgr := ovsMgr.NewOvsBfdMgr()
+
+		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr, pMgr,
+			rMgr, bMgr)
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
 		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
 
 		// create and start ovsdb handler
-		ovsdbManager, err := ovsdbHandler.NewBGPOvsdbHandler(logger, confIface)
+		ovsdbManager, err := ovsMgr.NewBGPOvsdbHandler(logger, confIface)
 		if err != nil {
 			fmt.Println("Starting OVDB client failed ERROR:", err)
 			return
@@ -83,73 +80,33 @@ func main() {
 			fmt.Println("OVSDB Serve failed ERROR:", err)
 			return
 		}
+
 		<-quit
 	default:
 		// flexswitch plugin lets connect to clients first and then
 		// start flexswitch client listener
-		asicdClient, ribdClient, bfddClient, err :=
-			bgpConnectToFlexSwitchClients(logger, fileName)
+		iMgr, err := FSMgr.NewFSIntfMgr(logger, fileName)
 		if err != nil {
 			return
 		}
+		rMgr, err := FSMgr.NewFSRouteMgr(logger, fileName)
+		if err != nil {
+			return
+		}
+		bMgr, err := FSMgr.NewFSBfdMgr(logger, fileName)
+		if err != nil {
+			return
+		}
+		pMgr := FSMgr.NewFSPolicyMgr(logger, fileName)
 
-		// Connection to clients success, lets start bgp backend server
 		logger.Info(fmt.Sprintln("Starting BGP Server..."))
-		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient,
-			bfddClient, asicdClient, "FlexSwitch")
+
+		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr, pMgr,
+			rMgr, bMgr)
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
 		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
 		rpc.StartServer(logger, confIface, fileName)
 	}
-}
-
-/* If FlexSwitch plugin, then connect to flexswitch dameons like ribd,
- * asicd, bfd. Only if connection is successful start the server
- */
-func bgpConnectToFlexSwitchClients(logger *logging.Writer,
-	fileName string) (*asicdServices.ASICDServicesClient,
-	*ribd.RIBDServicesClient, *bfdd.BFDDServicesClient, error) {
-
-	var asicdClient *asicdServices.ASICDServicesClient = nil
-	var ribdClient *ribd.RIBDServicesClient = nil
-	var bfddClient *bfdd.BFDDServicesClient = nil
-
-	asicdClientChan := make(chan *asicdServices.ASICDServicesClient)
-
-	logger.Info("Connecting to ASICd")
-	go rpc.StartAsicdClient(logger, fileName, asicdClientChan)
-	asicdClient = <-asicdClientChan
-	if asicdClient == nil {
-		logger.Err("Failed to connect to ASICd")
-		return nil, nil, nil, errors.New("Failed to connect to ASICd")
-	} else {
-		logger.Info("Connected to ASICd")
-	}
-
-	ribdClientChan := make(chan *ribd.RIBDServicesClient)
-
-	logger.Info("Connecting to RIBd")
-	go rpc.StartRibdClient(logger, fileName, ribdClientChan)
-	ribdClient = <-ribdClientChan
-	if ribdClient == nil {
-		logger.Err("Failed to connect to RIBd\n")
-		return nil, nil, nil, errors.New("Failed to connect to RIBd")
-	} else {
-		logger.Info("Connected to RIBd")
-	}
-
-	bfddClientChan := make(chan *bfdd.BFDDServicesClient)
-
-	logger.Info("Connecting to BFDd")
-	go rpc.StartBfddClient(logger, fileName, bfddClientChan)
-	bfddClient = <-bfddClientChan
-	if bfddClient == nil {
-		logger.Err("Failed to connect to BFDd\n")
-		return nil, nil, nil, errors.New("Failed to connect to BFDd")
-	} else {
-		logger.Info("Connected to BFDd")
-	}
-	return asicdClient, ribdClient, bfddClient, nil
 }
