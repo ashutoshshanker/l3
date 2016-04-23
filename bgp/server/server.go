@@ -63,11 +63,6 @@ type PolicyParams struct {
 	updatedAddPaths *([]*bgprib.Destination)
 }
 
-const (
-	FLEXSWITCH = "FlexSwitch"
-	OVSDB      = "ovsdb"
-)
-
 type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
@@ -361,16 +356,6 @@ func (server *BGPServer) getAggPrefix(conditionsList []interface{}) *packet.IPPr
 	var ipPrefix *packet.IPPrefix
 	var err error
 	for _, condition := range conditionsList {
-		/*
-			server.logger.Info(fmt.Sprintf("BGPServer:getAggPrefix - Find policy condition name %s in the condition database\n", condition))
-			conditionItem := server.bgpPE.PolicyEngine.PolicyConditionsDB.Get(patriciaDB.Prefix(condition))
-			if conditionItem == nil {
-				server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - Did not find condition ", condition, " in the condition database"))
-				continue
-			}
-			conditionInfo := conditionItem.(utilspolicy.PolicyCondition)
-			server.logger.Info(fmt.Sprintf("BGPServer:getAggPrefix - policy condition type %d\n", conditionInfo.ConditionType))
-		*/
 		switch condition.(type) {
 		case utilspolicy.MatchPrefixConditionInfo:
 			server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - PolicyConditionTypeDstIpPrefixMatch case"))
@@ -417,60 +402,33 @@ func (server *BGPServer) setWithdrawnWithAggPaths(policyParams *PolicyParams, wi
 	for _, aggDestination := range withdrawn {
 		aggDestMap[aggDestination] = true
 		if !destMap[aggDestination] {
-			server.logger.Info(fmt.Sprintf("setWithdrawnWithAggPaths: add agg dest %+v to withdrawn\n", aggDestination.IPPrefix.Prefix))
+			server.logger.Info(fmt.Sprintf(
+				"setWithdrawnWithAggPaths: add agg dest %+v to",
+				"withdrawn\n", aggDestination.IPPrefix.Prefix))
 			(*policyParams.withdrawn) = append((*policyParams.withdrawn), aggDestination)
 		}
 	}
 
-	/*
-		for _, dest := range withdrawn {
-			if !destMap[dest] {
-				(*policyParams.withdrawn) = append((*policyParams.withdrawn), dest)
-			}
-		}
-	*/
-
 	// There will be only one destination per aggregated path.
 	// So, break out of the loop as soon as we find it.
 	for path, destinations := range *policyParams.updated {
-		//dirty := false
 		for idx, dest := range destinations {
 			if aggDestMap[dest] {
-				//(*actionCbInfo.updated)[path][idx] = (*actionCbInfo.updated)[path][len(destinations)-1]
-				//(*actionCbInfo.updated)[path][len(destinations)-1] = nil
-				//(*actionCbInfo.updated)[path] = (*actionCbInfo.updated)[path][:len(destinations)-1]
 				(*policyParams.updated)[path][idx] = nil
-				server.logger.Info(fmt.Sprintf("setWithdrawnWithAggPaths: remove dest %+v from withdrawn\n", dest.IPPrefix.Prefix))
-				//dirty = true
+				server.logger.Info(fmt.Sprintf(
+					"setWithdrawnWithAggPaths: remove dest",
+					"%+v from withdrawn\n", dest.IPPrefix.Prefix))
 			}
 		}
-		/*
-			if dirty {
-				lastIdx := len(destinations) - 1
-				var movIdx int
-				for idx := 0; idx <= lastIdx; idx++ {
-					if destinations[idx] == nil {
-						for movIdx = lastIdx; movIdx > idx && destinations[movIdx] == nil; movIdx-- {
-						}
-						if movIdx <= idx {
-							lastIdx = movIdx - 1
-							break
-						}
-						(*policyParams.updated)[path][idx] = (*policyParams.updated)[path][movIdx]
-						(*policyParams.updated)[path][movIdx] = nil
-						lastIdx = movIdx - 1
-					}
-				}
-				(*policyParams.updated)[path] = (*policyParams.updated)[path][:lastIdx+1]
-			}
-		*/
 	}
 
 	if sendSummaryOnly {
 		if policyParams.DeleteType == utilspolicy.Valid {
 			for idx, dest := range *policyParams.withdrawn {
 				if dest == policyParams.dest {
-					server.logger.Info(fmt.Sprintf("setWithdrawnWithAggPaths: remove dest %+v from withdrawn\n", dest.IPPrefix.Prefix))
+					server.logger.Info(fmt.Sprintf(
+						"setWithdrawnWithAggPaths: remove dest",
+						"%+v from withdrawn\n", dest.IPPrefix.Prefix))
 					(*policyParams.withdrawn)[idx] = nil
 				}
 			}
@@ -484,16 +442,20 @@ func (server *BGPServer) setWithdrawnWithAggPaths(policyParams *PolicyParams, wi
 						}
 					}
 				} else {
-					(*policyParams.updated)[policyParams.dest.LocRibPath] = make([]*bgprib.Destination, 0)
+					(*policyParams.updated)[policyParams.dest.LocRibPath] =
+						make([]*bgprib.Destination, 0)
 				}
 				if !found {
-					server.logger.Info(fmt.Sprintf("setWithdrawnWithAggPaths: add dest %+v to update\n", policyParams.dest.IPPrefix.Prefix))
-					(*policyParams.updated)[policyParams.dest.LocRibPath] = append((*policyParams.updated)[policyParams.dest.LocRibPath], policyParams.dest)
+					server.logger.Info(fmt.Sprintf(
+						"setWithdrawnWithAggPaths: add dest %+v",
+						"to update\n", policyParams.dest.IPPrefix.Prefix))
+					(*policyParams.updated)[policyParams.dest.LocRibPath] =
+						append((*policyParams.updated)[policyParams.dest.LocRibPath],
+							policyParams.dest)
 				}
 			}
 		}
 	}
-	//(*policyParams.withdrawn) = append((*policyParams.withdrawn), withdrawn...)
 
 	server.setUpdatedAddPaths(policyParams, updatedAddPaths)
 }
@@ -503,7 +465,8 @@ func (server *BGPServer) setUpdatedWithAggPaths(policyParams *PolicyParams, upda
 	var routeDest *bgprib.Destination
 	var ok bool
 	if routeDest, ok = server.AdjRib.GetDest(ipPrefix, false); !ok {
-		server.logger.Err(fmt.Sprintln("setUpdatedWithAggPaths: Did not find destination for ip", ipPrefix))
+		server.logger.Err(fmt.Sprintln("setUpdatedWithAggPaths: Did not",
+			"find destination for ip", ipPrefix))
 		if policyParams.dest != nil {
 			routeDest = policyParams.dest
 		} else {
@@ -520,14 +483,6 @@ func (server *BGPServer) setUpdatedWithAggPaths(policyParams *PolicyParams, upda
 
 	//foundRouteDest := false
 	for aggPath, aggDestinations := range updated {
-		/*
-			foundAggDest := false
-			aggDestMap := make(map[*bgprib.Destination]bool)
-			for _, dest := range aggDestinations {
-				aggDestMap[dest] = true
-			}
-		*/
-
 		destMap := make(map[*bgprib.Destination]bool)
 		if _, ok := (*policyParams.updated)[aggPath]; !ok {
 			(*policyParams.updated)[aggPath] = make([]*bgprib.Destination, 0)
@@ -539,8 +494,11 @@ func (server *BGPServer) setUpdatedWithAggPaths(policyParams *PolicyParams, upda
 
 		for _, dest := range aggDestinations {
 			if !destMap[dest] {
-				server.logger.Info(fmt.Sprintf("setUpdatedWithAggPaths: add agg dest %+v to updated\n", dest.IPPrefix.Prefix))
-				(*policyParams.updated)[aggPath] = append((*policyParams.updated)[aggPath], dest)
+				server.logger.Info(fmt.Sprintf(
+					"setUpdatedWithAggPaths: add agg dest %+v to",
+					"updated\n", dest.IPPrefix.Prefix))
+				(*policyParams.updated)[aggPath] =
+					append((*policyParams.updated)[aggPath], dest)
 			}
 		}
 
@@ -550,137 +508,90 @@ func (server *BGPServer) setUpdatedWithAggPaths(policyParams *PolicyParams, upda
 					for idx, dest := range destinations {
 						if routeDest == dest {
 							(*policyParams.updated)[path][idx] = nil
-							server.logger.Info(fmt.Sprintf("setUpdatedWithAggPaths: summaryOnly, remove dest %+v from updated\n", dest.IPPrefix.Prefix))
+							server.logger.Info(
+								fmt.Sprintf("setUpdatedWithAggPaths:",
+									"summaryOnly, remove dest %+v from",
+									"updated\n",
+									dest.IPPrefix.Prefix))
 						}
 					}
 				}
 			} else if policyParams.DeleteType == utilspolicy.Invalid {
 				if !withdrawMap[routeDest] {
-					server.logger.Info(fmt.Sprintf("setUpdatedWithAggPaths: summaryOnly, add dest %+v to withdrawn\n", routeDest.IPPrefix.Prefix))
-					(*policyParams.withdrawn) = append((*policyParams.withdrawn), routeDest)
+					server.logger.Info(fmt.Sprintf(
+						"setUpdatedWithAggPaths: summaryOnly,",
+						"add dest %+v to withdrawn\n",
+						routeDest.IPPrefix.Prefix))
+					(*policyParams.withdrawn) =
+						append((*policyParams.withdrawn), routeDest)
 				}
 			}
 		}
 
-		/*
-			// There will be only one destination per aggregated path.
-			// So, break out of the loop as soon as we find it.
-			for path, destinations := range *policyParams.updated {
-				for idx, dest := range destinations {
-					if sendSummaryOnly && routeDest == dest {
-						//(*policyParams.updated)[path][idx] = (*policyParams.updated)[path][len(destinations)-1]
-						//(*policyParams.updated)[path][len(destinations)-1] = nil
-						//(*policyParams.updated)[path] = (*policyParams.updated)[path][:len(destinations)-1]
-						(*policyParams.updated)[path][idx] = nil
-						foundRouteDest = true
-						continue
-					}
-					if _, ok = aggDestMap[dest]; ok {
-						(*policyParams.updated)[path][idx] = (*policyParams.updated)[path][len(destinations)-1]
-						(*policyParams.updated)[path][len(destinations)-1] = nil
-						(*policyParams.updated)[path] = (*policyParams.updated)[path][:len(destinations)-1]
-						foundAggDest = true
-						break
-					}
-				}
-				if foundAggDest && foundRouteDest {
-					break
-				}
-			}
-
-			(*policyParams.updated)[aggPath] = make([]*bgprib.Destination, 0)
-			(*policyParams.updated)[aggPath] = append((*policyParams.updated)[aggPath], aggDestinations...)
-
-			if sendSummaryOnly {
-				aggDestMap = make(map[*bgprib.Destination]bool)
-				for _, dest := range *policyParams.withdrawn {
-					aggDestMap[dest] = true
-				}
-
-				for _, dest := range aggDestinations {
-					for _, singleDest := range dest.aggregatedDestMap {
-						if !aggDestMap[singleDest] {
-							(*policyParams.withdrawn) = append((*policyParams.withdrawn), singleDest)
-						}
-					}
-				}
-			}
-		*/
 	}
 
 	server.setUpdatedAddPaths(policyParams, updatedAddPaths)
 }
 
-//func (server *BGPServer) UndoAggregateAction(route *bgpd.BGPRouteState, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
-func (server *BGPServer) UndoAggregateAction(actionInfo interface{}, conditionList []interface{}, params interface{},
-	policyStmt utilspolicy.PolicyStmt) {
+func (server *BGPServer) UndoAggregateAction(actionInfo interface{},
+	conditionList []interface{}, params interface{}, policyStmt utilspolicy.PolicyStmt) {
 	policyParams := params.(PolicyParams)
 	ipPrefix := packet.NewIPPrefix(net.ParseIP(policyParams.route.BGPRouteState.Network),
 		uint8(policyParams.route.BGPRouteState.CIDRLen))
 	aggPrefix := server.getAggPrefix(conditionList)
-	//actions := actionInfo.(utilspolicy.PolicyAggregateActionInfo)
 	aggActions := actionInfo.(utilspolicy.PolicyAggregateActionInfo)
 	bgpAgg := config.BGPAggregate{
 		GenerateASSet:   aggActions.GenerateASSet,
 		SendSummaryOnly: aggActions.SendSummaryOnly,
 	}
-	//allUpdated := make(map[*bgprib.Path][]*bgprib.Destination, 10)
-	//allWithdrawn := make([]*bgprib.Destination, 0)
 
-	server.logger.Info(fmt.Sprintf("UndoAggregateAction: ipPrefix=%+v, aggPrefix=%+v\n", ipPrefix.Prefix, aggPrefix.Prefix))
+	server.logger.Info(fmt.Sprintf("UndoAggregateAction: ipPrefix=%+v, aggPrefix=%+v\n",
+		ipPrefix.Prefix, aggPrefix.Prefix))
 	var updated map[*bgprib.Path][]*bgprib.Destination
 	var withdrawn []*bgprib.Destination
 	var updatedAddPaths []*bgprib.Destination
 	var origDest *bgprib.Destination
-	//var actionCbInfo ActionCbInfo
-	//var ctxOk bool
 	if policyParams.dest != nil {
 		origDest = policyParams.dest
 	}
 	updated, withdrawn, _, updatedAddPaths = server.AdjRib.RemoveRouteFromAggregate(ipPrefix, aggPrefix,
 		server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest, server.addPathCount)
 
-	/*
-		if !ctxOk {
-			actionCbInfo = ActionCbInfo{
-				updated:   &allUpdated,
-				withdrawn: &allWithdrawn,
-			}
-		}
-	*/
-
-	server.logger.Info(fmt.Sprintf("UndoAggregateAction: aggregate result update=%+v, withdrawn=%+v\n", updated, withdrawn))
-	//server.setUpdatedWithAggPaths(&policyParams, updated, aggActions.SendSummaryOnly, ipPrefix)
+	server.logger.Info(fmt.Sprintf("UndoAggregateAction: aggregate result",
+		"update=%+v, withdrawn=%+v\n", updated, withdrawn))
 	server.setWithdrawnWithAggPaths(&policyParams, withdrawn, aggActions.SendSummaryOnly, updatedAddPaths)
-	server.logger.Info(fmt.Sprintf("UndoAggregateAction: after updating withdraw agg paths, update=%+v, withdrawn=%+v, policyparams.update=%+v, policyparams.withdrawn=%+v\n",
+	server.logger.Info(fmt.Sprintf("UndoAggregateAction: after updating",
+		"withdraw agg paths, update=%+v, withdrawn=%+v, policyparams.update=%+v,",
+		"policyparams.withdrawn=%+v\n",
 		updated, withdrawn, *policyParams.updated, *policyParams.withdrawn))
-	//server.SendUpdate(allUpdated, allWithdrawn, nil)
 	return
 }
 
-//func (server *BGPServer) ApplyAggregateAction(route *bgpd.BGPRouteState, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
-func (server *BGPServer) ApplyAggregateAction(actionInfo interface{}, conditionInfo []interface{}, params interface{}) {
+func (server *BGPServer) ApplyAggregateAction(actionInfo interface{},
+	conditionInfo []interface{}, params interface{}) {
 	policyParams := params.(PolicyParams)
 	ipPrefix := packet.NewIPPrefix(net.ParseIP(policyParams.route.BGPRouteState.Network),
 		uint8(policyParams.route.BGPRouteState.CIDRLen))
-	//conditionList := conditionInfo.([]string)
 	aggPrefix := server.getAggPrefix(conditionInfo)
-	//routeParams := params.(policy.RouteParams)
-	//actions := actionInfo.(utilspolicy.PolicyAction.ActionInfo)
 	aggActions := actionInfo.(utilspolicy.PolicyAggregateActionInfo)
 	bgpAgg := config.BGPAggregate{
 		GenerateASSet:   aggActions.GenerateASSet,
 		SendSummaryOnly: aggActions.SendSummaryOnly,
 	}
 
-	server.logger.Info(fmt.Sprintf("ApplyAggregateAction: ipPrefix=%+v, aggPrefix=%+v\n", ipPrefix.Prefix, aggPrefix.Prefix))
+	server.logger.Info(fmt.Sprintf("ApplyAggregateAction: ipPrefix=%+v, aggPrefix=%+v\n",
+		ipPrefix.Prefix, aggPrefix.Prefix))
 	var updated map[*bgprib.Path][]*bgprib.Destination
 	var withdrawn []*bgprib.Destination
 	var updatedAddPaths []*bgprib.Destination
-	if (policyParams.CreateType == utilspolicy.Valid) || (policyParams.DeleteType == utilspolicy.Invalid) {
-		server.logger.Info(fmt.Sprintf("ApplyAggregateAction: CreateType = Valid or DeleteType = Invalid\n"))
-		updated, withdrawn, _, updatedAddPaths = server.AdjRib.AddRouteToAggregate(ipPrefix, aggPrefix,
-			server.BgpConfig.Global.Config.RouterId.String(), server.ifaceIP, &bgpAgg, server.addPathCount)
+	if (policyParams.CreateType == utilspolicy.Valid) ||
+		(policyParams.DeleteType == utilspolicy.Invalid) {
+		server.logger.Info(fmt.Sprintf("ApplyAggregateAction: CreateType",
+			"= Valid or DeleteType = Invalid\n"))
+		updated, withdrawn, _, updatedAddPaths =
+			server.AdjRib.AddRouteToAggregate(ipPrefix, aggPrefix,
+				server.BgpConfig.Global.Config.RouterId.String(),
+				server.ifaceIP, &bgpAgg, server.addPathCount)
 	} else if policyParams.DeleteType == utilspolicy.Valid {
 		server.logger.Info(fmt.Sprintf("ApplyAggregateAction: DeleteType = Valid\n"))
 		origDest := policyParams.dest
@@ -688,11 +599,11 @@ func (server *BGPServer) ApplyAggregateAction(actionInfo interface{}, conditionI
 			server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest, server.addPathCount)
 	}
 
-	server.logger.Info(fmt.Sprintf("ApplyAggregateAction: aggregate result update=%+v, withdrawn=%+v\n", updated, withdrawn))
+	server.logger.Info(fmt.Sprintf("ApplyAggregateAction: aggregate result update=%+v,",
+		"withdrawn=%+v\n", updated, withdrawn))
 	server.setUpdatedWithAggPaths(&policyParams, updated, aggActions.SendSummaryOnly, ipPrefix, updatedAddPaths)
 	server.logger.Info(fmt.Sprintf("ApplyAggregateAction: after updating agg paths, update=%+v, withdrawn=%+v, policyparams.update=%+v, policyparams.withdrawn=%+v\n",
 		updated, withdrawn, *policyParams.updated, *policyParams.withdrawn))
-	//server.setWithdrawnWithAggPaths(&policyParams, withdrawn, aggActions.SendSummaryOnly)
 	return
 }
 
