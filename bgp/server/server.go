@@ -4,7 +4,6 @@ package server
 import (
 	"asicd/asicdConstDefs"
 	"asicdServices"
-	"bfdd"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -68,7 +67,6 @@ type BGPServer struct {
 	bgpPE            *bgppolicy.BGPPolicyEngine
 	ribdClient       *ribd.RIBDServicesClient
 	AsicdClient      *asicdServices.ASICDServicesClient
-	bfddClient       *bfdd.BFDDServicesClient
 	BgpConfig        config.Bgp
 	GlobalConfigCh   chan config.GlobalConfig
 	AddPeerCh        chan PeerUpdate
@@ -942,38 +940,6 @@ func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.IBGPMaxPaths = gConf.IBGPMaxPaths
 }
 
-func (server *BGPServer) ProcessBfd(peer *Peer) {
-	bfdSession := bfdd.NewBfdSession()
-	bfdSession.IpAddr = peer.NeighborConf.Neighbor.NeighborAddress.String()
-	bfdSession.Owner = "bgp"
-	if peer.NeighborConf.RunningConf.BfdEnable {
-		server.logger.Info(fmt.Sprintln("Bfd enabled on :", peer.NeighborConf.Neighbor.NeighborAddress))
-		server.logger.Info(fmt.Sprintln("Creating BFD Session: ", bfdSession))
-		ret, err := server.bfddClient.CreateBfdSession(bfdSession)
-		if !ret {
-			server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:", ret, "err:", err))
-		} else {
-			server.logger.Info("Bfd session configured")
-			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
-		}
-	} else {
-		if peer.NeighborConf.Neighbor.State.BfdNeighborState != "" {
-			server.logger.Info(fmt.Sprintln("Bfd disabled on :",
-				peer.NeighborConf.Neighbor.NeighborAddress))
-			server.logger.Info(fmt.Sprintln("Deleting BFD Session: ", bfdSession))
-			ret, err := server.bfddClient.DeleteBfdSession(bfdSession)
-			if !ret {
-				server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:",
-					ret, "err:", err))
-			} else {
-				server.logger.Info(fmt.Sprintln("Bfd session removed for ",
-					peer.NeighborConf.Neighbor.NeighborAddress))
-				peer.NeighborConf.Neighbor.State.BfdNeighborState = ""
-			}
-		}
-	}
-}
-
 func (server *BGPServer) getIfaceIP(ip string) {
 	if server.ifaceIP != nil {
 		return
@@ -1138,7 +1104,8 @@ func (server *BGPServer) StartServer() {
 				server.addPeerToList(peer)
 				server.NeighborMutex.Unlock()
 			}
-			server.ProcessBfd(peer)
+			//server.ProcessBfd(peer) <---- changed to interface
+			server.bfdMgr.ProcessBfd(peer)
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:

@@ -10,30 +10,40 @@ import (
 	"utils/logging"
 )
 
+/*  Router manager will handle all the communication with ribd
+ */
 type FSRouteMgr struct {
 	ribdClient *ribd.RIBDServicesClient
 	plugin     string
 	logger     *logging.Writer
 }
 
+/*  Interface manager will handle all the communication with asicd
+ */
 type FSIntfMgr struct {
 	AsicdClient *asicdServices.ASICDServicesClient
 	plugin      string
 	logger      *logging.Writer
 }
 
+/*  @FUTURE: this will be using in future if FlexSwitch is planning to support
+ *	     daemon which is handling policy statments
+ */
 type FSPolicyMgr struct {
 	plugin string
 	logger *logging.Writer
 }
 
+/*  BFD manager will handle all the communication with bfd daemon
+ */
 type FSBfdMgr struct {
 	bfddClient *bfdd.BFDDServicesClient
 	plugin     string
 	logger     *logging.Writer
 }
 
-/*  Interface manager is responsible for handling asicd notifications
+/*  Interface manager is responsible for handling asicd notifications and hence
+ *  we are creating asicd client
  */
 func NewFSIntfMgr(logger *logging.Writer, fileName string) (*FSIntfMgr, error) {
 	var asicdClient *asicdServices.ASICDServicesClient = nil
@@ -56,6 +66,8 @@ func NewFSIntfMgr(logger *logging.Writer, fileName string) (*FSIntfMgr, error) {
 	return mgr, nil
 }
 
+/*  Init policy manager with specific needs
+ */
 func NewFSPolicyMgr(logger *logging.Writer, fileName string) *FSPolicyMgr {
 	mgr := &FSPolicyMgr{
 		plugin: "ovsdb",
@@ -65,6 +77,8 @@ func NewFSPolicyMgr(logger *logging.Writer, fileName string) *FSPolicyMgr {
 	return mgr
 }
 
+/*  Init route manager with ribd client as its core
+ */
 func NewFSRouteMgr(logger *logging.Writer, fileName string) (*FSRouteMgr, error) {
 	var ribdClient *ribd.RIBDServicesClient = nil
 	ribdClientChan := make(chan *ribd.RIBDServicesClient)
@@ -88,6 +102,8 @@ func NewFSRouteMgr(logger *logging.Writer, fileName string) (*FSRouteMgr, error)
 	return mgr, nil
 }
 
+/*  Init bfd manager with bfd client as its core
+ */
 func NewFSBfdMgr(logger *logging.Writer, fileName string) (*FSBfdMgr, error) {
 	var bfddClient *bfdd.BFDDServicesClient = nil
 	bfddClientChan := make(chan *bfdd.BFDDServicesClient)
