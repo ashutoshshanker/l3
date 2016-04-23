@@ -2,6 +2,7 @@ package ovsMgr
 
 import (
 	"fmt"
+	"l3/bgp/server"
 )
 
 type OvsIntfMgr struct {
@@ -69,5 +70,9 @@ func (mgr *OvsPolicyMgr) RemovePolicy() {
 }
 
 func (mgr *OvsIntfMgr) PortStateChange() {
+
+}
+
+func (mgr *OvsBfdMgr) ProcessBfd(peer *server.Peer) {
 
 }
