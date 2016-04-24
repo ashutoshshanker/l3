@@ -79,6 +79,39 @@ func findSelfOrigRouterLsaKey(ent map[LsaKey]bool) (LsaKey, error) {
 	return key, err
 }
 
+func (server *OSPFServer) checkRouterLsaConsistency(areaId uint32, rtrId uint32, network uint32, netmask uint32) bool {
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	lsDbEnt, exist := server.AreaLsdb[lsdbKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("No LS Database found for areaId:", areaId))
+		return false
+	}
+	lsaKey := LsaKey{
+		LSType:    RouterLSA,
+		LSId:      rtrId,
+		AdvRouter: rtrId,
+	}
+	lsaEnt, exist := lsDbEnt.RouterLsaMap[lsaKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("Unable to find router lsa for ", rtrId))
+		return false
+	}
+	for i := 0; i < int(lsaEnt.NumOfLinks); i++ {
+		if (lsaEnt.LinkDetails[i].LinkId & netmask) == network {
+			if lsaEnt.LinkDetails[i].LinkType == StubLink {
+				server.logger.Err(fmt.Sprintln("Have router lsa which still has a stub link in the network, hence ignoring it, lsaKey:", lsaKey, "lsaEnt:", lsaEnt))
+				return false
+			} else if lsaEnt.LinkDetails[i].LinkType == TransitLink {
+				server.logger.Err(fmt.Sprintln("Have router lsa which has a transit link in the network, hence processing it, lsaKey:", lsaKey, "lsaEnt:", lsaEnt))
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (server *OSPFServer) UpdateAreaGraphNetworkLsa(lsaEnt NetworkLsa, lsaKey LsaKey, areaId uint32) error {
 	server.logger.Info(fmt.Sprintln("2: Using Lsa with key as:", dumpLsaKey(lsaKey), "for SPF calc"))
 	vertexKey := VertexKey{
@@ -94,11 +127,17 @@ func (server *OSPFServer) UpdateAreaGraphNetworkLsa(lsaEnt NetworkLsa, lsaKey Ls
 	}
 	netmask := lsaEnt.Netmask
 	network := lsaKey.LSId & netmask
+	server.logger.Info(fmt.Sprintln("netmask:", netmask, "network:", network))
 	ent.NbrVertexKey = make([]VertexKey, 0)
 	ent.NbrVertexCost = make([]uint16, 0)
 	ent.LinkData = make(map[VertexKey]uint32)
 	for i := 0; i < len(lsaEnt.AttachedRtr); i++ {
 		Rtr := lsaEnt.AttachedRtr[i]
+		ret := server.checkRouterLsaConsistency(areaId, Rtr, network, netmask)
+		if ret == false {
+			server.logger.Info(fmt.Sprintln("Rtr: ", Rtr, "has a stub link in the network", network, "hence skiping it"))
+			continue
+		}
 		server.logger.Info(fmt.Sprintln("Attached Router at index:", i, "is:", Rtr))
 		var vKey VertexKey
 		var cost uint16
@@ -111,6 +150,10 @@ func (server *OSPFServer) UpdateAreaGraphNetworkLsa(lsaEnt NetworkLsa, lsaKey Ls
 		ent.NbrVertexKey = append(ent.NbrVertexKey, vKey)
 		ent.NbrVertexCost = append(ent.NbrVertexCost, cost)
 		ent.LinkData[vKey] = lsaEnt.Netmask
+	}
+	if len(ent.NbrVertexKey) == 0 {
+		server.logger.Err(fmt.Sprintln("No router has transit link in this network", network, " hence skiping this network"))
+		return nil
 	}
 	ent.AreaId = areaId
 	ent.LsaKey = lsaKey
@@ -150,24 +193,26 @@ func (server *OSPFServer) UpdateAreaGraphNetworkLsa(lsaEnt NetworkLsa, lsaKey Ls
 				continue
 			}
 			return err
-		} else {
-			flag := false
-			for i := 0; i < int(lsaEnt.NumOfLinks); i++ {
-				if (lsaEnt.LinkDetails[i].LinkId & netmask) == network {
-					if lsaEnt.LinkDetails[i].LinkType == StubLink {
-						server.logger.Err(fmt.Sprintln("Have router lsa which still has a stub link in the network, hence ignoring it, lsaKey:", lsaKey, "lsaEnt:", lsaEnt))
-						break
-					} else if lsaEnt.LinkDetails[i].LinkType == TransitLink {
-						server.logger.Err(fmt.Sprintln("Have router lsa which has a transit link in the network, hence processing it, lsaKey:", lsaKey, "lsaEnt:", lsaEnt))
-						flag = true
-						break
+			/*
+				} else {
+					flag := false
+					for i := 0; i < int(lsaEnt.NumOfLinks); i++ {
+						if (lsaEnt.LinkDetails[i].LinkId & netmask) == network {
+							if lsaEnt.LinkDetails[i].LinkType == StubLink {
+								server.logger.Err(fmt.Sprintln("Have router lsa which still has a stub link in the network, hence ignoring it, lsaKey:", lsaKey, "lsaEnt:", lsaEnt))
+								break
+							} else if lsaEnt.LinkDetails[i].LinkType == TransitLink {
+								server.logger.Err(fmt.Sprintln("Have router lsa which has a transit link in the network, hence processing it, lsaKey:", lsaKey, "lsaEnt:", lsaEnt))
+								flag = true
+								break
+							}
+						}
 					}
-				}
-			}
-			if flag == false {
-				server.logger.Info(fmt.Sprintln("Not able to find the valid router lsa. The Router lsa which we have is the stale one", lsaEnt, lsaKey))
-				continue
-			}
+					if flag == false {
+						server.logger.Info(fmt.Sprintln("Not able to find the valid router lsa. The Router lsa which we have is the stale one", lsaEnt, lsaKey))
+						continue
+					}
+			*/
 		}
 		err := server.UpdateAreaGraphRouterLsa(lsaEnt, lsaKey, areaId)
 		if err != nil {
@@ -278,6 +323,16 @@ func (server *OSPFServer) UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaK
 		}
 	}
 	if len(ent.NbrVertexKey) == 0 {
+		// If all the links in self originated Router Lsa is stub
+		// Add Self router to AreaGraph
+		if lsaKey.AdvRouter == convertIPv4ToUint32(server.ospfGlobalConf.RouterId) {
+			ent.AreaId = areaId
+			ent.LsaKey = lsaKey
+			ent.Visited = false
+			ent.LinkStateId = lsaKey.LSId
+			server.AreaGraph[vertexKey] = ent
+			return nil
+		}
 		err := errors.New(fmt.Sprintln("None of the Network LSA are found"))
 		return err
 	}
@@ -397,6 +452,7 @@ func (server *OSPFServer) CreateAreaGraph(areaId uint32) (VertexKey, error) {
 }
 
 func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
+	server.logger.Info("Executing Dijkstra...")
 	var treeVSlice []VertexKey = make([]VertexKey, 0)
 
 	treeVSlice = append(treeVSlice, vKey)
@@ -413,6 +469,7 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 
 	for j := 0; j < len(treeVSlice); j++ {
 		verArr := make([]VertexData, 0)
+		server.logger.Info(fmt.Sprintln("The value of j:", j, "treeVSlice:", treeVSlice[j]))
 		ent, exist := server.AreaGraph[treeVSlice[j]]
 		if !exist {
 			server.logger.Info(fmt.Sprintln("No entry found for:", treeVSlice[j]))
@@ -421,10 +478,12 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 			return err
 		}
 
+		server.logger.Info(fmt.Sprintln("Number of neighbor of treeVSlice:", treeVSlice[j], "ent:", ent, "is:", len(ent.NbrVertexKey)))
 		for i := 0; i < len(ent.NbrVertexKey); i++ {
 			verKey := ent.NbrVertexKey[i]
 			cost := ent.NbrVertexCost[i]
 			entry, exist := server.AreaGraph[verKey]
+			server.logger.Info(fmt.Sprintln("Neighboring Vertex Number :", i, "verKey", verKey, "cost:", cost, "entry:", entry))
 			if !exist {
 				server.logger.Info("Something is wrong in SPF Calculation: Entry should exist in Area Graph")
 				err := errors.New("Something is wrong in SPF Calculation: Entry should exist in Area Graph")
@@ -437,6 +496,7 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 			}
 			tEnt, exist := server.SPFTree[verKey]
 			if !exist {
+				server.logger.Info("Entry doesnot exist for the neighbor in SPF hence adding it")
 				tEnt.Paths = make([]Path, 1)
 				var path Path
 				path = make(Path, 0)
@@ -450,8 +510,10 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 				err := errors.New("Something is wrong is SPF Calculation")
 				return err
 			}
+			server.logger.Info(fmt.Sprintln("Parent Node:", treeVSlice[j], tEntry))
+			server.logger.Info(fmt.Sprintln("Child Node:", verKey, tEnt))
 			if tEnt.Distance > tEntry.Distance+cost {
-				//server.logger.Info(fmt.Sprintln("We have lower cost path via:", tEnt, "and old path was:", tEntry, " cost is:", cost))
+				server.logger.Info(fmt.Sprintln("We have lower cost path via", tEntry))
 				tEnt.Distance = tEntry.Distance + cost
 				for l := 0; l < tEnt.NumOfPaths; l++ {
 					tEnt.Paths[l] = nil
@@ -469,7 +531,9 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 				}
 				tEnt.NumOfPaths = tEntry.NumOfPaths
 			} else if tEnt.Distance == tEntry.Distance+cost {
-				//server.logger.Info(fmt.Sprintln("We have equal cost path via:", tEnt, "and old path was:", tEntry, " cost is:", cost))
+				server.logger.Info(fmt.Sprintln("We have equal cost path via:", tEntry))
+				server.logger.Info(fmt.Sprintln("tEnt:", tEnt, "tEntry:", tEntry))
+				server.logger.Info(fmt.Sprintln("tEnt.NumOfPaths:", tEnt.NumOfPaths, "tEntry.NumOfPaths:", tEntry.NumOfPaths))
 				paths := make([]Path, (tEntry.NumOfPaths + tEnt.NumOfPaths))
 				for l := 0; l < tEnt.NumOfPaths; l++ {
 					var path Path
@@ -478,8 +542,9 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 					paths[l] = path
 					tEnt.Paths[l] = nil
 				}
+				server.logger.Info(fmt.Sprintln("1. paths:", paths))
 				tEnt.Paths = tEnt.Paths[:0]
-				tEnt.NumOfPaths = 0
+				//tEnt.NumOfPaths = 0
 				tEnt.Paths = nil
 				for l := 0; l < tEntry.NumOfPaths; l++ {
 					var path Path
@@ -488,11 +553,15 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 					path[len(tEntry.Paths[l])] = treeVSlice[j]
 					paths[tEnt.NumOfPaths+l] = path
 				}
+				server.logger.Info(fmt.Sprintln("2. paths:", paths))
 				tEnt.Paths = paths
 				tEnt.NumOfPaths = tEntry.NumOfPaths + tEnt.NumOfPaths
+			} else {
+				server.logger.Info("Cost is more ....")
 			}
 			if _, ok := server.SPFTree[verKey]; !ok {
 				//treeVSlice = append(treeVSlice, verKey)
+				server.logger.Info(fmt.Sprintln("Adding verKey:", verKey, "to treeVSlice"))
 				vData := VertexData{
 					vKey:     verKey,
 					distance: tEnt.Distance,
@@ -523,6 +592,33 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 
 	//Handling Stub Networks
 
+	/*
+		server.logger.Info("Handle Stub Networks")
+		for key, entry := range server.AreaStubs {
+			//Finding the Vertex(Router) to which this stub is connected to
+			vertexKey := entry.NbrVertexKey
+			parent, exist := server.SPFTree[vertexKey]
+			if !exist {
+				continue
+			}
+			ent, _ := server.SPFTree[key]
+			ent.Distance = parent.Distance + entry.NbrVertexCost
+			ent.Paths = make([]Path, parent.NumOfPaths)
+			for i := 0; i < parent.NumOfPaths; i++ {
+				var path Path
+				path = make(Path, len(parent.Paths[i])+1)
+				copy(path, parent.Paths[i])
+				path[len(parent.Paths[i])] = vertexKey
+				ent.Paths[i] = path
+			}
+			ent.NumOfPaths = parent.NumOfPaths
+			server.SPFTree[key] = ent
+		}
+	*/
+	return nil
+}
+
+func (server *OSPFServer) HandleStubs(vKey VertexKey, areaId uint32) {
 	server.logger.Info("Handle Stub Networks")
 	for key, entry := range server.AreaStubs {
 		//Finding the Vertex(Router) to which this stub is connected to
@@ -542,9 +638,8 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 			ent.Paths[i] = path
 		}
 		ent.NumOfPaths = parent.NumOfPaths
-		server.SPFTree[key] = ent
+		server.UpdateRoutingTblWithStub(areaId, key, ent, parent, vertexKey, vKey)
 	}
-	return nil
 }
 
 func dumpVertexKey(key VertexKey) string {
@@ -654,7 +749,7 @@ func (server *OSPFServer) UpdateRoutingTbl(vKey VertexKey, areaId uint32) {
 	for key, ent := range server.SPFTree {
 		if vKey == key {
 			server.logger.Info("It's own vertex")
-			continue
+			//continue
 		}
 		switch key.Type {
 		case RouterVertex:
@@ -662,8 +757,8 @@ func (server *OSPFServer) UpdateRoutingTbl(vKey VertexKey, areaId uint32) {
 			// for the given Area
 			//rEnt, exist := lsDbEnt.Summary3LsaMap[ent.LsaKey]
 			server.UpdateRoutingTblForRouter(areaIdKey, key, ent, vKey)
-		case SNetworkVertex:
-			server.UpdateRoutingTblForSNetwork(areaIdKey, key, ent, vKey)
+		//case SNetworkVertex:
+		//	server.UpdateRoutingTblForSNetwork(areaIdKey, key, ent, vKey)
 		case TNetworkVertex:
 			server.UpdateRoutingTblForTNetwork(areaIdKey, key, ent, vKey)
 		}
@@ -736,7 +831,10 @@ func (server *OSPFServer) spfCalculation() {
 			server.dumpSPFTree()
 			server.logger.Info("=========================End after Dijkstra=================")
 			server.UpdateRoutingTbl(vKey, areaId)
+			server.logger.Info("==============Handling Stub links...====================")
+			server.HandleStubs(vKey, areaId)
 			server.HandleSummaryLsa(areaId)
+			server.dumpRoutingTbl() // Per area
 			server.AreaGraph = nil
 			server.AreaStubs = nil
 			server.SPFTree = nil

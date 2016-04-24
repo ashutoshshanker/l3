@@ -200,6 +200,12 @@ func (server *OSPFServer) UpdateRoutingTblForRouter(areaIdKey AreaIdKey, vKey Ve
 		server.logger.Info("==============Hello2===========")
 	}
 	rEnt.NextHops = make(map[NextHop]bool, tVertex.NumOfPaths)
+	if rootVKey == vKey {
+		//rEnt.AdvRtr = vKey.AdvRtr
+		tempAreaRoutingTbl.RoutingTblMap[rKey] = rEnt
+		server.TempAreaRoutingTbl[areaIdKey] = tempAreaRoutingTbl
+		return
+	}
 	for i := 0; i < tVertex.NumOfPaths; i++ {
 		pathlen := len(tVertex.Paths[i])
 		if tVertex.Paths[i][0] != rootVKey {
@@ -237,6 +243,89 @@ func (server *OSPFServer) UpdateRoutingTblForRouter(areaIdKey AreaIdKey, vKey Ve
 			AdvRtr:    0,
 		}
 		rEnt.NextHops[nextHop] = true
+	}
+	//rEnt.AdvRtr = vKey.AdvRtr
+	tempAreaRoutingTbl.RoutingTblMap[rKey] = rEnt
+	server.TempAreaRoutingTbl[areaIdKey] = tempAreaRoutingTbl
+}
+
+func (server *OSPFServer) UpdateRoutingTblWithStub(areaId uint32, vKey VertexKey, tVertex TreeVertex, parent TreeVertex, parentKey VertexKey, rootVKey VertexKey) {
+	areaIdKey := AreaIdKey{
+		AreaId: areaId,
+	}
+
+	server.logger.Info(fmt.Sprintln("Fetching Routing Table for Router Vertex", parentKey))
+
+	if parentKey == rootVKey {
+		server.logger.Info("Parent Key is same as root Key")
+	}
+	pEnt, exist := server.AreaGraph[parentKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("Entry doesn't exist in Area Graph for:", parentKey))
+		return
+	}
+	lsDbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	lsDbEnt, exist := server.AreaLsdb[lsDbKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("No LS Database found for areaId:", areaId))
+		return
+	}
+	lsaEnt, exist := lsDbEnt.RouterLsaMap[pEnt.LsaKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("No LS Database Entry found for lsaKey:", pEnt.LsaKey))
+		return
+	}
+	var destType DestType
+	if lsaEnt.BitB == true &&
+		lsaEnt.BitE == true {
+		destType = ASAreaBdrRouter
+	} else if lsaEnt.BitB == true {
+		destType = AreaBdrRouter
+	} else if lsaEnt.BitE == true {
+		destType = ASBdrRouter
+	} else {
+		destType = InternalRouter
+	}
+	pKey := RoutingTblEntryKey{
+		DestType: destType,
+		AddrMask: 0, //TODO
+		DestId:   parentKey.ID,
+	}
+
+	tempAreaRoutingTbl := server.TempAreaRoutingTbl[areaIdKey]
+	pREnt, exist := tempAreaRoutingTbl.RoutingTblMap[pKey]
+	if !exist {
+		server.logger.Info(fmt.Sprintln("Routing Tbl doesnot exist for:", pKey))
+		return
+	}
+
+	sEnt, exist := server.AreaStubs[vKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("Entry doesn't exist in Area Stubs for:", vKey))
+		return
+	}
+
+	rKey := RoutingTblEntryKey{
+		DestType: Network,
+		AddrMask: sEnt.LinkData,
+		DestId:   vKey.ID,
+	}
+	rEnt, exist := tempAreaRoutingTbl.RoutingTblMap[rKey]
+	if exist {
+		server.logger.Info(fmt.Sprintln("Routing Tbl entry for Stub already exist for:", rKey))
+		return
+	}
+	rEnt.OptCapabilities = pREnt.OptCapabilities //TODO
+	rEnt.PathType = IntraArea                    //TODO
+	rEnt.Cost = tVertex.Distance
+	rEnt.Type2Cost = 0 //TODO
+	rEnt.LSOrigin = sEnt.LsaKey
+	rEnt.NumOfPaths = tVertex.NumOfPaths
+	rEnt.NextHops = make(map[NextHop]bool, tVertex.NumOfPaths)
+	for key, _ := range pREnt.NextHops {
+		rEnt.NextHops[key] = true
 	}
 	//rEnt.AdvRtr = vKey.AdvRtr
 	tempAreaRoutingTbl.RoutingTblMap[rKey] = rEnt
