@@ -1,24 +1,22 @@
 package FSMgr
 
 import (
-	"bytes"
-	"encoding/json"
+	_ "bytes"
+	_ "encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
-	"l3/bgp/packet"
-	"l3/bgp/server"
+	_ "l3/bgp/packet"
 	"l3/rib/ribdCommonDefs"
 	_ "ribd"
-	"ribdInt"
+	_ "ribdInt"
 )
 
-func (mgr *FSRouteMgr) Init(server *server.BGPServer) {
-	mgr.Server = server
+func (mgr *FSRouteMgr) Init() {
 	mgr.ribSubSocket, _ = mgr.setupSubSocket(ribdCommonDefs.PUB_SOCKET_ADDR)
 	mgr.ribSubBGPSocket, _ = mgr.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go mgr.listenForRIBUpdates(mgr.ribSubSocket)
 	go mgr.listenForRIBUpdates(mgr.ribSubBGPSocket)
-	mgr.processRoutesFromRIB()
+	//mgr.processRoutesFromRIB()
 }
 
 func (mgr *FSRouteMgr) setupSubSocket(address string) (*nanomsg.SubSocket, error) {
@@ -65,10 +63,11 @@ func (mgr *FSRouteMgr) listenForRIBUpdates(socket *nanomsg.SubSocket) {
 		//socketCh <- rxBuf
 		//@TODO: right now update is treated as blocking call...
 		//will need to make it as channel?
-		mgr.handleRibUpdates(rxBuf)
+		//mgr.handleRibUpdates(rxBuf)
 	}
 }
 
+/*
 func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 	var routeListInfo ribdCommonDefs.RoutelistInfo
 	routes := make([]*ribdInt.Routes, 0)
@@ -162,3 +161,4 @@ func (mgr *FSRouteMgr) convertDestIPToIPPrefix(routes []*ribdInt.Routes) []packe
 	}
 	return dest
 }
+*/

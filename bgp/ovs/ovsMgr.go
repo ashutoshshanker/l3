@@ -2,7 +2,7 @@ package ovsMgr
 
 import (
 	"fmt"
-	"l3/bgp/server"
+	"l3/bgp/config"
 )
 
 type OvsIntfMgr struct {
@@ -61,15 +61,9 @@ func (mgr *OvsRouteMgr) DeleteRoute() {
 
 }
 
-func (mgr *OvsRouteMgr) Init(server *server.BGPServer) {
+func (mgr *OvsRouteMgr) Init() {
 
 }
-
-/*
-func (mgr *OvsRouteMgr) GetConnectedRoutes() {
-
-}
-*/
 
 func (mgr *OvsPolicyMgr) AddPolicy() {
 
@@ -83,15 +77,7 @@ func (mgr *OvsIntfMgr) PortStateChange() {
 
 }
 
-func (mgr *OvsBfdMgr) ProcessBfd(peer *server.Peer) {
-
-}
-
-func (mgr *OvsBfdMgr) Init(server *server.BGPServer) {
-
-}
-
-func (mgr *OvsIntfMgr) Init(server *server.BGPServer) {
+func (mgr *OvsIntfMgr) Init(ch chan config.IntfStateInfo) {
 
 }
 
@@ -101,4 +87,16 @@ func (mgr *OvsIntfMgr) GetIPv4Information(ifIndex int32) (string, error) {
 
 func (mgr *OvsIntfMgr) GetIfIndex(ifIndex, ifType int) int32 {
 	return 1
+}
+
+func (mgr *OvsBfdMgr) Init(ch chan config.BfdInfo) {
+
+}
+
+func (mgr *OvsBfdMgr) CreateBfdSession(ipAddr string) (bool, error) {
+	return true, nil
+}
+
+func (mgr *OvsBfdMgr) DeleteBfdSession(ipAddr string) (bool, error) {
+	return true, nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/garyburd/redigo/redis"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
 	"os"
@@ -17,7 +18,6 @@ import (
 	//"github.com/google/gopacket/pcap"
 	"asicdServices"
 	//"utils/commonDefs"
-	"database/sql"
 )
 
 type ClientJson struct {
@@ -68,7 +68,7 @@ type ARPServer struct {
 	asicdSubSocket          *nanomsg.SubSocket
 	asicdSubSocketCh        chan []byte
 	asicdSubSocketErrCh     chan error
-	dbHdl                   *sql.DB
+	dbHdl                   redis.Conn
 	snapshotLen             int32
 	pcapTimeout             time.Duration
 	promiscuous             bool
@@ -102,7 +102,7 @@ type ARPServer struct {
 	ResolveIPv4Ch          chan ResolveIPv4
 	ArpConfCh              chan ArpConf
 	dumpArpTable           bool
-	InitDone	       chan bool
+	InitDone               chan bool
 }
 
 func NewARPServer(logger *logging.Writer) *ARPServer {

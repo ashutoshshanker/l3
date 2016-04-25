@@ -39,12 +39,6 @@ type AggUpdate struct {
 	AttrSet []bool
 }
 
-type IfState struct {
-	idx    int32
-	ipaddr string
-	state  uint8
-}
-
 type PolicyParams struct {
 	CreateType      int
 	DeleteType      int
@@ -83,15 +77,15 @@ type BGPServer struct {
 	ifaceIP        net.IP
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 	AddPathCount   int
-	IntfMgr        IntfStateMgrIntf
-	policyMgr      PolicyMgrIntf
-	routeMgr       RouteMgrIntf
-	bfdMgr         BfdMgrIntf
+	IntfMgr        config.IntfStateMgrIntf
+	policyMgr      config.PolicyMgrIntf
+	routeMgr       config.RouteMgrIntf
+	bfdMgr         config.BfdMgrIntf
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
-	iMgr IntfStateMgrIntf, pMgr PolicyMgrIntf, rMgr RouteMgrIntf,
-	bMgr BfdMgrIntf) *BGPServer {
+	iMgr config.IntfStateMgrIntf, pMgr config.PolicyMgrIntf, rMgr config.RouteMgrIntf,
+	bMgr config.BfdMgrIntf) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.bgpPE = policyEngine
@@ -112,6 +106,10 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.NeighborMutex = sync.RWMutex{}
 	bgpServer.PeerMap = make(map[string]*Peer)
 	bgpServer.Neighbors = make([]*Peer, 0)
+	bgpServer.IntfMgr = iMgr
+	bgpServer.routeMgr = rMgr
+	bgpServer.policyMgr = pMgr
+	bgpServer.bfdMgr = bMgr
 	//@TODO: jgheewala change ribdClient with router interface.....
 	//bgpServer.AdjRib = bgprib.NewAdjRib(logger, ribdClient, &bgpServer.BgpConfig.Global.Config)
 	bgpServer.IfacePeerMap = make(map[int32][]string)
@@ -132,11 +130,6 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.bgpPE.SetActionFuncs(bgpServer.actionFuncMap)
 	bgpServer.bgpPE.SetTraverseFuncs(bgpServer.TraverseAndApplyBGPRib,
 		bgpServer.TraverseAndReverseBGPRib)
-
-	bgpServer.IntfMgr = iMgr
-	bgpServer.routeMgr = rMgr
-	bgpServer.policyMgr = pMgr
-	bgpServer.bfdMgr = bMgr
 
 	return bgpServer
 }
@@ -730,18 +723,51 @@ func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.IBGPMaxPaths = gConf.IBGPMaxPaths
 }
 
-func (server *BGPServer) getIfaceIP(ip string) {
-	if server.ifaceIP != nil {
-		return
+func (server *BGPServer) ProcessBfd(peer *Peer) {
+	ipAddr := peer.NeighborConf.Neighbor.NeighborAddress.String()
+	if peer.NeighborConf.RunningConf.BfdEnable {
+		server.logger.Info(fmt.Sprintln("Bfd enabled on :",
+			peer.NeighborConf.Neighbor.NeighborAddress))
+		ret, err := server.bfdMgr.CreateBfdSession(ipAddr)
+		if !ret {
+			server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:",
+				ret, "err:", err))
+		} else {
+			server.logger.Info("Bfd session configured")
+			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
+		}
+	} else {
+		if peer.NeighborConf.Neighbor.State.BfdNeighborState != "" {
+			server.logger.Info(fmt.Sprintln("Bfd disabled on :",
+				peer.NeighborConf.Neighbor.NeighborAddress))
+			ret, err := server.bfdMgr.DeleteBfdSession(ipAddr)
+			if !ret {
+				server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:",
+					ret, "err:", err))
+			} else {
+				server.logger.Info(fmt.Sprintln("Bfd session removed for ",
+					peer.NeighborConf.Neighbor.NeighborAddress))
+				peer.NeighborConf.Neighbor.State.BfdNeighborState = ""
+			}
+		}
 	}
-	reachInfo, err := server.ribdClient.GetRouteReachabilityInfo(ip)
-	if err != nil {
-		server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", ip))
-		return
-	}
-	netIP := net.ParseIP(reachInfo.Ipaddr)
-	if netIP != nil {
-		server.ifaceIP = netIP
+
+}
+
+func (server *BGPServer) handleBfdNotifications(oper config.Operation, DestIp string,
+	State bool) {
+	if peer, ok := server.PeerMap[DestIp]; ok {
+		if !State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "up" {
+			peer.Command(int(fsm.BGPEventManualStop), fsm.BGPCmdReasonNone)
+			peer.NeighborConf.Neighbor.State.BfdNeighborState = "down"
+		}
+		if State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
+			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
+			peer.Command(int(fsm.BGPEventManualStart), fsm.BGPCmdReasonNone)
+		}
+		server.logger.Info(fmt.Sprintln("Bfd state of peer ",
+			peer.NeighborConf.Neighbor.NeighborAddress, " is ",
+			peer.NeighborConf.Neighbor.State.BfdNeighborState))
 	}
 }
 
@@ -810,9 +836,13 @@ func (server *BGPServer) StartServer() {
 	acceptCh := make(chan *net.TCPConn)
 	go server.listenForPeers(acceptCh)
 
-	server.IntfMgr.Init(server)
-	server.routeMgr.Init(server)
-	server.bfdMgr.Init(server)
+	// Channel for handling BFD notifications
+	bfdCh := make(chan config.BfdInfo)
+	// Channel for handling Interface notifications
+	intfCh := make(chan config.IntfStateInfo)
+	server.IntfMgr.Init(intfCh)
+	server.routeMgr.Init()
+	server.bfdMgr.Init(bfdCh)
 
 	for {
 		select {
@@ -821,7 +851,8 @@ func (server *BGPServer) StartServer() {
 				server.logger.Info(fmt.Sprintf("Cleanup peer %s", peerIP))
 				peer.Cleanup()
 			}
-			server.logger.Info(fmt.Sprintf("Giving up CPU so that all peer FSMs will get cleaned up"))
+			server.logger.Info(fmt.Sprintf("Giving up CPU so that all peer FSMs",
+				"will get cleaned up"))
 			runtime.Gosched()
 
 			packet.SetNextHopPathAttrs(server.ConnRoutesPath.PathAttrs, gConf.RouterId)
@@ -848,7 +879,8 @@ func (server *BGPServer) StartServer() {
 
 					runtime.Gosched()
 				} else {
-					server.logger.Info(fmt.Sprintln("Can't find neighbor with old address",
+					server.logger.Info(fmt.Sprintln(
+						"Can't find neighbor with old address",
 						oldPeer.NeighborAddress.String()))
 				}
 			}
@@ -856,8 +888,8 @@ func (server *BGPServer) StartServer() {
 			if !ok {
 				_, ok = server.PeerMap[newPeer.NeighborAddress.String()]
 				if ok {
-					server.logger.Info(fmt.Sprintln(
-						"Failed to add neighbor. Neighbor at that address already exists,",
+					server.logger.Info(fmt.Sprintln("Failed to add neighbor.",
+						"Neighbor at that address already exists,",
 						newPeer.NeighborAddress.String()))
 					break
 				}
@@ -867,7 +899,8 @@ func (server *BGPServer) StartServer() {
 					if group, ok := server.BgpConfig.PeerGroups[newPeer.PeerGroup]; !ok {
 						server.logger.Info(fmt.Sprintln("Peer group",
 							newPeer.PeerGroup, "not created yet, creating peer",
-							newPeer.NeighborAddress.String(), "without the group"))
+							newPeer.NeighborAddress.String(),
+							"without the group"))
 					} else {
 						groupConfig = &group.Config
 					}
@@ -880,7 +913,7 @@ func (server *BGPServer) StartServer() {
 				server.addPeerToList(peer)
 				server.NeighborMutex.Unlock()
 			}
-			server.bfdMgr.ProcessBfd(peer)
+			server.ProcessBfd(peer)
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:
@@ -1048,13 +1081,27 @@ func (server *BGPServer) StartServer() {
 			server.ProcessUpdate(pktInfo)
 
 		case reachabilityInfo := <-server.ReachabilityCh:
-			server.logger.Info(fmt.Sprintln("Server: Reachability info for ip", reachabilityInfo.IP))
+			server.logger.Info(fmt.Sprintln("Server: Reachability info for ip",
+				reachabilityInfo.IP))
 			_, err := server.ribdClient.GetRouteReachabilityInfo(reachabilityInfo.IP)
 			if err != nil {
 				reachabilityInfo.ReachableCh <- false
 			} else {
 				reachabilityInfo.ReachableCh <- true
 			}
+		case bfdNotify := <-bfdCh:
+			server.handleBfdNotifications(bfdNotify.Oper,
+				bfdNotify.DestIp, bfdNotify.State)
+		case ifState := <-intfCh:
+			if peerList, ok := server.IfacePeerMap[ifState.Idx]; ok &&
+				ifState.State == config.INTF_STATE_DOWN {
+				for _, peerIP := range peerList {
+					if peer, ok := server.PeerMap[peerIP]; ok {
+						peer.StopFSM("Interface Down")
+					}
+				}
+			}
+
 		}
 	}
 }
