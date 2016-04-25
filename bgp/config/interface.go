@@ -1,9 +1,9 @@
-package server
+package config
 
 /*  Port/Interface state change manager.
  */
 type IntfStateMgrIntf interface {
-	Init(server *BGPServer)
+	Init(chan IntfStateInfo)
 	PortStateChange()
 	GetIPv4Information(ifIndex int32) (string, error)
 	GetIfIndex(int, int) int32
@@ -14,8 +14,7 @@ type IntfStateMgrIntf interface {
 type RouteMgrIntf interface {
 	CreateRoute()
 	DeleteRoute()
-	Init(server *BGPServer)
-	//GetConnectedRoutes()
+	Init()
 }
 
 /*  Interface for handling policy related operations
@@ -28,6 +27,7 @@ type PolicyMgrIntf interface {
 /*  Interface for handling bfd state notifications
  */
 type BfdMgrIntf interface {
-	Init(server *BGPServer)
-	ProcessBfd(peer *Peer)
+	Init(chan BfdInfo)
+	CreateBfdSession(ipAddr string) (bool, error)
+	DeleteBfdSession(ipAddr string) (bool, error)
 }

@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
+	"l3/bgp/config"
 	"l3/bgp/rpc"
-	"l3/bgp/server"
 	"utils/logging"
 )
 
@@ -38,8 +38,9 @@ func NewFSIntfMgr(logger *logging.Writer, fileName string) (*FSIntfMgr, error) {
 
 /*  Do any necessary init. Called from server..
  */
-func (mgr *FSIntfMgr) Init(server *server.BGPServer) {
+func (mgr *FSIntfMgr) Init(ch chan config.IntfStateInfo) {
 	mgr.asicdL3IntfSubSocket, _ = mgr.setupSubSocket(asicdConstDefs.PUB_SOCKET_ADDR)
+	mgr.serverCh = ch
 	go mgr.listenForAsicdEvents()
 }
 
@@ -97,21 +98,24 @@ func (mgr *FSIntfMgr) listenForAsicdEvents() {
 			var msg asicdConstDefs.L3IntfStateNotifyMsg
 			err = json.Unmarshal(event.Msg, &msg)
 			if err != nil {
-				mgr.logger.Err(fmt.Sprintf("Unmarshal Asicd L3INTF event failed with err %s", err))
+				mgr.logger.Err(fmt.Sprintf("Unmarshal Asicd L3INTF",
+					"event failed with err %s", err))
 				return
 			}
 
 			mgr.logger.Info(fmt.Sprintf("Asicd L3INTF event idx %d ip %s state %d\n",
 				msg.IfIndex, msg.IpAddr,
 				msg.IfState))
-			if peerList, ok := mgr.Server.IfacePeerMap[msg.IfIndex]; ok &&
-				msg.IfState == asicdConstDefs.INTF_STATE_DOWN {
-				for _, peerIP := range peerList {
-					if peer, ok := mgr.Server.PeerMap[peerIP]; ok {
-						peer.StopFSM("Interface Down")
-					}
-				}
+			info := config.IntfStateInfo{
+				Idx:    msg.IfIndex,
+				Ipaddr: msg.IpAddr,
 			}
+			if msg.IfState == asicdConstDefs.INTF_STATE_DOWN {
+				info.State = config.INTF_STATE_DOWN
+			} else {
+				info.State = config.INTF_STATE_UP
+			}
+			mgr.serverCh <- info
 		}
 	}
 }

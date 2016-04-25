@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
+	"l3/bgp/config"
 	"l3/bgp/rpc"
-	"l3/bgp/server"
 	"ribd"
 	"utils/logging"
 )
@@ -17,7 +17,6 @@ import (
 type FSRouteMgr struct {
 	plugin          string
 	logger          *logging.Writer
-	Server          *server.BGPServer
 	ribdClient      *ribd.RIBDServicesClient
 	ribSubSocket    *nanomsg.SubSocket
 	ribSubBGPSocket *nanomsg.SubSocket
@@ -27,8 +26,8 @@ type FSRouteMgr struct {
  */
 type FSIntfMgr struct {
 	plugin               string
+	serverCh             chan config.IntfStateInfo
 	logger               *logging.Writer
-	Server               *server.BGPServer // copy of server pointer
 	AsicdClient          *asicdServices.ASICDServicesClient
 	asicdL3IntfSubSocket *nanomsg.SubSocket
 }
@@ -45,8 +44,8 @@ type FSPolicyMgr struct {
  */
 type FSBfdMgr struct {
 	plugin       string
+	serverCh     chan config.BfdInfo //[]byte
 	logger       *logging.Writer
-	Server       *server.BGPServer // copy of server pointer
 	bfddClient   *bfdd.BFDDServicesClient
 	bfdSubSocket *nanomsg.SubSocket
 }
