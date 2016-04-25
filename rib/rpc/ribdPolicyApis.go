@@ -5,11 +5,24 @@ import (
 	"fmt"
 	"ribd"
 	"ribdInt"
+	"utils/policy"
 	"l3/rib/server"
 )
 
 func (m RIBDServicesHandler) CreatePolicyStmt(cfg *ribd.PolicyStmt) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyStatement"))
+	newPolicyStmt := policy.PolicyStmtConfig{Name: cfg.Name, MatchConditions: cfg.MatchConditions}
+	newPolicyStmt.Conditions = make([]string, 0)
+	for i := 0; i < len(cfg.Conditions); i++ {
+		newPolicyStmt.Conditions = append(newPolicyStmt.Conditions, cfg.Conditions[i])
+	}
+	newPolicyStmt.Actions = make([]string, 0)
+	newPolicyStmt.Actions = append(newPolicyStmt.Actions,cfg.Action)
+    err = m.server.GlobalPolicyEngineDB.ValidatePolicyStatementCreate(newPolicyStmt)
+	if err != nil {
+		logger.Err(fmt.Sprintln("PolicyEngine validation failed with err: ",err))
+		return false,err
+	}
 	m.server.PolicyStmtCreateConfCh <- cfg
 	return true, err
 }
@@ -36,6 +49,20 @@ func (m RIBDServicesHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount r
 
 func (m RIBDServicesHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinition) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyDefinition"))
+	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Priority), MatchType: cfg.MatchType}
+	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence, 0)
+	var policyDefinitionStatement policy.PolicyDefinitionStmtPrecedence
+	for i := 0; i < len(cfg.StatementList); i++ {
+		policyDefinitionStatement.Precedence = int(cfg.StatementList[i].Priority)
+		policyDefinitionStatement.Statement = cfg.StatementList[i].Statement
+		newPolicy.PolicyDefinitionStatements = append(newPolicy.PolicyDefinitionStatements, policyDefinitionStatement)
+	}
+	newPolicy.Extensions = server.PolicyExtensions{}
+	err = m.server.GlobalPolicyEngineDB.ValidatePolicyDefinitionCreate(newPolicy)
+	if err != nil {
+		logger.Err(fmt.Sprintln("validation failed with err ", err))
+		return false, err
+	}
 	m.server.PolicyDefinitionCreateConfCh <- cfg
 	return true, err
 }

@@ -4,6 +4,7 @@ import (
 	"ribd"
 	"ribdInt"
 	"utils/policy"
+	"utils/policy/policyCommonDefs"
 	"utils/patriciaDB"
 )
 type PolicyExtensions struct {
@@ -28,7 +29,9 @@ func (m RIBDServer) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition
 	}*/
 	val, err = db.CreatePolicyCondition(newPolicy)
 	//send event for condition create
-	PolicyEngineDB.CreatePolicyCondition(newPolicy)
+	if err == nil {
+	    PolicyEngineDB.CreatePolicyCondition(newPolicy)
+	}
 	return val, err
 }
 
@@ -64,7 +67,9 @@ func (m RIBDServer) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmt,db *polic
 	newPolicyStmt.Actions = make([]string, 0)
 	newPolicyStmt.Actions = append(newPolicyStmt.Actions,cfg.Action)
 	err = db.CreatePolicyStatement(newPolicyStmt)
-	PolicyEngineDB.CreatePolicyStatement(newPolicyStmt)
+	if err == nil {
+	    PolicyEngineDB.CreatePolicyStatement(newPolicyStmt)
+	}
 	return err
 }
 
@@ -87,7 +92,9 @@ func (m RIBDServer) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefiniti
 	}
 	newPolicy.Extensions = PolicyExtensions{}
 	err = db.CreatePolicyDefinition(newPolicy)
-	PolicyEngineDB.CreatePolicyDefinition(newPolicy)
+	if err == nil {
+	    PolicyEngineDB.CreatePolicyDefinition(newPolicy)
+	}
 	return err
 }
 
@@ -342,15 +349,23 @@ func (m RIBDServer) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd
 }
 
 func (m RIBDServer) ApplyPolicy(info ApplyPolicyInfo)  {
+	var err error
+	conditionName := ""
 	source := info.Source 
 	policyName := info.Policy
 	action := info.Action
+	var policyAction policy.PolicyAction
+	conditionNameList := make([]string,0)
+	nodeGet := PolicyEngineDB.PolicyDB.Get(patriciaDB.Prefix(policyName))
+	if nodeGet == nil {
+		logger.Err(fmt.Sprintln("Policy ", policyName, " not defined"))
+		return
+	}
+	node := nodeGet.(policy.Policy)
 	conditions := make([]ribdInt.ConditionInfo,0)
 	for i:=0;i<len(info.Conditions);i++ {
 		conditions = append(conditions,*info.Conditions[i])
 	}
-	conditionNameList := make([]string,0)
-	k:=0
 	logger.Info(fmt.Sprintln("RIB handler ApplyPolicy source:", source, " policy:", policyName, " action:", action," conditions: "))
 	for j:=0;j<len(conditions);j++ {
 		logger.Info(fmt.Sprintf("ConditionType = %s :", conditions[j].ConditionType))
@@ -358,17 +373,18 @@ func (m RIBDServer) ApplyPolicy(info ApplyPolicyInfo)  {
 			case "MatchProtocol":
 			    logger.Info(fmt.Sprintln(conditions[j].Protocol))
 				conditionName := "Match"+conditions[j].Protocol
-				conditionNameList[k] = conditionName
-				k++
 				ok := PolicyEngineDB.PolicyConditionsDB.Match(patriciaDB.Prefix(conditionName))
 				if !ok {
 					logger.Info(fmt.Sprintln("Define condition ", conditionName))
 					policyCondition := ribd.PolicyCondition{Name:conditionName,ConditionType:conditions[j].ConditionType,Protocol:conditions[j].Protocol}
-					m.ProcessPolicyConditionConfigCreate(&policyCondition,PolicyEngineDB)
+					_,err = m.ProcessPolicyConditionConfigCreate(&policyCondition,PolicyEngineDB)
 				}
 			case "MatchDstIpPrefix":
 			case "MatchSrcIpPrefix":
 			    logger.Info(fmt.Sprintln("IpPrefix:", conditions[j].IpPrefix, "MasklengthRange:",conditions[j].MasklengthRange))
+		}
+		if err == nil {
+			conditionNameList = append(conditionNameList,conditionName)
 		}
 	}
 	//define Action
@@ -384,19 +400,12 @@ func (m RIBDServer) ApplyPolicy(info ApplyPolicyInfo)  {
 			}*/
 			//check if the policy is configured
 			//get should happen from DB
-			ok := PolicyEngineDB.PolicyDB.Match(patriciaDB.Prefix(policyName))
-			if !ok {
-				logger.Err(fmt.Sprintln("Policy ", policyName, " not defined"))
-				return
-			}
-			policyNodeInfo := GlobalPolicyEngineDB.PolicyDB.Get(patriciaDB.Prefix(policyName))
-			if policyNodeInfo != nil {
-				policyNode := policyNodeInfo.(policy.Policy)
-				PolicyEngineDB.PolicyDB.Insert(patriciaDB.Prefix(policyName),policyNode)
-			}
+		    redistributeActionInfo :=policy.RedistributeActionInfo{true,source}
+		    policyAction = policy.PolicyAction{Name: action, ActionType: policyCommonDefs.PolicyActionTypeRouteRedistribute, ActionInfo: redistributeActionInfo}
 		    break
 		default:
 		    logger.Info(fmt.Sprintln("Action ", action, "currently a no-op"))
 	}
+	PolicyEngineDB.ApplyPolicy(policy.ApplyPolicyInfo{node,policyAction,conditionNameList})
 	return 
 }

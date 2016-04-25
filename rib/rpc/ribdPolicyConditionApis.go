@@ -8,7 +8,9 @@ import (
 
 func (m RIBDServicesHandler) CreatePolicyCondition(cfg *ribd.PolicyCondition) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyConditioncfg: ", cfg.Name))
-	m.server.PolicyConditionCreateConfCh <- cfg
+//	m.server.PolicyConditionCreateConfCh <- cfg
+	val, err = m.server.ProcessPolicyConditionConfigCreate(cfg,m.server.GlobalPolicyEngineDB)
+	//send event for condition create
 	return true, err
 }
 func (m RIBDServicesHandler) DeletePolicyCondition(cfg *ribd.PolicyCondition) (val bool, err error) {
