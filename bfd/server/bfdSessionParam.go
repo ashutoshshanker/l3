@@ -6,8 +6,9 @@ import (
 
 func (server *BFDServer) createDefaultSessionParam() error {
 	paramName := "default"
-	sessionParam, exist := server.bfdGlobal.SessionParams[paramName]
+	_, exist := server.bfdGlobal.SessionParams[paramName]
 	if !exist {
+		sessionParam := &BfdSessionParam{}
 		sessionParam.state.Name = paramName
 		sessionParam.state.LocalMultiplier = DEFAULT_DETECT_MULTI
 		sessionParam.state.DesiredMinTxInterval = DEFAULT_DESIRED_MIN_TX_INTERVAL
@@ -15,6 +16,8 @@ func (server *BFDServer) createDefaultSessionParam() error {
 		sessionParam.state.RequiredMinEchoRxInterval = DEFAULT_REQUIRED_MIN_ECHO_RX_INTERVAL
 		sessionParam.state.DemandEnabled = false
 		sessionParam.state.AuthenticationEnabled = false
+		server.bfdGlobal.SessionParams[paramName] = sessionParam
+		server.bfdGlobal.NumSessionParams++
 		server.UpdateBfdSessionsUsingParam(sessionParam.state.Name)
 	}
 	server.logger.Info(fmt.Sprintln("Created default session param"))
@@ -25,6 +28,8 @@ func (server *BFDServer) processSessionParamConfig(paramConfig SessionParamConfi
 	sessionParam, exist := server.bfdGlobal.SessionParams[paramConfig.Name]
 	if !exist {
 		server.logger.Info(fmt.Sprintln("Creating session param: ", paramConfig.Name))
+		sessionParam = &BfdSessionParam{}
+		server.bfdGlobal.SessionParams[paramConfig.Name] = sessionParam
 	} else {
 		server.logger.Info(fmt.Sprintln("Updating session param: ", paramConfig.Name))
 	}
@@ -38,6 +43,9 @@ func (server *BFDServer) processSessionParamConfig(paramConfig SessionParamConfi
 	sessionParam.state.AuthenticationType = paramConfig.AuthenticationType
 	sessionParam.state.AuthenticationKeyId = paramConfig.AuthenticationKeyId
 	sessionParam.state.AuthenticationData = paramConfig.AuthenticationData
+	if !exist {
+		server.bfdGlobal.NumSessionParams++
+	}
 	server.UpdateBfdSessionsUsingParam(sessionParam.state.Name)
 	return nil
 }
@@ -47,6 +55,7 @@ func (server *BFDServer) processSessionParamDelete(paramName string) error {
 	if exist {
 		server.logger.Info(fmt.Sprintln("Deleting session param: ", paramName))
 		delete(server.bfdGlobal.SessionParams, paramName)
+		server.bfdGlobal.NumSessionParams--
 		server.UpdateBfdSessionsUsingParam(paramName)
 	}
 	return nil
