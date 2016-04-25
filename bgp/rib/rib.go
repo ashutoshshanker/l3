@@ -49,26 +49,16 @@ type AdjRib struct {
 	routeListDirty   bool
 	activeGet        bool
 	timer            *time.Timer
-	// Route CreateBulk request attributes
-	/*	routeBulkCreateChannel  chan ribdInt.IPv4Route
-		routeBulkCreateList  [] *ribdInt.IPv4Route
-		routeBulkCreateListSize  int
-		routeBulkCreateIndex int
-		routeBulkCreateTimer  *time.Timer*/
 }
 
 func NewAdjRib(logger *logging.Writer, ribdClient *ribd.RIBDServicesClient, gConf *config.GlobalConfig) *AdjRib {
 	//var route *ribdInt.IPv4Route
 	rib := &AdjRib{
-		logger:          logger,
-		gConf:           gConf,
-		ribdClient:      ribdClient,
-		destPathMap:     make(map[string]*Destination),
-		reachabilityMap: make(map[string]*ReachabilityInfo),
-		/*		routeBulkCreateListSize: 8192*3 / int(unsafe.Sizeof(route)),
-				routeBulkCreateChannel:  make(chan ribdInt.IPv4Route,8192*3 / int(unsafe.Sizeof(route))),
-				routeBulkCreateList: make([]*ribdInt.IPv4Route,8192*3 / int(unsafe.Sizeof(route))),
-				routeBulkCreateIndex : 0,*/
+		logger:           logger,
+		gConf:            gConf,
+		ribdClient:       ribdClient,
+		destPathMap:      make(map[string]*Destination),
+		reachabilityMap:  make(map[string]*ReachabilityInfo),
 		unreachablePaths: make(map[string]map[*Path]map[*Destination][]uint32),
 		routeList:        make([]*Route, 0),
 		routeListDirty:   false,
@@ -104,7 +94,8 @@ func (adjRib *AdjRib) GetReachabilityInfo(path *Path) *ReachabilityInfo {
 	}
 	nextHop := ribdReachabilityInfo.NextHopIp
 	if nextHop == "" || nextHop[0] == '0' {
-		adjRib.logger.Info(fmt.Sprintf("Next hop for %s is %s. Using %s as the next hop", ipStr, nextHop, ipStr))
+		adjRib.logger.Info(fmt.Sprintf("Next hop for %s is %s. Using %s as the next hop",
+			ipStr, nextHop, ipStr))
 		nextHop = ipStr
 	}
 
@@ -142,8 +133,9 @@ func (adjRib *AdjRib) updateRouteList(addedRoutes, updatedRoutes, deletedRoutes 
 	}
 }
 
-func (adjRib *AdjRib) updateRibOutInfo(action RouteAction, addPathsMod bool, addRoutes, updRoutes, delRoutes []*Route,
-	dest *Destination, withdrawn []*Destination, updated map[*Path][]*Destination, updatedAddPaths []*Destination) (
+func (adjRib *AdjRib) updateRibOutInfo(action RouteAction, addPathsMod bool, addRoutes,
+	updRoutes, delRoutes []*Route, dest *Destination, withdrawn []*Destination,
+	updated map[*Path][]*Destination, updatedAddPaths []*Destination) (
 	[]*Destination, map[*Path][]*Destination, []*Destination) {
 	if action == RouteActionAdd || action == RouteActionReplace {
 		updated[dest.LocRibPath] = append(updated[dest.LocRibPath], dest)
@@ -157,8 +149,9 @@ func (adjRib *AdjRib) updateRibOutInfo(action RouteAction, addPathsMod bool, add
 	return withdrawn, updated, updatedAddPaths
 }
 
-func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *Path, rem []packet.NLRI, remPath *Path,
-	addPathCount int) (map[*Path][]*Destination, []*Destination, []*Destination, bool) {
+func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *Path,
+	rem []packet.NLRI, remPath *Path, addPathCount int) (map[*Path][]*Destination,
+	[]*Destination, []*Destination, bool) {
 	withdrawn := make([]*Destination, 0)
 	updated := make(map[*Path][]*Destination)
 	updatedAddPaths := make([]*Destination, 0)
@@ -167,10 +160,12 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 	// process withdrawn routes
 	for _, nlri := range rem {
 		if !isIpInList(add, nlri) {
-			adjRib.logger.Info(fmt.Sprintln("Processing withdraw destination", nlri.GetPrefix().Prefix.String()))
+			adjRib.logger.Info(fmt.Sprintln("Processing withdraw destination",
+				nlri.GetPrefix().Prefix.String()))
 			dest, ok := adjRib.GetDest(nlri, false)
 			if !ok {
-				adjRib.logger.Warning(fmt.Sprintln("Can't process withdraw field. Destination does not exist, Dest:",
+				adjRib.logger.Warning(fmt.Sprintln("Can't process withdraw field.",
+					"Destination does not exist, Dest:",
 					nlri.GetPrefix().Prefix.String()))
 				continue
 			}
@@ -179,7 +174,8 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 				nextHopStr := oldPath.GetNextHop().String()
 				if _, ok := adjRib.unreachablePaths[nextHopStr]; ok {
 					if _, ok := adjRib.unreachablePaths[nextHopStr][oldPath]; ok {
-						if pathIds, ok := adjRib.unreachablePaths[nextHopStr][oldPath][dest]; ok {
+						if pathIds, ok :=
+							adjRib.unreachablePaths[nextHopStr][oldPath][dest]; ok {
 							for idx, pathId := range pathIds {
 								if pathId == nlri.GetPathId() {
 									adjRib.unreachablePaths[nextHopStr][oldPath][dest][idx] = pathIds[len(pathIds)-1]
@@ -187,8 +183,10 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 									break
 								}
 							}
-							if len(adjRib.unreachablePaths[nextHopStr][oldPath][dest]) == 0 {
-								delete(adjRib.unreachablePaths[nextHopStr][oldPath], dest)
+							if len(adjRib.unreachablePaths[nextHopStr][oldPath][dest]) ==
+								0 {
+								delete(adjRib.unreachablePaths[nextHopStr][oldPath],
+									dest)
 							}
 						}
 						if len(adjRib.unreachablePaths[nextHopStr][oldPath]) == 0 {
@@ -201,13 +199,16 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 
 				}
 			}
-			action, addPathsMod, addRoutes, updRoutes, delRoutes := dest.SelectRouteForLocRib(addPathCount)
-			withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes,
-				delRoutes, dest, withdrawn, updated, updatedAddPaths)
+			action, addPathsMod, addRoutes, updRoutes, delRoutes :=
+				dest.SelectRouteForLocRib(addPathCount)
+			withdrawn, updated, updatedAddPaths =
+				adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes,
+					delRoutes, dest, withdrawn, updated, updatedAddPaths)
 
 			if oldPath != nil && remPath != nil {
 				if neighborConf := remPath.GetNeighborConf(); neighborConf != nil {
-					adjRib.logger.Info(fmt.Sprintln("Decrement prefix count for destination %s from Peer %s",
+					adjRib.logger.Info(fmt.Sprintln("Decrement prefix count for",
+						"destination %s from Peer %s",
 						nlri.GetPrefix().Prefix.String(), peerIP))
 					neighborConf.DecrPrefixCount()
 				}
@@ -218,7 +219,8 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 				}
 			}
 		} else {
-			adjRib.logger.Info(fmt.Sprintln("Can't withdraw destination", nlri.GetPrefix().Prefix.String(),
+			adjRib.logger.Info(fmt.Sprintln("Can't withdraw destination",
+				nlri.GetPrefix().Prefix.String(),
 				"Destination is part of NLRI in the UDPATE"))
 		}
 	}
@@ -232,9 +234,11 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 
 		adjRib.logger.Info(fmt.Sprintln("Processing nlri", nlri.GetPrefix().Prefix.String()))
 		dest, _ := adjRib.GetDest(nlri, true)
-		if oldPath := dest.getPathForIP(peerIP, nlri.GetPathId()); oldPath == nil && addPath.NeighborConf != nil {
+		if oldPath := dest.getPathForIP(peerIP, nlri.GetPathId()); oldPath == nil &&
+			addPath.NeighborConf != nil {
 			if !addPath.NeighborConf.CanAcceptNewPrefix() {
-				adjRib.logger.Info(fmt.Sprintf("Max prefixes limit reached for peer %s, can't process %s",
+				adjRib.logger.Info(fmt.Sprintf("Max prefixes limit reached for",
+					"peer %s, can't process %s",
 					peerIP, nlri.GetPrefix().Prefix.String()))
 				addedAllPrefixes = false
 				continue
@@ -250,28 +254,30 @@ func (adjRib *AdjRib) ProcessRoutes(peerIP string, add []packet.NLRI, addPath *P
 				adjRib.unreachablePaths[nextHopStr][addPath][dest] = make([]uint32, 0)
 			}
 
-			adjRib.unreachablePaths[nextHopStr][addPath][dest] = append(adjRib.unreachablePaths[nextHopStr][addPath][dest], nlri.GetPathId())
+			adjRib.unreachablePaths[nextHopStr][addPath][dest] =
+				append(adjRib.unreachablePaths[nextHopStr][addPath][dest], nlri.GetPathId())
 			continue
 		}
 
 		action, addPathsMod, addRoutes, updRoutes, delRoutes := dest.SelectRouteForLocRib(addPathCount)
-		withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes,
-			delRoutes, dest, withdrawn, updated, updatedAddPaths)
+		withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod,
+			addRoutes, updRoutes, delRoutes, dest, withdrawn, updated, updatedAddPaths)
 	}
 
 	return updated, withdrawn, updatedAddPaths, addedAllPrefixes
 }
 
 func (adjRib *AdjRib) ProcessRoutesForReachableRoutes(nextHop string, reachabilityInfo *ReachabilityInfo,
-	addPathCount int, updated map[*Path][]*Destination, withdrawn []*Destination, updatedAddPaths []*Destination) (
-	map[*Path][]*Destination, []*Destination, []*Destination) {
+	addPathCount int, updated map[*Path][]*Destination, withdrawn []*Destination,
+	updatedAddPaths []*Destination) (map[*Path][]*Destination, []*Destination, []*Destination) {
 
 	if _, ok := adjRib.unreachablePaths[nextHop]; ok {
 		for path, destinations := range adjRib.unreachablePaths[nextHop] {
 			path.SetReachabilityInfo(reachabilityInfo)
 			peerIP := path.GetPeerIP()
 			if peerIP == "" {
-				adjRib.logger.Err(fmt.Sprintln("ProcessRoutesForReachableRoutes: nexthop %s peer ip not found for path %+v",
+				adjRib.logger.Err(fmt.Sprintln("ProcessRoutesForReachableRoutes:",
+					"nexthop %s peer ip not found for path %+v",
 					nextHop, path))
 				continue
 			}
@@ -281,9 +287,11 @@ func (adjRib *AdjRib) ProcessRoutesForReachableRoutes(nextHop string, reachabili
 				for _, pathId := range pathIds {
 					dest.AddOrUpdatePath(peerIP, pathId, path)
 				}
-				action, addPathsMod, addRoutes, updRoutes, delRoutes := dest.SelectRouteForLocRib(addPathCount)
-				withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes,
-					delRoutes, dest, withdrawn, updated, updatedAddPaths)
+				action, addPathsMod, addRoutes, updRoutes, delRoutes :=
+					dest.SelectRouteForLocRib(addPathCount)
+				withdrawn, updated, updatedAddPaths =
+					adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes,
+						delRoutes, dest, withdrawn, updated, updatedAddPaths)
 			}
 		}
 	}
@@ -326,9 +334,11 @@ func (adjRib *AdjRib) ProcessUpdate(neighborConf *base.NeighborConf, pktInfo *pa
 	addPath.updated = false
 
 	if reachabilityInfo != nil {
-		adjRib.logger.Info(fmt.Sprintf("ProcessUpdate - next hop %s is reachable, so process previously unreachable routes", nextHopStr))
-		updated, withdrawn, updatedAddPaths = adjRib.ProcessRoutesForReachableRoutes(nextHopStr, reachabilityInfo,
-			addPathCount, updated, withdrawn, updatedAddPaths)
+		adjRib.logger.Info(fmt.Sprintf("ProcessUpdate - next hop %s is reachable,",
+			"so process previously unreachable routes", nextHopStr))
+		updated, withdrawn, updatedAddPaths =
+			adjRib.ProcessRoutesForReachableRoutes(nextHopStr, reachabilityInfo,
+				addPathCount, updated, withdrawn, updatedAddPaths)
 	}
 	return updated, withdrawn, remPath, updatedAddPaths, addedAllPrefixes
 }
@@ -339,11 +349,12 @@ func (adjRib *AdjRib) ProcessConnectedRoutes(src string, path *Path, add []packe
 	removePath = path.Clone()
 	removePath.withdrawn = true
 	path.updated = true
-	updated, withdrawn, updatedAddPaths, addedAllPrefixes := adjRib.ProcessRoutes(src, add, path, remove, removePath,
-		addPathCount)
+	updated, withdrawn, updatedAddPaths, addedAllPrefixes :=
+		adjRib.ProcessRoutes(src, add, path, remove, removePath, addPathCount)
 	path.updated = false
 	if !addedAllPrefixes {
-		adjRib.logger.Err(fmt.Sprintf("Failed to add connected routes... max prefixes exceeded for connected routes!"))
+		adjRib.logger.Err(fmt.Sprintf("Failed to add connected routes... max",
+			"prefixes exceeded for connected routes!"))
 	}
 	return updated, withdrawn, removePath, updatedAddPaths
 }
@@ -421,17 +432,20 @@ func (adjRib *AdjRib) RemoveRouteFromAggregate(ip *packet.IPPrefix, aggIP *packe
 		}
 		dest = ipDest
 	}
-	adjRib.logger.Info(fmt.Sprintln("RemoveRouteFromAggregate: locRibPath", dest.LocRibPath, "locRibRoutePath", dest.LocRibPathRoute.path))
+	adjRib.logger.Info(fmt.Sprintln("RemoveRouteFromAggregate: locRibPath", dest.LocRibPath,
+		"locRibRoutePath", dest.LocRibPathRoute.path))
 	path = dest.LocRibPathRoute.path
 	remPath := NewPath(adjRib, nil, path.PathAttrs, true, false, path.routeType)
 
 	if aggDest, ok = adjRib.GetDest(aggIP, false); !ok {
-		adjRib.logger.Info(fmt.Sprintf("AdjRib:RemoveRouteFromAggregate - dest not found for aggIP %v", aggIP))
+		adjRib.logger.Info(fmt.Sprintf("AdjRib:RemoveRouteFromAggregate - dest not found for aggIP %v",
+			aggIP))
 		return updated, withdrawn, nil, nil
 	}
 
 	if aggPath = aggDest.getPathForIP(srcIP, AggregatePathId); aggPath == nil {
-		adjRib.logger.Info(fmt.Sprintf("AdjRib:RemoveRouteFromAggregate - path not found for dest, aggIP %v", aggIP))
+		adjRib.logger.Info(fmt.Sprintf("AdjRib:RemoveRouteFromAggregate - path not found for dest, aggIP %v",
+			aggIP))
 		return updated, withdrawn, nil, nil
 	}
 
@@ -443,8 +457,8 @@ func (adjRib *AdjRib) RemoveRouteFromAggregate(ip *packet.IPPrefix, aggIP *packe
 	}
 	aggDest.removeAggregatedDests(ip.Prefix.String())
 	action, addPathsMod, addRoutes, updRoutes, delRoutes := aggDest.SelectRouteForLocRib(addPathCount)
-	withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes, delRoutes, aggDest,
-		withdrawn, updated, updatedAddPaths)
+	withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod,
+		addRoutes, updRoutes, delRoutes, aggDest, withdrawn, updated, updatedAddPaths)
 	if action == RouteActionAdd || action == RouteActionReplace {
 		dest.aggPath = aggPath
 	}
@@ -456,7 +470,8 @@ func (adjRib *AdjRib) RemoveRouteFromAggregate(ip *packet.IPPrefix, aggIP *packe
 }
 
 func (adjRib *AdjRib) AddRouteToAggregate(ip *packet.IPPrefix, aggIP *packet.IPPrefix, srcIP string, ifaceIP net.IP,
-	bgpAgg *config.BGPAggregate, addPathCount int) (map[*Path][]*Destination, []*Destination, *Path, []*Destination) {
+	bgpAgg *config.BGPAggregate, addPathCount int) (map[*Path][]*Destination,
+	[]*Destination, *Path, []*Destination) {
 	var aggPath, path *Path
 	var dest *Destination
 	var aggDest *Destination
@@ -475,22 +490,26 @@ func (adjRib *AdjRib) AddRouteToAggregate(ip *packet.IPPrefix, aggIP *packet.IPP
 
 	if aggDest, ok = adjRib.GetDest(aggIP, true); ok {
 		aggPath = aggDest.getPathForIP(srcIP, AggregatePathId)
-		adjRib.logger.Info(fmt.Sprintf("AdjRib:AddRouteToAggregate - aggIP %v found in dest, agg path %v", aggIP, aggPath))
+		adjRib.logger.Info(fmt.Sprintf("AdjRib:AddRouteToAggregate - aggIP %v found in dest, agg path %v",
+			aggIP, aggPath))
 	}
 
 	if aggPath != nil {
-		adjRib.logger.Info(fmt.Sprintf("AdjRib:AddRouteToAggregate - aggIP %v, agg path found, update path attrs", aggIP))
+		adjRib.logger.Info(fmt.Sprintf("AdjRib:AddRouteToAggregate - aggIP %v,",
+			"agg path found, update path attrs", aggIP))
 		aggPath.addPathToAggregate(ip.Prefix.String(), path, bgpAgg.GenerateASSet)
 		aggDest.setUpdateAggPath(srcIP, AggregatePathId)
 		aggDest.addAggregatedDests(ip.Prefix.String(), dest)
-		action, addPathsMod, addRoutes, updRoutes, delRoutes := aggDest.SelectRouteForLocRib(addPathCount)
-		withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes,
-			delRoutes, aggDest, withdrawn, updated, updatedAddPaths)
+		action, addPathsMod, addRoutes, updRoutes, delRoutes :=
+			aggDest.SelectRouteForLocRib(addPathCount)
+		withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod,
+			addRoutes, updRoutes, delRoutes, aggDest, withdrawn, updated, updatedAddPaths)
 		if action == RouteActionAdd || action == RouteActionReplace {
 			dest.aggPath = aggPath
 		}
 	} else {
-		adjRib.logger.Info(fmt.Sprintf("AdjRib:AddRouteToAggregate - aggIP %v, agg path NOT found, create new path", aggIP))
+		adjRib.logger.Info(fmt.Sprintf("AdjRib:AddRouteToAggregate - aggIP %v,",
+			"agg path NOT found, create new path", aggIP))
 		pathAttrs := packet.ConstructPathAttrForAggRoutes(path.PathAttrs, bgpAgg.GenerateASSet)
 		packet.SetNextHopPathAttrs(pathAttrs, ifaceIP)
 		packet.SetPathAttrAggregator(pathAttrs, adjRib.gConf.AS, adjRib.gConf.RouterId)
@@ -500,8 +519,8 @@ func (adjRib *AdjRib) AddRouteToAggregate(ip *packet.IPPrefix, aggIP *packet.IPP
 		aggDest.AddOrUpdatePath(srcIP, AggregatePathId, aggPath)
 		aggDest.addAggregatedDests(ip.Prefix.String(), dest)
 		action, addPathsMod, addRoutes, updRoutes, delRoutes := aggDest.SelectRouteForLocRib(addPathCount)
-		withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod, addRoutes, updRoutes,
-			delRoutes, aggDest, withdrawn, updated, updatedAddPaths)
+		withdrawn, updated, updatedAddPaths = adjRib.updateRibOutInfo(action, addPathsMod,
+			addRoutes, updRoutes, delRoutes, aggDest, withdrawn, updated, updatedAddPaths)
 		if action == RouteActionAdd || action == RouteActionReplace {
 			dest.aggPath = aggPath
 		}
@@ -540,7 +559,8 @@ func (adjRib *AdjRib) addRoutesToRouteList(routes []*Route) {
 	adjRib.logger.Info(fmt.Sprintln("addRoutesToRouteList: routes =", routes))
 	for _, route := range routes {
 		adjRib.routeList = append(adjRib.routeList, route)
-		adjRib.logger.Info(fmt.Sprintln("addRoutesToRouteList: added route at idx", len(adjRib.routeList)-1))
+		adjRib.logger.Info(fmt.Sprintln("addRoutesToRouteList: added route at idx",
+			len(adjRib.routeList)-1))
 		route.routeListIdx = len(adjRib.routeList) - 1
 	}
 }
@@ -613,48 +633,3 @@ func (adjRib *AdjRib) BulkGetBGPRoutes(index int, count int) (int, int, []*bgpd.
 	adjRib.timer.Reset(time.Duration(ResetTime) * time.Second)
 	return i, n, result
 }
-
-/*func (adjRib *AdjRib) SendBulkRouteCreate () {
-	adjRib.logger.Info(fmt.Sprintln("SendBulkRouteCreate, adjRib.routeBulkCreateIndex = ", adjRib.routeBulkCreateIndex))
-	totalRoutes += adjRib.routeBulkCreateIndex
-	adjRib.logger.Info(fmt.Sprintln("Calling createbulkIPv4Route for ", adjRib.routeBulkCreateIndex, " routes, totalRoutes so far = ", totalRoutes))
-	idx := adjRib.routeBulkCreateIndex
-	adjRib.routeBulkCreateIndex=0
-	adjRib.ribdClient.OnewayCreateBulkIPv4Route(adjRib.routeBulkCreateList[0:idx])
-	adjRib.logger.Info("OnewayCreateBulk returned")
-}
-func (adjRib *AdjRib) TimeOutBulkRouteCreate() {
-	adjRib.logger.Info(fmt.Sprintln("TimeOutBulkRouteCreate"))
-	adjRib.SendBulkRouteCreate()
-	if adjRib.routeBulkCreateTimer != nil {
-		adjRib.logger.Info(fmt.Sprintln("timer not nil, stop and make it nil"))
-		adjRib.routeBulkCreateTimer.Stop()
-    }
-}
-func (adjRib *AdjRib) BulkRouteCreate(route ribdInt.IPv4Route) {
-	adjRib.logger.Info(fmt.Sprintln("BulkRouteCreate, routeBulkCreateIndex - ", adjRib.routeBulkCreateIndex))
-    	if adjRib.routeBulkCreateIndex >= adjRib.routeBulkCreateListSize-1 {
-		adjRib.logger.Info(fmt.Sprintln("Size limit of the IPC buffer hit, call createBulk for ", adjRib.routeBulkCreateIndex+1, " routes"))
-		adjRib.SendBulkRouteCreate()
-		adjRib.logger.Info(fmt.Sprintln("resetting routeBulkCreateTimer"))
-		if adjRib.routeBulkCreateTimer != nil {
-		    adjRib.routeBulkCreateTimer.Reset(time.Millisecond)
-		}
-	}
-	adjRib.routeBulkCreateList[adjRib.routeBulkCreateIndex] = &route
-	adjRib.routeBulkCreateIndex++
-	if adjRib.routeBulkCreateTimer == nil {
-		adjRib.logger.Info("creating routeBulkCreateTimer")
-	   // adjRib.routeBulkCreateTimer = time.AfterFunc(time.Millisecond, adjRib.TimeOutBulkRouteCreate)
-	}
-}
-func (adjRib *AdjRib) ProcessRIBdRouteRequests() {
-	adjRib.logger.Info(fmt.Sprintln("ProcessRIBdRouteRequests: maximum bulkCreateSize = ", adjRib.routeBulkCreateListSize))
-	for {
-		select {
-		    case route := <-adjRib.routeBulkCreateChannel:
-			adjRib.logger.Info("Received message on routeBulkCreateChannel")
-			adjRib.BulkRouteCreate(route)
-        }
-	}
-}*/
