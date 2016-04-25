@@ -418,6 +418,7 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.BuildPortPropertyMap()
 	server.BuildLagPropertyMap()
 	server.BuildIPv4InterfacesMap()
+	server.createDefaultSessionParam()
 }
 
 func (server *BFDServer) SigHandler() {
@@ -432,8 +433,8 @@ func (server *BFDServer) SigHandler() {
 			switch signal {
 			case syscall.SIGHUP:
 				server.logger.Info("Received SIGHUP signal")
-				server.SendAdminDownToAllNeighbors()
-				time.Sleep(500 * time.Millisecond)
+				//server.SendAdminDownToAllNeighbors()
+				//time.Sleep(500 * time.Millisecond)
 				server.SendDeleteToAllSessions()
 				time.Sleep(500 * time.Millisecond)
 				server.logger.Info("Exiting!!!")
