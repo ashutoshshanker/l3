@@ -5,7 +5,9 @@ import (
 	"bfdd"
 	"errors"
 	"fmt"
+	nanomsg "github.com/op/go-nanomsg"
 	"l3/bgp/rpc"
+	"l3/bgp/server"
 	"ribd"
 	"utils/logging"
 )
@@ -21,9 +23,11 @@ type FSRouteMgr struct {
 /*  Interface manager will handle all the communication with asicd
  */
 type FSIntfMgr struct {
-	AsicdClient *asicdServices.ASICDServicesClient
-	plugin      string
-	logger      *logging.Writer
+	plugin               string
+	logger               *logging.Writer
+	Server               *server.BGPServer // copy of server pointer
+	AsicdClient          *asicdServices.ASICDServicesClient
+	asicdL3IntfSubSocket *nanomsg.SubSocket
 }
 
 /*  @FUTURE: this will be using in future if FlexSwitch is planning to support
@@ -37,33 +41,11 @@ type FSPolicyMgr struct {
 /*  BFD manager will handle all the communication with bfd daemon
  */
 type FSBfdMgr struct {
-	bfddClient *bfdd.BFDDServicesClient
-	plugin     string
-	logger     *logging.Writer
-}
-
-/*  Interface manager is responsible for handling asicd notifications and hence
- *  we are creating asicd client
- */
-func NewFSIntfMgr(logger *logging.Writer, fileName string) (*FSIntfMgr, error) {
-	var asicdClient *asicdServices.ASICDServicesClient = nil
-	asicdClientChan := make(chan *asicdServices.ASICDServicesClient)
-
-	logger.Info("Connecting to ASICd")
-	go rpc.StartAsicdClient(logger, fileName, asicdClientChan)
-	asicdClient = <-asicdClientChan
-	if asicdClient == nil {
-		logger.Err("Failed to connect to ASICd")
-		return nil, errors.New("Failed to connect to ASICd")
-	} else {
-		logger.Info("Connected to ASICd")
-	}
-	mgr := &FSIntfMgr{
-		plugin:      "ovsdb",
-		AsicdClient: asicdClient,
-		logger:      logger,
-	}
-	return mgr, nil
+	plugin       string
+	logger       *logging.Writer
+	Server       *server.BGPServer // copy of server pointer
+	bfddClient   *bfdd.BFDDServicesClient
+	bfdSubSocket *nanomsg.SubSocket
 }
 
 /*  Init policy manager with specific needs
@@ -97,30 +79,6 @@ func NewFSRouteMgr(logger *logging.Writer, fileName string) (*FSRouteMgr, error)
 		plugin:     "ovsdb",
 		ribdClient: ribdClient,
 		logger:     logger,
-	}
-
-	return mgr, nil
-}
-
-/*  Init bfd manager with bfd client as its core
- */
-func NewFSBfdMgr(logger *logging.Writer, fileName string) (*FSBfdMgr, error) {
-	var bfddClient *bfdd.BFDDServicesClient = nil
-	bfddClientChan := make(chan *bfdd.BFDDServicesClient)
-
-	logger.Info("Connecting to BFDd")
-	go rpc.StartBfddClient(logger, fileName, bfddClientChan)
-	bfddClient = <-bfddClientChan
-	if bfddClient == nil {
-		logger.Err("Failed to connect to BFDd\n")
-		return nil, errors.New("Failed to connect to BFDd")
-	} else {
-		logger.Info("Connected to BFDd")
-	}
-	mgr := &FSBfdMgr{
-		plugin:     "ovsdb",
-		logger:     logger,
-		bfddClient: bfddClient,
 	}
 
 	return mgr, nil
