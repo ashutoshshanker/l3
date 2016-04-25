@@ -76,3 +76,7 @@ func (mgr *OvsIntfMgr) PortStateChange() {
 func (mgr *OvsBfdMgr) ProcessBfd(peer *server.Peer) {
 
 }
+
+func (mgr *OvsBfdMgr) Init() {
+
+}
