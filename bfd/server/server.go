@@ -11,8 +11,6 @@ import (
 	"io/ioutil"
 	"l3/bfd/bfddCommonDefs"
 	"net"
-	"os"
-	"os/signal"
 	"ribd"
 	"strconv"
 	"syscall"
