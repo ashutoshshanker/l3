@@ -227,12 +227,18 @@ func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 	reader := bytes.NewReader(rxBuf)
 	decoder := json.NewDecoder(reader)
 	msg := ribdCommonDefs.RibdNotifyMsg{}
+	updateMsg := "Add"
+	if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
+		updateMsg = "Remove"
+	}
+
 	for err := decoder.Decode(&msg); err == nil; err = decoder.Decode(&msg) {
 		err = json.Unmarshal(msg.MsgBuf, &routeListInfo)
 		if err != nil {
 			server.logger.Err(fmt.Sprintf("Unmarshal RIB route update failed with err %s", err))
 		}
-		server.logger.Info(fmt.Sprintln("Remove connected route, dest:", routeListInfo.RouteInfo.Ipaddr, "netmask:", routeListInfo.RouteInfo.Mask, "nexthop:", routeListInfo.RouteInfo.NextHopIp))
+		server.logger.Info(fmt.Sprintln(updateMsg, "connected route, dest:", routeListInfo.RouteInfo.Ipaddr, "netmask:",
+			routeListInfo.RouteInfo.Mask, "nexthop:", routeListInfo.RouteInfo.NextHopIp))
 		routes = append(routes, &routeListInfo.RouteInfo)
 	}
 
@@ -258,12 +264,12 @@ func (server *BGPServer) handleBfdNotifications(rxBuf []byte) {
 	if peer, ok := server.PeerMap[bfd.DestIp]; ok {
 		if !bfd.State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "up" {
 			//peer.StopFSM("Peer BFD Down")
-			peer.Command(int(fsm.BGPEventManualStop))
+			peer.Command(int(fsm.BGPEventManualStop), fsm.BGPCmdReasonNone)
 			peer.NeighborConf.Neighbor.State.BfdNeighborState = "down"
 		}
 		if bfd.State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
 			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
-			peer.Command(int(fsm.BGPEventManualStart))
+			peer.Command(int(fsm.BGPEventManualStart), fsm.BGPCmdReasonNone)
 		}
 		server.logger.Info(fmt.Sprintln("Bfd state of peer ", peer.NeighborConf.Neighbor.NeighborAddress, " is ", peer.NeighborConf.Neighbor.State.BfdNeighborState))
 	}
@@ -324,7 +330,7 @@ func (server *BGPServer) DoesRouteExist(params interface{}) bool {
 	dest := policyParams.dest
 	if dest == nil {
 		server.logger.Info(fmt.Sprintln("BGPServer:DoesRouteExist - dest not found for ip",
-			policyParams.route.BGPRoute.Network, "prefix length", policyParams.route.BGPRoute.CIDRLen))
+			policyParams.route.BGPRouteState.Network, "prefix length", policyParams.route.BGPRouteState.CIDRLen))
 		return false
 	}
 
@@ -591,12 +597,12 @@ func (server *BGPServer) setUpdatedWithAggPaths(policyParams *PolicyParams, upda
 	server.setUpdatedAddPaths(policyParams, updatedAddPaths)
 }
 
-//func (server *BGPServer) UndoAggregateAction(route *bgpd.BGPRoute, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
+//func (server *BGPServer) UndoAggregateAction(route *bgpd.BGPRouteState, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
 func (server *BGPServer) UndoAggregateAction(actionInfo interface{}, conditionList []interface{}, params interface{},
 	policyStmt utilspolicy.PolicyStmt) {
 	policyParams := params.(PolicyParams)
-	ipPrefix := packet.NewIPPrefix(net.ParseIP(policyParams.route.BGPRoute.Network),
-		uint8(policyParams.route.BGPRoute.CIDRLen))
+	ipPrefix := packet.NewIPPrefix(net.ParseIP(policyParams.route.BGPRouteState.Network),
+		uint8(policyParams.route.BGPRouteState.CIDRLen))
 	aggPrefix := server.getAggPrefix(conditionList)
 	//actions := actionInfo.(utilspolicy.PolicyAggregateActionInfo)
 	aggActions := actionInfo.(utilspolicy.PolicyAggregateActionInfo)
@@ -638,11 +644,11 @@ func (server *BGPServer) UndoAggregateAction(actionInfo interface{}, conditionLi
 	return
 }
 
-//func (server *BGPServer) ApplyAggregateAction(route *bgpd.BGPRoute, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
+//func (server *BGPServer) ApplyAggregateAction(route *bgpd.BGPRouteState, conditionList []string, action interface{}, params interface{}, ctx interface{}) {
 func (server *BGPServer) ApplyAggregateAction(actionInfo interface{}, conditionInfo []interface{}, params interface{}) {
 	policyParams := params.(PolicyParams)
-	ipPrefix := packet.NewIPPrefix(net.ParseIP(policyParams.route.BGPRoute.Network),
-		uint8(policyParams.route.BGPRoute.CIDRLen))
+	ipPrefix := packet.NewIPPrefix(net.ParseIP(policyParams.route.BGPRouteState.Network),
+		uint8(policyParams.route.BGPRouteState.CIDRLen))
 	//conditionList := conditionInfo.([]string)
 	aggPrefix := server.getAggPrefix(conditionInfo)
 	//routeParams := params.(policy.RouteParams)
@@ -693,8 +699,8 @@ func (server *BGPServer) checkForAggregation(updated map[*bgprib.Path][]*bgprib.
 			continue
 		}
 		peEntity := utilspolicy.PolicyEngineFilterEntityParams{
-			DestNetIp:  route.BGPRoute.Network + "/" + strconv.Itoa(int(route.BGPRoute.CIDRLen)),
-			NextHopIp:  route.BGPRoute.NextHop,
+			DestNetIp:  route.BGPRouteState.Network + "/" + strconv.Itoa(int(route.BGPRouteState.CIDRLen)),
+			NextHopIp:  route.BGPRouteState.NextHop,
 			DeletePath: true,
 		}
 		server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - withdraw dest %s policylist %v hit %v before applying delete policy\n",
@@ -735,8 +741,8 @@ func (server *BGPServer) checkForAggregation(updated map[*bgprib.Path][]*bgprib.
 				dest.IPPrefix.Prefix.String(), route.PolicyList, route.PolicyHitCounter))
 			if route != nil {
 				peEntity := utilspolicy.PolicyEngineFilterEntityParams{
-					DestNetIp:  route.BGPRoute.Network + "/" + strconv.Itoa(int(route.BGPRoute.CIDRLen)),
-					NextHopIp:  route.BGPRoute.NextHop,
+					DestNetIp:  route.BGPRouteState.Network + "/" + strconv.Itoa(int(route.BGPRouteState.CIDRLen)),
+					NextHopIp:  route.BGPRouteState.NextHop,
 					CreatePath: true,
 				}
 				/*
@@ -814,8 +820,8 @@ func (server *BGPServer) TraverseAndApplyBGPRib(data interface{}, updateFunc uti
 					continue
 				}
 				peEntity := utilspolicy.PolicyEngineFilterEntityParams{
-					DestNetIp:  route.BGPRoute.Network + "/" + strconv.Itoa(int(route.BGPRoute.CIDRLen)),
-					NextHopIp:  route.BGPRoute.NextHop,
+					DestNetIp:  route.BGPRouteState.Network + "/" + strconv.Itoa(int(route.BGPRouteState.CIDRLen)),
+					NextHopIp:  route.BGPRouteState.NextHop,
 					PolicyList: route.PolicyList,
 				}
 				callbackInfo := PolicyParams{
@@ -849,7 +855,7 @@ func (server *BGPServer) TraverseAndReverseBGPRib(policyData interface{}) {
 	var route *bgprib.Route
 	for idx := 0; idx < len(policyExtensions.RouteInfoList); idx++ {
 		route = policyExtensions.RouteInfoList[idx]
-		dest := server.AdjRib.GetDestFromIPAndLen(route.BGPRoute.Network, uint32(route.BGPRoute.CIDRLen))
+		dest := server.AdjRib.GetDestFromIPAndLen(route.BGPRouteState.Network, uint32(route.BGPRouteState.CIDRLen))
 		callbackInfo := PolicyParams{
 			route:           route,
 			dest:            dest,
@@ -858,12 +864,12 @@ func (server *BGPServer) TraverseAndReverseBGPRib(policyData interface{}) {
 			updatedAddPaths: &updatedAddPaths,
 		}
 		peEntity := utilspolicy.PolicyEngineFilterEntityParams{
-			DestNetIp: route.BGPRoute.Network + "/" + strconv.Itoa(int(route.BGPRoute.CIDRLen)),
-			NextHopIp: route.BGPRoute.NextHop,
+			DestNetIp: route.BGPRouteState.Network + "/" + strconv.Itoa(int(route.BGPRouteState.CIDRLen)),
+			NextHopIp: route.BGPRouteState.NextHop,
 		}
 
-		ipPrefix, err := bgppolicy.GetNetworkPrefixFromCIDR(route.BGPRoute.Network + "/" +
-			strconv.Itoa(int(route.BGPRoute.CIDRLen)))
+		ipPrefix, err := bgppolicy.GetNetworkPrefixFromCIDR(route.BGPRouteState.Network + "/" +
+			strconv.Itoa(int(route.BGPRouteState.CIDRLen)))
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Invalid route ", ipPrefix))
 			continue
@@ -883,7 +889,11 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 
 	atomic.AddUint32(&peer.NeighborConf.Neighbor.State.Queues.Input, ^uint32(0))
 	peer.NeighborConf.Neighbor.State.Messages.Received.Update++
-	updated, withdrawn, withdrawPath, updatedAddPaths := server.AdjRib.ProcessUpdate(peer.NeighborConf, pktInfo, server.addPathCount)
+	updated, withdrawn, withdrawPath, updatedAddPaths, addedAllPrefixes := server.AdjRib.ProcessUpdate(
+		peer.NeighborConf, pktInfo, server.addPathCount)
+	if !addedAllPrefixes {
+		peer.MaxPrefixesExceeded()
+	}
 	updated, withdrawn, withdrawPath, updatedAddPaths = server.checkForAggregation(updated, withdrawn, withdrawPath,
 		updatedAddPaths)
 	server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
@@ -1050,7 +1060,7 @@ func (server *BGPServer) getIfaceIP(ip string) {
 func (server *BGPServer) setInterfaceMapForPeer(peerIP string, peer *Peer) {
 	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer, "calling GetRouteReachabilityInfo"))
 	reachInfo, err := server.ribdClient.GetRouteReachabilityInfo(peerIP)
-	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer, "GetRouteReachabilityInfo returned", *reachInfo))
+	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer, "GetRouteReachabilityInfo returned", reachInfo))
 	if err != nil {
 		server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
 	} else {
@@ -1126,6 +1136,7 @@ func (server *BGPServer) StartServer() {
 	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
 	go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
 	go server.listenForBFDNotifications(bfdSubSocket, bfdSubSocketCh, bfdSubSocketErrCh)
+	//go server.AdjRib.ProcessRIBdRouteRequests()
 
 	for {
 		select {
@@ -1256,7 +1267,7 @@ func (server *BGPServer) StartServer() {
 				server.logger.Info(fmt.Sprintf("Failed to apply command %s. Peer at that address does not exist, %v\n",
 					peerCommand.Command, peerCommand.IP))
 			}
-			peer.Command(peerCommand.Command)
+			peer.Command(peerCommand.Command, fsm.BGPCmdReasonNone)
 
 		case peerFSMConn := <-server.PeerFSMConnCh:
 			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM established/broken channel\n", peerFSMConn.PeerIP))

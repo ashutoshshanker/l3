@@ -11,6 +11,7 @@ import (
 	"l3/bgp/server"
 	"l3/bgp/utils"
 	"ribd"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -34,9 +35,12 @@ func main() {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
 	}
-	go logger.ListenForSysdNotifications()
+	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
 	utils.SetLogger(logger)
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("bgpd", fileName)
 
 	var asicdClient *asicdServices.ASICDServicesClient = nil
 	asicdClientChan := make(chan *asicdServices.ASICDServicesClient)

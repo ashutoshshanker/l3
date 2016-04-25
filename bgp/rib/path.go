@@ -45,13 +45,13 @@ func getRouteSource(routeType uint8) uint8 {
 }
 
 type Path struct {
-	rib          *AdjRib
-	logger       *logging.Writer
-	NeighborConf *base.NeighborConf
-	PathAttrs    []packet.BGPPathAttr
-	withdrawn    bool
-	updated      bool
-	Pref         uint32
+	rib              *AdjRib
+	logger           *logging.Writer
+	NeighborConf     *base.NeighborConf
+	PathAttrs        []packet.BGPPathAttr
+	withdrawn        bool
+	updated          bool
+	Pref             uint32
 	reachabilityInfo *ReachabilityInfo
 	routeType        uint8
 	MED              uint32
@@ -78,13 +78,13 @@ func NewPath(adjRib *AdjRib, peer *base.NeighborConf, pa []packet.BGPPathAttr, w
 
 func (p *Path) Clone() *Path {
 	path := &Path{
-		rib:          p.rib,
-		logger:       p.rib.logger,
-		NeighborConf: p.NeighborConf,
-		PathAttrs:    p.PathAttrs,
-		withdrawn:    p.withdrawn,
-		updated:      p.updated,
-		Pref:         p.Pref,
+		rib:              p.rib,
+		logger:           p.rib.logger,
+		NeighborConf:     p.NeighborConf,
+		PathAttrs:        p.PathAttrs,
+		withdrawn:        p.withdrawn,
+		updated:          p.updated,
+		Pref:             p.Pref,
 		reachabilityInfo: p.reachabilityInfo,
 		routeType:        p.routeType,
 		MED:              p.MED,
@@ -156,6 +156,10 @@ func (p *Path) SetUpdate(status bool) {
 
 func (p *Path) IsUpdated() bool {
 	return p.updated
+}
+
+func (p *Path) GetNeighborConf() *base.NeighborConf {
+	return p.NeighborConf
 }
 
 func (p *Path) GetPeerIP() string {

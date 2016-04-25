@@ -79,7 +79,8 @@ func (server *OSPFServer) BuildHelloPkt(ent IntfConf) []byte {
 	var nbrlen = 0
 	nbr := make([]byte, 4)
 	for key, _ := range ent.NeighborMap {
-		binary.BigEndian.PutUint32(nbr, key.RouterId)
+		nbrConf := server.NeighborConfigMap[key]
+		binary.BigEndian.PutUint32(nbr, nbrConf.OspfNbrRtrId)
 		nbrlen = nbrlen + 4
 		neighbor = append(neighbor, nbr...)
 	}
@@ -145,6 +146,7 @@ func (server *OSPFServer) processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetad
 	//  Todo: Sec 10.5 RFC2328 Need to add check for Virtual links
 	if ent.IfType != config.PointToPoint {
 		if bytesEqual(ent.IfNetmask, ospfHelloData.netmask) == false {
+			server.logger.Info(fmt.Sprintln("HELLO: Netmask mismatch. Int mask", ent.IfNetmask, " Hello mask ", ospfHelloData.netmask, " ip ", ipHdrMd.srcIP))
 			err := errors.New("Netmask mismatch")
 			return err
 		}
@@ -200,6 +202,15 @@ func (server *OSPFServer) processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetad
 		}
 	}
 
+	//routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
+	srcIp := net.IPv4(ipHdrMd.srcIP[0], ipHdrMd.srcIP[1], ipHdrMd.srcIP[2], ipHdrMd.srcIP[3])
+
+	nbrKey := NeighborConfKey{
+		IPAddr:  config.IpAddress(srcIp.String()),
+		IntfIdx: key.IntfIdx,
+	}
+	ospfNeighborIPToMAC[nbrKey] = ethHdrMd.srcMAC
+
 	server.processOspfHelloNeighbor(TwoWayStatus, ospfHelloData, ipHdrMd, ospfHdrMd, key)
 
 	return nil
@@ -212,9 +223,12 @@ func (server *OSPFServer) processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloD
 	//server.logger.Info(fmt.Sprintln("ospfHdrMd", ospfHdrMd))
 	routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
 	NbrIP := convertIPv4ToUint32(ipHdrMd.srcIP)
-	neighborKey := NeighborKey{
-		RouterId: routerId,
-		//NbrIP:          NbrIP,
+
+	//ipaddr := convertIPInByteToString(ipHdrMd.srcIP)
+	ipaddr := net.IPv4(ipHdrMd.srcIP[0], ipHdrMd.srcIP[1], ipHdrMd.srcIP[2], ipHdrMd.srcIP[3])
+	neighborKey := NeighborConfKey{
+		IPAddr:  config.IpAddress(ipaddr.String()),
+		IntfIdx: key.IntfIdx,
 	}
 
 	//Todo: Find whether one way or two way

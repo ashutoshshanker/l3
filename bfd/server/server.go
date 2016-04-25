@@ -42,7 +42,7 @@ type BfdClientBase struct {
 }
 
 type RibdClient struct {
-	BfdClientBase
+	ipcutils.IPCClientBase
 	ClientHdl *ribd.RIBDServicesClient
 }
 
@@ -59,10 +59,12 @@ type BfdInterface struct {
 }
 
 type BfdSessionMgmt struct {
-	DestIp   string
-	Protocol bfddCommonDefs.BfdSessionOwner
-	PerLink  bool
-	ForceDel bool
+	DestIp    string
+	ParamName string
+	Interface string
+	Protocol  bfddCommonDefs.BfdSessionOwner
+	PerLink   bool
+	ForceDel  bool
 }
 
 type BfdSession struct {
@@ -75,6 +77,8 @@ type BfdSession struct {
 	txJitter            int32
 	SessionTimeoutCh    chan int32
 	bfdPacket           *BfdControlPacket
+	bfdPacketBuf        []byte
+	ReceivedPacketCh    chan *BfdControlPacket
 	SessionStopClientCh chan bool
 	pollSequence        bool
 	pollSequenceFinal   bool
@@ -83,52 +87,74 @@ type BfdSession struct {
 	authSeqNum          uint32
 	authKeyId           uint32
 	authData            string
+	txConn              net.Conn
 	sendPcapHandle      *pcap.Handle
 	recvPcapHandle      *pcap.Handle
 	useDedicatedMac     bool
+	intfConfigChanged   bool
+	paramConfigChanged  bool
+	stateChanged        bool
+	isClientActive      bool
 	server              *BFDServer
 }
 
+type BfdSessionParam struct {
+	state SessionParamState
+}
+
 type BfdGlobal struct {
-	Enabled              bool
-	NumInterfaces        uint32
-	Interfaces           map[int32]*BfdInterface
-	InterfacesIdSlice    []int32
-	NumSessions          uint32
-	Sessions             map[int32]*BfdSession
-	SessionsIdSlice      []int32
-	NumUpSessions        uint32
-	NumDownSessions      uint32
-	NumAdminDownSessions uint32
+	Enabled                 bool
+	NumInterfaces           uint32
+	Interfaces              map[int32]*BfdInterface
+	InterfacesIdSlice       []int32
+	NumSessions             uint32
+	Sessions                map[int32]*BfdSession
+	SessionsIdSlice         []int32
+	InactiveSessionsIdSlice []int32
+	NumSessionParams        uint32
+	SessionParams           map[string]*BfdSessionParam
+	NumUpSessions           uint32
+	NumDownSessions         uint32
+	NumAdminDownSessions    uint32
+}
+
+type RecvedBfdPacket struct {
+	IpAddr    string
+	Len       int32
+	PacketBuf []byte
 }
 
 type BFDServer struct {
-	logger              *logging.Writer
-	ribdClient          RibdClient
-	asicdClient         AsicdClient
-	GlobalConfigCh      chan GlobalConfig
-	IntfConfigCh        chan IntfConfig
-	IntfConfigDeleteCh  chan int32
-	asicdSubSocket      *nanomsg.SubSocket
-	asicdSubSocketCh    chan []byte
-	asicdSubSocketErrCh chan error
-	ribdSubSocket       *nanomsg.SubSocket
-	ribdSubSocketCh     chan []byte
-	ribdSubSocketErrCh  chan error
-	portPropertyMap     map[int32]PortProperty
-	vlanPropertyMap     map[int32]VlanProperty
-	IPIntfPropertyMap   map[string]IPIntfProperty
-	CreateSessionCh     chan BfdSessionMgmt
-	DeleteSessionCh     chan BfdSessionMgmt
-	AdminUpSessionCh    chan BfdSessionMgmt
-	AdminDownSessionCh  chan BfdSessionMgmt
-	SessionConfigCh     chan SessionConfig
-	CreatedSessionCh    chan int32
-	bfddPubSocket       *nanomsg.PubSocket
-	lagPropertyMap      map[int32]LagProperty
-	notificationCh      chan []byte
-	ServerUpCh          chan bool
-	bfdGlobal           BfdGlobal
+	logger                *logging.Writer
+	ribdClient            RibdClient
+	asicdClient           AsicdClient
+	GlobalConfigCh        chan GlobalConfig
+	IntfConfigCh          chan IntfConfig
+	IntfConfigDeleteCh    chan int32
+	asicdSubSocket        *nanomsg.SubSocket
+	asicdSubSocketCh      chan []byte
+	asicdSubSocketErrCh   chan error
+	ribdSubSocket         *nanomsg.SubSocket
+	ribdSubSocketCh       chan []byte
+	ribdSubSocketErrCh    chan error
+	portPropertyMap       map[int32]PortProperty
+	vlanPropertyMap       map[int32]VlanProperty
+	IPIntfPropertyMap     map[string]IPIntfProperty
+	CreateSessionCh       chan BfdSessionMgmt
+	DeleteSessionCh       chan BfdSessionMgmt
+	AdminUpSessionCh      chan BfdSessionMgmt
+	AdminDownSessionCh    chan BfdSessionMgmt
+	SessionConfigCh       chan SessionConfig
+	CreatedSessionCh      chan int32
+	bfddPubSocket         *nanomsg.PubSocket
+	lagPropertyMap        map[int32]LagProperty
+	notificationCh        chan []byte
+	ServerUpCh            chan bool
+	FailedSessionClientCh chan int32
+	BfdPacketRecvCh       chan RecvedBfdPacket
+	SessionParamConfigCh  chan SessionParamConfig
+	SessionParamDeleteCh  chan string
+	bfdGlobal             BfdGlobal
 }
 
 func NewBFDServer(logger *logging.Writer) *BFDServer {
@@ -147,6 +173,8 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer.SessionConfigCh = make(chan SessionConfig)
 	bfdServer.notificationCh = make(chan []byte)
 	bfdServer.ServerUpCh = make(chan bool)
+	bfdServer.SessionParamConfigCh = make(chan SessionParamConfig)
+	bfdServer.SessionParamDeleteCh = make(chan string)
 	bfdServer.bfdGlobal.Enabled = false
 	bfdServer.bfdGlobal.NumInterfaces = 0
 	bfdServer.bfdGlobal.Interfaces = make(map[int32]*BfdInterface)
@@ -154,6 +182,9 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer.bfdGlobal.NumSessions = 0
 	bfdServer.bfdGlobal.Sessions = make(map[int32]*BfdSession)
 	bfdServer.bfdGlobal.SessionsIdSlice = []int32{}
+	bfdServer.bfdGlobal.InactiveSessionsIdSlice = []int32{}
+	bfdServer.bfdGlobal.NumSessionParams = 0
+	bfdServer.bfdGlobal.SessionParams = make(map[string]*BfdSessionParam)
 	bfdServer.bfdGlobal.NumUpSessions = 0
 	bfdServer.bfdGlobal.NumDownSessions = 0
 	bfdServer.bfdGlobal.NumAdminDownSessions = 0
@@ -179,13 +210,13 @@ func (server *BFDServer) ConnectToServers(paramsFile string) {
 		if client.Name == "asicd" {
 			server.logger.Info(fmt.Sprintln("found asicd at port", client.Port))
 			server.asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
+			server.asicdClient.TTransport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
 			if err != nil {
 				server.logger.Info(fmt.Sprintf("Failed to connect to Asicd, retrying until connection is successful"))
 				count := 0
 				ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
 				for _ = range ticker.C {
-					server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
+					server.asicdClient.TTransport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
 					if err == nil {
 						ticker.Stop()
 						break
@@ -196,21 +227,21 @@ func (server *BFDServer) ConnectToServers(paramsFile string) {
 					}
 				}
 			}
-			if server.asicdClient.Transport != nil && server.asicdClient.PtrProtocolFactory != nil {
-				server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
+			if server.asicdClient.TTransport != nil && server.asicdClient.PtrProtocolFactory != nil {
+				server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.TTransport, server.asicdClient.PtrProtocolFactory)
 				server.asicdClient.IsConnected = true
 				server.logger.Info("Bfdd is connected to Asicd")
 			}
 		} else if client.Name == "ribd" {
 			server.logger.Info(fmt.Sprintln("found ribd at port", client.Port))
 			server.ribdClient.Address = "localhost:" + strconv.Itoa(client.Port)
-			server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
+			server.ribdClient.TTransport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
 			if err != nil {
 				server.logger.Info(fmt.Sprintf("Failed to connect to Ribd, retrying until connection is successful"))
 				count := 0
 				ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
 				for _ = range ticker.C {
-					server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
+					server.ribdClient.TTransport, server.ribdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.ribdClient.Address)
 					if err == nil {
 						ticker.Stop()
 						break
@@ -221,8 +252,8 @@ func (server *BFDServer) ConnectToServers(paramsFile string) {
 					}
 				}
 			}
-			if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {
-				server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
+			if server.ribdClient.TTransport != nil && server.ribdClient.PtrProtocolFactory != nil {
+				server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.TTransport, server.ribdClient.PtrProtocolFactory)
 				server.ribdClient.IsConnected = true
 				server.logger.Info("Bfdd is connected to Ribd")
 			}
@@ -346,15 +377,19 @@ func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
 
 	for rows.Next() {
 		var dstIp string
+		var paramName string
+		var intfName string
 		var perLink string
 		var owner string
-		err = rows.Scan(&dstIp, &perLink, &owner)
+		err = rows.Scan(&dstIp, &paramName, &intfName, &perLink, &owner)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSession: ", err))
 			return err
 		}
 		sessionConf := SessionConfig{
 			DestIp:    dstIp,
+			ParamName: paramName,
+			Interface: intfName,
 			PerLink:   dbutils.ConvertStringToBool(perLink),
 			Protocol:  bfddCommonDefs.USER,
 			Operation: bfddCommonDefs.CREATE,
@@ -383,12 +418,6 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.BuildPortPropertyMap()
 	server.BuildLagPropertyMap()
 	server.BuildIPv4InterfacesMap()
-	/*
-		server.logger.Info("Listen for RIBd updates")
-		server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
-		go createRIBSubscriber()
-		server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
-	*/
 }
 
 func (server *BFDServer) SigHandler() {
@@ -403,7 +432,10 @@ func (server *BFDServer) SigHandler() {
 			switch signal {
 			case syscall.SIGHUP:
 				server.logger.Info("Received SIGHUP signal")
-				server.SendAdminDownToAllNeighbors()
+				//server.SendAdminDownToAllNeighbors()
+				//time.Sleep(500 * time.Millisecond)
+				server.SendDeleteToAllSessions()
+				time.Sleep(500 * time.Millisecond)
 				server.logger.Info("Exiting!!!")
 				os.Exit(0)
 			default:
@@ -456,17 +488,12 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 		case sessionConfig := <-server.SessionConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Session Configuration", sessionConfig))
 			server.processSessionConfig(sessionConfig)
-			/*
-				case ribrxBuf := <-server.ribSubSocketCh:
-					server.processRibdNotification(ribdrxBuf)
-				case <-server.connRoutesTimer.C:
-					routes, _ := server.ribdClient.ClientHdl.GetConnectedRoutesInfo()
-					server.logger.Info(fmt.Sprintln("Received Connected Routes:", routes))
-					//server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
-					//server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
-
-				case <-server.ribSubSocketErrCh:
-			*/
+		case sessionParamConfig := <-server.SessionParamConfigCh:
+			server.logger.Info(fmt.Sprintln("Received call for performing Session Param Configuration", sessionParamConfig))
+			server.processSessionParamConfig(sessionParamConfig)
+		case paramName := <-server.SessionParamDeleteCh:
+			server.logger.Info(fmt.Sprintln("Received call for performing Session Param Delete", paramName))
+			server.processSessionParamDelete(paramName)
 		}
 	}
 }

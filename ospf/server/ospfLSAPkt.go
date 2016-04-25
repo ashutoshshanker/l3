@@ -44,7 +44,7 @@ type ospfLSAReq struct {
 
 type ospfNeighborLSAreqMsg struct {
 	lsa_slice []ospfLSAReq
-	nbrKey    uint32
+	nbrKey    NeighborConfKey
 }
 
 type ospfNeighborLSDBMsg struct {
@@ -54,7 +54,7 @@ type ospfNeighborLSDBMsg struct {
 
 type ospfNeighborLSAAckMsg struct {
 	lsa_headers []ospfLSAHeader
-	nbrKey      uint32
+	nbrKey      NeighborConfKey
 }
 
 /* ACK message uses the LSA header byte
@@ -63,7 +63,7 @@ new message type to tx message is added
 */
 type ospfNeighborAckTxMsg struct {
 	lsa_headers_byte []byte
-	nbrKey           uint32
+	nbrKey           NeighborConfKey
 }
 
 func newospfNeighborAckTxMsg() *ospfNeighborAckTxMsg {
@@ -79,7 +79,7 @@ func newospfNeighborLSAAckMsg() *ospfNeighborLSAAckMsg {
 }
 
 type ospfNeighborLSAUpdMsg struct {
-	nbrKey uint32
+	nbrKey NeighborConfKey
 	data   []byte
 	areaId uint32
 }
@@ -201,7 +201,7 @@ func (server *OSPFServer) EncodeLSAReqPkt(intfKey IntfConfKey, ent IntfConf,
 
 }
 
-func (server *OSPFServer) BuildAndSendLSAReq(nbrId uint32, nbrConf OspfNeighborEntry) (curr_index uint8) {
+func (server *OSPFServer) BuildAndSendLSAReq(nbrId NeighborConfKey, nbrConf OspfNeighborEntry) (curr_index uint8) {
 	/* calculate max no of requests that can be added
 	for req packet */
 
@@ -225,8 +225,10 @@ func (server *OSPFServer) BuildAndSendLSAReq(nbrId uint32, nbrConf OspfNeighborE
 		add_items = uint8(max_req)
 		nbrConf.ospfNbrLsaReqIndex += max_req
 	}
+	server.logger.Info(fmt.Sprintln("LSAREQ: nbrIndex ",
+		nbrConf.ospfNbrLsaReqIndex, " add_items ", add_items, " req_list len ", len(reqlist)))
 	index := nbrConf.ospfNbrLsaReqIndex
-	for i = 0; i < add_items; i++ {
+	for i = 0; i < uint8(len(reqlist)); i++ {
 		req.ls_type = uint32(reqlist[i].lsa_headers.ls_type)
 		req.link_state_id = reqlist[i].lsa_headers.link_state_id
 		req.adv_router_id = reqlist[i].lsa_headers.adv_router_id
@@ -244,7 +246,7 @@ func (server *OSPFServer) BuildAndSendLSAReq(nbrId uint32, nbrConf OspfNeighborE
 
 		lsid := convertUint32ToIPv4(req.link_state_id)
 		adv_rtr := convertUint32ToIPv4(req.adv_router_id)
-		server.logger.Info(fmt.Sprintln("LSA request: Appended to nbr ", nbrId,
+		server.logger.Info(fmt.Sprintln("LSA request: Send req to nbr ", nbrId.IPAddr,
 			" lsid ", lsid, " rtrid ", adv_rtr, " lstype ", req.ls_type))
 	}
 	server.logger.Info(fmt.Sprintln("LSA request: total requests out, req_list_len, current req_list_index ", add_items, len(msg.lsa_slice), nbrConf.ospfNbrLsaReqIndex))
@@ -347,10 +349,16 @@ func (server *OSPFServer) BuildLsaUpdPkt(intfKey IntfConfKey, ent IntfConf,
 func (server *OSPFServer) ProcessRxLsaUpdPkt(data []byte, ospfHdrMd *OspfHdrMetadata,
 	ipHdrMd *IpHdrMetadata, key IntfConfKey) error {
 
-	routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
+	routerId := convertIPInByteToString(ospfHdrMd.routerId)
+	//ipaddr := convertIPInByteToString(ipHdrMd.srcIP)
+	ipaddr := net.IPv4(ipHdrMd.srcIP[0], ipHdrMd.srcIP[1], ipHdrMd.srcIP[2], ipHdrMd.srcIP[3])
+	ospfNbrConfKey := NeighborConfKey{
+		IPAddr:  config.IpAddress(ipaddr.String()),
+		IntfIdx: key.IntfIdx,
+	}
 
 	msg := ospfNeighborLSAUpdMsg{
-		nbrKey: routerId,
+		nbrKey: ospfNbrConfKey,
 		areaId: ospfHdrMd.areaId,
 		data:   data,
 	}
@@ -381,6 +389,7 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 		return
 	}
 
+	lsop := uint8(LSASELFLOOD)
 	intf := server.IntfConfMap[nbr.intfConfKey]
 	lsa_max_age := false
 	discard = server.lsaUpdDiscardCheck(nbr, msg.data)
@@ -435,13 +444,13 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			nlsa := NewNetworkLsa()
 			decodeNetworkLsa(lsdb_msg.Data, nlsa, lsa_key)
 			dnlsa, ret := server.getNetworkLsaFromLsdb(msg.areaId, *lsa_key)
-			discard, op = server.sanityCheckNetworkLsa(*nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
+			discard, op = server.sanityCheckNetworkLsa(*lsa_key, *nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
 
 		case Summary3LSA, Summary4LSA:
-                        server.logger.Info(fmt.Sprintln("Received summary Lsa Packet :", lsdb_msg.Data))
+			server.logger.Info(fmt.Sprintln("Received summary Lsa Packet :", lsdb_msg.Data))
 			slsa := NewSummaryLsa()
 			decodeSummaryLsa(lsdb_msg.Data, slsa, lsa_key)
-                        server.logger.Info(fmt.Sprintln("Decoded summary Lsa Packet :", slsa))
+			server.logger.Info(fmt.Sprintln("Decoded summary Lsa Packet :", slsa))
 			dslsa, ret := server.getSummaryLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckSummaryLsa(*slsa, dslsa, nbr, intf, ret, lsa_max_age)
 
@@ -467,12 +476,13 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			areaId: msg.areaId,
 			lsType: lsa_header.LSType,
 			linkid: lsa_header.LinkId,
-			lsOp:   LSASELFLOOD,
+			lsOp:   lsop,
 		}
 		flood_pkt.pkt = make([]byte, end_index-index)
 		copy(flood_pkt.pkt, lsdb_msg.Data)
-		server.ospfNbrLsaUpdSendCh <- flood_pkt
-
+		if lsop != LSASUMMARYFLOOD { // for ABR summary lsa is flooded after LSDB/SPF changes are done.
+			server.ospfNbrLsaUpdSendCh <- flood_pkt
+		}
 		//if !discard && op == LsdbEntryNotFound {
 		lsaAckMsg := newospfNeighborAckTxMsg()
 		lsaAckMsg.lsa_headers_byte = append(lsaAckMsg.lsa_headers_byte, lsa_header_byte...)
@@ -493,7 +503,7 @@ func (server *OSPFServer) lsaUpdDiscardCheck(nbrConf OspfNeighborEntry, data []b
 
 	return false
 }
-func (server *OSPFServer) lsAgeCheck(intf IntfConf, lsa_max_age bool, exist int) bool {
+func (server *OSPFServer) lsAgeCheck(intf IntfConfKey, lsa_max_age bool, exist int) bool {
 
 	send_ack := true
 	/*
@@ -506,8 +516,9 @@ func (server *OSPFServer) lsAgeCheck(intf IntfConf, lsa_max_age bool, exist int)
 			    the LSA and examine the next LSA (if any) listed in the Link
 		        State Update packet.
 	*/
-	for key, _ := range intf.NeighborMap {
-		nbr := server.NeighborConfigMap[key.RouterId]
+	data := ospfIntfToNbrMap[intf]
+	for _, nbrKey := range data.nbrList {
+		nbr := server.NeighborConfigMap[nbrKey]
 		if nbr.OspfNbrState == config.NbrExchange || nbr.OspfNbrState == config.NbrLoading {
 			continue
 		} else {
@@ -515,7 +526,6 @@ func (server *OSPFServer) lsAgeCheck(intf IntfConf, lsa_max_age bool, exist int)
 		}
 	}
 	if send_ack && exist == LsdbEntryNotFound && lsa_max_age {
-		// TODO send ack
 		return true
 	}
 	return false
@@ -524,7 +534,7 @@ func (server *OSPFServer) lsAgeCheck(intf IntfConf, lsa_max_age bool, exist int)
 func (server *OSPFServer) sanityCheckRouterLsa(rlsa RouterLsa, drlsa RouterLsa, nbr OspfNeighborEntry, intf IntfConf, exist int, lsa_max_age bool) (discard bool, op uint8) {
 	discard = false
 	op = LsdbAdd
-	send_ack := server.lsAgeCheck(intf, lsa_max_age, exist)
+	send_ack := server.lsAgeCheck(nbr.intfConfKey, lsa_max_age, exist)
 	if send_ack {
 		op = LsdbNoAction
 		discard = true
@@ -542,13 +552,15 @@ func (server *OSPFServer) sanityCheckRouterLsa(rlsa RouterLsa, drlsa RouterLsa, 
 			op = LsdbNoAction
 		}
 	}
+	/* verify if it is not stale self generated LSA */
+
 	return discard, op
 }
 
-func (server *OSPFServer) sanityCheckNetworkLsa(nlsa NetworkLsa, dnlsa NetworkLsa, nbr OspfNeighborEntry, intf IntfConf, exist int, lsa_max_age bool) (discard bool, op uint8) {
+func (server *OSPFServer) sanityCheckNetworkLsa(lsaKey LsaKey, nlsa NetworkLsa, dnlsa NetworkLsa, nbr OspfNeighborEntry, intf IntfConf, exist int, lsa_max_age bool) (discard bool, op uint8) {
 	discard = false
 	op = LsdbAdd
-	send_ack := server.lsAgeCheck(intf, lsa_max_age, exist)
+	send_ack := server.lsAgeCheck(nbr.intfConfKey, lsa_max_age, exist)
 	if send_ack {
 		op = LsdbNoAction
 		discard = true
@@ -564,13 +576,23 @@ func (server *OSPFServer) sanityCheckNetworkLsa(nlsa NetworkLsa, dnlsa NetworkLs
 			op = LsdbNoAction
 		}
 	}
+	//if i am DR and receive nw LSA from neighbor discard it.
+	rtr_id := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
+	if intf.IfDRtrId == rtr_id {
+		nbrIp := convertAreaOrRouterIdUint32(nbr.OspfNbrIPAddr.String())
+		if lsaKey.LSId == nbrIp {
+			server.logger.Info(fmt.Sprintln("DISCARD: I am dr. received nw LSA from nbr . LSA id ", nbr.OspfNbrIPAddr))
+			discard = true
+			op = LsdbNoAction
+		}
+	}
 	return discard, op
 }
 
 func (server *OSPFServer) sanityCheckSummaryLsa(slsa SummaryLsa, dslsa SummaryLsa, nbr OspfNeighborEntry, intf IntfConf, exist int, lsa_max_age bool) (discard bool, op uint8) {
 	discard = false
 	op = LsdbAdd
-	send_ack := server.lsAgeCheck(intf, lsa_max_age, exist)
+	send_ack := server.lsAgeCheck(nbr.intfConfKey, lsa_max_age, exist)
 	if send_ack {
 		op = LsdbNoAction
 		discard = true
@@ -594,7 +616,7 @@ func (server *OSPFServer) sanityCheckASExternalLsa(alsa ASExternalLsa, dalsa ASE
 	discard = false
 	op = LsdbAdd
 	// TODO Reject this lsa if area is configured as stub area.
-	send_ack := server.lsAgeCheck(intf, lsa_max_age, exist)
+	send_ack := server.lsAgeCheck(nbr.intfConfKey, lsa_max_age, exist)
 	if send_ack {
 		op = LsdbNoAction
 		discard = true
@@ -743,21 +765,26 @@ func (server *OSPFServer) ProcessRxLSAAckPkt(data []byte, ospfHdrMd *OspfHdrMeta
 		num_headers := int(headers_len / 20)
 		server.logger.Info(fmt.Sprintln("LSAACK: Received ", num_headers, " LSA headers."))
 		header_byte := make([]byte, num_headers*OSPF_LSA_HEADER_SIZE)
-		var start_index uint8
+		var start_index uint32
 		var lsa_header ospfLSAHeader
 		for i := 0; i < num_headers; i++ {
-			start_index = uint8(i * OSPF_LSA_HEADER_SIZE)
+			start_index = uint32(i * OSPF_LSA_HEADER_SIZE)
 			copy(header_byte, data[start_index:start_index+20])
 			lsa_header = decodeLSAHeader(header_byte)
 			server.logger.Info(fmt.Sprintln("LSAACK: Header decoded ",
-				"ls_age:options:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
+				"ls_age:ls_type:link_state_id:adv_rtr:ls_seq:ls_checksum ",
 				lsa_header.ls_age, lsa_header.ls_type, lsa_header.link_state_id,
 				lsa_header.adv_router_id, lsa_header.ls_sequence_num,
 				lsa_header.ls_checksum))
 			link_ack.lsa_headers = append(link_ack.lsa_headers, lsa_header)
 		}
 	}
-	link_ack.nbrKey = binary.BigEndian.Uint32(ospfHdrMd.routerId)
+	ipaddr := convertByteToOctetString(ipHdrMd.srcIP)
+	ospfNbrConfKey := NeighborConfKey{
+		IPAddr:  config.IpAddress(ipaddr),
+		IntfIdx: key.IntfIdx,
+	}
+	link_ack.nbrKey = ospfNbrConfKey
 	server.neighborLSAACKEventCh <- *link_ack
 	return nil
 }
@@ -775,8 +802,6 @@ func (server *OSPFServer) DecodeLSAAck(msg ospfNeighborLSAAckMsg) {
 	}
 	/* process each LSA and update request list */
 	for index := range msg.lsa_headers {
-		/* TODO
-		   optimize search technique using sort method */
 		req_list := ospfNeighborRequest_list[msg.nbrKey]
 		reTx_list := ospfNeighborRetx_list[msg.nbrKey]
 		for in := range req_list {
@@ -830,10 +855,15 @@ Link state request packet
 func (server *OSPFServer) ProcessRxLSAReqPkt(data []byte, ospfHdrMd *OspfHdrMetadata, ipHdrMd *IpHdrMetadata, key IntfConfKey) error {
 	//server.logger.Info(fmt.Sprintln("LSAREQ: Received lsa req with length ", ospfHdrMd.pktlen))
 	lsa_req := decodeLSAReqPkt(data, ospfHdrMd.pktlen)
-	routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
+	ipaddr := convertByteToOctetString(ipHdrMd.srcIP)
+	ospfNbrConfKey := NeighborConfKey{
+		IPAddr:  config.IpAddress(ipaddr),
+		IntfIdx: key.IntfIdx,
+	}
+	//routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
 
 	lsa_req_msg := ospfNeighborLSAreqMsg{
-		nbrKey:    routerId,
+		nbrKey:    ospfNbrConfKey,
 		lsa_slice: lsa_req,
 	}
 	// send the req list to Nbr
@@ -847,7 +877,7 @@ func (server *OSPFServer) ProcessRxLSAReqPkt(data []byte, ospfHdrMd *OspfHdrMeta
 */
 
 func (server *OSPFServer) DecodeLSAReq(msg ospfNeighborLSAreqMsg) {
-	//server.logger.Info(fmt.Sprintln("LSAREQ: Receieved lsa_req packet for nbr ", msg.nbrKey, " data ", msg.lsa_slice))
+	server.logger.Info(fmt.Sprintln("LSAREQ: Receieved lsa_req packet for nbr ", msg.nbrKey, " data ", msg.lsa_slice))
 	nbrConf, exists := server.NeighborConfigMap[msg.nbrKey]
 	if exists {
 		intf := server.IntfConfMap[nbrConf.intfConfKey]
@@ -860,7 +890,7 @@ func (server *OSPFServer) DecodeLSAReq(msg ospfNeighborLSAreqMsg) {
 			if !isDiscard {
 				areaid := convertIPv4ToUint32(intf.IfAreaId)
 				server.generateLsaUpdUnicast(req, msg.nbrKey, areaid)
-				server.logger.Info(fmt.Sprintln("LSAREQ: Flood . adv_router  ", adv_router, " lsid ", lsid, " discard ", isDiscard))
+				server.logger.Info(fmt.Sprintln("LSAREQ: send LSAUPD . adv_router  ", adv_router, " lsid ", lsid, " discard ", isDiscard))
 			} else {
 				server.logger.Info(fmt.Sprintln("LSAREQ: DONT flood . adv_router  ", adv_router, " lsid ", lsid, " discard ", isDiscard))
 			}
@@ -868,7 +898,7 @@ func (server *OSPFServer) DecodeLSAReq(msg ospfNeighborLSAreqMsg) {
 	} // end of exists
 }
 
-func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey uint32, areaid uint32) {
+func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey NeighborConfKey, areaid uint32) {
 	lsa_key := NewLsaKey()
 	nbrConf := server.NeighborConfigMap[nbrKey]
 	var lsa_pkt []byte
@@ -900,6 +930,9 @@ func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey uint32, a
 		dslsa, ret := server.getSummaryLsaFromLsdb(areaid, *lsa_key)
 		if ret == LsdbEntryFound {
 			lsa_pkt = encodeSummaryLsa(dslsa, *lsa_key)
+			flood = true
+		} else {
+			server.logger.Info(fmt.Sprintln("LSAREQ: Summary lsa not found. lsaid ", req.link_state_id, " lstype ", lsa_key.LSType))
 		}
 	case ASExternalLSA:
 		dalsa, ret := server.getASExternalLsaFromLsdb(areaid, *lsa_key)
@@ -911,7 +944,7 @@ func (server *OSPFServer) generateLsaUpdUnicast(req ospfLSAReq, nbrKey uint32, a
 	lsid := convertUint32ToIPv4(req.link_state_id)
 	router_id := convertUint32ToIPv4(req.adv_router_id)
 
-	server.logger.Info(fmt.Sprintln("LSAREQ: lsid ", lsid, " router_id ", router_id, " flood ", flood))
+	server.logger.Info(fmt.Sprintln("LSAUPD: lsid ", lsid, " router_id ", router_id, " flood ", flood))
 
 	if flood {
 		checksumOffset := uint16(14)
@@ -987,7 +1020,7 @@ func (server *OSPFServer) lsaAddCheck(lsaheader ospfLSAHeader,
 	case NetworkLSA:
 		nlsa := NewNetworkLsa()
 		dnlsa, ret := server.getNetworkLsaFromLsdb(areaId, *lsa_key)
-		discard, op = server.sanityCheckNetworkLsa(*nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
+		discard, op = server.sanityCheckNetworkLsa(*lsa_key, *nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
 
 	case Summary3LSA, Summary4LSA:
 		slsa := NewSummaryLsa()
@@ -1010,7 +1043,7 @@ func (server *OSPFServer) lsaAddCheck(lsaheader ospfLSAHeader,
 	return true
 }
 
-func (server *OSPFServer) lsaReTxTimerCheck(nbrKey uint32) {
+func (server *OSPFServer) lsaReTxTimerCheck(nbrKey NeighborConfKey) {
 	var lsa_re_tx_check_func func()
 	lsa_re_tx_check_func = func() {
 		server.logger.Info(fmt.Sprintln("LSARETIMER: Check for rx. Nbr ", nbrKey))

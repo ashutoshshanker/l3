@@ -6,6 +6,7 @@ import (
 	"fmt"
 	vxlan "l3/tunnel/vxlan/protocol"
 	"l3/tunnel/vxlan/rpc"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -25,8 +26,11 @@ func main() {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
 	}
-	go logger.ListenForSysdNotifications()
+	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("vxland", path)
 
 	// create a new vxlan server
 	server := vxlan.NewVXLANServer(logger, path)

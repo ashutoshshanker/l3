@@ -25,9 +25,10 @@ type NeighborData struct {
 	FullState    bool
 }
 
+/*
 type NeighborKey struct {
 	RouterId uint32
-}
+} */
 
 type BackupSeenMsg struct {
 	RouterId uint32
@@ -71,7 +72,7 @@ type IntfConf struct {
 	FSMCtrlStatusCh       chan bool
 	HelloIntervalTicker   *time.Ticker
 	BackupSeenCh          chan BackupSeenMsg
-	NeighborMap           map[NeighborKey]NeighborData
+	NeighborMap           map[NeighborConfKey]NeighborData
 	NeighCreateCh         chan NeighCreateMsg
 	NeighChangeCh         chan NeighChangeMsg
 	NbrStateChangeCh      chan NbrStateChangeMsg
@@ -110,6 +111,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		if areaId == nil {
 			return
 		}
+                server.updateIntfToAreaMap(key, "none", "0.0.0.0")
 		ent.IfAreaId = areaId
 		ent.IfType = intfType
 		ent.IfAdminStat = config.Enabled
@@ -137,7 +139,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		//ent.WaitTimerExpired = make(chan bool)
 		ent.WaitTimer = nil
 		ent.HelloIntervalTicker = nil
-		ent.NeighborMap = make(map[NeighborKey]NeighborData)
+		ent.NeighborMap = make(map[NeighborConfKey]NeighborData)
 		if ifType == broadcast {
 			ent.IfNetmask = ipIntfProp.NetMask
 			ent.IfIpAddr = ipIntfProp.IpAddr
@@ -282,6 +284,9 @@ func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg, ifIndex int
 		return
 	}
 	areaId := convertIPv4ToUint32(ent.IfAreaId)
+        oldAreaId := convertIPInByteToString(ent.IfAreaId)
+        server.updateIntfToAreaMap(intfConfKey, oldAreaId, "none")
+
 	if server.ospfGlobalConf.AdminStat == config.Enabled &&
 		ent.IfAdminStat == config.Enabled {
 		server.StopSendRecvPkts(intfConfKey)
@@ -307,13 +312,24 @@ func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 	ent, exist := server.IntfConfMap[intfConfKey]
 	//  we can update only when we already have entry
 	if exist {
-		areaId_check := convertAreaOrRouterId(string(ifConf.IfAreaId))
-		if areaId_check == nil {
+                oldAreaId := convertIPInByteToString(ent.IfAreaId)
+                newAreaId := string(ifConf.IfAreaId)
+                if oldAreaId != newAreaId {
+                        server.updateIntfToAreaMap(intfConfKey, oldAreaId, newAreaId)
+                }
+                ent.IfAreaId = convertAreaOrRouterId(newAreaId)
+/*
+		areaId := convertAreaOrRouterId(string(ifConf.IfAreaId))
+		if areaId == nil {
 			server.logger.Err("Invalid areaId")
 			return
 		}
-		areaId := server.updateIntfToAreaMap(intfConfKey, ifConf.IfAreaId)
-		ent.IfAreaId =  convertAreaOrRouterId(string(areaId))
+                if bytesEqual(ent.IfAreaId, areaId) == false {
+                        oldAreaId := config.AreaId(convertIPInByteToString(ent.IfAreaId))
+                        areaId := server.updateIntfToAreaMap(intfConfKey, ifConf.IfAreaId, oldAreaId)
+                        ent.IfAreaId =  convertAreaOrRouterId(string(areaId))
+                }
+*/
 		ent.IfType = ifConf.IfType
 		ent.IfAdminStat = ifConf.IfAdminStat
 		ent.IfRtrPriority = uint8(ifConf.IfRtrPriority)
@@ -407,7 +423,7 @@ func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
 		ent.WaitTimer = time.NewTimer(waitTime)
 	}
 	// rtrDeadInterval := time.Duration(ent.IfRtrDeadInterval * time.Second)
-	ent.NeighborMap = make(map[NeighborKey]NeighborData)
+	ent.NeighborMap = make(map[NeighborConfKey]NeighborData)
 	ent.IfEvents = ent.IfEvents + 1
 	if ent.IfType == config.Broadcast {
 		ent.IfFSMState = config.Waiting

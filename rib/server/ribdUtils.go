@@ -1,8 +1,7 @@
 // ribdUtils.go
-package main
+package server
 
 import (
-	"asicd/asicdConstDefs"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,13 +13,12 @@ import (
 	"strconv"
 	"strings"
 	"bytes"
-	"time"
 	"utils/netUtils"
 	"utils/patriciaDB"
 	"utils/policy"
-
+	"utils/commonDefs"
 	"github.com/op/go-nanomsg"
-	"github.com/vishvananda/netlink"
+	"asicd/asicdConstDefs"
 )
 
 type RouteDistanceConfig struct {
@@ -43,6 +41,27 @@ var ReverseRouteProtoTypeMapDB map[int]string
 var ProtocolAdminDistanceMapDB map[string]RouteDistanceConfig
 var ProtocolAdminDistanceSlice AdminDistanceSlice
 var PublisherInfoMap map[string]PublisherMapInfo
+var RIBD_PUB *nanomsg.PubSocket
+
+func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
+	logger.Info(fmt.Sprintln("Setting up %s", pub_str, "publisher"))
+	pub, err := nanomsg.NewPubSocket()
+	if err != nil {
+		logger.Println("Failed to open pub socket")
+		return nil
+	}
+	ep, err := pub.Bind(pub_str)
+	if err != nil {
+		logger.Info(fmt.Sprintln("Failed to bind pub socket - ", ep))
+		return nil
+	}
+	err = pub.SetSendBuffer(1024 * 1024)
+	if err != nil {
+		logger.Println("Failed to set send buffer size")
+		return nil
+	}
+	return pub
+}
 
 func BuildPublisherMap() {
 	RIBD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_ADDR)
@@ -114,23 +133,109 @@ func BuildProtocolAdminDistanceSlice() {
 	sort.Sort(ProtocolAdminDistanceSlice)
 }
 
-/*func isBetterRoute(selectedRoute RouteInfoRecord, routeInfoRecord RouteInfoRecord) (isBetter bool){
-   logger.Println("isBetterRoute ")
-   if (selectedRoute.protocol == PROTOCOL_NONE && routeInfoRecord.protocol != PROTOCOL_NONE) {
-      logger.Println("new route is better route because the the current route protocol is ", PROTOCOL_NONE)
-      isBetter = true
-   } else if ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].configuredDistance < ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].configuredDistance {
-      logger.Println("New route is better because configured admin distance", ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].configuredDistance ," of new route ", ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)], " is lower than the current protocol ",ReverseRouteProtoTypeMapDB[int(selectedRoute.protocol)],"'s configured admin distane: ", ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].configuredDistance)
-      isBetter = true
-   } else if ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].defaultDistance < ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].defaultDistance {
-      logger.Println("New route is better because default admin distance", ProtocolAdminDistanceMapDB[int(routeInfoRecord.protocol)].defaultDistance ," of new route ", ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)], " is lower than the current protocol ",ReverseRouteProtoTypeMapDB[int(selectedRoute.protocol)],"'s default admin distane: ", ProtocolAdminDistanceMapDB[int(selectedRoute.protocol)].defaultDistance)
-      isBetter = true
-   } else if routeInfoRecord.metric < selectedRoute.metric {
-      logger.Println("New route is better becayse its cost: ", routeInfoRecord.metric, " is lower than the selected route's cost ", selectedRoute.metric)
-      isBetter = true
-   }
-   return isBetter
-}*/
+func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (err error) {
+	logger.Info(fmt.Sprintln("RouteConfigValidationCheck"))
+	if op == "add" {
+  	    _, ok := RouteProtocolTypeMapDB[cfg.Protocol]
+	    if !ok {
+		    logger.Info(fmt.Sprintln("route type ", cfg.Protocol, " invalid"))
+		    err = errors.New("Invalid route protocol type")
+		    return err
+	    }
+	    var nextHopIfType int
+	    var nextHopIf int
+	    if cfg.OutgoingIntfType == "VLAN" {
+		    nextHopIfType = commonDefs.IfTypeVlan
+	    } else if cfg.OutgoingIntfType == "PHY" {
+		    nextHopIfType = commonDefs.IfTypePort
+	    } else if cfg.OutgoingIntfType == "NULL" {
+		    nextHopIfType = commonDefs.IfTypeNull
+	    } else if cfg.OutgoingIntfType == "Loopback" {
+		    nextHopIfType = commonDefs.IfTypeLoopback
+	    }
+	    nextHopIf, _ = strconv.Atoi(cfg.OutgoingInterface)
+	    ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(nextHopIf, nextHopIfType)
+	    logger.Info(fmt.Sprintln("IfId = ", ifId))
+	    _, ok = IntfIdNameMap[ifId]
+	    if !ok {
+		    logger.Err(fmt.Sprintln("Cannot create ip route on a unknown L3 interface"))
+		    return errors.New("Cannot create ip route on a unknown L3 interface")
+	    }
+	    _, err = getIP(cfg.NextHopIp)
+	    if err != nil {
+		    logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
+		    return errors.New("Invalid next hop ip address")
+	    }
+	}
+	isCidr := strings.Contains(cfg.DestinationNw, "/")
+	if isCidr { //the given address is in CIDR format
+	    ip, ipNet, err := net.ParseCIDR(cfg.DestinationNw)
+	    if err != nil {    
+		    logger.Err(fmt.Sprintln("Invalid Destination IP address"))
+			return errors.New("Invalid Desitnation IP address")
+	    }
+	    _, err = getNetworkPrefixFromCIDR(cfg.DestinationNw)
+	    if err != nil {
+		    return errors.New("Invalid destination ip/network Mask")
+	    }
+		cfg.DestinationNw = ip.String() 
+	    ipMask := make(net.IP, 4)
+		copy(ipMask, ipNet.Mask)
+		ipMaskStr := net.IP(ipMask).String()
+		cfg.NetworkMask = ipMaskStr
+	} 
+    destNet, err := getNetowrkPrefixFromStrings(cfg.DestinationNw, cfg.NetworkMask)
+	if err != nil {
+		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
+		return errors.New("Invalid destination ip address")
+	}	
+	if op == "del" || op == "update" {
+		ok := RouteInfoMap.Match(destNet)
+	    if !ok {
+		    err = errors.New("No route found")
+		    return err
+	    }
+	}
+	return nil
+}
+func arpResolveCalled(key NextHopInfoKey) (bool) {
+	if routeServiceHandler.NextHopInfoMap == nil {
+		return false
+	}
+	info,ok := routeServiceHandler.NextHopInfoMap[key]
+	if !ok || info.refCount == 0 {
+		logger.Info(fmt.Sprintln("Arp resolve not called for ", key.nextHopIp))
+		return false
+	}
+	return true
+}
+func updateNextHopMap(key NextHopInfoKey, op int) (count int){
+	opStr := ""
+	if op == add {
+		opStr = "incrementing"
+	} else if op == del {
+		opStr = "decrementing"
+	}
+	logger.Info(fmt.Sprintln(opStr, " nextHop Map for ", key.nextHopIp))
+	if routeServiceHandler.NextHopInfoMap == nil {
+		return -1
+	}
+	info,ok := routeServiceHandler.NextHopInfoMap[key]
+	if !ok {
+		routeServiceHandler.NextHopInfoMap[key] = NextHopInfo{1}
+		count = 1
+	} else {
+	    if op == add {
+		    info.refCount++
+	    } else if op == del {
+		    info.refCount--
+	    }
+	    routeServiceHandler.NextHopInfoMap[key] = info
+		count = info.refCount
+	}
+	logger.Info(fmt.Sprintln("Updated refcount = ", count))
+	return count
+}
 func findElement(list []string, element string) (int) {
 	index := -1
 	for i :=0 ;i<len(list);i++ {
@@ -456,20 +561,17 @@ func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes
 		eventInfo = " Advertise Network Statement "
 	}
 	eventInfo = eventInfo + evtStr + " for route " + route.Ipaddr + " " + route.Mask + " type" + ReverseRouteProtoTypeMapDB[int(route.Prototype)]
-	logger.Info(fmt.Sprintln("Sending ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " ", buf))
-	t1 := time.Now()
-	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
-	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
-	PUB.Send(buf, nanomsg.DontWait)
+	logger.Info(fmt.Sprintln("Adding ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " to notification channel"))
+	routeServiceHandler.NotificationChannel <- NotificationMsg{PUB,buf,eventInfo}
 }
 func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteReachabilityStatusInfo) {
 	logger.Info(fmt.Sprintln("RouteReachabilityStatusNotificationSend for protocol ", targetProtocol))
-	evt := ribdCommonDefs.NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE
 	publisherInfo,ok := PublisherInfoMap[targetProtocol]
 	if !ok {
-		logger.Err(fmt.Sprintln("Publisher not found for protocol ", targetProtocol))
+		logger.Info(fmt.Sprintln("Publisher not found for protocol ", targetProtocol))
 		return
 	}
+	evt := ribdCommonDefs.NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE
 	PUB := publisherInfo.pub_socket
 	msgInfo := ribdCommonDefs.RouteReachabilityStatusMsgInfo{}
 	msgInfo.Network = info.destNet
@@ -489,11 +591,8 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 	if info.status == "Up" {
 		eventInfo = eventInfo + " NextHop IP: " + info.nextHopIntf.NextHopIp + " IfType/Index: " + strconv.Itoa(int(info.nextHopIntf.NextHopIfType)) + "/" + strconv.Itoa(int(info.nextHopIntf.NextHopIfIndex ))
 	}
-	logger.Info(fmt.Sprintln("Sending  NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE with status ",info.status, " for network ", info.destNet))
-	t1 := time.Now()
-	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
-	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
-	PUB.Send(buf, nanomsg.DontWait)
+	logger.Info(fmt.Sprintln("Adding  NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE with status ",info.status, " for network ", info.destNet, " to notification channel"))
+	routeServiceHandler.NotificationChannel <- NotificationMsg{PUB,buf,eventInfo}
 }
 func RouteReachabilityStatusUpdate(targetProtocol string, info RouteReachabilityStatusInfo) {
 	logger.Info(fmt.Sprintln("RouteReachabilityStatusUpdate targetProtocol ", targetProtocol))
@@ -515,7 +614,7 @@ func RouteReachabilityStatusUpdate(targetProtocol string, info RouteReachability
 		logger.Err(fmt.Sprintln("Error getting ip prefix for ip:", ipAddrStr, " mask:", ipMaskStr))
 		return 
 	}
-	//check the TrackReachabilityMap to see if any other protocols are interested in receiving updates for this ipAddr 
+	//check the TrackReachabilityMap to see if any other protocols are interested in receiving updates for this network 
 	for k,list := range TrackReachabilityMap {
 		prefix,err := getNetowrkPrefixFromStrings(k,ipMaskStr)
 	    if err != nil {
@@ -529,82 +628,6 @@ func RouteReachabilityStatusUpdate(targetProtocol string, info RouteReachability
 		        RouteReachabilityStatusNotificationSend(list[idx],info)
 	        }
 		}
-	}
-	return
-}
-func delLinuxRoute(route RouteInfoRecord) {
-	logger.Println("delLinuxRoute")
-	if route.protocol == ribdCommonDefs.CONNECTED {
-		logger.Println("This is a connected route, do nothing")
-		//return
-	}
-	mask := net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
-	maskedIP := route.destNetIp.Mask(mask)
-	logger.Info(fmt.Sprintln("mask = ", mask, " destip:= ", route.destNetIp, " maskedIP ", maskedIP))
-	dst := &net.IPNet{
-		IP:   maskedIP, //route.destNetIp,
-		Mask: mask,     //net.CIDRMask(prefixLen, 32),//net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
-	}
-	ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
-	logger.Info(fmt.Sprintln("IfId = ", ifId))
-	intfEntry, ok := IntfIdNameMap[ifId]
-	if !ok {
-		logger.Info(fmt.Sprintln("IfName not updated for ifId ", ifId))
-		return
-	}
-	ifName := intfEntry.name
-	logger.Info(fmt.Sprintln("ifName = ", ifName, " for ifId ", ifId))
-	link, err := netlink.LinkByName(ifName)
-	if err != nil {
-		logger.Info(fmt.Sprintln("LinkByIndex call failed with error ", err, "for linkName ", ifName))
-		return
-	}
-
-	lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst, Gw:route.nextHopIp}
-	err = netlink.RouteDel(&lxroute)
-	if err != nil {
-		logger.Info(fmt.Sprintln("Route delete call failed with error ", err))
-	}
-	return
-}
-
-func addLinuxRoute(route RouteInfoRecord) {
-	logger.Println("addLinuxRoute")
-	if route.protocol == ribdCommonDefs.CONNECTED {
-		logger.Println("This is a connected route, do nothing")
-		//return
-	}
-	mask := net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3])
-	maskedIP := route.destNetIp.Mask(mask)
-	logger.Info(fmt.Sprintln("mask = ", mask, " destip:= ", route.destNetIp, " maskedIP ", maskedIP))
-	dst := &net.IPNet{
-		IP:   maskedIP, //route.destNetIp,
-		Mask: mask,     //net.CIDRMask(prefixLen, 32),//net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
-	}
-	ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
-	logger.Info(fmt.Sprintln("IfId = ", ifId))
-	intfEntry, ok := IntfIdNameMap[ifId]
-	if !ok {
-		logger.Info(fmt.Sprintln("IfName not updated for ifId ", ifId))
-		return
-	}
-	ifName := intfEntry.name
-	logger.Info(fmt.Sprintln("ifName = ", ifName, " for ifId ", ifId))
-	link, err := netlink.LinkByName(ifName)
-	if err != nil {
-		logger.Info(fmt.Sprintln("LinkByIndex call failed with error ", err, "for linkName ", ifName))
-		return
-	}
-
-	logger.Info(fmt.Sprintln("adding linux route for dst.ip= ", dst.IP.String(), " mask: ", dst.Mask.String(), "Gw: ", route.nextHopIp, " maskedIP: ",maskedIP))
-	_,err = netlink.RouteGet(maskedIP)
-	if err == nil {
-		logger.Info(fmt.Sprintln("No route for ip ", dst))
-	}
-	lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst, Gw: route.nextHopIp}
-	err = netlink.RouteAdd(&lxroute)
-	if err != nil {
-		logger.Info(fmt.Sprintln("Route add call failed with error ", err))
 	}
 	return
 }

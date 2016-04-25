@@ -68,6 +68,11 @@ func (p *Peer) StopFSM(msg string) {
 	p.fsmManager.StopFSMCh <- msg
 }
 
+func (p *Peer) MaxPrefixesExceeded() {
+	if p.NeighborConf.RunningConf.MaxPrefixesDisconnect {
+		p.Command(int(fsm.BGPEventAutoStop), fsm.BGPCmdReasonMaxPrefixExceeded)
+	}
+}
 func (p *Peer) setIfIdx(ifIdx int32) {
 	p.ifIdx = ifIdx
 }
@@ -91,13 +96,13 @@ func (p *Peer) AcceptConn(conn *net.TCPConn) {
 	p.fsmManager.AcceptCh <- conn
 }
 
-func (p *Peer) Command(command int) {
+func (p *Peer) Command(command int, reason int) {
 	if p.fsmManager == nil {
 		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s\n",
 			p.NeighborConf.Neighbor.NeighborAddress))
 		return
 	}
-	p.fsmManager.CommandCh <- command
+	p.fsmManager.CommandCh <- fsm.PeerFSMCommand{command, reason}
 }
 
 func (p *Peer) getAddPathsMaxTx() int {
@@ -147,6 +152,15 @@ func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *bgprib.Path) boo
 	return true
 }
 
+func (p *Peer) clearRibOut() {
+	for ip, pathIdMap := range p.ribOut {
+		for pathId, _ := range pathIdMap {
+			delete(p.ribOut[ip], pathId)
+		}
+		delete(p.ribOut, ip)
+	}
+}
+
 func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 	host, _, err := net.SplitHostPort((*conn).LocalAddr().String())
 	if err != nil {
@@ -155,6 +169,7 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 		return
 	}
 	p.NeighborConf.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
+	p.clearRibOut()
 	//p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
 }
 
@@ -169,7 +184,8 @@ func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 	p.NeighborConf.Neighbor.State.KeepaliveTime = p.NeighborConf.RunningConf.KeepaliveTime
 	p.NeighborConf.Neighbor.State.AddPathsRx = false
 	p.NeighborConf.Neighbor.State.AddPathsMaxTx = 0
-
+	p.NeighborConf.Neighbor.State.TotalPrefixes = 0
+	p.clearRibOut()
 }
 
 func (p *Peer) sendUpdateMsg(msg *packet.BGPMessage, path *bgprib.Path) {

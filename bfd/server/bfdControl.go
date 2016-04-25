@@ -67,7 +67,7 @@ func (server *BFDServer) ConvertBfdSessionDiagValToStr(diag BfdDiagnostic) strin
 	case DIAG_NONE:
 		diagStr = "None"
 	case DIAG_TIME_EXPIRED:
-		diagStr = "Control detectection timer expired"
+		diagStr = "Control detection timer expired"
 	case DIAG_ECHO_FAILED:
 		diagStr = "Echo function failed"
 	case DIAG_NEIGHBOR_SIGNAL_DOWN:

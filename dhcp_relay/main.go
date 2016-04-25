@@ -5,11 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"l3/dhcp_relay/server"
+	"utils/keepalive"
 	"utils/logging"
 )
-
-const IP = "localhost"
-const DHCP_RELAY_PORT = "9000"
 
 func main() {
 	fmt.Println("Starting dhcprelay daemon")
@@ -19,22 +17,22 @@ func main() {
 	if fileName[len(fileName)-1] != '/' {
 		fileName = fileName + "/"
 	}
-
 	fmt.Println("Start logger")
 	logger, err := logging.NewLogger(fileName, "dhcprelayd", "DRA")
 	if err != nil {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
 	}
-	go logger.ListenForSysdNotifications()
+	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
 
-	var addr = IP + ":" + DHCP_RELAY_PORT
-	fmt.Println("DHCP RELAY address is", addr)
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("dhcprelayd", fileName)
+
 	logger.Info(fmt.Sprintln("Starting DHCP RELAY...."))
 	// Create a handler
 	handler := relayServer.NewDhcpRelayServer()
-	err = relayServer.StartServer(logger, handler, addr, fileName)
+	err = relayServer.StartServer(logger, handler, *paramsDir)
 	if err != nil {
 		logger.Err(fmt.Sprintln("DRA: Cannot start dhcp server", err))
 		return

@@ -1,7 +1,6 @@
 package relayServer
 
 import (
-	"asicdServices"
 	"database/sql"
 	"dhcprelayd"
 	"github.com/google/gopacket/pcap"
@@ -58,6 +57,16 @@ type DhcpRelayPktChannel struct {
 	bytesRead int
 }
 
+type IPv4Intf struct {
+	IpAddr  string
+	IfIndex int32
+}
+
+type DhcpRelayClientJson struct {
+	Name string `json:Name`
+	Port int    `json:Port`
+}
+
 /*
  * Global Variable
  */
@@ -105,7 +114,7 @@ var (
 	dhcprelayIntfServerStateSlice []string
 
 	// map key is interface id and value is IPV4Intf
-	dhcprelayIntfIpv4Map map[int32]asicdServices.IPv4Intf
+	dhcprelayIntfIpv4Map map[int32]IPv4Intf
 )
 
 // Dhcp OpCodes Types

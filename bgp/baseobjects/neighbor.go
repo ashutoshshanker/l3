@@ -10,25 +10,27 @@ import (
 )
 
 type NeighborConf struct {
-	logger      *logging.Writer
-	Global      *config.GlobalConfig
-	Group       *config.PeerGroupConfig
-	Neighbor    *config.Neighbor
-	BGPId       net.IP
-	ASSize      uint8
-	AfiSafiMap  map[uint32]bool
-	RunningConf config.NeighborConfig
+	logger               *logging.Writer
+	Global               *config.GlobalConfig
+	Group                *config.PeerGroupConfig
+	Neighbor             *config.Neighbor
+	RunningConf          config.NeighborConfig
+	BGPId                net.IP
+	ASSize               uint8
+	AfiSafiMap           map[uint32]bool
+	MaxPrefixesThreshold uint32
 }
 
 func NewNeighborConf(logger *logging.Writer, globalConf *config.GlobalConfig, peerGroup *config.PeerGroupConfig,
 	peerConf config.NeighborConfig) *NeighborConf {
 	conf := NeighborConf{
-		logger:      logger,
-		Global:      globalConf,
-		Group:       peerGroup,
-		AfiSafiMap:  make(map[uint32]bool),
-		BGPId:       net.IP{},
-		RunningConf: config.NeighborConfig{},
+		logger:               logger,
+		Global:               globalConf,
+		Group:                peerGroup,
+		AfiSafiMap:           make(map[uint32]bool),
+		BGPId:                net.IP{},
+		MaxPrefixesThreshold: 0,
+		RunningConf:          config.NeighborConfig{},
 		Neighbor: &config.Neighbor{
 			NeighborAddress: peerConf.NeighborAddress,
 			Config:          peerConf,
@@ -71,14 +73,20 @@ func (n *NeighborConf) SetNeighborState(peerConf *config.NeighborConfig) {
 		PeerGroup:               peerConf.PeerGroup,
 		AddPathsRx:              false,
 		AddPathsMaxTx:           0,
+		MaxPrefixes:             peerConf.MaxPrefixes,
+		MaxPrefixesThresholdPct: peerConf.MaxPrefixesThresholdPct,
+		MaxPrefixesDisconnect:   peerConf.MaxPrefixesDisconnect,
+		MaxPrefixesRestartTimer: peerConf.MaxPrefixesRestartTimer,
+		TotalPrefixes:           0,
 	}
+	n.MaxPrefixesThreshold = uint32(float64(peerConf.MaxPrefixes*uint32(peerConf.MaxPrefixesThresholdPct)) / 100)
 }
 
 func (n *NeighborConf) UpdateNeighborConf(nConf config.NeighborConfig, bgp *config.Bgp) {
 	n.Neighbor.NeighborAddress = nConf.NeighborAddress
 	n.Neighbor.Config = nConf
 	n.RunningConf = config.NeighborConfig{}
-	if nConf.PeerGroup != n.Group.Name {
+	if (n.Group == nil && nConf.PeerGroup != "") || (n.Group != nil && nConf.PeerGroup != n.Group.Name) {
 		if peerGroup, ok := bgp.PeerGroups[nConf.PeerGroup]; ok {
 			n.GetNeighConfFromPeerGroup(&peerGroup.Config, &n.RunningConf)
 		} else {
@@ -173,6 +181,22 @@ func (n *NeighborConf) GetConfFromNeighbor(inConf *config.NeighborConfig, outCon
 		outConf.BfdEnable = inConf.BfdEnable
 	}
 
+	if inConf.MaxPrefixes != 0 {
+		outConf.MaxPrefixes = inConf.MaxPrefixes
+	}
+
+	if inConf.MaxPrefixesThresholdPct != 0 {
+		outConf.MaxPrefixesThresholdPct = inConf.MaxPrefixesThresholdPct
+	}
+
+	if inConf.MaxPrefixesDisconnect != false {
+		outConf.MaxPrefixesDisconnect = inConf.MaxPrefixesDisconnect
+	}
+
+	if inConf.MaxPrefixesRestartTimer != 0 {
+		outConf.MaxPrefixesRestartTimer = inConf.MaxPrefixesRestartTimer
+	}
+
 	outConf.NeighborAddress = inConf.NeighborAddress
 	outConf.IfIndex = inConf.IfIndex
 	outConf.PeerGroup = inConf.PeerGroup
@@ -188,6 +212,35 @@ func (n *NeighborConf) IsExternal() bool {
 
 func (n *NeighborConf) IsRouteReflectorClient() bool {
 	return n.RunningConf.RouteReflectorClient
+}
+
+func (n *NeighborConf) IncrPrefixCount() {
+	n.Neighbor.State.TotalPrefixes++
+}
+
+func (n *NeighborConf) DecrPrefixCount() {
+	n.Neighbor.State.TotalPrefixes--
+}
+
+func (n *NeighborConf) SetPrefixCount(count uint32) {
+	n.Neighbor.State.TotalPrefixes = 0
+}
+
+func (n *NeighborConf) CanAcceptNewPrefix() bool {
+	if n.RunningConf.MaxPrefixes > 0 {
+		if n.Neighbor.State.TotalPrefixes >= n.RunningConf.MaxPrefixes {
+			n.logger.Warning(fmt.Sprintf("Neighbor %s Number of prefixes received %d exceeds the max prefix limit %d",
+				n.RunningConf.NeighborAddress, n.Neighbor.State.TotalPrefixes, n.MaxPrefixesThreshold))
+			return false
+		}
+
+		if n.Neighbor.State.TotalPrefixes >= n.MaxPrefixesThreshold {
+			n.logger.Warning(fmt.Sprintf("Neighbor %s Number of prefixes received %d reached the threshold limit %d",
+				n.RunningConf.NeighborAddress, n.Neighbor.State.TotalPrefixes, n.MaxPrefixesThreshold))
+		}
+	}
+
+	return true
 }
 
 func (n *NeighborConf) FSMStateChange(state uint32) {

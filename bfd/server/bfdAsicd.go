@@ -2,22 +2,22 @@ package server
 
 import (
 	"asicd/asicdConstDefs"
-	"asicd/pluginManager/pluginCommon"
 	"asicdServices"
 	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
 	"utils/commonDefs"
+	"utils/ipcutils"
 )
 
 type AsicdClient struct {
-	BfdClientBase
+	ipcutils.IPCClientBase
 	ClientHdl *asicdServices.ASICDServicesClient
 }
 
 func (server *BFDServer) CreateASICdSubscriber() {
 	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
+	server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
 	for {
 		server.logger.Info("Read on ASICd subscriber socket...")
 		asicdrxBuf, err := server.asicdSubSocket.Recv(0)
@@ -78,17 +78,17 @@ func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
 		if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_CREATE", ipv4IntfMsg))
 			server.createIPIntfConfMap(ipv4IntfMsg)
-			if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypePort { // PHY
+			if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
-			} else if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypeVlan { // Vlan
+			} else if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypeVlan { // Vlan
 				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
 			}
 		} else {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_DELETE", ipv4IntfMsg))
 			server.deleteIPIntfConfMap(ipv4IntfMsg)
-			if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypePort { // PHY
+			if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
-			} else if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypeVlan { // Vlan
+			} else if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypeVlan { // Vlan
 				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
 			}
 		}
