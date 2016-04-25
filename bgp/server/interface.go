@@ -14,6 +14,8 @@ type IntfStateMgrIntf interface {
 type RouteMgrIntf interface {
 	CreateRoute()
 	DeleteRoute()
+	Init(server *BGPServer)
+	//GetConnectedRoutes()
 }
 
 /*  Interface for handling policy related operations

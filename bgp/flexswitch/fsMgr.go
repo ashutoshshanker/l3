@@ -15,9 +15,12 @@ import (
 /*  Router manager will handle all the communication with ribd
  */
 type FSRouteMgr struct {
-	ribdClient *ribd.RIBDServicesClient
-	plugin     string
-	logger     *logging.Writer
+	plugin          string
+	logger          *logging.Writer
+	Server          *server.BGPServer
+	ribdClient      *ribd.RIBDServicesClient
+	ribSubSocket    *nanomsg.SubSocket
+	ribSubBGPSocket *nanomsg.SubSocket
 }
 
 /*  Interface manager will handle all the communication with asicd
