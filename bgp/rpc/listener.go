@@ -383,29 +383,37 @@ func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string, neighborIfInd
 	} else if neighborIfIndex != 0 {
 		//neighbor address is a ifIndex
 		var ipv4Intf string
-		ipv4Intf, err = h.server.AsicdClient.GetIPv4IntfByIfIndex(neighborIfIndex)
+		// @TODO: this needs to be interface once we decide to move listener
+		ipv4Intf, err = h.server.IntfMgr.GetIPv4Information(neighborIfIndex)
 		if err == nil {
-			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Call ASICd to get ip address for interface with ifIndex: ", neighborIfIndex))
+			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Call ASICd",
+				"to get ip address for interface with ifIndex: ", neighborIfIndex))
 			ifIP, ipMask, err := net.ParseCIDR(ipv4Intf)
 			if err != nil {
-				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ipv4Intf, "of the interface", neighborIfIndex, "is not valid, error:", err))
-				err = errors.New(fmt.Sprintf("IpAddr %s of the interface %d is not valid, error: %s", ipv4Intf, neighborIfIndex, err))
+				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr",
+					ipv4Intf, "of the interface", neighborIfIndex, "is not valid, error:", err))
+				err = errors.New(fmt.Sprintf("IpAddr %s of the interface %d is not",
+					"valid, error: %s", ipv4Intf, neighborIfIndex, err))
 				return ip, ifIndex, err
 			}
 			if ipMask.Mask[len(ipMask.Mask)-1] < 252 {
-				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ipv4Intf, "of the interface", neighborIfIndex, "is not /30 or /31 address"))
-				err = errors.New(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr %s of the interface %s is not /30 or /31 address", ipv4Intf, neighborIfIndex))
+				h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr",
+					ipv4Intf, "of the interface", neighborIfIndex, "is not /30 or /31 address"))
+				err = errors.New(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr %s",
+					"of the interface %s is not /30 or /31 address", ipv4Intf, neighborIfIndex))
 				return ip, ifIndex, err
 			}
-			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP, "of the interface", neighborIfIndex))
+			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP,
+				"of the interface", neighborIfIndex))
 			ifIP[len(ifIP)-1] = ifIP[len(ifIP)-1] ^ (^ipMask.Mask[len(ipMask.Mask)-1])
-			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP, "of the neighbor interface"))
+			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - IpAddr", ifIP,
+				"of the neighbor interface"))
 			ip = ifIP
 			ifIndex = neighborIfIndex
 			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Neighbor IP:", ip.String()))
 		} else {
-			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - Neighbor IP", neighborIP, "or interface",
-				neighborIfIndex, "not configured "))
+			h.logger.Err(fmt.Sprintln("getIPAndIfIndexForNeighbor - Neighbor IP", neighborIP,
+				"or interface", neighborIfIndex, "not configured "))
 		}
 	}
 	return ip, ifIndex, err

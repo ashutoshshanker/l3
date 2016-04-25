@@ -2,8 +2,6 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
-	"asicdServices"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -65,7 +63,6 @@ type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
 	ribdClient       *ribd.RIBDServicesClient
-	AsicdClient      *asicdServices.ASICDServicesClient
 	BgpConfig        config.Bgp
 	GlobalConfigCh   chan config.GlobalConfig
 	AddPeerCh        chan PeerUpdate
@@ -86,11 +83,11 @@ type BGPServer struct {
 	Neighbors      []*Peer
 	AdjRib         *bgprib.AdjRib
 	connRoutesPath *bgprib.Path
-	ifacePeerMap   map[int32][]string
+	IfacePeerMap   map[int32][]string
 	ifaceIP        net.IP
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 	addPathCount   int
-	intfMgr        IntfStateMgrIntf
+	IntfMgr        IntfStateMgrIntf
 	policyMgr      PolicyMgrIntf
 	routeMgr       RouteMgrIntf
 	bfdMgr         BfdMgrIntf
@@ -121,7 +118,7 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.Neighbors = make([]*Peer, 0)
 	//@TODO: jgheewala change ribdClient with router interface.....
 	//bgpServer.AdjRib = bgprib.NewAdjRib(logger, ribdClient, &bgpServer.BgpConfig.Global.Config)
-	bgpServer.ifacePeerMap = make(map[int32][]string)
+	bgpServer.IfacePeerMap = make(map[int32][]string)
 	bgpServer.ifaceIP = nil
 	bgpServer.actionFuncMap = make(map[int]bgppolicy.PolicyActionFunc)
 	bgpServer.addPathCount = 0
@@ -140,7 +137,7 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.bgpPE.SetTraverseFuncs(bgpServer.TraverseAndApplyBGPRib,
 		bgpServer.TraverseAndReverseBGPRib)
 
-	bgpServer.intfMgr = iMgr
+	bgpServer.IntfMgr = iMgr
 	bgpServer.routeMgr = rMgr
 	bgpServer.policyMgr = pMgr
 	bgpServer.bfdMgr = bMgr
@@ -249,40 +246,6 @@ func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 		}
 	} else {
 		server.logger.Err(fmt.Sprintf("**** Received RIB update type %d with no routes ****", msg.MsgType))
-	}
-}
-
-func (server *BGPServer) listenForAsicdEvents(socket *nanomsg.SubSocket, ifStateCh chan IfState) {
-	for {
-		server.logger.Info("Read on Asicd subscriber socket...")
-		rxBuf, err := socket.Recv(0)
-		if err != nil {
-			server.logger.Info(fmt.Sprintln("Error in receiving Asicd events", err))
-			return
-		}
-
-		server.logger.Info(fmt.Sprintln("Asicd subscriber recv returned", rxBuf))
-		event := asicdConstDefs.AsicdNotification{}
-		err = json.Unmarshal(rxBuf, &event)
-		if err != nil {
-			server.logger.Err(fmt.Sprintf("Unmarshal Asicd event failed with err %s", err))
-			return
-		}
-
-		switch event.MsgType {
-		case asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE:
-			var msg asicdConstDefs.L3IntfStateNotifyMsg
-			err = json.Unmarshal(event.Msg, &msg)
-			if err != nil {
-				server.logger.Err(fmt.Sprintf("Unmarshal Asicd L3INTF event failed with err %s", err))
-				return
-			}
-
-			server.logger.Info(fmt.Sprintf("Asicd L3INTF event idx %d ip %s state %d\n",
-				msg.IfIndex, msg.IpAddr,
-				msg.IfState))
-			ifStateCh <- IfState{msg.IfIndex, msg.IpAddr, msg.IfState}
-		}
 	}
 }
 
@@ -927,13 +890,14 @@ func (server *BGPServer) setInterfaceMapForPeer(peerIP string, peer *Peer) {
 	if err != nil {
 		server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
 	} else {
-		ifIdx := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex),
+		// @TODO: jgheewala think of something better for ovsdb....
+		ifIdx := server.IntfMgr.GetIfIndex(int(reachInfo.NextHopIfIndex),
 			int(reachInfo.NextHopIfType))
 		server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d", peerIP, ifIdx))
-		if _, ok := server.ifacePeerMap[ifIdx]; !ok {
-			server.ifacePeerMap[ifIdx] = make([]string, 0)
+		if _, ok := server.IfacePeerMap[ifIdx]; !ok {
+			server.IfacePeerMap[ifIdx] = make([]string, 0)
 		}
-		server.ifacePeerMap[ifIdx] = append(server.ifacePeerMap[ifIdx], peerIP)
+		server.IfacePeerMap[ifIdx] = append(server.IfacePeerMap[ifIdx], peerIP)
 		peer.setIfIdx(ifIdx)
 	}
 }
@@ -941,13 +905,13 @@ func (server *BGPServer) setInterfaceMapForPeer(peerIP string, peer *Peer) {
 func (server *BGPServer) clearInterfaceMapForPeer(peerIP string, peer *Peer) {
 	ifIdx := peer.getIfIdx()
 	server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection broken ifIdx %v", peerIP, ifIdx))
-	if peerList, ok := server.ifacePeerMap[ifIdx]; ok {
+	if peerList, ok := server.IfacePeerMap[ifIdx]; ok {
 		for idx, ip := range peerList {
 			if ip == peerIP {
-				server.ifacePeerMap[ifIdx] = append(server.ifacePeerMap[ifIdx][:idx],
-					server.ifacePeerMap[ifIdx][idx+1:]...)
-				if len(server.ifacePeerMap[ifIdx]) == 0 {
-					delete(server.ifacePeerMap, ifIdx)
+				server.IfacePeerMap[ifIdx] = append(server.IfacePeerMap[ifIdx][:idx],
+					server.IfacePeerMap[ifIdx][idx+1:]...)
+				if len(server.IfacePeerMap[ifIdx]) == 0 {
+					delete(server.IfacePeerMap, ifIdx)
 				}
 				break
 			}
@@ -978,13 +942,11 @@ func (server *BGPServer) StartServer() {
 	server.logger.Info("Listen for RIBd updates")
 	ribSubSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_ADDR)
 	ribSubBGPSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
-	asicdL3IntfSubSocket, _ := server.setupSubSocket(asicdConstDefs.PUB_SOCKET_ADDR)
 
 	ribSubSocketCh := make(chan []byte)
 	ribSubSocketErrCh := make(chan error)
 	ribSubBGPSocketCh := make(chan []byte)
 	ribSubBGPSocketErrCh := make(chan error)
-	asicdL3IntfStateCh := make(chan IfState)
 
 	server.logger.Info("Setting up Peer connections")
 	acceptCh := make(chan *net.TCPConn)
@@ -995,8 +957,8 @@ func (server *BGPServer) StartServer() {
 
 	go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
 	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
-	go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
-	// Init bfd socket and then start listeninig for bfd notification
+
+	server.IntfMgr.Init(server)
 	server.bfdMgr.Init(server)
 
 	for {
@@ -1065,7 +1027,6 @@ func (server *BGPServer) StartServer() {
 				server.addPeerToList(peer)
 				server.NeighborMutex.Unlock()
 			}
-			//server.ProcessBfd(peer) <---- changed to interface
 			server.bfdMgr.ProcessBfd(peer)
 			peer.Init()
 
@@ -1188,13 +1149,14 @@ func (server *BGPServer) StartServer() {
 			if err != nil {
 				server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
 			} else {
-				ifIdx := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(
-					int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
+				// @TODO: jgheewala think of something better for ovsdb....
+				ifIdx := server.IntfMgr.GetIfIndex(int(reachInfo.NextHopIfIndex),
+					int(reachInfo.NextHopIfType))
 				server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d", peerIP, ifIdx))
-				if _, ok := server.ifacePeerMap[ifIdx]; !ok {
-					server.ifacePeerMap[ifIdx] = make([]string, 0)
+				if _, ok := server.IfacePeerMap[ifIdx]; !ok {
+					server.IfacePeerMap[ifIdx] = make([]string, 0)
 				}
-				server.ifacePeerMap[ifIdx] = append(server.ifacePeerMap[ifIdx], peerIP)
+				server.IfacePeerMap[ifIdx] = append(server.IfacePeerMap[ifIdx], peerIP)
 				peer.setIfIdx(ifIdx)
 			}
 
@@ -1211,14 +1173,14 @@ func (server *BGPServer) StartServer() {
 			ifIdx := peer.getIfIdx()
 			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection broken ifIdx %v",
 				peerIP, ifIdx))
-			if peerList, ok := server.ifacePeerMap[ifIdx]; ok {
+			if peerList, ok := server.IfacePeerMap[ifIdx]; ok {
 				for idx, ip := range peerList {
 					if ip == peerIP {
-						server.ifacePeerMap[ifIdx] =
-							append(server.ifacePeerMap[ifIdx][:idx],
-								server.ifacePeerMap[ifIdx][idx+1:]...)
-						if len(server.ifacePeerMap[ifIdx]) == 0 {
-							delete(server.ifacePeerMap, ifIdx)
+						server.IfacePeerMap[ifIdx] =
+							append(server.IfacePeerMap[ifIdx][:idx],
+								server.IfacePeerMap[ifIdx][idx+1:]...)
+						if len(server.IfacePeerMap[ifIdx]) == 0 {
+							delete(server.IfacePeerMap, ifIdx)
 						}
 						break
 					}
@@ -1247,19 +1209,6 @@ func (server *BGPServer) StartServer() {
 		case err := <-ribSubBGPSocketErrCh:
 			server.logger.Info(fmt.Sprintf("Server: RIB BGP subscriber socket",
 				"returned err:%s", err))
-
-		case ifState := <-asicdL3IntfStateCh:
-			server.logger.Info(fmt.Sprintf("Server: Received update on Asicd sub",
-				"socket %+v, ifacePeerMap %+v",
-				ifState, server.ifacePeerMap))
-			if peerList, ok := server.ifacePeerMap[ifState.idx]; ok &&
-				ifState.state == asicdConstDefs.INTF_STATE_DOWN {
-				for _, peerIP := range peerList {
-					if peer, ok := server.PeerMap[peerIP]; ok {
-						peer.StopFSM("Interface Down")
-					}
-				}
-			}
 
 		case reachabilityInfo := <-server.ReachabilityCh:
 			server.logger.Info(fmt.Sprintln("Server: Reachability info for ip", reachabilityInfo.IP))
