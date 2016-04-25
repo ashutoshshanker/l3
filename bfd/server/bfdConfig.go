@@ -11,7 +11,6 @@ type GlobalConfig struct {
 
 type GlobalState struct {
 	Enable               bool
-	NumInterfaces        uint32
 	NumSessions          uint32
 	NumUpSessions        uint32
 	NumDownSessions      uint32
@@ -58,10 +57,10 @@ type SessionConfig struct {
 type SessionState struct {
 	IpAddr                string
 	SessionId             int32
-	LocalIpAddr           string
-	InterfaceName         string
-	InterfaceId           int32
 	ParamName             string
+	InterfaceId           int32
+	InterfaceSpecific     bool
+	InterfaceName         string
 	PerLinkSession        bool
 	LocalMacAddr          net.HardwareAddr
 	RemoteMacAddr         net.HardwareAddr
