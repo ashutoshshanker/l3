@@ -630,14 +630,16 @@ func (server *OSPFServer) processRecvdRouterLsa(data []byte, areaId uint32) bool
 	}
 	//Todo: If there is already existing entry Verify the seq num
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-	ent, exist := lsDbEnt.RouterLsaMap[*lsakey]
-	if exist {
-		if ent.LsaMd.LSSequenceNum >= routerLsa.LsaMd.LSSequenceNum {
-			server.logger.Err("Old instance of Router LSA Recvd")
-			return false
+	/*
+		ent, exist := lsDbEnt.RouterLsaMap[*lsakey]
+		if exist {
+			if ent.LsaMd.LSSequenceNum >= routerLsa.LsaMd.LSSequenceNum {
+				server.logger.Err("Old instance of Router LSA Recvd")
+				return false
+			}
+			routerLsa.LsaMd.LSSequenceNum += 1
 		}
-		routerLsa.LsaMd.LSSequenceNum += 1
-	}
+	*/
 	//Handle LsaAge
 	//Add entry in LSADatabase
 	lsDbEnt.RouterLsaMap[*lsakey] = *routerLsa
