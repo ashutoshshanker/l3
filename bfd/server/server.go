@@ -417,34 +417,7 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.createDefaultSessionParam()
 }
 
-func (server *BFDServer) SigHandler() {
-	server.logger.Info(fmt.Sprintln("Starting SigHandler"))
-	sigChan := make(chan os.Signal, 1)
-	signalList := []os.Signal{syscall.SIGHUP}
-	signal.Notify(sigChan, signalList...)
-
-	for {
-		select {
-		case signal := <-sigChan:
-			switch signal {
-			case syscall.SIGHUP:
-				server.logger.Info("Received SIGHUP signal")
-				//server.SendAdminDownToAllNeighbors()
-				//time.Sleep(500 * time.Millisecond)
-				server.SendDeleteToAllSessions()
-				time.Sleep(500 * time.Millisecond)
-				server.logger.Info("Exiting!!!")
-				os.Exit(0)
-			default:
-				server.logger.Info(fmt.Sprintln("Unhandled signal : ", signal))
-			}
-		}
-	}
-}
-
 func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
-	// Start signal handler first
-	go server.SigHandler()
 	// Initialize BFD server from params file
 	server.InitServer(paramFile)
 	// Read BFD configurations already present in DB

@@ -11,6 +11,31 @@ import (
 	"utils/logging"
 )
 
+func SigHandler() {
+	server.logger.Info(fmt.Sprintln("Starting SigHandler"))
+	sigChan := make(chan os.Signal, 1)
+	signalList := []os.Signal{syscall.SIGHUP}
+	signal.Notify(sigChan, signalList...)
+
+	for {
+		select {
+		case signal := <-sigChan:
+			switch signal {
+			case syscall.SIGHUP:
+				server.logger.Info("Received SIGHUP signal")
+				//server.SendAdminDownToAllNeighbors()
+				//time.Sleep(500 * time.Millisecond)
+				server.SendDeleteToAllSessions()
+				time.Sleep(500 * time.Millisecond)
+				server.logger.Info("Exiting!!!")
+				os.Exit(0)
+			default:
+				server.logger.Info(fmt.Sprintln("Unhandled signal : ", signal))
+			}
+		}
+	}
+}
+
 func main() {
 	fmt.Println("Starting bfd daemon")
 	paramsDir := flag.String("params", "./params", "Params directory")
@@ -31,6 +56,9 @@ func main() {
 
 	// Start keepalive routine
 	go keepalive.InitKeepAlive("bfdd", fileName)
+
+	// Start signal handler
+	go SigHandler()
 
 	dbName := fileName + "UsrConfDb.db"
 	fmt.Println("BFDd opening Config DB: ", dbName)
