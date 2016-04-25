@@ -2,18 +2,16 @@
 package server
 
 import (
-	"bytes"
-	"encoding/json"
+	_ "bytes"
+	_ "encoding/json"
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/fsm"
 	"l3/bgp/packet"
 	bgppolicy "l3/bgp/policy"
 	bgprib "l3/bgp/rib"
-	"l3/rib/ribdCommonDefs"
 	"net"
 	"ribd"
-	"ribdInt"
 	"runtime"
 	"strconv"
 	"sync"
@@ -21,8 +19,6 @@ import (
 	"utils/logging"
 	utilspolicy "utils/policy"
 	"utils/policy/policyCommonDefs"
-
-	nanomsg "github.com/op/go-nanomsg"
 )
 
 type PeerUpdate struct {
@@ -82,11 +78,11 @@ type BGPServer struct {
 	PeerMap        map[string]*Peer
 	Neighbors      []*Peer
 	AdjRib         *bgprib.AdjRib
-	connRoutesPath *bgprib.Path
+	ConnRoutesPath *bgprib.Path
 	IfacePeerMap   map[int32][]string
 	ifaceIP        net.IP
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
-	addPathCount   int
+	AddPathCount   int
 	IntfMgr        IntfStateMgrIntf
 	policyMgr      PolicyMgrIntf
 	routeMgr       RouteMgrIntf
@@ -121,7 +117,7 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.IfacePeerMap = make(map[int32][]string)
 	bgpServer.ifaceIP = nil
 	bgpServer.actionFuncMap = make(map[int]bgppolicy.PolicyActionFunc)
-	bgpServer.addPathCount = 0
+	bgpServer.AddPathCount = 0
 	//bgpServer.actionFuncMap[ribdCommonDefs.PolicyActionTypeAggregate] = make([2]policy.ApplyActionFunc)
 
 	var aggrActionFunc bgppolicy.PolicyActionFunc
@@ -167,85 +163,6 @@ func (server *BGPServer) listenForPeers(acceptCh chan *net.TCPConn) {
 		}
 		server.logger.Info(fmt.Sprintln("Got a peer connection from %s", tcpConn.RemoteAddr()))
 		acceptCh <- tcpConn
-	}
-}
-
-func (server *BGPServer) setupSubSocket(address string) (*nanomsg.SubSocket, error) {
-	var err error
-	var socket *nanomsg.SubSocket
-	if socket, err = nanomsg.NewSubSocket(); err != nil {
-		server.logger.Err(fmt.Sprintf("Failed to create subscribe socket %s, error:%s", address, err))
-		return nil, err
-	}
-
-	if err = socket.Subscribe(""); err != nil {
-		server.logger.Err(fmt.Sprintf("Failed to subscribe to \"\" on subscribe socket %s, error:%s",
-			address, err))
-		return nil, err
-	}
-
-	if _, err = socket.Connect(address); err != nil {
-		server.logger.Err(fmt.Sprintf("Failed to connect to publisher socket %s, error:%s", address, err))
-		return nil, err
-	}
-
-	server.logger.Info(fmt.Sprintf("Connected to publisher socker %s", address))
-	if err = socket.SetRecvBuffer(1024 * 1024); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to set the buffer size for subsriber socket %s, error:",
-			address, err))
-		return nil, err
-	}
-	return socket, nil
-}
-
-func (server *BGPServer) listenForRIBUpdates(socket *nanomsg.SubSocket,
-	socketCh chan []byte, socketErrCh chan error) {
-	for {
-		server.logger.Info("Read on RIB subscriber socket...")
-		rxBuf, err := socket.Recv(0)
-		if err != nil {
-			server.logger.Err(fmt.Sprintln("Recv on RIB subscriber socket failed with error:", err))
-			socketErrCh <- err
-			continue
-		}
-		server.logger.Info(fmt.Sprintln("RIB subscriber recv returned:", rxBuf))
-		socketCh <- rxBuf
-	}
-}
-
-func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
-	var routeListInfo ribdCommonDefs.RoutelistInfo
-	routes := make([]*ribdInt.Routes, 0)
-	reader := bytes.NewReader(rxBuf)
-	decoder := json.NewDecoder(reader)
-	msg := ribdCommonDefs.RibdNotifyMsg{}
-	updateMsg := "Add"
-	if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-		updateMsg = "Remove"
-	}
-
-	for err := decoder.Decode(&msg); err == nil; err = decoder.Decode(&msg) {
-		err = json.Unmarshal(msg.MsgBuf, &routeListInfo)
-		if err != nil {
-			server.logger.Err(fmt.Sprintf("Unmarshal RIB route update failed with err %s", err))
-		}
-		server.logger.Info(fmt.Sprintln(updateMsg, "connected route, dest:",
-			routeListInfo.RouteInfo.Ipaddr, "netmask:",
-			routeListInfo.RouteInfo.Mask, "nexthop:", routeListInfo.RouteInfo.NextHopIp))
-		routes = append(routes, &routeListInfo.RouteInfo)
-	}
-
-	if len(routes) > 0 {
-		if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
-			server.ProcessConnectedRoutes(routes, make([]*ribdInt.Routes, 0))
-		} else if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-			server.ProcessConnectedRoutes(make([]*ribdInt.Routes, 0), routes)
-		} else {
-			server.logger.Err(fmt.Sprintf("**** Received RIB update with unknown type %d ****",
-				msg.MsgType))
-		}
-	} else {
-		server.logger.Err(fmt.Sprintf("**** Received RIB update type %d with no routes ****", msg.MsgType))
 	}
 }
 
@@ -488,7 +405,7 @@ func (server *BGPServer) UndoAggregateAction(actionInfo interface{},
 		origDest = policyParams.dest
 	}
 	updated, withdrawn, _, updatedAddPaths = server.AdjRib.RemoveRouteFromAggregate(ipPrefix, aggPrefix,
-		server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest, server.addPathCount)
+		server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest, server.AddPathCount)
 
 	server.logger.Info(fmt.Sprintf("UndoAggregateAction: aggregate result",
 		"update=%+v, withdrawn=%+v\n", updated, withdrawn))
@@ -524,12 +441,12 @@ func (server *BGPServer) ApplyAggregateAction(actionInfo interface{},
 		updated, withdrawn, _, updatedAddPaths =
 			server.AdjRib.AddRouteToAggregate(ipPrefix, aggPrefix,
 				server.BgpConfig.Global.Config.RouterId.String(),
-				server.ifaceIP, &bgpAgg, server.addPathCount)
+				server.ifaceIP, &bgpAgg, server.AddPathCount)
 	} else if policyParams.DeleteType == utilspolicy.Valid {
 		server.logger.Info(fmt.Sprintf("ApplyAggregateAction: DeleteType = Valid\n"))
 		origDest := policyParams.dest
 		updated, withdrawn, _, updatedAddPaths = server.AdjRib.RemoveRouteFromAggregate(ipPrefix, aggPrefix,
-			server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest, server.addPathCount)
+			server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest, server.AddPathCount)
 	}
 
 	server.logger.Info(fmt.Sprintf("ApplyAggregateAction: aggregate result update=%+v,",
@@ -541,7 +458,7 @@ func (server *BGPServer) ApplyAggregateAction(actionInfo interface{},
 	return
 }
 
-func (server *BGPServer) checkForAggregation(updated map[*bgprib.Path][]*bgprib.Destination,
+func (server *BGPServer) CheckForAggregation(updated map[*bgprib.Path][]*bgprib.Destination,
 	withdrawn []*bgprib.Destination, withdrawPath *bgprib.Path,
 	updatedAddPaths []*bgprib.Destination) (map[*bgprib.Path][]*bgprib.Destination,
 	[]*bgprib.Destination, *bgprib.Path, []*bgprib.Destination) {
@@ -732,77 +649,24 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 	atomic.AddUint32(&peer.NeighborConf.Neighbor.State.Queues.Input, ^uint32(0))
 	peer.NeighborConf.Neighbor.State.Messages.Received.Update++
 	updated, withdrawn, withdrawPath, updatedAddPaths, addedAllPrefixes :=
-		server.AdjRib.ProcessUpdate(peer.NeighborConf, pktInfo, server.addPathCount)
+		server.AdjRib.ProcessUpdate(peer.NeighborConf, pktInfo, server.AddPathCount)
 	if !addedAllPrefixes {
 		peer.MaxPrefixesExceeded()
 	}
 	updated, withdrawn, withdrawPath, updatedAddPaths =
-		server.checkForAggregation(updated, withdrawn, withdrawPath,
+		server.CheckForAggregation(updated, withdrawn, withdrawPath,
 			updatedAddPaths)
 	server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
-}
-
-func (server *BGPServer) convertDestIPToIPPrefix(routes []*ribdInt.Routes) []packet.NLRI {
-	dest := make([]packet.NLRI, 0, len(routes))
-	for _, r := range routes {
-		server.logger.Info(fmt.Sprintln("Route NS : ", r.NetworkStatement,
-			" Route Origin ", r.RouteOrigin))
-		ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
-		dest = append(dest, ipPrefix)
-	}
-	return dest
-}
-
-func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*ribdInt.Routes, withdrawnRoutes []*ribdInt.Routes) {
-	server.logger.Info(fmt.Sprintln("valid routes:", installedRoutes,
-		"invalid routes:", withdrawnRoutes))
-	valid := server.convertDestIPToIPPrefix(installedRoutes)
-	invalid := server.convertDestIPToIPPrefix(withdrawnRoutes)
-	updated, withdrawn, withdrawPath, updatedAddPaths :=
-		server.AdjRib.ProcessConnectedRoutes(
-			server.BgpConfig.Global.Config.RouterId.String(),
-			server.connRoutesPath, valid, invalid, server.addPathCount)
-	updated, withdrawn, withdrawPath, updatedAddPaths =
-		server.checkForAggregation(updated, withdrawn, withdrawPath,
-			updatedAddPaths)
-	server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
-}
-
-func (server *BGPServer) ProcessRoutesFromRIB() {
-	var currMarker ribdInt.Int
-	var count ribdInt.Int
-	count = 100
-	for {
-		server.logger.Info(fmt.Sprintln("Getting ", count, " objects from currMarker", currMarker))
-		getBulkInfo, err := server.ribdClient.GetBulkRoutesForProtocol("BGP", currMarker, count)
-		if err != nil {
-			server.logger.Info(fmt.Sprintln("GetBulkRoutesForProtocol with err ", err))
-			return
-		}
-		if getBulkInfo.Count == 0 {
-			server.logger.Info("0 objects returned from GetBulkRoutesForProtocol")
-			return
-		}
-		server.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ",
-			len(getBulkInfo.RouteList), " num objects returned = ",
-			getBulkInfo.Count))
-		server.ProcessConnectedRoutes(getBulkInfo.RouteList, make([]*ribdInt.Routes, 0))
-		if getBulkInfo.More == false {
-			server.logger.Info("more returned as false, so no more get bulks")
-			return
-		}
-		currMarker = ribdInt.Int(getBulkInfo.EndIdx)
-	}
 }
 
 func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
 	updated, withdrawn, withdrawPath, updatedAddPaths := server.AdjRib.RemoveUpdatesFromNeighbor(peerIp,
-		peer.NeighborConf, server.addPathCount)
+		peer.NeighborConf, server.AddPathCount)
 	server.logger.Info(fmt.Sprintf("ProcessRemoveNeighbor - Neighbor %s,",
 		"send updated paths %v, withdrawn paths %v\n",
 		peerIp, updated, withdrawn))
 	updated, withdrawn, withdrawPath, updatedAddPaths =
-		server.checkForAggregation(updated, withdrawn, withdrawPath,
+		server.CheckForAggregation(updated, withdrawn, withdrawPath,
 			updatedAddPaths)
 	server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
 }
@@ -815,7 +679,7 @@ func (server *BGPServer) SendAllRoutesToPeer(peer *Peer) {
 }
 
 func (server *BGPServer) RemoveRoutesFromAllNeighbor() {
-	server.AdjRib.RemoveUpdatesFromAllNeighbors(server.addPathCount)
+	server.AdjRib.RemoveUpdatesFromAllNeighbors(server.AddPathCount)
 }
 
 func (server *BGPServer) addPeerToList(peer *Peer) {
@@ -937,28 +801,17 @@ func (server *BGPServer) StartServer() {
 	server.BgpConfig.PeerGroups = make(map[string]*config.PeerGroup)
 
 	pathAttrs := packet.ConstructPathAttrForConnRoutes(gConf.RouterId, gConf.AS)
-	server.connRoutesPath = bgprib.NewPath(server.AdjRib, nil, pathAttrs, false, false, bgprib.RouteTypeConnected)
+	server.ConnRoutesPath = bgprib.NewPath(server.AdjRib, nil, pathAttrs,
+		false, false, bgprib.RouteTypeConnected)
 
 	server.logger.Info("Listen for RIBd updates")
-	ribSubSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_ADDR)
-	ribSubBGPSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
-
-	ribSubSocketCh := make(chan []byte)
-	ribSubSocketErrCh := make(chan error)
-	ribSubBGPSocketCh := make(chan []byte)
-	ribSubBGPSocketErrCh := make(chan error)
 
 	server.logger.Info("Setting up Peer connections")
 	acceptCh := make(chan *net.TCPConn)
 	go server.listenForPeers(acceptCh)
-	// @TODO: move this go routine to appropriate place
-	//	routes, _ := server.ribdClient.GetConnectedRoutesInfo()
-	server.ProcessRoutesFromRIB()
-
-	go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
-	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
 
 	server.IntfMgr.Init(server)
+	server.routeMgr.Init(server)
 	server.bfdMgr.Init(server)
 
 	for {
@@ -971,7 +824,7 @@ func (server *BGPServer) StartServer() {
 			server.logger.Info(fmt.Sprintf("Giving up CPU so that all peer FSMs will get cleaned up"))
 			runtime.Gosched()
 
-			packet.SetNextHopPathAttrs(server.connRoutesPath.PathAttrs, gConf.RouterId)
+			packet.SetNextHopPathAttrs(server.ConnRoutesPath.PathAttrs, gConf.RouterId)
 			server.RemoveRoutesFromAllNeighbor()
 			server.copyGlobalConf(gConf)
 			server.constructBGPGlobalState(&gConf)
@@ -1115,20 +968,20 @@ func (server *BGPServer) StartServer() {
 			if peerFSMConn.Established {
 				peer.PeerConnEstablished(peerFSMConn.Conn)
 				addPathsMaxTx := peer.getAddPathsMaxTx()
-				if addPathsMaxTx > server.addPathCount {
-					server.addPathCount = addPathsMaxTx
+				if addPathsMaxTx > server.AddPathCount {
+					server.AddPathCount = addPathsMaxTx
 				}
 				server.setInterfaceMapForPeer(peerFSMConn.PeerIP, peer)
 				server.SendAllRoutesToPeer(peer)
 			} else {
 				peer.PeerConnBroken(true)
 				addPathsMaxTx := peer.getAddPathsMaxTx()
-				if addPathsMaxTx < server.addPathCount {
-					server.addPathCount = 0
+				if addPathsMaxTx < server.AddPathCount {
+					server.AddPathCount = 0
 					for _, otherPeer := range server.PeerMap {
 						addPathsMaxTx = otherPeer.getAddPathsMaxTx()
-						if addPathsMaxTx > server.addPathCount {
-							server.addPathCount = addPathsMaxTx
+						if addPathsMaxTx > server.AddPathCount {
+							server.AddPathCount = addPathsMaxTx
 						}
 					}
 				}
@@ -1193,22 +1046,6 @@ func (server *BGPServer) StartServer() {
 			server.logger.Info(fmt.Sprintln("Received BGP message from peer %s",
 				pktInfo.Src))
 			server.ProcessUpdate(pktInfo)
-
-		case rxBuf := <-ribSubSocketCh:
-			server.logger.Info(fmt.Sprintf("Server: Received update on RIB sub socket"))
-			server.handleRibUpdates(rxBuf)
-
-		case err := <-ribSubSocketErrCh:
-			server.logger.Info(fmt.Sprintf("Server: RIB subscriber socket returned err:%s",
-				err))
-
-		case rxBuf := <-ribSubBGPSocketCh:
-			server.logger.Info(fmt.Sprintf("Server: Received update on RIB BGP sub socket"))
-			server.handleRibUpdates(rxBuf)
-
-		case err := <-ribSubBGPSocketErrCh:
-			server.logger.Info(fmt.Sprintf("Server: RIB BGP subscriber socket",
-				"returned err:%s", err))
 
 		case reachabilityInfo := <-server.ReachabilityCh:
 			server.logger.Info(fmt.Sprintln("Server: Reachability info for ip", reachabilityInfo.IP))

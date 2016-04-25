@@ -61,6 +61,16 @@ func (mgr *OvsRouteMgr) DeleteRoute() {
 
 }
 
+func (mgr *OvsRouteMgr) Init(server *server.BGPServer) {
+
+}
+
+/*
+func (mgr *OvsRouteMgr) GetConnectedRoutes() {
+
+}
+*/
+
 func (mgr *OvsPolicyMgr) AddPolicy() {
 
 }
