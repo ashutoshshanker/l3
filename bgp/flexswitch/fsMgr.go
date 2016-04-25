@@ -5,7 +5,9 @@ import (
 	"bfdd"
 	"errors"
 	"fmt"
+	nanomsg "github.com/op/go-nanomsg"
 	"l3/bgp/rpc"
+	"l3/bgp/server"
 	"ribd"
 	"utils/logging"
 )
@@ -37,9 +39,13 @@ type FSPolicyMgr struct {
 /*  BFD manager will handle all the communication with bfd daemon
  */
 type FSBfdMgr struct {
-	bfddClient *bfdd.BFDDServicesClient
-	plugin     string
-	logger     *logging.Writer
+	plugin       string
+	logger       *logging.Writer
+	Server       *server.BGPServer // copy of server pointer
+	bfddClient   *bfdd.BFDDServicesClient
+	bfdSubSocket *nanomsg.SubSocket
+	//bfdSubSocketCh    chan []byte
+	//bfdSubSocketErrCh chan error
 }
 
 /*  Interface manager is responsible for handling asicd notifications and hence
@@ -97,30 +103,6 @@ func NewFSRouteMgr(logger *logging.Writer, fileName string) (*FSRouteMgr, error)
 		plugin:     "ovsdb",
 		ribdClient: ribdClient,
 		logger:     logger,
-	}
-
-	return mgr, nil
-}
-
-/*  Init bfd manager with bfd client as its core
- */
-func NewFSBfdMgr(logger *logging.Writer, fileName string) (*FSBfdMgr, error) {
-	var bfddClient *bfdd.BFDDServicesClient = nil
-	bfddClientChan := make(chan *bfdd.BFDDServicesClient)
-
-	logger.Info("Connecting to BFDd")
-	go rpc.StartBfddClient(logger, fileName, bfddClientChan)
-	bfddClient = <-bfddClientChan
-	if bfddClient == nil {
-		logger.Err("Failed to connect to BFDd\n")
-		return nil, errors.New("Failed to connect to BFDd")
-	} else {
-		logger.Info("Connected to BFDd")
-	}
-	mgr := &FSBfdMgr{
-		plugin:     "ovsdb",
-		logger:     logger,
-		bfddClient: bfddClient,
 	}
 
 	return mgr, nil

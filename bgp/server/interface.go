@@ -23,6 +23,6 @@ type PolicyMgrIntf interface {
 /*  Interface for handling bfd state notifications
  */
 type BfdMgrIntf interface {
-	Init()
+	Init(server *BGPServer)
 	ProcessBfd(peer *Peer)
 }

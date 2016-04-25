@@ -216,21 +216,6 @@ func (server *BGPServer) listenForRIBUpdates(socket *nanomsg.SubSocket,
 	}
 }
 
-func (server *BGPServer) listenForBFDNotifications(socket *nanomsg.SubSocket,
-	socketCh chan []byte, socketErrCh chan error) {
-	for {
-		server.logger.Info("Read on BFD subscriber socket...")
-		rxBuf, err := socket.Recv(0)
-		if err != nil {
-			server.logger.Err(fmt.Sprintln("Recv on BFD subscriber socket failed with error:", err))
-			socketErrCh <- err
-			continue
-		}
-		server.logger.Info(fmt.Sprintln("BFD subscriber recv returned:", rxBuf))
-		socketCh <- rxBuf
-	}
-}
-
 func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 	var routeListInfo ribdCommonDefs.RoutelistInfo
 	routes := make([]*ribdInt.Routes, 0)
@@ -266,29 +251,6 @@ func (server *BGPServer) handleRibUpdates(rxBuf []byte) {
 		server.logger.Err(fmt.Sprintf("**** Received RIB update type %d with no routes ****", msg.MsgType))
 	}
 }
-
-/* @TODO: jgheewala move this to bfd manager
-func (server *BGPServer) handleBfdNotifications(rxBuf []byte) {
-	bfd := bfddCommonDefs.BfddNotifyMsg{}
-	err := json.Unmarshal(rxBuf, &bfd)
-	if err != nil {
-		server.logger.Err(fmt.Sprintf("Unmarshal BFD notification failed with err %s", err))
-	}
-	if peer, ok := server.PeerMap[bfd.DestIp]; ok {
-		if !bfd.State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "up" {
-			peer.Command(int(fsm.BGPEventManualStop), fsm.BGPCmdReasonNone)
-			peer.NeighborConf.Neighbor.State.BfdNeighborState = "down"
-		}
-		if bfd.State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
-			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
-			peer.Command(int(fsm.BGPEventManualStart), fsm.BGPCmdReasonNone)
-		}
-		server.logger.Info(fmt.Sprintln("Bfd state of peer ",
-			peer.NeighborConf.Neighbor.NeighborAddress, " is ",
-			peer.NeighborConf.Neighbor.State.BfdNeighborState))
-	}
-}
-*/
 
 func (server *BGPServer) listenForAsicdEvents(socket *nanomsg.SubSocket, ifStateCh chan IfState) {
 	for {
@@ -1017,15 +979,12 @@ func (server *BGPServer) StartServer() {
 	ribSubSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_ADDR)
 	ribSubBGPSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	asicdL3IntfSubSocket, _ := server.setupSubSocket(asicdConstDefs.PUB_SOCKET_ADDR)
-	//bfdSubSocket, _ := server.setupSubSocket(bfddCommonDefs.PUB_SOCKET_ADDR)
 
 	ribSubSocketCh := make(chan []byte)
 	ribSubSocketErrCh := make(chan error)
 	ribSubBGPSocketCh := make(chan []byte)
 	ribSubBGPSocketErrCh := make(chan error)
 	asicdL3IntfStateCh := make(chan IfState)
-	//	bfdSubSocketCh := make(chan []byte)
-	//	bfdSubSocketErrCh := make(chan error)
 
 	server.logger.Info("Setting up Peer connections")
 	acceptCh := make(chan *net.TCPConn)
@@ -1037,7 +996,8 @@ func (server *BGPServer) StartServer() {
 	go server.listenForRIBUpdates(ribSubSocket, ribSubSocketCh, ribSubSocketErrCh)
 	go server.listenForRIBUpdates(ribSubBGPSocket, ribSubBGPSocketCh, ribSubBGPSocketErrCh)
 	go server.listenForAsicdEvents(asicdL3IntfSubSocket, asicdL3IntfStateCh)
-	//go server.listenForBFDNotifications(bfdSubSocket, bfdSubSocketCh, bfdSubSocketErrCh)
+	// Init bfd socket and then start listeninig for bfd notification
+	server.bfdMgr.Init(server)
 
 	for {
 		select {
@@ -1301,14 +1261,6 @@ func (server *BGPServer) StartServer() {
 				}
 			}
 
-		/*
-			case rxBuf := <-bfdSubSocketCh:
-				server.logger.Info(fmt.Sprintf("Server: Received notification on BFD sub socket"))
-				server.handleBfdNotifications(rxBuf)
-
-			case err := <-bfdSubSocketErrCh:
-				server.logger.Info(fmt.Sprintf("Server: BFD subscriber socket returned err:%s", err))
-		*/
 		case reachabilityInfo := <-server.ReachabilityCh:
 			server.logger.Info(fmt.Sprintln("Server: Reachability info for ip", reachabilityInfo.IP))
 			_, err := server.ribdClient.GetRouteReachabilityInfo(reachabilityInfo.IP)

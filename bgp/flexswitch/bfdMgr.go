@@ -2,11 +2,85 @@ package FSMgr
 
 import (
 	"bfdd"
+	"encoding/json"
+	"errors"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
 	"l3/bfd/bfddCommonDefs"
+	"l3/bgp/fsm"
+	"l3/bgp/rpc"
 	"l3/bgp/server"
+	"utils/logging"
 )
+
+/*  Init bfd manager with bfd client as its core
+ */
+func NewFSBfdMgr(logger *logging.Writer, fileName string) (*FSBfdMgr, error) {
+	var bfddClient *bfdd.BFDDServicesClient = nil
+	bfddClientChan := make(chan *bfdd.BFDDServicesClient)
+
+	logger.Info("Connecting to BFDd")
+	go rpc.StartBfddClient(logger, fileName, bfddClientChan)
+	bfddClient = <-bfddClientChan
+	if bfddClient == nil {
+		logger.Err("Failed to connect to BFDd\n")
+		return nil, errors.New("Failed to connect to BFDd")
+	} else {
+		logger.Info("Connected to BFDd")
+	}
+	mgr := &FSBfdMgr{
+		plugin:     "ovsdb",
+		logger:     logger,
+		bfddClient: bfddClient,
+	}
+
+	return mgr, nil
+}
+
+/*  Do any necessary init. Called from server..
+ */
+func (mgr *FSBfdMgr) Init(server *server.BGPServer) {
+	// create bfd sub socket listener
+	mgr.bfdSubSocket, _ = mgr.SetupSubSocket(bfddCommonDefs.PUB_SOCKET_ADDR)
+	mgr.Server = server
+	go mgr.listenForBFDNotifications()
+}
+
+/*  Listen for any BFD notifications
+ */
+func (mgr *FSBfdMgr) listenForBFDNotifications() {
+	for {
+		mgr.logger.Info("Read on BFD subscriber socket...")
+		rxBuf, err := mgr.bfdSubSocket.Recv(0)
+		if err != nil {
+			mgr.logger.Err(fmt.Sprintln("Recv on BFD subscriber socket failed with error:", err))
+			continue
+		}
+		mgr.logger.Info(fmt.Sprintln("BFD subscriber recv returned:", rxBuf))
+		mgr.handleBfdNotifications(rxBuf)
+	}
+}
+
+func (mgr *FSBfdMgr) handleBfdNotifications(rxBuf []byte) {
+	bfd := bfddCommonDefs.BfddNotifyMsg{}
+	err := json.Unmarshal(rxBuf, &bfd)
+	if err != nil {
+		mgr.logger.Err(fmt.Sprintf("Unmarshal BFD notification failed with err %s", err))
+	}
+	if peer, ok := mgr.Server.PeerMap[bfd.DestIp]; ok {
+		if !bfd.State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "up" {
+			peer.Command(int(fsm.BGPEventManualStop), fsm.BGPCmdReasonNone)
+			peer.NeighborConf.Neighbor.State.BfdNeighborState = "down"
+		}
+		if bfd.State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
+			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
+			peer.Command(int(fsm.BGPEventManualStart), fsm.BGPCmdReasonNone)
+		}
+		mgr.logger.Info(fmt.Sprintln("Bfd state of peer ",
+			peer.NeighborConf.Neighbor.NeighborAddress, " is ",
+			peer.NeighborConf.Neighbor.State.BfdNeighborState))
+	}
+}
 
 func (mgr *FSBfdMgr) ProcessBfd(peer *server.Peer) {
 	bfdSession := bfdd.NewBfdSession()
@@ -67,22 +141,4 @@ func (mgr *FSBfdMgr) SetupSubSocket(address string) (*nanomsg.SubSocket, error) 
 		return nil, err
 	}
 	return socket, nil
-}
-
-func (mgr *FSBfdMgr) Init() {
-	// create bfd sub socket listener
-	bfdSubSocketCh := make(chan []byte)
-	bfdSubSocketErrCh := make(chan error)
-	bfdSubSocket, _ := mgr.SetupSubSocket(bfddCommonDefs.PUB_SOCKET_ADDR)
-	for {
-		mgr.logger.Info("Read on BFD subscriber socket...")
-		rxBuf, err := bfdSubSocket.Recv(0)
-		if err != nil {
-			mgr.logger.Err(fmt.Sprintln("Recv on BFD subscriber socket failed with error:", err))
-			bfdSubSocketErrCh <- err
-			continue
-		}
-		mgr.logger.Info(fmt.Sprintln("BFD subscriber recv returned:", rxBuf))
-		bfdSubSocketCh <- rxBuf
-	}
 }

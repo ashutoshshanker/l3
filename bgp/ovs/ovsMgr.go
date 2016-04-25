@@ -77,6 +77,6 @@ func (mgr *OvsBfdMgr) ProcessBfd(peer *server.Peer) {
 
 }
 
-func (mgr *OvsBfdMgr) Init() {
+func (mgr *OvsBfdMgr) Init(server *server.BGPServer) {
 
 }
