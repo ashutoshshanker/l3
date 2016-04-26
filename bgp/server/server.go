@@ -847,8 +847,11 @@ func (server *BGPServer) StartServer() {
 	bfdCh := make(chan config.BfdInfo)
 	// Channel for handling Interface notifications
 	intfCh := make(chan config.IntfStateInfo)
+	// Channel for handling route notifications
+	//routesCh := make(chan []*config.RouteInfo)
+	routesCh := make(chan config.RouteCh)
 
-	api.Init(bfdCh, intfCh)
+	api.Init(bfdCh, intfCh, routesCh)
 	server.IntfMgr.Init()
 	server.routeMgr.Init()
 	server.bfdMgr.Init()

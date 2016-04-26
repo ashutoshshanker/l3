@@ -1,14 +1,16 @@
 package FSMgr
 
 import (
-	_ "bytes"
-	_ "encoding/json"
+	"bytes"
+	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
+	"l3/bgp/api"
+	"l3/bgp/config"
 	_ "l3/bgp/packet"
 	"l3/rib/ribdCommonDefs"
 	_ "ribd"
-	_ "ribdInt"
+	"ribdInt"
 )
 
 func (mgr *FSRouteMgr) Init() {
@@ -60,17 +62,25 @@ func (mgr *FSRouteMgr) listenForRIBUpdates(socket *nanomsg.SubSocket) {
 			continue
 		}
 		mgr.logger.Info(fmt.Sprintln("RIB subscriber recv returned:", rxBuf))
-		//socketCh <- rxBuf
-		//@TODO: right now update is treated as blocking call...
-		//will need to make it as channel?
-		//mgr.handleRibUpdates(rxBuf)
+		mgr.handleRibUpdates(rxBuf)
 	}
 }
 
-/*
+func (mgr *FSRouteMgr) populateConfigRoute(route *ribdInt.Routes) *config.RouteInfo {
+	rv := &config.RouteInfo{
+		Ipaddr:           route.Ipaddr,
+		Mask:             route.Mask,
+		NextHopIp:        route.NextHopIp,
+		Prototype:        int(route.Prototype),
+		NetworkStatement: route.NetworkStatement,
+		RouteOrigin:      route.RouteOrigin,
+	}
+	return rv
+}
+
 func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 	var routeListInfo ribdCommonDefs.RoutelistInfo
-	routes := make([]*ribdInt.Routes, 0)
+	routes := make([]*config.RouteInfo, 0)
 	reader := bytes.NewReader(rxBuf)
 	decoder := json.NewDecoder(reader)
 	msg := ribdCommonDefs.RibdNotifyMsg{}
@@ -87,14 +97,16 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 		mgr.logger.Info(fmt.Sprintln(updateMsg, "connected route, dest:",
 			routeListInfo.RouteInfo.Ipaddr, "netmask:",
 			routeListInfo.RouteInfo.Mask, "nexthop:", routeListInfo.RouteInfo.NextHopIp))
-		routes = append(routes, &routeListInfo.RouteInfo)
+		routes = append(routes, mgr.populateConfigRoute(&routeListInfo.RouteInfo))
 	}
 
 	if len(routes) > 0 {
 		if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
-			mgr.ProcessConnectedRoutes(routes, make([]*ribdInt.Routes, 0))
+			api.SendRouteNotification(routes, nil)
+			//	mgr.ProcessConnectedRoutes(routes, nil) //make([]*ribdInt.Routes, 0))
 		} else if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-			mgr.ProcessConnectedRoutes(make([]*ribdInt.Routes, 0), routes)
+			api.SendRouteNotification(nil, routes)
+			//	mgr.ProcessConnectedRoutes(nil, routes) //make([]*ribdInt.Routes, 0), routes)
 		} else {
 			mgr.logger.Err(fmt.Sprintf("**** Received RIB update with ",
 				"unknown type %d ****", msg.MsgType))
@@ -105,6 +117,7 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 	}
 }
 
+/*
 func (mgr *FSRouteMgr) processRoutesFromRIB() {
 	var currMarker ribdInt.Int
 	var count ribdInt.Int

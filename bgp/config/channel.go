@@ -28,3 +28,19 @@ type IntfStateInfo struct {
 	Ipaddr string
 	State  Operation
 }
+
+/*  This is mimic of ribd object...@TODO: need to change this to bgp server object
+ */
+type RouteInfo struct {
+	Ipaddr           string
+	Mask             string
+	NextHopIp        string
+	Prototype        int
+	NetworkStatement bool
+	RouteOrigin      string
+}
+
+type RouteCh struct {
+	Add    []*RouteInfo
+	Remove []*RouteInfo
+}
