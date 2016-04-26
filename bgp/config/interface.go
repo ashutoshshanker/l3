@@ -3,7 +3,7 @@ package config
 /*  Port/Interface state change manager.
  */
 type IntfStateMgrIntf interface {
-	Init(chan IntfStateInfo)
+	Init()
 	PortStateChange()
 	GetIPv4Information(ifIndex int32) (string, error)
 	GetIfIndex(int, int) int32

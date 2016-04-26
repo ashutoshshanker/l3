@@ -849,7 +849,7 @@ func (server *BGPServer) StartServer() {
 	intfCh := make(chan config.IntfStateInfo)
 
 	api.Init(bfdCh, intfCh)
-	server.IntfMgr.Init(intfCh)
+	server.IntfMgr.Init()
 	server.routeMgr.Init()
 	server.bfdMgr.Init()
 

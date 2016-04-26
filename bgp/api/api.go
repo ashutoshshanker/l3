@@ -29,3 +29,13 @@ func SendBfdNotification(DestIp string, State bool, Oper config.Operation) {
 		Oper:   Oper,
 	}
 }
+
+/*  Send interface state notification to server
+ */
+func SendIntfNotification(ifIndex int32, ipAddr string, state config.Operation) {
+	bgpapi.intfCh <- config.IntfStateInfo{
+		Idx:    ifIndex,
+		Ipaddr: ipAddr,
+		State:  state,
+	}
+}

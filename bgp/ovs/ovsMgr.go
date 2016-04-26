@@ -2,7 +2,6 @@ package ovsMgr
 
 import (
 	"fmt"
-	"l3/bgp/config"
 )
 
 type OvsIntfMgr struct {
@@ -77,7 +76,7 @@ func (mgr *OvsIntfMgr) PortStateChange() {
 
 }
 
-func (mgr *OvsIntfMgr) Init(ch chan config.IntfStateInfo) {
+func (mgr *OvsIntfMgr) Init() {
 
 }
 

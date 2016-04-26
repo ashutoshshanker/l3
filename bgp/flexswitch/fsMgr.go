@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
-	"l3/bgp/config"
 	"l3/bgp/rpc"
 	"ribd"
 	"utils/logging"
@@ -26,7 +25,6 @@ type FSRouteMgr struct {
  */
 type FSIntfMgr struct {
 	plugin               string
-	serverCh             chan config.IntfStateInfo
 	logger               *logging.Writer
 	AsicdClient          *asicdServices.ASICDServicesClient
 	asicdL3IntfSubSocket *nanomsg.SubSocket
