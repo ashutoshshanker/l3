@@ -1,11 +1,11 @@
 package main
 
 import (
-	"database/sql"
 	"flag"
 	"fmt"
 	"l3/rib/rpc"
 	"l3/rib/server"
+	"github.com/garyburd/redigo/redis"
 	"utils/keepalive"
 	"utils/logging"
 )
@@ -30,15 +30,9 @@ func main() {
 	// Start keepalive routine
 	go keepalive.InitKeepAlive("ribd", fileName)
 
-	dbName := fileName + "UsrConfDb.db"
-	fmt.Println("RIBd opening Config DB: ", dbName)
-	dbHdl, err := sql.Open("sqlite3", dbName)
+	dbHdl, err := redis.Dial("tcp", ":6379")
 	if err != nil {
-		fmt.Println("Failed to open connection to DB. ", err, " Exiting!!")
-		return
-	}
-	if err = dbHdl.Ping(); err != nil {
-		fmt.Println(fmt.Sprintln("Failed to keep DB connection alive"))
+		logger.Err("Failed to dial out to Redis server")
 		return
 	}
 	routeServer := server.NewRIBDServicesHandler(dbHdl, logger)
