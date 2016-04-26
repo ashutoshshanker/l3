@@ -11,8 +11,6 @@ import (
 	"io/ioutil"
 	"l3/bfd/bfddCommonDefs"
 	"net"
-	"os"
-	"os/signal"
 	"ribd"
 	"strconv"
 	"syscall"
@@ -129,8 +127,6 @@ type BFDServer struct {
 	ribdClient            RibdClient
 	asicdClient           AsicdClient
 	GlobalConfigCh        chan GlobalConfig
-	IntfConfigCh          chan IntfConfig
-	IntfConfigDeleteCh    chan int32
 	asicdSubSocket        *nanomsg.SubSocket
 	asicdSubSocketCh      chan []byte
 	asicdSubSocketErrCh   chan error
@@ -161,8 +157,6 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer := &BFDServer{}
 	bfdServer.logger = logger
 	bfdServer.GlobalConfigCh = make(chan GlobalConfig)
-	bfdServer.IntfConfigCh = make(chan IntfConfig)
-	bfdServer.IntfConfigDeleteCh = make(chan int32)
 	bfdServer.asicdSubSocketCh = make(chan []byte)
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.ribdSubSocketCh = make(chan []byte)
@@ -323,17 +317,17 @@ func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
 	return nil
 }
 
-func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
-	server.logger.Info("Reading BfdInterface")
-	dbCmd := "SELECT * FROM BfdInterface"
+func (server *BFDServer) ReadSessionParamConfigFromDB(dbHdl *sql.DB) error {
+	server.logger.Info("Reading BfdSessionParam")
+	dbCmd := "SELECT * FROM BfdSessionParam"
 	rows, err := dbHdl.Query(dbCmd)
 	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdInterface: ", err))
+		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdSessionParam: ", err))
 		return err
 	}
 
 	for rows.Next() {
-		var interfaceId int32
+		var name string
 		var localMultiplier int32
 		var desiredMinTxInterval int32
 		var requiredMinRxInterval int32
@@ -343,13 +337,13 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 		var authenticationType string
 		var authenticationKeyId int32
 		var authenticationData string
-		err = rows.Scan(&interfaceId, &localMultiplier, &desiredMinTxInterval, &requiredMinRxInterval, &requiredMinEchoRxInterval, &demandEnabled, &authenticationEnabled, &authenticationType, &authenticationKeyId, &authenticationData)
+		err = rows.Scan(&name, &localMultiplier, &desiredMinTxInterval, &requiredMinRxInterval, &requiredMinEchoRxInterval, &demandEnabled, &authenticationEnabled, &authenticationType, &authenticationKeyId, &authenticationData)
 		if err != nil {
-			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdInterface: ", err))
+			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSessionparam: ", err))
 			return err
 		}
-		ifConf := IntfConfig{
-			InterfaceId:               interfaceId,
+		sessionParamConf := SessionParamConfig{
+			Name:                      name,
 			LocalMultiplier:           localMultiplier,
 			DesiredMinTxInterval:      desiredMinTxInterval,
 			RequiredMinRxInterval:     requiredMinRxInterval,
@@ -360,8 +354,8 @@ func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
 			AuthenticationKeyId:       authenticationKeyId,
 			AuthenticationData:        authenticationData,
 		}
-		server.logger.Info(fmt.Sprintln("BfdInterface - ", ifConf))
-		server.IntfConfigCh <- ifConf
+		server.logger.Info(fmt.Sprintln("BfdSessionParam - ", sessionParamConf))
+		server.SessionParamConfigCh <- sessionParamConf
 	}
 	return nil
 }
@@ -404,7 +398,7 @@ func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB, done chan bool) error {
 	// BfdGlobalConfig
 	server.ReadGlobalConfigFromDB(dbHdl)
 	// BfdIntfConfig
-	server.ReadIntfConfigFromDB(dbHdl)
+	server.ReadSessionParamConfigFromDB(dbHdl)
 	// BfdSessionConfig
 	server.ReadSessionConfigFromDB(dbHdl)
 	done <- true
@@ -418,36 +412,10 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.BuildPortPropertyMap()
 	server.BuildLagPropertyMap()
 	server.BuildIPv4InterfacesMap()
-}
-
-func (server *BFDServer) SigHandler() {
-	server.logger.Info(fmt.Sprintln("Starting SigHandler"))
-	sigChan := make(chan os.Signal, 1)
-	signalList := []os.Signal{syscall.SIGHUP}
-	signal.Notify(sigChan, signalList...)
-
-	for {
-		select {
-		case signal := <-sigChan:
-			switch signal {
-			case syscall.SIGHUP:
-				server.logger.Info("Received SIGHUP signal")
-				//server.SendAdminDownToAllNeighbors()
-				//time.Sleep(500 * time.Millisecond)
-				server.SendDeleteToAllSessions()
-				time.Sleep(500 * time.Millisecond)
-				server.logger.Info("Exiting!!!")
-				os.Exit(0)
-			default:
-				server.logger.Info(fmt.Sprintln("Unhandled signal : ", signal))
-			}
-		}
-	}
+	server.createDefaultSessionParam()
 }
 
 func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
-	// Start signal handler first
-	go server.SigHandler()
 	// Initialize BFD server from params file
 	server.InitServer(paramFile)
 	// Read BFD configurations already present in DB
@@ -473,12 +441,6 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 		case gConf := <-server.GlobalConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Global Configuration", gConf))
 			server.processGlobalConfig(gConf)
-		case ifConf := <-server.IntfConfigCh:
-			server.logger.Info(fmt.Sprintln("Received call for performing Intf Configuration", ifConf))
-			server.processIntfConfig(ifConf)
-		case ifIndex := <-server.IntfConfigDeleteCh:
-			server.logger.Info(fmt.Sprintln("Received call for performing Intf delete", ifIndex))
-			server.processIntfConfigDelete(ifIndex)
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:

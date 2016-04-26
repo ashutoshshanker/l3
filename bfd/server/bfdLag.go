@@ -136,7 +136,6 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 				EthernetType: layers.EthernetTypeIPv4,
 			}
 			ipLayer := &layers.IPv4{
-				SrcIP:    net.ParseIP(bfdSession.state.LocalIpAddr),
 				DstIP:    net.ParseIP(bfdSession.state.IpAddr),
 				Protocol: layers.IPProtocolUDP,
 			}

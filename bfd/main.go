@@ -7,9 +7,29 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"l3/bfd/rpc"
 	"l3/bfd/server"
+	"os"
+	"os/signal"
+	"syscall"
 	"utils/keepalive"
 	"utils/logging"
 )
+
+func SigHandler() {
+	sigChan := make(chan os.Signal, 1)
+	signalList := []os.Signal{syscall.SIGHUP}
+	signal.Notify(sigChan, signalList...)
+
+	for {
+		select {
+		case signal := <-sigChan:
+			switch signal {
+			case syscall.SIGHUP:
+				os.Exit(0)
+			default:
+			}
+		}
+	}
+}
 
 func main() {
 	fmt.Println("Starting bfd daemon")
@@ -31,6 +51,9 @@ func main() {
 
 	// Start keepalive routine
 	go keepalive.InitKeepAlive("bfdd", fileName)
+
+	// Start signal handler
+	go SigHandler()
 
 	dbName := fileName + "UsrConfDb.db"
 	fmt.Println("BFDd opening Config DB: ", dbName)
