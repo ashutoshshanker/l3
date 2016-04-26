@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
+	"l3/bgp/api"
 	"l3/bgp/config"
 	"l3/bgp/rpc"
 	"utils/logging"
@@ -38,9 +39,8 @@ func NewFSIntfMgr(logger *logging.Writer, fileName string) (*FSIntfMgr, error) {
 
 /*  Do any necessary init. Called from server..
  */
-func (mgr *FSIntfMgr) Init(ch chan config.IntfStateInfo) {
+func (mgr *FSIntfMgr) Init() {
 	mgr.asicdL3IntfSubSocket, _ = mgr.setupSubSocket(asicdConstDefs.PUB_SOCKET_ADDR)
-	mgr.serverCh = ch
 	go mgr.listenForAsicdEvents()
 }
 
@@ -61,7 +61,8 @@ func (mgr *FSIntfMgr) setupSubSocket(address string) (*nanomsg.SubSocket, error)
 	}
 
 	if _, err = socket.Connect(address); err != nil {
-		mgr.logger.Err(fmt.Sprintf("Failed to connect to publisher socket %s, error:%s", address, err))
+		mgr.logger.Err(fmt.Sprintf("Failed to connect to publisher socket %s, error:%s",
+			address, err))
 		return nil, err
 	}
 
@@ -104,18 +105,14 @@ func (mgr *FSIntfMgr) listenForAsicdEvents() {
 			}
 
 			mgr.logger.Info(fmt.Sprintf("Asicd L3INTF event idx %d ip %s state %d\n",
-				msg.IfIndex, msg.IpAddr,
-				msg.IfState))
-			info := config.IntfStateInfo{
-				Idx:    msg.IfIndex,
-				Ipaddr: msg.IpAddr,
-			}
+				msg.IfIndex, msg.IpAddr, msg.IfState))
 			if msg.IfState == asicdConstDefs.INTF_STATE_DOWN {
-				info.State = config.INTF_STATE_DOWN
+				api.SendIntfNotification(msg.IfIndex, msg.IpAddr,
+					config.INTF_STATE_DOWN)
 			} else {
-				info.State = config.INTF_STATE_UP
+				api.SendIntfNotification(msg.IfIndex, msg.IpAddr,
+					config.INTF_STATE_UP)
 			}
-			mgr.serverCh <- info
 		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
 	"l3/bfd/bfddCommonDefs"
+	"l3/bgp/api"
 	"l3/bgp/config"
 	"l3/bgp/rpc"
 	"utils/logging"
@@ -38,10 +39,9 @@ func NewFSBfdMgr(logger *logging.Writer, fileName string) (*FSBfdMgr, error) {
 
 /*  Do any necessary init. Called from server..
  */
-func (mgr *FSBfdMgr) Init(ch chan config.BfdInfo) {
+func (mgr *FSBfdMgr) Init() {
 	// create bfd sub socket listener
 	mgr.bfdSubSocket, _ = mgr.SetupSubSocket(bfddCommonDefs.PUB_SOCKET_ADDR)
-	mgr.serverCh = ch
 	go mgr.listenForBFDNotifications()
 }
 
@@ -52,7 +52,8 @@ func (mgr *FSBfdMgr) listenForBFDNotifications() {
 		mgr.logger.Info("Read on BFD subscriber socket...")
 		rxBuf, err := mgr.bfdSubSocket.Recv(0)
 		if err != nil {
-			mgr.logger.Err(fmt.Sprintln("Recv on BFD subscriber socket failed with error:", err))
+			mgr.logger.Err(fmt.Sprintln("Recv on BFD subscriber socket failed with error:",
+				err))
 			continue
 		}
 		mgr.logger.Info(fmt.Sprintln("BFD subscriber recv returned:", rxBuf))
@@ -67,16 +68,14 @@ func (mgr *FSBfdMgr) handleBfdNotifications(rxBuf []byte) {
 		mgr.logger.Err(fmt.Sprintf("Unmarshal BFD notification failed with err %s", err))
 		return
 	}
-	info := config.BfdInfo{
-		DestIp: bfd.DestIp,
-		State:  bfd.State,
-	}
+
 	if bfd.State {
-		info.Oper = config.BFD_STATE_VALID
+		api.SendBfdNotification(bfd.DestIp, bfd.State,
+			config.BFD_STATE_VALID)
 	} else {
-		info.Oper = config.BFD_STATE_INVALID
+		api.SendBfdNotification(bfd.DestIp, bfd.State,
+			config.BFD_STATE_INVALID)
 	}
-	mgr.serverCh <- info
 }
 
 func (mgr *FSBfdMgr) CreateBfdSession(ipAddr string) (bool, error) {
@@ -96,41 +95,6 @@ func (mgr *FSBfdMgr) DeleteBfdSession(ipAddr string) (bool, error) {
 	ret, err := mgr.bfddClient.CreateBfdSession(bfdSession)
 	return ret, err
 }
-
-/*
-func (mgr *FSBfdMgr) ProcessBfd(peer *server.Peer) {
-	bfdSession := bfdd.NewBfdSession()
-	bfdSession.IpAddr = peer.NeighborConf.Neighbor.NeighborAddress.String()
-	bfdSession.Owner = "bgp"
-	if peer.NeighborConf.RunningConf.BfdEnable {
-		mgr.logger.Info(fmt.Sprintln("Bfd enabled on :", peer.NeighborConf.Neighbor.NeighborAddress))
-		mgr.logger.Info(fmt.Sprintln("Creating BFD Session: ", bfdSession))
-		ret, err := mgr.bfddClient.CreateBfdSession(bfdSession)
-		if !ret {
-			mgr.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:", ret, "err:", err))
-		} else {
-			mgr.logger.Info("Bfd session configured")
-			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
-		}
-	} else {
-		if peer.NeighborConf.Neighbor.State.BfdNeighborState != "" {
-			mgr.logger.Info(fmt.Sprintln("Bfd disabled on :",
-				peer.NeighborConf.Neighbor.NeighborAddress))
-			mgr.logger.Info(fmt.Sprintln("Deleting BFD Session: ", bfdSession))
-			ret, err := mgr.bfddClient.DeleteBfdSession(bfdSession)
-			if !ret {
-				mgr.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:",
-					ret, "err:", err))
-			} else {
-				mgr.logger.Info(fmt.Sprintln("Bfd session removed for ",
-					peer.NeighborConf.Neighbor.NeighborAddress))
-				peer.NeighborConf.Neighbor.State.BfdNeighborState = ""
-			}
-		}
-	}
-
-}
-*/
 
 func (mgr *FSBfdMgr) SetupSubSocket(address string) (*nanomsg.SubSocket, error) {
 	var err error

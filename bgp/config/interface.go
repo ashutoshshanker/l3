@@ -3,7 +3,7 @@ package config
 /*  Port/Interface state change manager.
  */
 type IntfStateMgrIntf interface {
-	Init(chan IntfStateInfo)
+	Init()
 	PortStateChange()
 	GetIPv4Information(ifIndex int32) (string, error)
 	GetIfIndex(int, int) int32
@@ -27,7 +27,7 @@ type PolicyMgrIntf interface {
 /*  Interface for handling bfd state notifications
  */
 type BfdMgrIntf interface {
-	Init(chan BfdInfo)
+	Init()
 	CreateBfdSession(ipAddr string) (bool, error)
 	DeleteBfdSession(ipAddr string) (bool, error)
 }
