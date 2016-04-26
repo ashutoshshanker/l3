@@ -31,15 +31,6 @@ func main() {
 	// Start keepalive routine
 	go keepalive.InitKeepAlive("bfdd", fileName)
 
-	/*
-		dbName := fileName + "UsrConfDb.db"
-		fmt.Println("BFDd opening Config DB: ", dbName)
-		dbHdl, err := sql.Open("sqlite3", dbName)
-		if err != nil {
-			fmt.Println("Failed to open connection to DB. ", err, " Exiting!!")
-			return
-		}
-	*/
 	dbHdl, err := redis.Dial("tcp", ":6379")
 	if err != nil {
 		logger.Err("Failed to dial out to Redis server")
