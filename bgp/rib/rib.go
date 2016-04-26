@@ -40,7 +40,7 @@ func NewReachabilityInfo(nextHop string, nhIfType ribd.Int, nhIfIdx ribd.Int, me
 type AdjRib struct {
 	logger           *logging.Writer
 	gConf            *config.GlobalConfig
-	ribdClient       *ribd.RIBDServicesClient
+	routeMgr         config.RouteMgrIntf
 	destPathMap      map[string]*Destination
 	reachabilityMap  map[string]*ReachabilityInfo
 	unreachablePaths map[string]map[*Path]map[*Destination][]uint32
@@ -51,12 +51,12 @@ type AdjRib struct {
 	timer            *time.Timer
 }
 
-func NewAdjRib(logger *logging.Writer, ribdClient *ribd.RIBDServicesClient, gConf *config.GlobalConfig) *AdjRib {
-	//var route *ribdInt.IPv4Route
+func NewAdjRib(logger *logging.Writer, rMgr config.RouteMgrIntf,
+	gConf *config.GlobalConfig) *AdjRib {
 	rib := &AdjRib{
 		logger:           logger,
 		gConf:            gConf,
-		ribdClient:       ribdClient,
+		routeMgr:         rMgr,
 		destPathMap:      make(map[string]*Destination),
 		reachabilityMap:  make(map[string]*ReachabilityInfo),
 		unreachablePaths: make(map[string]map[*Path]map[*Destination][]uint32),
@@ -86,8 +86,10 @@ func (adjRib *AdjRib) GetReachabilityInfo(path *Path) *ReachabilityInfo {
 		return reachabilityInfo
 	}
 
-	adjRib.logger.Info(fmt.Sprintf("GetReachabilityInfo: Reachability info not cached for Next hop %s", ipStr))
-	ribdReachabilityInfo, err := adjRib.ribdClient.GetRouteReachabilityInfo(ipStr)
+	adjRib.logger.Info(fmt.Sprintf("GetReachabilityInfo: Reachability info not cached",
+		"for Next hop %s", ipStr))
+	ribdReachabilityInfo, err := adjRib.routeMgr.GetNextHopInfo(ipStr)
+	//ribdReachabilityInfo, err := adjRib.ribdClient.GetRouteReachabilityInfo(ipStr)
 	if err != nil {
 		adjRib.logger.Info(fmt.Sprintf("NEXT_HOP[%s] is not reachable", ipStr))
 		return nil

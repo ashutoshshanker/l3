@@ -2,8 +2,6 @@
 package server
 
 import (
-	_ "bytes"
-	_ "encoding/json"
 	"fmt"
 	"l3/bgp/api"
 	"l3/bgp/config"
@@ -12,7 +10,6 @@ import (
 	bgppolicy "l3/bgp/policy"
 	bgprib "l3/bgp/rib"
 	"net"
-	"ribd"
 	"runtime"
 	"strconv"
 	"sync"
@@ -53,7 +50,6 @@ type PolicyParams struct {
 type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
-	ribdClient       *ribd.RIBDServicesClient
 	BgpConfig        config.Bgp
 	GlobalConfigCh   chan config.GlobalConfig
 	AddPeerCh        chan PeerUpdate
@@ -111,8 +107,7 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.routeMgr = rMgr
 	bgpServer.policyMgr = pMgr
 	bgpServer.bfdMgr = bMgr
-	//@TODO: jgheewala change ribdClient with router interface.....
-	//bgpServer.AdjRib = bgprib.NewAdjRib(logger, ribdClient, &bgpServer.BgpConfig.Global.Config)
+	bgpServer.AdjRib = bgprib.NewAdjRib(logger, rMgr, &bgpServer.BgpConfig.Global.Config)
 	bgpServer.IfacePeerMap = make(map[int32][]string)
 	bgpServer.ifaceIP = nil
 	bgpServer.actionFuncMap = make(map[int]bgppolicy.PolicyActionFunc)
@@ -807,7 +802,7 @@ func (server *BGPServer) handleBfdNotifications(oper config.Operation, DestIp st
 func (server *BGPServer) setInterfaceMapForPeer(peerIP string, peer *Peer) {
 	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer,
 		"calling GetRouteReachabilityInfo"))
-	reachInfo, err := server.ribdClient.GetRouteReachabilityInfo(peerIP)
+	reachInfo, err := server.routeMgr.GetNextHopInfo(peerIP)
 	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer",
 		peer, "GetRouteReachabilityInfo returned", reachInfo))
 	if err != nil {
@@ -874,7 +869,6 @@ func (server *BGPServer) StartServer() {
 	// Channel for handling Interface notifications
 	intfCh := make(chan config.IntfStateInfo)
 	// Channel for handling route notifications
-	//routesCh := make(chan []*config.RouteInfo)
 	routesCh := make(chan config.RouteCh)
 
 	api.Init(bfdCh, intfCh, routesCh)
@@ -912,7 +906,8 @@ func (server *BGPServer) StartServer() {
 					server.logger.Info(fmt.Sprintln("Clean up peer",
 						oldPeer.NeighborAddress.String()))
 					peer.Cleanup()
-					server.ProcessRemoveNeighbor(oldPeer.NeighborAddress.String(), peer)
+					server.ProcessRemoveNeighbor(oldPeer.NeighborAddress.String(),
+						peer)
 					peer.UpdateNeighborConf(newPeer, &server.BgpConfig)
 
 					runtime.Gosched()
@@ -934,9 +929,11 @@ func (server *BGPServer) StartServer() {
 
 				var groupConfig *config.PeerGroupConfig
 				if newPeer.PeerGroup != "" {
-					if group, ok := server.BgpConfig.PeerGroups[newPeer.PeerGroup]; !ok {
+					if group, ok :=
+						server.BgpConfig.PeerGroups[newPeer.PeerGroup]; !ok {
 						server.logger.Info(fmt.Sprintln("Peer group",
-							newPeer.PeerGroup, "not created yet, creating peer",
+							newPeer.PeerGroup,
+							"not created yet, creating peer",
 							newPeer.NeighborAddress.String(),
 							"without the group"))
 					} else {
@@ -945,7 +942,8 @@ func (server *BGPServer) StartServer() {
 				}
 				server.logger.Info(fmt.Sprintln("Add neighbor, ip:",
 					newPeer.NeighborAddress.String()))
-				peer = NewPeer(server, &server.BgpConfig.Global.Config, groupConfig, newPeer)
+				peer = NewPeer(server, &server.BgpConfig.Global.Config,
+					groupConfig, newPeer)
 				server.PeerMap[newPeer.NeighborAddress.String()] = peer
 				server.NeighborMutex.Lock()
 				server.addPeerToList(peer)
@@ -1027,8 +1025,8 @@ func (server *BGPServer) StartServer() {
 			peer.Command(peerCommand.Command, fsm.BGPCmdReasonNone)
 
 		case peerFSMConn := <-server.PeerFSMConnCh:
-			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM established/broken channel\n",
-				peerFSMConn.PeerIP))
+			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM established/broken",
+				"channel\n", peerFSMConn.PeerIP))
 			peer, ok := server.PeerMap[peerFSMConn.PeerIP]
 			if !ok {
 				server.logger.Info(fmt.Sprintf("Failed to process FSM connection",
@@ -1061,36 +1059,42 @@ func (server *BGPServer) StartServer() {
 			}
 
 		case peerIP := <-server.PeerConnEstCh:
-			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection established", peerIP))
+			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection",
+				"established", peerIP))
 			peer, ok := server.PeerMap[peerIP]
 			if !ok {
-				server.logger.Info(fmt.Sprintf("Failed to process FSM connection success,",
+				server.logger.Info(fmt.Sprintf("Failed to process FSM",
+					"connection success,",
 					"Peer %s does not exist", peerIP))
 				break
 			}
-
-			reachInfo, err := server.ribdClient.GetRouteReachabilityInfo(peerIP)
+			reachInfo, err := server.routeMgr.GetNextHopInfo(peerIP)
 			if err != nil {
-				server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
+				server.logger.Info(fmt.Sprintf(
+					"Server: Peer %s is not reachable", peerIP))
 			} else {
 				// @TODO: jgheewala think of something better for ovsdb....
 				ifIdx := server.IntfMgr.GetIfIndex(int(reachInfo.NextHopIfIndex),
 					int(reachInfo.NextHopIfType))
-				server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d", peerIP, ifIdx))
+				server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d",
+					peerIP, ifIdx))
 				if _, ok := server.IfacePeerMap[ifIdx]; !ok {
 					server.IfacePeerMap[ifIdx] = make([]string, 0)
 				}
-				server.IfacePeerMap[ifIdx] = append(server.IfacePeerMap[ifIdx], peerIP)
+				server.IfacePeerMap[ifIdx] = append(server.IfacePeerMap[ifIdx],
+					peerIP)
 				peer.setIfIdx(ifIdx)
 			}
 
 			server.SendAllRoutesToPeer(peer)
 
 		case peerIP := <-server.PeerConnBrokenCh:
-			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection broken", peerIP))
+			server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection broken",
+				peerIP))
 			peer, ok := server.PeerMap[peerIP]
 			if !ok {
-				server.logger.Info(fmt.Sprintf("Failed to process FSM connection failure,",
+				server.logger.Info(fmt.Sprintf("Failed to process FSM",
+					"connection failure,",
 					"Peer %s does not exist", peerIP))
 				break
 			}
@@ -1121,7 +1125,8 @@ func (server *BGPServer) StartServer() {
 		case reachabilityInfo := <-server.ReachabilityCh:
 			server.logger.Info(fmt.Sprintln("Server: Reachability info for ip",
 				reachabilityInfo.IP))
-			_, err := server.ribdClient.GetRouteReachabilityInfo(reachabilityInfo.IP)
+
+			_, err := server.routeMgr.GetNextHopInfo(reachabilityInfo.IP)
 			if err != nil {
 				reachabilityInfo.ReachableCh <- false
 			} else {

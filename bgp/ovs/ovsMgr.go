@@ -2,6 +2,7 @@ package ovsMgr
 
 import (
 	"fmt"
+	"l3/bgp/config"
 )
 
 type OvsIntfMgr struct {
@@ -98,4 +99,8 @@ func (mgr *OvsBfdMgr) CreateBfdSession(ipAddr string) (bool, error) {
 
 func (mgr *OvsBfdMgr) DeleteBfdSession(ipAddr string) (bool, error) {
 	return true, nil
+}
+
+func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error) {
+	return nil, nil
 }
