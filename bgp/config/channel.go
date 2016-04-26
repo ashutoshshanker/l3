@@ -44,3 +44,13 @@ type RouteCh struct {
 	Add    []*RouteInfo
 	Remove []*RouteInfo
 }
+
+type NextHopInfo struct {
+	Ipaddr         string
+	Mask           string
+	Metric         int
+	IsReachable    bool
+	NextHopIp      string
+	NextHopIfType  int
+	NextHopIfIndex int
+}

@@ -4,7 +4,6 @@ import (
 	"asicdServices"
 	"bfdd"
 	"errors"
-	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
 	"l3/bgp/rpc"
 	"ribd"
@@ -81,14 +80,6 @@ func NewFSRouteMgr(logger *logging.Writer, fileName string) (*FSRouteMgr, error)
 	}
 
 	return mgr, nil
-}
-
-func (mgr *FSRouteMgr) CreateRoute() {
-	fmt.Println("Create Route called in", mgr.plugin)
-}
-
-func (mgr *FSRouteMgr) DeleteRoute() {
-
 }
 
 func (mgr *FSPolicyMgr) AddPolicy() {

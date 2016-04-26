@@ -12,9 +12,10 @@ type IntfStateMgrIntf interface {
 /*  Adding routes to rib/switch/linux interface
  */
 type RouteMgrIntf interface {
+	Init()
+	GetNextHopInfo(ipAddr string) (*NextHopInfo, error)
 	CreateRoute()
 	DeleteRoute()
-	Init()
 }
 
 /*  Interface for handling policy related operations

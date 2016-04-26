@@ -58,7 +58,6 @@ func (mgr *FSRouteMgr) listenForRIBUpdates(socket *nanomsg.SubSocket) {
 		if err != nil {
 			mgr.logger.Err(fmt.Sprintln("Recv on RIB subscriber socket",
 				"failed with error:", err))
-			//			socketErrCh <- err
 			continue
 		}
 		mgr.logger.Info(fmt.Sprintln("RIB subscriber recv returned:", rxBuf))
@@ -92,11 +91,13 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 	for err := decoder.Decode(&msg); err == nil; err = decoder.Decode(&msg) {
 		err = json.Unmarshal(msg.MsgBuf, &routeListInfo)
 		if err != nil {
-			mgr.logger.Err(fmt.Sprintf("Unmarshal RIB route update failed with err %s", err))
+			mgr.logger.Err(fmt.Sprintf(
+				"Unmarshal RIB route update failed with err %s", err))
 		}
 		mgr.logger.Info(fmt.Sprintln(updateMsg, "connected route, dest:",
 			routeListInfo.RouteInfo.Ipaddr, "netmask:",
-			routeListInfo.RouteInfo.Mask, "nexthop:", routeListInfo.RouteInfo.NextHopIp))
+			routeListInfo.RouteInfo.Mask, "nexthop:",
+			routeListInfo.RouteInfo.NextHopIp))
 		routes = append(routes, mgr.populateConfigRoute(&routeListInfo.RouteInfo))
 	}
 
@@ -147,4 +148,16 @@ func (mgr *FSRouteMgr) processRoutesFromRIB() {
 		}
 		currMarker = ribdInt.Int(getBulkInfo.EndIdx)
 	}
+}
+
+func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error) {
+	return nil, nil
+}
+
+func (mgr *FSRouteMgr) CreateRoute() {
+	fmt.Println("Create Route called in", mgr.plugin)
+}
+
+func (mgr *FSRouteMgr) DeleteRoute() {
+
 }
