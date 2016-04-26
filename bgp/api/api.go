@@ -2,6 +2,7 @@ package api
 
 import (
 	"l3/bgp/config"
+	"sync"
 )
 
 type ApiLayer struct {
@@ -10,12 +11,22 @@ type ApiLayer struct {
 }
 
 var bgpapi *ApiLayer = nil
+var once sync.Once
+
+/*  Singleton instance should be accesible only within api
+ */
+func getInstance() *ApiLayer {
+	once.Do(func() {
+		bgpapi = &ApiLayer{}
+	})
+	return bgpapi
+}
 
 /*  Initialize bgp api layer with the channels that will be used for communicating
  *  with the server
  */
 func Init(bfdCh chan config.BfdInfo, intfCh chan config.IntfStateInfo) {
-	bgpapi = new(ApiLayer)
+	bgpapi = getInstance()
 	bgpapi.bfdCh = bfdCh
 	bgpapi.intfCh = intfCh
 }
