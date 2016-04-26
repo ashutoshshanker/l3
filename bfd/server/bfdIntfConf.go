@@ -56,9 +56,6 @@ func (server *BFDServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg) {
 		server.logger.Err("No such inteface exists")
 		return
 	}
-	if server.bfdGlobal.Enabled {
-		server.StopSendRecvPkts(msg.IfId)
-	}
 	delete(server.bfdGlobal.Interfaces, msg.IfId)
 	for i = 0; i < len(server.bfdGlobal.InterfacesIdSlice); i++ {
 		if server.bfdGlobal.InterfacesIdSlice[i] == msg.IfId {
@@ -83,53 +80,5 @@ func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {
 		intf.conf.AuthenticationKeyId = ifConf.AuthenticationKeyId
 		intf.conf.AuthenticationData = ifConf.AuthenticationData
 		server.UpdateBfdSessionsOnInterface(intf.conf.InterfaceId)
-	}
-}
-
-func (server *BFDServer) processIntfConfig(ifConf IntfConfig) {
-	intf, exist := server.bfdGlobal.Interfaces[ifConf.InterfaceId]
-	if !exist {
-		server.logger.Err("No such BFD interface exists")
-		return
-	}
-	if server.bfdGlobal.Enabled {
-		server.StartSendRecvPkts(intf.conf.InterfaceId)
-	} else {
-		server.StopSendRecvPkts(intf.conf.InterfaceId)
-	}
-	server.updateIPIntfConfMap(ifConf)
-}
-
-func (server *BFDServer) processIntfConfigDelete(ifIndex int32) {
-	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
-	if !exist {
-		server.logger.Err("No such BFD interface exists")
-		return
-	}
-	if server.bfdGlobal.Enabled {
-		server.StopSendRecvPkts(intf.conf.InterfaceId)
-	}
-	server.UpdateBfdSessionsOnInterface(intf.conf.InterfaceId)
-}
-
-func (server *BFDServer) StopSendRecvPkts(ifIndex int32) {
-	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
-	if exist {
-		wasDisabled := (intf.Enabled == false)
-		intf.Enabled = false
-		if !wasDisabled {
-			server.bfdGlobal.NumInterfaces--
-		}
-	}
-}
-
-func (server *BFDServer) StartSendRecvPkts(ifIndex int32) {
-	intf, exist := server.bfdGlobal.Interfaces[ifIndex]
-	if exist {
-		wasEnabled := (intf.Enabled == true)
-		intf.Enabled = true
-		if !wasEnabled {
-			server.bfdGlobal.NumInterfaces++
-		}
 	}
 }
