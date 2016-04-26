@@ -14,8 +14,8 @@ type IntfStateMgrIntf interface {
 type RouteMgrIntf interface {
 	Init()
 	GetNextHopInfo(ipAddr string) (*NextHopInfo, error)
-	CreateRoute()
-	DeleteRoute()
+	CreateRoute(*RouteConfig)
+	DeleteRoute(*RouteConfig)
 }
 
 /*  Interface for handling policy related operations
