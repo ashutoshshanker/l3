@@ -48,9 +48,9 @@ type RouteCh struct {
 type NextHopInfo struct {
 	Ipaddr         string
 	Mask           string
-	Metric         int
-	IsReachable    bool
+	Metric         int32
 	NextHopIp      string
-	NextHopIfType  int
-	NextHopIfIndex int
+	IsReachable    bool
+	NextHopIfType  int32
+	NextHopIfIndex int32
 }

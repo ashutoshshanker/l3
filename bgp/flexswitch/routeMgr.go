@@ -151,7 +151,20 @@ func (mgr *FSRouteMgr) processRoutesFromRIB() {
 }
 
 func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error) {
-	return nil, nil
+	info, err := mgr.ribdClient.GetRouteReachabilityInfo(ipAddr)
+	reachInfo := &config.NextHopInfo{
+		Ipaddr:         info.Ipaddr,
+		Mask:           info.Mask,
+		Metric:         int32(info.Metric),
+		NextHopIp:      info.NextHopIp,
+		IsReachable:    info.IsReachable,
+		NextHopIfType:  int32(info.NextHopIfType),
+		NextHopIfIndex: int32(info.NextHopIfIndex),
+	}
+	if err != nil {
+		return reachInfo, err
+	}
+	return reachInfo, err
 }
 
 func (mgr *FSRouteMgr) createRibdIPv4RouteCfg(cfg *config.RouteConfig,
