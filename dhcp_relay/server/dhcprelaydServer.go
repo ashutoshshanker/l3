@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 	"utils/ipcutils"
@@ -232,7 +233,6 @@ func DhcpRelayAgentUpdateIntfIpAddr(ifIndexList []int32) {
 			" Ip address:", gblEntry.IpAddr,
 			" netmask:", gblEntry.Netmask))
 	}
-	dhcprelayDbHdl.Close()
 }
 
 func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
@@ -265,6 +265,24 @@ func DhcpRelayGetClient(logger *logging.Writer, fileName string,
 		}
 	}
 	return nil, errors.New("couldn't find dhcprelay port info")
+}
+
+func DhcpRelayGlobalInit(enable bool) {
+	if enable {
+		if dhcprelayRefCountMutex == nil {
+			dhcprelayRefCountMutex = &sync.RWMutex{}
+			dhcprelayEnabledIntfRefCount = 0
+		}
+		dhcprelayEnable = enable
+		if dhcprelayClientConn != nil {
+			logger.Info("DRA: no need to create pcap as its already created")
+			return
+		} else {
+			DhcpRelayAgentCreateClientServerConn()
+		}
+	} else {
+		dhcprelayEnable = enable
+	}
 }
 
 func StartServer(log *logging.Writer, handler *DhcpRelayServiceHandler, params string) error {

@@ -374,7 +374,9 @@ func (server *OSPFServer) floodSummaryLsa(pkt []byte, areaid uint32) {
 */
 func (server *OSPFServer) processAsExternalLSAFlood(lsakey LsaKey) {
 	areaId := convertAreaOrRouterIdUint32("0.0.0.0")
-
+	for ent, _ := range server.AreaConfMap {
+		areaId = convertAreaOrRouterIdUint32(string(ent.AreaId))
+	}
 	var lsaEncPkt []byte
 	LsaEnc := []byte{}
 
