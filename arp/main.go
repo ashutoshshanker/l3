@@ -19,12 +19,11 @@ func main() {
 	}
 
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(fileName, "arpd", "ARP")
+	logger, err := logging.NewLogger("arpd", "ARP", true)
 	if err != nil {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
 	}
-	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
 
 	// Start keepalive routine

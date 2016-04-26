@@ -3,11 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"utils/keepalive"
-	"utils/logging"
 	"l3/rib/rpc"
 	"l3/rib/server"
 	"github.com/garyburd/redigo/redis"
+	"utils/keepalive"
+	"utils/logging"
 )
 
 func main() {
@@ -20,12 +20,11 @@ func main() {
 	}
 
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(fileName, "ribd", "RIB")
+	logger, err := logging.NewLogger("ribd", "RIB", true)
 	if err != nil {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
 	}
-	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
 
 	// Start keepalive routine
@@ -36,8 +35,7 @@ func main() {
 		logger.Err("Failed to dial out to Redis server")
 		return
 	}
-
-	routeServer := server.NewRIBDServicesHandler(dbHdl,logger)
+	routeServer := server.NewRIBDServicesHandler(dbHdl, logger)
 	if routeServer == nil {
 		logger.Println("routeServer nil")
 		return
@@ -54,6 +52,6 @@ func main() {
 		logger.Err(fmt.Sprintln("Exiting!!"))
 		return
 	}
-	ribdServicesHandler := rpc.NewRIBdHandler(logger,routeServer)
-	rpc.NewRIBdRPCServer(logger,ribdServicesHandler,fileName)
+	ribdServicesHandler := rpc.NewRIBdHandler(logger, routeServer)
+	rpc.NewRIBdRPCServer(logger, ribdServicesHandler, fileName)
 }

@@ -15,21 +15,7 @@ import (
 func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobal(
 	config *dhcprelayd.DhcpRelayGlobal) (bool, error) {
 
-	if config.Enable {
-		if dhcprelayRefCountMutex == nil {
-			dhcprelayRefCountMutex = &sync.RWMutex{}
-			dhcprelayEnabledIntfRefCount = 0
-		}
-		dhcprelayEnable = config.Enable
-		if dhcprelayClientConn != nil {
-			logger.Info("DRA: no need to create pcap as its already created")
-			return true, nil
-		} else {
-			DhcpRelayAgentCreateClientServerConn()
-		}
-	} else {
-		dhcprelayEnable = config.Enable
-	}
+	DhcpRelayGlobalInit(config.Enable)
 	return true, nil
 }
 
