@@ -1,35 +1,14 @@
 package main
 
 import (
-	"database/sql"
 	"flag"
 	"fmt"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/garyburd/redigo/redis"
 	"l3/bfd/rpc"
 	"l3/bfd/server"
-	"os"
-	"os/signal"
-	"syscall"
 	"utils/keepalive"
 	"utils/logging"
 )
-
-func SigHandler() {
-	sigChan := make(chan os.Signal, 1)
-	signalList := []os.Signal{syscall.SIGHUP}
-	signal.Notify(sigChan, signalList...)
-
-	for {
-		select {
-		case signal := <-sigChan:
-			switch signal {
-			case syscall.SIGHUP:
-				os.Exit(0)
-			default:
-			}
-		}
-	}
-}
 
 func main() {
 	fmt.Println("Starting bfd daemon")
@@ -52,31 +31,24 @@ func main() {
 	// Start keepalive routine
 	go keepalive.InitKeepAlive("bfdd", fileName)
 
-	// Start signal handler
-	go SigHandler()
-
-	dbName := fileName + "UsrConfDb.db"
-	fmt.Println("BFDd opening Config DB: ", dbName)
-	dbHdl, err := sql.Open("sqlite3", dbName)
+	dbHdl, err := redis.Dial("tcp", ":6379")
 	if err != nil {
-		fmt.Println("Failed to open connection to DB. ", err, " Exiting!!")
+		logger.Err("Failed to dial out to Redis server")
 		return
 	}
+
 	clientsFileName := fileName + "clients.json"
 
 	logger.Info(fmt.Sprintln("Starting BFD Server..."))
 	bfdServer := server.NewBFDServer(logger)
+	// Start signal handler
+	go bfdServer.SigHandler(dbHdl)
+	// Start bfd server
 	go bfdServer.StartServer(clientsFileName, dbHdl)
-	logger.Info(fmt.Sprintln("Waiting for BFD server to come up"))
-	up := <-bfdServer.ServerUpCh
-	dbHdl.Close()
-	logger.Info(fmt.Sprintln("BFD server is up: ", up))
-	if !up {
-		logger.Err(fmt.Sprintln("Exiting!!"))
-		return
-	}
 
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewBFDHandler(logger, bfdServer)
+	// Read BFD configurations already present in DB
+	confIface.ReadConfigFromDB(dbHdl)
 	rpc.StartServer(logger, confIface, clientsFileName)
 }
