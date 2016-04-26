@@ -53,11 +53,11 @@ func NewOvsBfdMgr() *OvsBfdMgr {
 	return mgr
 }
 
-func (mgr *OvsRouteMgr) CreateRoute() {
+func (mgr *OvsRouteMgr) CreateRoute(cfg *config.RouteConfig) {
 	fmt.Println("Create Route called in", mgr.plugin)
 }
 
-func (mgr *OvsRouteMgr) DeleteRoute() {
+func (mgr *OvsRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
 
 }
 

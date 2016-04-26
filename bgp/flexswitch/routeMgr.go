@@ -9,7 +9,7 @@ import (
 	"l3/bgp/config"
 	_ "l3/bgp/packet"
 	"l3/rib/ribdCommonDefs"
-	_ "ribd"
+	"ribd"
 	"ribdInt"
 )
 
@@ -154,10 +154,31 @@ func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error
 	return nil, nil
 }
 
-func (mgr *FSRouteMgr) CreateRoute() {
-	fmt.Println("Create Route called in", mgr.plugin)
+func (mgr *FSRouteMgr) createRibdIPv4RouteCfg(cfg *config.RouteConfig,
+	create bool) *ribd.IPv4Route {
+	nextHopIfTypeStr := ""
+	if create {
+		nextHopIfTypeStr, _ = ribdCommonDefs.GetNextHopIfTypeStr(
+			ribdInt.Int(cfg.IntfType))
+	}
+	rCfg := ribd.IPv4Route{
+		Cost:              cfg.Cost,
+		Protocol:          cfg.Protocol,
+		NextHopIp:         cfg.NextHopIp,
+		NetworkMask:       cfg.NetworkMask,
+		DestinationNw:     cfg.DestinationNw,
+		OutgoingIntfType:  nextHopIfTypeStr,
+		OutgoingInterface: cfg.OutgoingInterface,
+	}
+	return &rCfg
 }
 
-func (mgr *FSRouteMgr) DeleteRoute() {
+func (mgr *FSRouteMgr) CreateRoute(cfg *config.RouteConfig) {
+	mgr.ribdClient.OnewayCreateIPv4Route(mgr.createRibdIPv4RouteCfg(cfg,
+		true /*create*/))
+}
 
+func (mgr *FSRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
+	mgr.ribdClient.OnewayDeleteIPv4Route(mgr.createRibdIPv4RouteCfg(cfg,
+		false /*delete*/))
 }
