@@ -1,14 +1,16 @@
 package FSMgr
 
 import (
-	_ "bytes"
-	_ "encoding/json"
+	"bytes"
+	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
+	"l3/bgp/api"
+	"l3/bgp/config"
 	_ "l3/bgp/packet"
 	"l3/rib/ribdCommonDefs"
 	_ "ribd"
-	_ "ribdInt"
+	"ribdInt"
 )
 
 func (mgr *FSRouteMgr) Init() {
@@ -16,7 +18,7 @@ func (mgr *FSRouteMgr) Init() {
 	mgr.ribSubBGPSocket, _ = mgr.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go mgr.listenForRIBUpdates(mgr.ribSubSocket)
 	go mgr.listenForRIBUpdates(mgr.ribSubBGPSocket)
-	//mgr.processRoutesFromRIB()
+	mgr.processRoutesFromRIB()
 }
 
 func (mgr *FSRouteMgr) setupSubSocket(address string) (*nanomsg.SubSocket, error) {
@@ -60,17 +62,25 @@ func (mgr *FSRouteMgr) listenForRIBUpdates(socket *nanomsg.SubSocket) {
 			continue
 		}
 		mgr.logger.Info(fmt.Sprintln("RIB subscriber recv returned:", rxBuf))
-		//socketCh <- rxBuf
-		//@TODO: right now update is treated as blocking call...
-		//will need to make it as channel?
-		//mgr.handleRibUpdates(rxBuf)
+		mgr.handleRibUpdates(rxBuf)
 	}
 }
 
-/*
+func (mgr *FSRouteMgr) populateConfigRoute(route *ribdInt.Routes) *config.RouteInfo {
+	rv := &config.RouteInfo{
+		Ipaddr:           route.Ipaddr,
+		Mask:             route.Mask,
+		NextHopIp:        route.NextHopIp,
+		Prototype:        int(route.Prototype),
+		NetworkStatement: route.NetworkStatement,
+		RouteOrigin:      route.RouteOrigin,
+	}
+	return rv
+}
+
 func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 	var routeListInfo ribdCommonDefs.RoutelistInfo
-	routes := make([]*ribdInt.Routes, 0)
+	routes := make([]*config.RouteInfo, 0)
 	reader := bytes.NewReader(rxBuf)
 	decoder := json.NewDecoder(reader)
 	msg := ribdCommonDefs.RibdNotifyMsg{}
@@ -87,14 +97,14 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 		mgr.logger.Info(fmt.Sprintln(updateMsg, "connected route, dest:",
 			routeListInfo.RouteInfo.Ipaddr, "netmask:",
 			routeListInfo.RouteInfo.Mask, "nexthop:", routeListInfo.RouteInfo.NextHopIp))
-		routes = append(routes, &routeListInfo.RouteInfo)
+		routes = append(routes, mgr.populateConfigRoute(&routeListInfo.RouteInfo))
 	}
 
 	if len(routes) > 0 {
 		if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
-			mgr.ProcessConnectedRoutes(routes, make([]*ribdInt.Routes, 0))
+			api.SendRouteNotification(routes, nil)
 		} else if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-			mgr.ProcessConnectedRoutes(make([]*ribdInt.Routes, 0), routes)
+			api.SendRouteNotification(nil, routes)
 		} else {
 			mgr.logger.Err(fmt.Sprintf("**** Received RIB update with ",
 				"unknown type %d ****", msg.MsgType))
@@ -125,7 +135,12 @@ func (mgr *FSRouteMgr) processRoutesFromRIB() {
 		mgr.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ",
 			len(getBulkInfo.RouteList), " num objects returned = ",
 			getBulkInfo.Count))
-		mgr.ProcessConnectedRoutes(getBulkInfo.RouteList, make([]*ribdInt.Routes, 0))
+		routes := make([]*config.RouteInfo, len(getBulkInfo.RouteList))
+		for idx, _ := range getBulkInfo.RouteList {
+			routes = append(routes,
+				mgr.populateConfigRoute(getBulkInfo.RouteList[idx]))
+		}
+		api.SendRouteNotification(routes, nil) //make([]*ribdInt.Routes, 0))
 		if getBulkInfo.More == false {
 			mgr.logger.Info("more returned as false, so no more get bulks")
 			return
@@ -133,32 +148,3 @@ func (mgr *FSRouteMgr) processRoutesFromRIB() {
 		currMarker = ribdInt.Int(getBulkInfo.EndIdx)
 	}
 }
-
-func (mgr *FSRouteMgr) ProcessConnectedRoutes(installedRoutes []*ribdInt.Routes,
-	withdrawnRoutes []*ribdInt.Routes) {
-	mgr.logger.Info(fmt.Sprintln("valid routes:", installedRoutes,
-		"invalid routes:", withdrawnRoutes))
-	valid := mgr.convertDestIPToIPPrefix(installedRoutes)
-	invalid := mgr.convertDestIPToIPPrefix(withdrawnRoutes)
-	updated, withdrawn, withdrawPath, updatedAddPaths :=
-		mgr.Server.AdjRib.ProcessConnectedRoutes(
-			mgr.Server.BgpConfig.Global.Config.RouterId.String(),
-			mgr.Server.ConnRoutesPath, valid,
-			invalid, mgr.Server.AddPathCount)
-	updated, withdrawn, withdrawPath, updatedAddPaths =
-		mgr.Server.CheckForAggregation(updated, withdrawn, withdrawPath,
-			updatedAddPaths)
-	mgr.Server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
-}
-
-func (mgr *FSRouteMgr) convertDestIPToIPPrefix(routes []*ribdInt.Routes) []packet.NLRI {
-	dest := make([]packet.NLRI, 0, len(routes))
-	for _, r := range routes {
-		mgr.logger.Info(fmt.Sprintln("Route NS : ", r.NetworkStatement,
-			" Route Origin ", r.RouteOrigin))
-		ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
-		dest = append(dest, ipPrefix)
-	}
-	return dest
-}
-*/

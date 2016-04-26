@@ -659,6 +659,32 @@ func (server *BGPServer) ProcessUpdate(pktInfo *packet.BGPPktSrc) {
 	server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
 }
 
+func (server *BGPServer) convertDestIPToIPPrefix(routes []*config.RouteInfo) []packet.NLRI {
+	dest := make([]packet.NLRI, 0, len(routes))
+	for _, r := range routes {
+		server.logger.Info(fmt.Sprintln("Route NS : ",
+			r.NetworkStatement, " Route Origin ", r.RouteOrigin))
+		ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
+		dest = append(dest, ipPrefix)
+	}
+	return dest
+}
+
+func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*config.RouteInfo,
+	withdrawnRoutes []*config.RouteInfo) {
+	server.logger.Info(fmt.Sprintln("valid routes:", installedRoutes,
+		"invalid routes:", withdrawnRoutes))
+	valid := server.convertDestIPToIPPrefix(installedRoutes)
+	invalid := server.convertDestIPToIPPrefix(withdrawnRoutes)
+	updated, withdrawn, withdrawPath, updatedAddPaths := server.AdjRib.ProcessConnectedRoutes(
+		server.BgpConfig.Global.Config.RouterId.String(),
+		server.ConnRoutesPath, valid, invalid, server.AddPathCount)
+	updated, withdrawn, withdrawPath, updatedAddPaths =
+		server.CheckForAggregation(updated, withdrawn, withdrawPath,
+			updatedAddPaths)
+	server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
+}
+
 func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
 	updated, withdrawn, withdrawPath, updatedAddPaths := server.AdjRib.RemoveUpdatesFromNeighbor(peerIp,
 		peer.NeighborConf, server.AddPathCount)
@@ -847,8 +873,11 @@ func (server *BGPServer) StartServer() {
 	bfdCh := make(chan config.BfdInfo)
 	// Channel for handling Interface notifications
 	intfCh := make(chan config.IntfStateInfo)
+	// Channel for handling route notifications
+	//routesCh := make(chan []*config.RouteInfo)
+	routesCh := make(chan config.RouteCh)
 
-	api.Init(bfdCh, intfCh)
+	api.Init(bfdCh, intfCh, routesCh)
 	server.IntfMgr.Init()
 	server.routeMgr.Init()
 	server.bfdMgr.Init()
@@ -1110,7 +1139,8 @@ func (server *BGPServer) StartServer() {
 					}
 				}
 			}
-
+		case routeInfo := <-routesCh:
+			server.ProcessConnectedRoutes(routeInfo.Add, routeInfo.Remove)
 		}
 	}
 }
