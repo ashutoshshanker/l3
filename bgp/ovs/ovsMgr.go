@@ -89,7 +89,7 @@ func (mgr *OvsIntfMgr) GetIfIndex(ifIndex, ifType int) int32 {
 	return 1
 }
 
-func (mgr *OvsBfdMgr) Init(ch chan config.BfdInfo) {
+func (mgr *OvsBfdMgr) Init() {
 
 }
 

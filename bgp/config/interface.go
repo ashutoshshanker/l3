@@ -27,7 +27,7 @@ type PolicyMgrIntf interface {
 /*  Interface for handling bfd state notifications
  */
 type BfdMgrIntf interface {
-	Init(chan BfdInfo)
+	Init()
 	CreateBfdSession(ipAddr string) (bool, error)
 	DeleteBfdSession(ipAddr string) (bool, error)
 }

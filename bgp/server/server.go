@@ -5,6 +5,7 @@ import (
 	_ "bytes"
 	_ "encoding/json"
 	"fmt"
+	"l3/bgp/api"
 	"l3/bgp/config"
 	"l3/bgp/fsm"
 	"l3/bgp/packet"
@@ -205,22 +206,26 @@ func (server *BGPServer) getAggPrefix(conditionsList []interface{}) *packet.IPPr
 			server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix -",
 				"PolicyConditionTypeDstIpPrefixMatch case"))
 			matchPrefix := condition.(utilspolicy.MatchPrefixConditionInfo)
-			server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - exact prefix match conditiontype"))
+			server.logger.Info(fmt.Sprintln(
+				"BGPServer:getAggPrefix - exact prefix match conditiontype"))
 			ipPrefix, err = packet.ConstructIPPrefixFromCIDR(matchPrefix.Prefix.IpPrefix)
 			if err != nil {
-				server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - ipPrefix invalid "))
+				server.logger.Info(fmt.Sprintln(
+					"BGPServer:getAggPrefix - ipPrefix invalid "))
 				return nil
 			}
 			break
 		default:
-			server.logger.Info(fmt.Sprintln("BGPServer:getAggPrefix - Not a known condition type"))
+			server.logger.Info(fmt.Sprintln(
+				"BGPServer:getAggPrefix - Not a known condition type"))
 			break
 		}
 	}
 	return ipPrefix
 }
 
-func (server *BGPServer) setUpdatedAddPaths(policyParams *PolicyParams, updatedAddPaths []*bgprib.Destination) {
+func (server *BGPServer) setUpdatedAddPaths(policyParams *PolicyParams,
+	updatedAddPaths []*bgprib.Destination) {
 	if len(updatedAddPaths) > 0 {
 		addPathsMap := make(map[*bgprib.Destination]bool)
 		for _, dest := range *(policyParams.updatedAddPaths) {
@@ -229,7 +234,8 @@ func (server *BGPServer) setUpdatedAddPaths(policyParams *PolicyParams, updatedA
 
 		for _, dest := range updatedAddPaths {
 			if !addPathsMap[dest] {
-				(*policyParams.updatedAddPaths) = append((*policyParams.updatedAddPaths), dest)
+				(*policyParams.updatedAddPaths) =
+					append((*policyParams.updatedAddPaths), dest)
 			}
 		}
 	}
@@ -279,7 +285,8 @@ func (server *BGPServer) setWithdrawnWithAggPaths(policyParams *PolicyParams, wi
 		} else if policyParams.CreateType == utilspolicy.Invalid {
 			if policyParams.dest != nil && policyParams.dest.LocRibPath != nil {
 				found := false
-				if destinations, ok := (*policyParams.updated)[policyParams.dest.LocRibPath]; ok {
+				if destinations, ok :=
+					(*policyParams.updated)[policyParams.dest.LocRibPath]; ok {
 					for _, dest := range destinations {
 						if dest == policyParams.dest {
 							found = true
@@ -840,9 +847,11 @@ func (server *BGPServer) StartServer() {
 	bfdCh := make(chan config.BfdInfo)
 	// Channel for handling Interface notifications
 	intfCh := make(chan config.IntfStateInfo)
+
+	api.Init(bfdCh, intfCh)
 	server.IntfMgr.Init(intfCh)
 	server.routeMgr.Init()
-	server.bfdMgr.Init(bfdCh)
+	server.bfdMgr.Init()
 
 	for {
 		select {

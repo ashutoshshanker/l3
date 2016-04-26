@@ -44,7 +44,6 @@ type FSPolicyMgr struct {
  */
 type FSBfdMgr struct {
 	plugin       string
-	serverCh     chan config.BfdInfo //[]byte
 	logger       *logging.Writer
 	bfddClient   *bfdd.BFDDServicesClient
 	bfdSubSocket *nanomsg.SubSocket
