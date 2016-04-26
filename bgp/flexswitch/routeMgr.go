@@ -103,10 +103,8 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 	if len(routes) > 0 {
 		if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
 			api.SendRouteNotification(routes, nil)
-			//	mgr.ProcessConnectedRoutes(routes, nil) //make([]*ribdInt.Routes, 0))
 		} else if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
 			api.SendRouteNotification(nil, routes)
-			//	mgr.ProcessConnectedRoutes(nil, routes) //make([]*ribdInt.Routes, 0), routes)
 		} else {
 			mgr.logger.Err(fmt.Sprintf("**** Received RIB update with ",
 				"unknown type %d ****", msg.MsgType))
@@ -145,33 +143,5 @@ func (mgr *FSRouteMgr) processRoutesFromRIB() {
 		}
 		currMarker = ribdInt.Int(getBulkInfo.EndIdx)
 	}
-}
-
-func (mgr *FSRouteMgr) ProcessConnectedRoutes(installedRoutes []*ribdInt.Routes,
-	withdrawnRoutes []*ribdInt.Routes) {
-	mgr.logger.Info(fmt.Sprintln("valid routes:", installedRoutes,
-		"invalid routes:", withdrawnRoutes))
-	valid := mgr.convertDestIPToIPPrefix(installedRoutes)
-	invalid := mgr.convertDestIPToIPPrefix(withdrawnRoutes)
-	updated, withdrawn, withdrawPath, updatedAddPaths :=
-		mgr.Server.AdjRib.ProcessConnectedRoutes(
-			mgr.Server.BgpConfig.Global.Config.RouterId.String(),
-			mgr.Server.ConnRoutesPath, valid,
-			invalid, mgr.Server.AddPathCount)
-	updated, withdrawn, withdrawPath, updatedAddPaths =
-		mgr.Server.CheckForAggregation(updated, withdrawn, withdrawPath,
-			updatedAddPaths)
-	mgr.Server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
-}
-
-func (mgr *FSRouteMgr) convertDestIPToIPPrefix(routes []*ribdInt.Routes) []packet.NLRI {
-	dest := make([]packet.NLRI, 0, len(routes))
-	for _, r := range routes {
-		mgr.logger.Info(fmt.Sprintln("Route NS : ", r.NetworkStatement,
-			" Route Origin ", r.RouteOrigin))
-		ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
-		dest = append(dest, ipPrefix)
-	}
-	return dest
 }
 */
