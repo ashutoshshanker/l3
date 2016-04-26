@@ -1,4 +1,5 @@
 package server
+
 import (
 	"fmt"
 	"ribd"
@@ -7,6 +8,7 @@ import (
 	"utils/policy/policyCommonDefs"
 	"utils/patriciaDB"
 )
+
 type PolicyExtensions struct {
 	hitCounter    int
 	routeList     []string
