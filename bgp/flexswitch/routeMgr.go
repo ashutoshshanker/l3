@@ -18,7 +18,7 @@ func (mgr *FSRouteMgr) Init() {
 	mgr.ribSubBGPSocket, _ = mgr.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go mgr.listenForRIBUpdates(mgr.ribSubSocket)
 	go mgr.listenForRIBUpdates(mgr.ribSubBGPSocket)
-	//mgr.processRoutesFromRIB()
+	mgr.processRoutesFromRIB()
 }
 
 func (mgr *FSRouteMgr) setupSubSocket(address string) (*nanomsg.SubSocket, error) {
@@ -115,7 +115,6 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 	}
 }
 
-/*
 func (mgr *FSRouteMgr) processRoutesFromRIB() {
 	var currMarker ribdInt.Int
 	var count ribdInt.Int
@@ -136,7 +135,12 @@ func (mgr *FSRouteMgr) processRoutesFromRIB() {
 		mgr.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ",
 			len(getBulkInfo.RouteList), " num objects returned = ",
 			getBulkInfo.Count))
-		mgr.ProcessConnectedRoutes(getBulkInfo.RouteList, make([]*ribdInt.Routes, 0))
+		routes := make([]*config.RouteInfo, len(getBulkInfo.RouteList))
+		for idx, _ := range getBulkInfo.RouteList {
+			routes = append(routes,
+				mgr.populateConfigRoute(getBulkInfo.RouteList[idx]))
+		}
+		api.SendRouteNotification(routes, nil) //make([]*ribdInt.Routes, 0))
 		if getBulkInfo.More == false {
 			mgr.logger.Info("more returned as false, so no more get bulks")
 			return
@@ -144,4 +148,3 @@ func (mgr *FSRouteMgr) processRoutesFromRIB() {
 		currMarker = ribdInt.Int(getBulkInfo.EndIdx)
 	}
 }
-*/
