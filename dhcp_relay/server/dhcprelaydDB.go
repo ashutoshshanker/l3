@@ -1,84 +1,73 @@
 package relayServer
 
 import (
-	"database/sql"
+	"dhcprelayd"
 	"fmt"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/garyburd/redigo/redis"
+	"models"
 )
 
 func DhcpRelayAgentInitDB() error {
 	logger.Info("DRA: initializing SQL DB")
 	var err error
-	dbName := paramsDir + USR_CONF_DB
-	logger.Info("DRA: location of DB is " + dbName)
-	dhcprelayDbHdl, err = sql.Open("sqlite3", dbName)
+	dhcprelayDbHdl, err = redis.Dial("tcp", DHCP_REDDIS_DB_PORT)
 	if err != nil {
 		logger.Err(fmt.Sprintln("DRA: Failed to create db handle", err))
 		return err
 	}
 
-	if err = dhcprelayDbHdl.Ping(); err != nil {
-		logger.Err(fmt.Sprintln("Failed to keep db connection alive", err))
-		return err
-	}
 	logger.Info("DRA: SQL DB init success")
 	return err
 }
 
 func DhcpRelayAgentReadDB() {
-	dbCmd := "SELECT * FROM DhcpRelayIntfConfig"
-	logger.Info("DRA: Populate Dhcp Relay Info via " + dbCmd)
-	rows, err := dhcprelayDbHdl.Query(dbCmd)
-	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: Unable to querry DB:", err))
-		dhcprelayDbHdl.Close()
+	logger.Info("Reading Dhcp Relay Global Config from DB")
+	if dhcprelayDbHdl == nil {
 		return
 	}
+	/*  First reading Dhcp Relay Global Config
+	 */
+	var dbObj models.DhcpRelayGlobal
+	objList, err := dbObj.GetAllObjFromDb(dhcprelayDbHdl)
+	if err != nil {
+		logger.Warning("DB querry failed for Dhcp Relay Global Config")
+		return
+	}
+	for idx := 0; idx < len(objList); idx++ {
+		obj := dhcprelayd.NewDhcpRelayGlobal()
+		dbObject := objList[idx].(models.DhcpRelayGlobal)
+		models.ConvertdhcprelaydDhcpRelayGlobalObjToThrift(&dbObject, obj)
+		DhcpRelayGlobalInit(bool(obj.Enable))
+	}
 
+	/*  Reading Dhcp Relay Interface Config.
+	 *  As we are using redis DB, we will get the server ip list automatically..
+	 */
 	readIfIndex := make([]int32, 0)
-	for rows.Next() {
-		var IfIndex int32
-		var Enable int
-		err = rows.Scan(&IfIndex, &Enable)
-		if err != nil {
-			logger.Info(fmt.Sprintln("DRA: Unable to scan entries from DB",
-				err))
-			dhcprelayDbHdl.Close()
-			return
-		}
-		logger.Info(fmt.Sprintln("DRA: ifindex:", IfIndex,
-			"enabled:", Enable))
-		DhcpRelayAgentInitGblHandling(IfIndex, (Enable != 0))
+	var intfDbObj models.DhcpRelayIntf
+	objList, err = intfDbObj.GetAllObjFromDb(dhcprelayDbHdl)
+	if err != nil {
+		logger.Warning("DB querry failed for Dhcp Relay Intf Config")
+		return
+	}
+	for idx := 0; idx < len(objList); idx++ {
+		obj := dhcprelayd.NewDhcpRelayIntf()
+		dbObject := objList[idx].(models.DhcpRelayIntf)
+		models.ConvertdhcprelaydDhcpRelayIntfObjToThrift(&dbObject, obj)
+		IfIndex := int32(obj.IfIndex)
+		Enable := bool(obj.Enable)
+		DhcpRelayAgentInitGblHandling(IfIndex, Enable)
 		DhcpRelayAgentInitIntfState(IfIndex)
 		readIfIndex = append(readIfIndex, IfIndex)
-	}
-	dbCmd = "SELECT * FROM DhcpRelayIntfConfigServer"
-	logger.Info("DRA: Populate Dhcp Relay Server Info via " + dbCmd)
-	rows, err = dhcprelayDbHdl.Query(dbCmd)
-	if err != nil {
-		logger.Err(fmt.Sprintln("DRA: Unable to querry DB:", err))
-		dhcprelayDbHdl.Close()
-		return
-	}
-
-	for rows.Next() {
-		var IfIndex int32
-		var serverIp string
-		err = rows.Scan(&IfIndex, &serverIp)
-		if err != nil {
-			logger.Info(fmt.Sprintln("DRA: Unable to scan entried from DB",
-				err))
-			dhcprelayDbHdl.Close()
-			return
+		for _, serverIp := range obj.ServerIp {
+			logger.Info(fmt.Sprintln("DRA: ifindex:", IfIndex, "Server Ip:",
+				serverIp))
+			DhcpRelayAgentUpdateIntfServerIp(IfIndex, serverIp)
 		}
-		logger.Info(fmt.Sprintln("DRA: ifindex:", IfIndex, "Server Ip:",
-			serverIp))
-		DhcpRelayAgentUpdateIntfServerIp(IfIndex, serverIp)
 	}
-
 	if len(readIfIndex) > 0 {
+		// For all ifIndex recovered from DB.. get ip address from asicd
 		go DhcpRelayAgentUpdateIntfIpAddr(readIfIndex)
-	} else {
-		dhcprelayDbHdl.Close()
 	}
+	dhcprelayDbHdl.Close()
 }
