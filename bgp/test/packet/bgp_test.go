@@ -115,3 +115,104 @@ func TestBGPOpenPacketsIndexOutOfRange(t *testing.T) {
 		}
 	}
 }
+
+func TestBGPUpdatePathAttrsBadFlags(t *testing.T) {
+	strPkts := make([]string, 0)
+	strPkts = append(strPkts, "0000001c40010100100200060201000002584003045a01010280040400000000183c010118500101184701011846010218460101183c0102")
+	strPkts = append(strPkts, "0000001c40010100500200060201000002582003045a01010280040400000000183c010118500101184701011846010218460101183c0102")
+	strPkts = append(strPkts, "0000001c40010100500200060201000002584003045a010102A0040400000000183c010118500101184701011846010218460101183c0102")
+
+	pktPathAttrs := "0000002040010100500200060201000002584003045a01010280040400000000"
+	nlri := "183c010118500101184701011846010218460101183c0102"
+	pathAttrs := []string{"00000100", "20000100", "60000100", "A0000100"}
+	for _, pa := range pathAttrs {
+		pa = pa[:2] + fmt.Sprintf("%02x", packet.BGPPathAttrTypeUnknown) + pa[4:]
+		strPkts = append(strPkts, pktPathAttrs+pa+nlri)
+	}
+
+	for _, strPkt := range strPkts {
+		hexPkt, err := hex.DecodeString(strPkt)
+		fmt.Printf("packet = %x, len = %d\n", hexPkt, len(hexPkt))
+		if err != nil {
+			t.Fatal("Failed to decode the string to hex, string =", strPkt)
+		}
+
+		if len(hexPkt) > math.MaxUint16 {
+			t.Fatal("Length of packet exceeded MAX size, packet len =", len(hexPkt))
+		}
+
+		pktLen := make([]byte, 2)
+		binary.BigEndian.PutUint16(pktLen, uint16(len(hexPkt)+19))
+		header := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x02}
+		copy(header[16:18], pktLen)
+		fmt.Printf("packet header = %x, len = %d\n", header, len(header))
+
+		bgpHeader := packet.NewBGPHeader()
+		err = bgpHeader.Decode(header)
+		if err != nil {
+			t.Fatal("BGP packet header decode failed with error", err)
+		}
+
+		peerAttrs := packet.BGPPeerAttrs{
+			ASSize:           4,
+			AddPathsRxActual: true,
+		}
+		bgpMessage := packet.NewBGPMessage()
+		err = bgpMessage.Decode(bgpHeader, hexPkt, peerAttrs)
+		if err == nil {
+			t.Error("BGP update message decode called... expected failure, got NO error")
+		} else {
+			t.Log("BGP update message decode called... expected failure, error:", err)
+		}
+	}
+}
+
+func TestBGPUpdatePathAttrsBadLength(t *testing.T) {
+	strPkts := make([]string, 0)
+
+	pktPathAttrs := "0000001c40010100500200060201000002584003045a01010280040400000000"
+	nlri := "183c010118500101184701011846010218460101183c0102"
+	pathAttrs := []string{"80000100"}
+	for _, pa := range pathAttrs {
+		pa = pa[:2] + fmt.Sprintf("%02x", packet.BGPPathAttrTypeUnknown) + pa[4:]
+		strPkts = append(strPkts, pktPathAttrs+pa+nlri)
+	}
+
+	for _, strPkt := range strPkts {
+		hexPkt, err := hex.DecodeString(strPkt)
+		fmt.Printf("packet = %x, len = %d\n", hexPkt, len(hexPkt))
+		if err != nil {
+			t.Fatal("Failed to decode the string to hex, string =", strPkt)
+		}
+
+		if len(hexPkt) > math.MaxUint16 {
+			t.Fatal("Length of packet exceeded MAX size, packet len =", len(hexPkt))
+		}
+
+		pktLen := make([]byte, 2)
+		binary.BigEndian.PutUint16(pktLen, uint16(len(hexPkt)+19))
+		header := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x02}
+		copy(header[16:18], pktLen)
+		fmt.Printf("packet header = %x, len = %d\n", header, len(header))
+
+		bgpHeader := packet.NewBGPHeader()
+		err = bgpHeader.Decode(header)
+		if err != nil {
+			t.Fatal("BGP packet header decode failed with error", err)
+		}
+
+		peerAttrs := packet.BGPPeerAttrs{
+			ASSize:           4,
+			AddPathsRxActual: false,
+		}
+		bgpMessage := packet.NewBGPMessage()
+		err = bgpMessage.Decode(bgpHeader, hexPkt, peerAttrs)
+		if err == nil {
+			t.Error("BGP update message decode called... expected failure, got NO error")
+		} else {
+			t.Log("BGP update message decode called... expected failure, error:", err)
+		}
+	}
+}

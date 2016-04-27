@@ -2,7 +2,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -156,7 +156,7 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
 			nextHopIfType = commonDefs.IfTypeLoopback
 		}
 		nextHopIf, _ = strconv.Atoi(cfg.OutgoingInterface)
-		ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(nextHopIf, nextHopIfType)
+		ifId := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(nextHopIf, nextHopIfType)
 		logger.Info(fmt.Sprintln("IfId = ", ifId))
 		_, ok = IntfIdNameMap[ifId]
 		if !ok {
