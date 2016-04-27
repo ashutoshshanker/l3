@@ -10,6 +10,7 @@ import (
 	"l3/bgp/api"
 	"l3/bgp/config"
 	"l3/bgp/rpc"
+	"strconv"
 	"utils/logging"
 )
 
@@ -50,13 +51,14 @@ func (mgr *FSIntfMgr) setupSubSocket(address string) (*nanomsg.SubSocket, error)
 	var err error
 	var socket *nanomsg.SubSocket
 	if socket, err = nanomsg.NewSubSocket(); err != nil {
-		mgr.logger.Err(fmt.Sprintf("Failed to create subscribe socket %s, error:%s", address, err))
+		mgr.logger.Err(fmt.Sprintf("Failed to create subscribe socket %s, error:%s",
+			address, err))
 		return nil, err
 	}
 
 	if err = socket.Subscribe(""); err != nil {
-		mgr.logger.Err(fmt.Sprintf("Failed to subscribe to \"\" on subscribe socket %s, error:%s",
-			address, err))
+		mgr.logger.Err(fmt.Sprintf("Failed to subscribe to \"\" on subscribe socket %s,",
+			"error:%s", address, err))
 		return nil, err
 	}
 
@@ -68,8 +70,8 @@ func (mgr *FSIntfMgr) setupSubSocket(address string) (*nanomsg.SubSocket, error)
 
 	mgr.logger.Info(fmt.Sprintf("Connected to publisher socker %s", address))
 	if err = socket.SetRecvBuffer(1024 * 1024); err != nil {
-		mgr.logger.Err(fmt.Sprintln("Failed to set the buffer size for subsriber socket %s, error:",
-			address, err))
+		mgr.logger.Err(fmt.Sprintln("Failed to set the buffer size for subsriber socket %s,",
+			"error:", address, err))
 		return nil, err
 	}
 	return socket, nil
@@ -118,10 +120,11 @@ func (mgr *FSIntfMgr) listenForAsicdEvents() {
 }
 
 func (mgr *FSIntfMgr) GetIPv4Information(ifIndex int32) (string, error) {
-	var rv string
-
-	rv, err := mgr.AsicdClient.GetIPv4IntfByIfIndex(ifIndex)
-	return rv, err
+	ipv4IntfState, err := mgr.AsicdClient.GetIPv4IntfState(strconv.Itoa(int(ifIndex)))
+	if err != nil {
+		return "", nil
+	}
+	return ipv4IntfState.IpAddr, err
 }
 
 func (mgr *FSIntfMgr) GetIfIndex(ifIndex, ifType int) int32 {
