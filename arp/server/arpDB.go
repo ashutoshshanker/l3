@@ -1,8 +1,10 @@
 package server
 
 import (
+	"arpd"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
+	"models"
 	"strconv"
 )
 
@@ -11,7 +13,7 @@ type arpDbEntry struct {
 	Port   int
 }
 
-func (server *ARPServer) initiateDB(dbName string) error {
+func (server *ARPServer) initiateDB() error {
 	var err error
 	server.dbHdl, err = redis.Dial("tcp", ":6379")
 	if err != nil {
@@ -21,8 +23,31 @@ func (server *ARPServer) initiateDB(dbName string) error {
 	return nil
 }
 
+func (server *ARPServer) getArpGlobalConfig() {
+	var dbObj models.ArpConfig
+
+	objList, err := dbObj.GetAllObjFromDb(server.dbHdl)
+	if err != nil {
+		server.logger.Err("DB Query init failed during Arp Initialization")
+		return
+	}
+
+	if objList == nil {
+		server.logger.Debug("No Config object found in DB for Arp")
+		return
+	}
+	obj := arpd.NewArpConfig()
+	dbObject := objList[0].(models.ArpConfig)
+	models.ConvertarpdArpConfigObjToThrift(&dbObject, obj)
+	server.logger.Info(fmt.Sprintln("Timeout : ", int(obj.Timeout)))
+	arpConf := ArpConf{
+		RefTimeout: int(obj.Timeout),
+	}
+	server.processArpConf(arpConf)
+}
+
 func (server *ARPServer) updateArpCacheFromDB() {
-	server.logger.Info("Populate ARP Cache from DB entries")
+	server.logger.Debug("Populate ARP Cache from DB entries")
 	if server.dbHdl != nil {
 		keyPattern := fmt.Sprintln("ArpCacheEntry#*")
 		keys, err := redis.Strings(redis.Values(server.dbHdl.Do("KEYS", keyPattern)))
@@ -42,8 +67,8 @@ func (server *ARPServer) updateArpCacheFromDB() {
 				server.logger.Err(fmt.Sprintln("Failed to get values corresponding to ARP entry key:", keys[idx]))
 				continue
 			}
-			server.logger.Info(fmt.Sprintln("Data Retrived From DB IP:", obj.IpAddr, "port:", obj.Port))
-			server.logger.Info(fmt.Sprintln("Adding arp cache entry for ", obj.IpAddr))
+			server.logger.Debug(fmt.Sprintln("Data Retrived From DB IP:", obj.IpAddr, "port:", obj.Port))
+			server.logger.Debug(fmt.Sprintln("Adding arp cache entry for ", obj.IpAddr))
 			ent := server.arpCache[obj.IpAddr]
 			ent.MacAddr = "incomplete"
 			ent.Counter = (server.minCnt + server.retryCnt + 1)
@@ -54,7 +79,7 @@ func (server *ARPServer) updateArpCacheFromDB() {
 	} else {
 		server.logger.Err("DB handler is nil")
 	}
-	server.logger.Info(fmt.Sprintln("Arp Cache after restoring: ", server.arpCache))
+	server.logger.Debug(fmt.Sprintln("Arp Cache after restoring: ", server.arpCache))
 }
 
 func (server *ARPServer) refreshArpDB() {

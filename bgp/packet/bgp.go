@@ -280,7 +280,7 @@ type BGPBody interface {
 type BGPCapability interface {
 	Encode() ([]byte, error)
 	Decode(pkt []byte) error
-	TotalLen() uint8
+	TotalLen() uint16
 	GetCode() BGPCapabilityType
 	New() BGPCapability
 }
@@ -311,8 +311,8 @@ func (msg *BGPCapabilityBase) Decode(pkt []byte) error {
 	return nil
 }
 
-func (msg *BGPCapabilityBase) TotalLen() uint8 {
-	return msg.Len + 2
+func (msg *BGPCapabilityBase) TotalLen() uint16 {
+	return uint16(msg.Len) + 2
 }
 
 func (msg *BGPCapabilityBase) GetCode() BGPCapabilityType {
@@ -470,15 +470,18 @@ func (msg *BGPCapAddPath) Decode(pkt []byte) error {
 		return err
 	}
 
-	offset := uint8(2)
-	for offset < msg.Len {
+	offset := uint16(2)
+	for offset < uint16(msg.Len) {
 		addPathAFISAFI := AddPathAFISAFI{}
 		err := addPathAFISAFI.Decode(pkt[offset:])
 		if err != nil {
 			return err
 		}
 		msg.Value = append(msg.Value, addPathAFISAFI)
-		offset += addPathAFISAFI.Len()
+		offset += uint16(addPathAFISAFI.Len())
+	}
+	if offset > uint16(msg.Len) {
+		return BGPMessageError{BGPOpenMsgError, BGPUnspecific, nil, "Not enough data to decode add path capability"}
 	}
 	return nil
 }
@@ -523,7 +526,7 @@ func (msg *BGPCapUnknown) Decode(pkt []byte) error {
 		return err
 	}
 
-	copy(msg.Value, pkt[2:])
+	copy(msg.Value, pkt[2:msg.TotalLen()])
 	return nil
 }
 
@@ -609,14 +612,11 @@ func (msg *BGPOptParamCapability) Decode(pkt []byte) error {
 		return err
 	}
 
-	paramsLen := msg.Len
+	paramsLen := int(msg.Len)
 	msg.Value = make([]BGPCapability, 0)
-	offset := uint8(2)
+	offset := uint16(2)
 	for paramsLen > 0 {
 		capParam := msg.GetCapParam(pkt[offset:])
-		if err != nil {
-			return err
-		}
 
 		err = capParam.Decode(pkt[offset:])
 		if err != nil {
@@ -624,13 +624,16 @@ func (msg *BGPOptParamCapability) Decode(pkt []byte) error {
 		}
 		msg.Value = append(msg.Value, capParam)
 		offset += capParam.TotalLen()
-		paramsLen -= capParam.TotalLen()
+		paramsLen -= int(capParam.TotalLen())
+	}
+	if paramsLen < 0 {
+		return BGPMessageError{BGPOpenMsgError, BGPUnspecific, nil, "Not enough data to decode capability type and length"}
 	}
 	return nil
 }
 
 func NewBGPOptParamCapability(capabilities []BGPCapability) *BGPOptParamCapability {
-	paramsLen := uint8(0)
+	paramsLen := uint16(0)
 	for _, capability := range capabilities {
 		paramsLen += capability.TotalLen()
 	}
@@ -638,7 +641,7 @@ func NewBGPOptParamCapability(capabilities []BGPCapability) *BGPOptParamCapabili
 	return &BGPOptParamCapability{
 		BGPOptParamBase: BGPOptParamBase{
 			Type: BGPOptParamTypeCapability,
-			Len:  paramsLen,
+			Len:  uint8(paramsLen),
 		},
 		Value: capabilities,
 	}
@@ -728,7 +731,7 @@ func (msg *BGPOpen) Decode(header *BGPHeader, pkt []byte, data interface{}) erro
 	msg.OptParamLen = pkt[9]
 
 	msg.OptParams = make([]BGPOptParam, 0)
-	paramsLen := msg.OptParamLen
+	paramsLen := int(msg.OptParamLen)
 	offset := uint8(10)
 	for paramsLen > 0 {
 		optParam, err := msg.GetOptParam(pkt[offset:])
@@ -741,7 +744,10 @@ func (msg *BGPOpen) Decode(header *BGPHeader, pkt []byte, data interface{}) erro
 		}
 		msg.OptParams = append(msg.OptParams, optParam)
 		offset += optParam.TotalLen()
-		paramsLen -= optParam.TotalLen()
+		paramsLen -= int(optParam.TotalLen())
+	}
+	if paramsLen < 0 {
+		return BGPMessageError{BGPOpenMsgError, BGPUnspecific, nil, "Not enough data to decode optional parameters"}
 	}
 	return nil
 }
@@ -2282,7 +2288,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 	msg.WithdrawnRoutes = make([]NLRI, 0)
 	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.WithdrawnRoutes, length, data)
 	if err != nil {
-		return nil
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
 	ptr += ipLen
 
@@ -2298,7 +2304,10 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 	msg.PathAttributes = make([]BGPPathAttr, 0)
 	for length > 0 {
 		pa := BGPGetPathAttr(pkt[ptr:])
-		pa.Decode(pkt[ptr:], data)
+		err = pa.Decode(pkt[ptr:], data)
+		if err != nil {
+			return err
+		}
 		msg.PathAttributes = append(msg.PathAttributes, pa)
 		ptr += pa.TotalLen()
 		length -= pa.TotalLen()

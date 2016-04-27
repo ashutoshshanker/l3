@@ -547,7 +547,7 @@ func (server *OSPFServer) generateASExternalLsa(route RouteMdata) LsaKey {
 	server.logger.Info(fmt.Sprintln("LSDB: Generating AS External LSA routemdata ", route))
 
 	LSType := ASExternalLSA
-	LSId := route.ipaddr
+	LSId := route.ipaddr & route.mask
 	AdvRouter := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
 
 	lsaKey := LsaKey{

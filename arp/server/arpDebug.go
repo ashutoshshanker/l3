@@ -1,14 +1,13 @@
 package server
 
 import (
-        "fmt"
+	"fmt"
 )
 
 func (server *ARPServer) printArpEntries() {
-        server.logger.Info("************")
-        for ip, arpEnt := range server.arpCache {
-                server.logger.Info(fmt.Sprintln("IP:", ip, "MAC:", arpEnt.MacAddr, "VlanId:", arpEnt.VlanId, "IfName:", arpEnt.IfName, "IfIndex", arpEnt.L3IfIdx, "Counter:", arpEnt.Counter, "Timestamp:", arpEnt.TimeStamp, "PortNum:", arpEnt.PortNum))
-        }
-        server.logger.Info("************")
+	server.logger.Debug("************")
+	for ip, arpEnt := range server.arpCache {
+		server.logger.Debug(fmt.Sprintln("IP:", ip, "MAC:", arpEnt.MacAddr, "VlanId:", arpEnt.VlanId, "IfName:", arpEnt.IfName, "IfIndex", arpEnt.L3IfIdx, "Counter:", arpEnt.Counter, "Timestamp:", arpEnt.TimeStamp, "PortNum:", arpEnt.PortNum))
+	}
+	server.logger.Debug("************")
 }
-
