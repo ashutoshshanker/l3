@@ -49,7 +49,7 @@ func (m RIBDServicesHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount r
 
 func (m RIBDServicesHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinition) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyDefinition"))
-	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Priority), MatchType: cfg.MatchType}
+	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Priority), MatchType: cfg.MatchType, PolicyType: cfg.PolicyType}
 	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence, 0)
 	var policyDefinitionStatement policy.PolicyDefinitionStmtPrecedence
 	for i := 0; i < len(cfg.StatementList); i++ {

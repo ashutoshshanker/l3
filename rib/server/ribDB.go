@@ -114,7 +114,6 @@ func (ribdServiceHandler *RIBDServer) UpdatePolicyObjectsFromDB() { //(paramsDir
 	ribdServiceHandler.UpdateGlobalPolicyFromDB(dbHdl)
     //local route policies
 	ribdServiceHandler.UpdateRoutePolicyConditionsFromDB(dbHdl) //paramsDir, dbHdl)
-	ribdServiceHandler.UpdateRoutePolicyActionsFromDB(dbHdl)    //paramsDir, dbHdl)
 	ribdServiceHandler.UpdateRoutePolicyStmtsFromDB(dbHdl)
 	ribdServiceHandler.UpdateRoutePolicyFromDB(dbHdl)
 	return
