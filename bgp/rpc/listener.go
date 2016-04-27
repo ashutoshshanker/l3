@@ -11,6 +11,7 @@ import (
 	"l3/bgp/server"
 	"models"
 	"net"
+	"strconv"
 	"strings"
 	"utils/logging"
 	utilspolicy "utils/policy"
@@ -387,7 +388,8 @@ func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string, neighborIfInd
 	} else if neighborIfIndex != 0 {
 		//neighbor address is a ifIndex
 		var ipv4Intf string
-		ipv4Intf, err = h.server.AsicdClient.GetIPv4IntfByIfIndex(neighborIfIndex)
+		ipv4IntfState, err := h.server.AsicdClient.GetIPv4IntfState(strconv.Itoa(int(neighborIfIndex)))
+		ipv4Intf = ipv4IntfState.IpAddr
 		if err == nil {
 			h.logger.Info(fmt.Sprintln("getIPAndIfIndexForNeighbor - Call ASICd to get ip address for interface with ifIndex: ", neighborIfIndex))
 			ifIP, ipMask, err := net.ParseCIDR(ipv4Intf)
