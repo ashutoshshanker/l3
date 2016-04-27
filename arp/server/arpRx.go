@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -293,12 +293,12 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
 			arpEnt, exist := server.arpCache[srcIp]
 			//server.logger.Info(fmt.Sprintln("====Hello2===", arpEnt, exist))
 			if exist {
-				ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(l3IntfIdx))
+				ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(int32(l3IntfIdx))
 				flag := false
 				if ifType == commonDefs.IfTypeVlan {
 					vlanEnt, exist := server.vlanPropMap[l3IntfIdx]
 					if exist {
-						vlanId := int(asicdConstDefs.GetIntfIdFromIfIndex(int32(l3IntfIdx)))
+						vlanId := int(asicdCommonDefs.GetIntfIdFromIfIndex(int32(l3IntfIdx)))
 						for p, _ := range vlanEnt.UntagPortMap {
 							if p == port &&
 								arpEnt.VlanId == vlanId {
@@ -310,7 +310,7 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
 					}
 				} else if ifType == commonDefs.IfTypePort {
 					if l3IntfIdx == port &&
-						arpEnt.VlanId == asicdConstDefs.SYS_RSVD_VLAN {
+						arpEnt.VlanId == asicdCommonDefs.SYS_RSVD_VLAN {
 						flag = true
 					}
 				} else if ifType == commonDefs.IfTypeLag {
@@ -318,7 +318,7 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
 					if exist {
 						for p, _ := range lagEnt.PortMap {
 							if p == port &&
-								arpEnt.VlanId == asicdConstDefs.SYS_RSVD_VLAN {
+								arpEnt.VlanId == asicdCommonDefs.SYS_RSVD_VLAN {
 								flag = true
 							}
 						}
@@ -346,7 +346,7 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
 
 func (server *ARPServer) sendArpReqL3Intf(ip string, l3IfIdx int) {
 
-	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(l3IfIdx))
+	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(int32(l3IfIdx))
 	if ifType == commonDefs.IfTypeVlan {
 		vlanEnt, _ := server.vlanPropMap[l3IfIdx]
 		for port, _ := range vlanEnt.UntagPortMap {

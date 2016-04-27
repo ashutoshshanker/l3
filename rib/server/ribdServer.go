@@ -2,7 +2,7 @@ package server
 
 import (
 	"arpd"
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	//	"database/sql"
 	"encoding/json"
@@ -284,7 +284,7 @@ func getPortInfo() {
 		logger.Info(fmt.Sprintln("len(bulkInfo.PortStateList)  = %d, num objects returned = %d\n", len(bulkInfo.PortStateList), bulkInfo.Count))
 		for i := 0; i < int(bulkInfo.Count); i++ {
 			portNum := bulkInfo.PortStateList[i].PortNum
-			ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(portNum), commonDefs.IfTypePort)
+			ifId := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(portNum), commonDefs.IfTypePort)
 			logger.Info(fmt.Sprintln("portNum = ", portNum, "ifId = ", ifId))
 			if IntfIdNameMap == nil {
 				IntfIdNameMap = make(map[int32]IntfEntry)
@@ -310,7 +310,7 @@ func (ribdServiceHandler *RIBDServer) AcceptConfigActions() {
 	getIntfInfo()
 	getConnectedRoutes()
 	ribdServiceHandler.UpdateRoutesFromDB()
-	go ribdServiceHandler.SetupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
+	go ribdServiceHandler.SetupEventHandler(AsicdSub, asicdCommonDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	ribdServiceHandler.ServerUpCh <- true
 }
 func (ribdServiceHandler *RIBDServer) connectToClient(client ClientJson) {

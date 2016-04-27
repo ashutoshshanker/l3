@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
@@ -94,7 +94,7 @@ type ARPServer struct {
 	arpEntryUpdateCh        chan UpdateArpEntryMsg
 	arpEntryDeleteCh        chan DeleteArpEntryMsg
 	//arpEntryCreateCh        chan CreateArpEntryMsg
-	arpEntryMacMoveCh      chan asicdConstDefs.IPv4NbrMacMoveNotifyMsg
+	arpEntryMacMoveCh      chan asicdCommonDefs.IPv4NbrMacMoveNotifyMsg
 	arpEntryCntUpdateCh    chan int
 	arpSliceRefreshStartCh chan bool
 	arpSliceRefreshDoneCh  chan bool
@@ -224,7 +224,7 @@ func (server *ARPServer) InitServer(paramDir string) {
 	server.logger.Debug("Starting Arp Server")
 	server.connectToServers(fileName)
 	server.logger.Debug("Listen for ASICd updates")
-	server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
+	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
 	server.buildArpInfra()
 

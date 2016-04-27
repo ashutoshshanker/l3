@@ -2,7 +2,7 @@
 package relayServer
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"dhcprelayd"
 	"encoding/json"
@@ -218,7 +218,7 @@ func DhcpRelayAgentUpdateIntfIpAddr(ifIndexList []int32) {
 				ifIndexList[i]))
 			continue
 		}
-		logicalId := int32(asicdConstDefs.GetIntfIdFromIfIndex(obj.IfIndex))
+		logicalId := int32(asicdCommonDefs.GetIntfIdFromIfIndex(obj.IfIndex))
 		dhcprelayLogicalIntf2IfIndex[logicalId] = obj.IfIndex
 		gblEntry := dhcprelayGblInfo[ifIndexList[i]]
 		ip, ipnet, err := net.ParseCIDR(obj.IpAddr)

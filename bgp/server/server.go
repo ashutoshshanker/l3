@@ -2,7 +2,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"bfdd"
 	"bytes"
@@ -285,7 +285,7 @@ func (server *BGPServer) listenForAsicdEvents(socket *nanomsg.SubSocket, ifState
 		}
 
 		server.logger.Info(fmt.Sprintln("Asicd subscriber recv returned", rxBuf))
-		event := asicdConstDefs.AsicdNotification{}
+		event := asicdCommonDefs.AsicdNotification{}
 		err = json.Unmarshal(rxBuf, &event)
 		if err != nil {
 			server.logger.Err(fmt.Sprintf("Unmarshal Asicd event failed with err %s", err))
@@ -293,8 +293,8 @@ func (server *BGPServer) listenForAsicdEvents(socket *nanomsg.SubSocket, ifState
 		}
 
 		switch event.MsgType {
-		case asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE:
-			var msg asicdConstDefs.L3IntfStateNotifyMsg
+		case asicdCommonDefs.NOTIFY_L3INTF_STATE_CHANGE:
+			var msg asicdCommonDefs.L3IntfStateNotifyMsg
 			err = json.Unmarshal(event.Msg, &msg)
 			if err != nil {
 				server.logger.Err(fmt.Sprintf("Unmarshal Asicd L3INTF event failed with err %s", err))
@@ -1064,7 +1064,7 @@ func (server *BGPServer) setInterfaceMapForPeer(peerIP string, peer *Peer) {
 	if err != nil {
 		server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
 	} else {
-		ifIdx := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
+		ifIdx := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
 		server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d", peerIP, ifIdx))
 		if _, ok := server.ifacePeerMap[ifIdx]; !ok {
 			server.ifacePeerMap[ifIdx] = make([]string, 0)
@@ -1113,7 +1113,7 @@ func (server *BGPServer) StartServer() {
 	server.logger.Info("Listen for RIBd updates")
 	ribSubSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_ADDR)
 	ribSubBGPSocket, _ := server.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
-	asicdL3IntfSubSocket, _ := server.setupSubSocket(asicdConstDefs.PUB_SOCKET_ADDR)
+	asicdL3IntfSubSocket, _ := server.setupSubSocket(asicdCommonDefs.PUB_SOCKET_ADDR)
 	bfdSubSocket, _ := server.setupSubSocket(bfddCommonDefs.PUB_SOCKET_ADDR)
 
 	ribSubSocketCh := make(chan []byte)
@@ -1313,7 +1313,7 @@ func (server *BGPServer) StartServer() {
 			if err != nil {
 				server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
 			} else {
-				ifIdx := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
+				ifIdx := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
 				server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d", peerIP, ifIdx))
 				if _, ok := server.ifacePeerMap[ifIdx]; !ok {
 					server.ifacePeerMap[ifIdx] = make([]string, 0)
@@ -1369,7 +1369,7 @@ func (server *BGPServer) StartServer() {
 			server.logger.Info(fmt.Sprintf("Server: Received update on Asicd sub socket %+v, ifacePeerMap %+v",
 				ifState, server.ifacePeerMap))
 			/*
-				if ifState.state == asicdConstDefs.INTF_STATE_UP {
+				if ifState.state == asicdCommonDefs.INTF_STATE_UP {
 					if peer, ok := server.PeerMap[strconv.Itoa(int(ifState.idx))]; ok {
 						ip, _, err := net.ParseCIDR(ifState.ipaddr)
 						if err == nil {
@@ -1379,7 +1379,7 @@ func (server *BGPServer) StartServer() {
 					}
 				}
 			*/
-			if peerList, ok := server.ifacePeerMap[ifState.idx]; ok && ifState.state == asicdConstDefs.INTF_STATE_DOWN {
+			if peerList, ok := server.ifacePeerMap[ifState.idx]; ok && ifState.state == asicdCommonDefs.INTF_STATE_DOWN {
 				for _, peerIP := range peerList {
 					if peer, ok := server.PeerMap[peerIP]; ok {
 						peer.StopFSM("Interface Down")
