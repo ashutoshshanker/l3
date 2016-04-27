@@ -74,7 +74,7 @@ func main() {
 			fmt.Println("Starting OVDB client failed ERROR:", err)
 			return
 		}
-		err = ovsdbManager.Serve()
+		err = ovsdbManager.StartMonitoring()
 		if err != nil {
 			fmt.Println("OVSDB Serve failed ERROR:", err)
 			return
