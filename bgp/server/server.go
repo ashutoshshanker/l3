@@ -309,7 +309,8 @@ func (server *BGPServer) setWithdrawnWithAggPaths(policyParams *PolicyParams, wi
 	server.setUpdatedAddPaths(policyParams, updatedAddPaths)
 }
 
-func (server *BGPServer) setUpdatedWithAggPaths(policyParams *PolicyParams, updated map[*bgprib.Path][]*bgprib.Destination,
+func (server *BGPServer) setUpdatedWithAggPaths(policyParams *PolicyParams,
+	updated map[*bgprib.Path][]*bgprib.Destination,
 	sendSummaryOnly bool, ipPrefix *packet.IPPrefix, updatedAddPaths []*bgprib.Destination) {
 	var routeDest *bgprib.Destination
 	var ok bool
@@ -443,13 +444,16 @@ func (server *BGPServer) ApplyAggregateAction(actionInfo interface{},
 	} else if policyParams.DeleteType == utilspolicy.Valid {
 		server.logger.Info(fmt.Sprintf("ApplyAggregateAction: DeleteType = Valid\n"))
 		origDest := policyParams.dest
-		updated, withdrawn, _, updatedAddPaths = server.AdjRib.RemoveRouteFromAggregate(ipPrefix, aggPrefix,
-			server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg, origDest, server.AddPathCount)
+		updated, withdrawn, _, updatedAddPaths =
+			server.AdjRib.RemoveRouteFromAggregate(ipPrefix, aggPrefix,
+				server.BgpConfig.Global.Config.RouterId.String(), &bgpAgg,
+				origDest, server.AddPathCount)
 	}
 
 	server.logger.Info(fmt.Sprintf("ApplyAggregateAction: aggregate result update=%+v,",
 		"withdrawn=%+v\n", updated, withdrawn))
-	server.setUpdatedWithAggPaths(&policyParams, updated, aggActions.SendSummaryOnly, ipPrefix, updatedAddPaths)
+	server.setUpdatedWithAggPaths(&policyParams, updated, aggActions.SendSummaryOnly,
+		ipPrefix, updatedAddPaths)
 	server.logger.Info(fmt.Sprintf("ApplyAggregateAction: after updating agg paths, update=%+v,",
 		"withdrawn=%+v, policyparams.update=%+v, policyparams.withdrawn=%+v\n",
 		updated, withdrawn, *policyParams.updated, *policyParams.withdrawn))
@@ -476,7 +480,8 @@ func (server *BGPServer) CheckForAggregation(updated map[*bgprib.Path][]*bgprib.
 			continue
 		}
 		peEntity := utilspolicy.PolicyEngineFilterEntityParams{
-			DestNetIp:  route.BGPRouteState.Network + "/" + strconv.Itoa(int(route.BGPRouteState.CIDRLen)),
+			DestNetIp: route.BGPRouteState.Network + "/" +
+				strconv.Itoa(int(route.BGPRouteState.CIDRLen)),
 			NextHopIp:  route.BGPRouteState.NextHop,
 			DeletePath: true,
 		}
@@ -506,7 +511,8 @@ func (server *BGPServer) CheckForAggregation(updated map[*bgprib.Path][]*bgprib.
 				continue
 			}
 			route := dest.GetLocRibPathRoute()
-			server.logger.Info(fmt.Sprintf("BGPServer:checkForAggregate - update dest %s policylist %v",
+			server.logger.Info(fmt.Sprintf(
+				"BGPServer:checkForAggregate - update dest %s policylist %v",
 				"hit %v before applying create policy\n",
 				dest.IPPrefix.Prefix.String(), route.PolicyList, route.PolicyHitCounter))
 			if route != nil {
@@ -620,7 +626,8 @@ func (server *BGPServer) TraverseAndReverseBGPRib(policyData interface{}) {
 			updatedAddPaths: &updatedAddPaths,
 		}
 		peEntity := utilspolicy.PolicyEngineFilterEntityParams{
-			DestNetIp: route.BGPRouteState.Network + "/" + strconv.Itoa(int(route.BGPRouteState.CIDRLen)),
+			DestNetIp: route.BGPRouteState.Network + "/" +
+				strconv.Itoa(int(route.BGPRouteState.CIDRLen)),
 			NextHopIp: route.BGPRouteState.NextHop,
 		}
 
@@ -815,6 +822,7 @@ func (server *BGPServer) setInterfaceMapForPeer(peerIP string, peer *Peer) {
 		// @TODO: jgheewala think of something better for ovsdb....
 		ifIdx := server.IntfMgr.GetIfIndex(int(reachInfo.NextHopIfIndex),
 			int(reachInfo.NextHopIfType))
+		///		ifIdx := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
 		server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d", peerIP, ifIdx))
 		if _, ok := server.IfacePeerMap[ifIdx]; !ok {
 			server.IfacePeerMap[ifIdx] = make([]string, 0)
@@ -1056,6 +1064,7 @@ func (server *BGPServer) listenChannelUpdates() {
 					peerIP, ifIdx))
 				if _, ok := server.IfacePeerMap[ifIdx]; !ok {
 					server.IfacePeerMap[ifIdx] = make([]string, 0)
+					//ifIdx := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
 				}
 				server.IfacePeerMap[ifIdx] = append(server.IfacePeerMap[ifIdx],
 					peerIP)

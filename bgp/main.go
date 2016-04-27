@@ -50,8 +50,8 @@ func main() {
 	go bgpPolicyEng.StartPolicyEngine()
 
 	// @FIXME: Plugin name should come for json readfile...
-	plugin := OVSDB_PLUGIN
-
+	//plugin := OVSDB_PLUGIN
+	plugin := ""
 	switch plugin {
 	case OVSDB_PLUGIN:
 		// if plugin used is ovs db then lets start ovsdb client listener

@@ -858,10 +858,18 @@ func (ip *IPPrefix) Encode() ([]byte, error) {
 }
 
 func (ip *IPPrefix) Decode(pkt []byte) error {
+	if len(pkt) < 1 {
+		return BGPMessageError{BGPUpdateMsgError, BGPInvalidNetworkField, nil, "NLRI does not contain prefix lenght"}
+	}
+
 	ip.Length = pkt[0]
+	if ip.Length > 32 {
+		return BGPMessageError{BGPUpdateMsgError, BGPInvalidNetworkField, nil, fmt.Sprintf("Prefix length is greater than 32, lenght:%d", ip.Length)}
+	}
+
 	bytes := (ip.Length + 7) / 8
-	if len(pkt) < int(bytes) {
-		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Prefix length invalid"}
+	if len(pkt) < (int(bytes) + 1) {
+		return BGPMessageError{BGPUpdateMsgError, BGPInvalidNetworkField, nil, "Prefix length invalid"}
 	}
 	ip.Prefix = make(net.IP, 4)
 	copy(ip.Prefix, pkt[1:bytes+1])
@@ -915,7 +923,11 @@ func (n *ExtNLRI) Encode() ([]byte, error) {
 }
 
 func (n *ExtNLRI) Decode(pkt []byte) error {
+	if len(pkt) < 5 {
+		return BGPMessageError{BGPUpdateMsgError, BGPInvalidNetworkField, nil, "NLRI does not contain path id or prefix lenght"}
+	}
 	n.PathId = binary.BigEndian.Uint32(pkt[:4])
+
 	n.IPPrefix = IPPrefix{}
 	err := n.IPPrefix.Decode(pkt[4:])
 	return err
@@ -972,11 +984,22 @@ func (pa *BGPPathAttrBase) Encode() ([]byte, error) {
 }
 
 func (pa *BGPPathAttrBase) checkFlags(pkt []byte) error {
-	if pa.Flags&BGPPathAttrFlagOptional != 0 &&
-		pa.Flags&BGPPathAttrFlagTransitive == 0 &&
-		pa.Flags&BGPPathAttrFlagPartial == 0 {
+	if pa.Flags&BGPPathAttrFlagOptional == 0 && pa.Flags&BGPPathAttrFlagTransitive == 0 {
 		return BGPMessageError{BGPUpdateMsgError, BGPAttrFlagsError, pkt[:pa.TotalLen()],
-			"Partial bit in a optional transitive attr is not set"}
+			"Transitibe bit is not set in a well-known mandatory attribute"}
+	}
+
+	if pa.Flags&BGPPathAttrFlagPartial != 0 {
+		if pa.Flags&BGPPathAttrFlagOptional == 0 {
+			return BGPMessageError{BGPUpdateMsgError, BGPAttrFlagsError, pkt[:pa.TotalLen()],
+				"Partial bit is set in a well-known mandatory attribute"}
+		}
+
+		if pa.Flags&BGPPathAttrFlagOptional != 0 &&
+			pa.Flags&BGPPathAttrFlagTransitive == 0 {
+			return BGPMessageError{BGPUpdateMsgError, BGPAttrFlagsError, pkt[:pa.TotalLen()],
+				"Partial bit is set in a optional non-transitive attr"}
+		}
 	}
 
 	return nil
@@ -1023,7 +1046,7 @@ func (pa *BGPPathAttrBase) Decode(pkt []byte, data interface{}) error {
 		}
 	}
 
-	if (pa.Flags&BGPPathAttrFlagOptional) > 0 && pa.Code >= BGPPathAttrTypeUnknown {
+	if (pa.Flags&BGPPathAttrFlagOptional) == 0 && pa.Code >= BGPPathAttrTypeUnknown {
 		return BGPMessageError{BGPUpdateMsgError, BGPUnrecognizedWellKnownAttr, pkt[:pa.TotalLen()], "Unrecognized Well known attr"}
 	}
 
@@ -2277,7 +2300,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 	msg.WithdrawnRoutesLen = binary.BigEndian.Uint16(pkt[0:2])
 
 	ptr := uint32(2)
-	length := uint32(msg.WithdrawnRoutesLen)
+	length := int(msg.WithdrawnRoutesLen)
 	ipLen := uint32(0)
 	var err error
 
@@ -2286,7 +2309,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 	}
 
 	msg.WithdrawnRoutes = make([]NLRI, 0)
-	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.WithdrawnRoutes, length, data)
+	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.WithdrawnRoutes, uint32(length), data)
 	if err != nil {
 		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
@@ -2295,9 +2318,9 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 	msg.TotalPathAttrLen = binary.BigEndian.Uint16(pkt[ptr : ptr+2])
 	ptr += 2
 
-	length = uint32(msg.TotalPathAttrLen)
+	length = int(msg.TotalPathAttrLen)
 
-	if length+uint32(msg.WithdrawnRoutesLen)+23 > header.Len() {
+	if length+int(msg.WithdrawnRoutesLen)+23 > int(header.Len()) {
 		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
 
@@ -2310,14 +2333,17 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 		}
 		msg.PathAttributes = append(msg.PathAttributes, pa)
 		ptr += pa.TotalLen()
-		length -= pa.TotalLen()
+		length -= int(pa.TotalLen())
+	}
+	if length < 0 {
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
 
 	msg.NLRI = make([]NLRI, 0)
-	length = header.Len() - 23 - uint32(msg.WithdrawnRoutesLen) - uint32(msg.TotalPathAttrLen)
-	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.NLRI, length, data)
+	length = int(header.Len()) - 23 - int(msg.WithdrawnRoutesLen) - int(msg.TotalPathAttrLen)
+	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.NLRI, uint32(length), data)
 	if err != nil {
-		return nil
+		return err
 	}
 	return nil
 }
