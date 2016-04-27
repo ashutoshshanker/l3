@@ -15,7 +15,7 @@ const (
 	OVSDB_HANDLER_HOST_PORT = 6640
 
 	// OVSDB Table
-	OVSDB_HANDLER_DB_TABLE = "OpenSwitch" //"todo"
+	OVSDB_HANDLER_DB_TABLE = "OpenSwitch"
 
 	// OVSDB macro defines
 	OVSDB_HANDLER_OPERATIONS_SIZE = 1024
@@ -152,7 +152,7 @@ func (ovsHdl *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
  *	This API will handle reading operations from table... It can also do
  *	transactions.... In short its read/write bgp ovsdb handler
  */
-func (ovsHdl *BGPOvsdbHandler) Serve() error {
+func (ovsHdl *BGPOvsdbHandler) StartMonitoring() error {
 	initial, err := ovsHdl.bgpovs.MonitorAll(OVSDB_HANDLER_DB_TABLE, "")
 	if err != nil {
 		return err
