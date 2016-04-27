@@ -1,14 +1,13 @@
 // conn.go
 package config
 
-import (
-)
+import ()
 
 type ConnDir int
 
 const (
-    ConnDirOut ConnDir = iota
-    ConnDirIn
-    ConnDirMax
+	ConnDirOut ConnDir = iota
+	ConnDirIn
+	ConnDirMax
 	ConnDirInvalid = ConnDirMax
 )
