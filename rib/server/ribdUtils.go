@@ -694,6 +694,7 @@ func getNetworkPrefix(destNetIp net.IP, networkMask net.IP) (destNet patriciaDB.
 }
 func (m RIBDServer) WriteIPv4RouteStateEntryToDB(entry RouteInfoRecord, routeList RouteInfoRecordList) error {
     logger.Info(fmt.Sprintln("WriteIPv4RouteStateEntryToDB"))
+	m.DelIPv4RouteStateEntryFromDB(entry)
 	var dbObj models.IPv4RouteState
 	obj := ribd.NewIPv4RouteState()
 	obj.DestinationNw = entry.networkAddr
@@ -702,16 +703,19 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(entry RouteInfoRecord, routeLis
 	obj.OutgoingIntfType = nextHopIfTypeStr
 	obj.OutgoingInterface = strconv.Itoa(int(entry.nextHopIfIndex))
 	obj.Protocol = ReverseRouteProtoTypeMapDB[int(entry.protocol)]*/
-	obj.NextHopList = make([]models.NextHopInfo,0)
+	obj.NextHopList = make([] *ribd.NextHopInfo,0)
 	routeInfoList := routeList.routeInfoProtocolMap[routeList.selectedRouteProtocol]
-	nextHopInfo := models.NextHopInfo {}
-	for sel = 0; sel < len(routeInfoList); sel++ {
-		nextHopInfo.NextHopIp = routeInfoList[sel].nextHopIp.String()
+	logger.Info(fmt.Sprintln("len of routeInfoList - ", len(routeInfoList), "selected route protocol = ", routeList.selectedRouteProtocol))
+	nextHopInfo := make([]ribd.NextHopInfo,len(routeInfoList))
+	i := 0
+	for sel := 0; sel < len(routeInfoList); sel++ {
+		nextHopInfo[i].NextHopIp = routeInfoList[sel].nextHopIp.String()
 	    nextHopIfTypeStr, _ := m.GetNextHopIfTypeStr(ribdInt.Int(entry.nextHopIfType))
-	    nextHopInfo.OutgoingIntfType = nextHopIfTypeStr
-	    nextHopInfo.OutgoingInterface = strconv.Itoa(int(routeInfoList[sel].nextHopIfIndex))
-	    nextHopInfo.Protocol = ReverseRouteProtoTypeMapDB[int(routeInfoList[sel].protocol)]
-		obj.NextHopList = append(obj.NextHopList,nextHopInfo)
+	    nextHopInfo[i].OutgoingIntfType = nextHopIfTypeStr
+	    nextHopInfo[i].OutgoingInterface = strconv.Itoa(int(routeInfoList[sel].nextHopIfIndex))
+	    nextHopInfo[i].Protocol = ReverseRouteProtoTypeMapDB[int(routeInfoList[sel].protocol)]
+		obj.NextHopList = append(obj.NextHopList,&nextHopInfo[i])
+		i++
 	}
 	obj.RouteCreatedTime = entry.routeCreatedTime
 	obj.RouteUpdatedTime = entry.routeUpdatedTime
@@ -753,10 +757,10 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(entry RouteInfoRecord, routeLis
 }
 
 func (m RIBDServer) DelIPv4RouteStateEntryFromDB(entry RouteInfoRecord) error {
+    logger.Info(fmt.Sprintln("DelIPv4RouteStateEntryFromDB"))
 	var dbObj models.IPv4RouteState
 	obj := ribd.NewIPv4RouteState()
 	obj.DestinationNw = entry.networkAddr
-	obj.NextHopIp = entry.nextHopIp.String()
 	models.ConvertThriftToribdIPv4RouteStateObj(obj, &dbObj)
 	err := dbObj.DeleteObjectFromDb(m.DbHdl)
 	if err != nil {

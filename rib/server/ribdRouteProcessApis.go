@@ -430,11 +430,11 @@ func (m RIBDServer) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ribd.Int) (
 			prefixNodeRoute = routeInfoList[sel] //prefixNodeRouteList.routeInfoList[prefixNodeRouteList.selectedRouteIdx]
 			nextRoute = &temproute[validCount]
 			nextRoute.DestinationNw = prefixNodeRoute.networkAddr
-			nextRoute.NextHopIp = prefixNodeRoute.nextHopIp.String()
+/*			nextRoute.NextHopIp = prefixNodeRoute.nextHopIp.String()
 			nextHopIfTypeStr, _ := m.GetNextHopIfTypeStr(ribdInt.Int(prefixNodeRoute.nextHopIfType))
 			nextRoute.OutgoingIntfType = nextHopIfTypeStr
 			nextRoute.OutgoingInterface = strconv.Itoa(int(prefixNodeRoute.nextHopIfIndex))
-			nextRoute.Protocol = ReverseRouteProtoTypeMapDB[int(prefixNodeRoute.protocol)]
+			nextRoute.Protocol = ReverseRouteProtoTypeMapDB[int(prefixNodeRoute.protocol)]*/
 			nextRoute.RouteCreatedTime = prefixNodeRoute.routeCreatedTime
 			nextRoute.RouteUpdatedTime = prefixNodeRoute.routeUpdatedTime
 			nextRoute.IsNetworkReachable = prefixNodeRoute.resolvedNextHopIpIntf.IsReachable
@@ -884,7 +884,6 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 			destNetSlice = make([]localDB, 0)
 		}
 		destNetSlice = append(destNetSlice, localDBRecord)
-		routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecord,routeInfoRecordList)
 	}
 	if routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]] == nil {
 		routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]] = make([]RouteInfoRecord, 0)
@@ -903,9 +902,9 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		currRecord.routeUpdatedTime = t1.String()
 		currRecord.resolvedNextHopIpIntf.IsReachable = true
 		routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]][idx] = currRecord
-		routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecord,routeInfoRecordList)
 	}
 
+	routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecord,routeInfoRecordList)
 	RouteInfoMap.Set(patriciaDB.Prefix(destNetPrefix), routeInfoRecordList)
 
 	if ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)] != routeInfoRecordList.selectedRouteProtocol {
@@ -996,12 +995,12 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	delType int) {
 	logger.Info(" deleteRoute")
 	deleteNode := true
+	nodeDeleted := false
 	if destNetSlice == nil || int(routeInfoRecord.sliceIdx) >= len(destNetSlice) {
 		logger.Info(fmt.Sprintln("Destination slice not found at the expected slice index ", routeInfoRecord.sliceIdx))
 		return
 	}
 	destNetSlice[routeInfoRecord.sliceIdx].isValid = false //invalidate this entry in the local db
-	routeServiceHandler.DelIPv4RouteStateEntryFromDB(routeInfoRecord)
 	//the following operations delete this node from the RIB DB
 	if delType == FIBAndRIB {
 		logger.Info("Del type = FIBAndRIB, so delete the entry in RIB DB")
@@ -1046,10 +1045,15 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 						updateNextHopMap(NextHopInfoKey{string(nhPrefix)}, del)
 					}
 				}
+	            routeServiceHandler.DelIPv4RouteStateEntryFromDB(routeInfoRecord)
 				RouteInfoMap.Delete(destNetPrefix)
-			} else {
-				RouteInfoMap.Set(destNetPrefix, routeInfoRecordList)
+				nodeDeleted = true
 			}
+		}
+		if !nodeDeleted {
+			logger.Info(fmt.Sprintln("node not deleted, write the updated list of len ", len(routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]])))
+	        routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecord,routeInfoRecordList)
+	        RouteInfoMap.Set(destNetPrefix, routeInfoRecordList)
 		}
 	} else if delType == FIBOnly { //in cases where the interface goes down
 		logger.Info("Del type = FIBOnly, so delete the entry in RIB DB")
@@ -1074,6 +1078,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 				updateNextHopMap(NextHopInfoKey{string(nhPrefix)}, del)
 			}
 		}
+	    routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecord,routeInfoRecordList)
 		RouteInfoMap.Set(destNetPrefix, routeInfoRecordList)
 	}
 	if routeInfoRecordList.selectedRouteProtocol != ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)] {
