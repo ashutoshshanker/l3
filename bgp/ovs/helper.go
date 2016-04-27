@@ -49,10 +49,10 @@ func (ovsHdl *BGPOvsdbHandler) getObjUUID(val interface{}) UUID {
 
 /*  Lets get asn number for the local bgp and also get the ovsdb BGP_Router uuid
  */
-func (ovsHdl *BGPOvsdbHandler) GetBGPRouterInfo() (*BGPOvsRouterInfo, error) { //(uint32, UUID, error) {
+func (ovsHdl *BGPOvsdbHandler) GetBGPRouterAsn(table ovsdb.TableUpdate) (*BGPOvsRouterInfo, error) {
 	var asn uint32
 	var id UUID
-
+	// BGP Router ASN is stored in vrf table... not in BGP_Router table
 	vrfs, exists := ovsHdl.cache[OVSDB_VRF_TABLE]
 	if !exists {
 		return nil, errors.New("vrf table doesn't exists")
@@ -69,6 +69,7 @@ func (ovsHdl *BGPOvsdbHandler) GetBGPRouterInfo() (*BGPOvsRouterInfo, error) { /
 				return nil, errors.New("Multiple bgp routers " +
 					"configured on vrf_default")
 			}
+			ovsHdl.logger.Info(fmt.Sprintln(bgpRouters))
 			for key, value := range bgpRouters {
 				asn = uint32(key.(float64))
 				id = ovsHdl.getObjUUID(value)
@@ -76,15 +77,40 @@ func (ovsHdl *BGPOvsdbHandler) GetBGPRouterInfo() (*BGPOvsRouterInfo, error) { /
 					return nil, errors.New("invalid uuid")
 				}
 				rtrInfo := &BGPOvsRouterInfo{
-					asn:      asn,
-					uuid:     id,
-					routerId: "", //rtrId,
+					asn:  asn,
+					uuid: id,
 				}
+				rtrInfo.routerId = ovsHdl.GetBGPRouterId(rtrInfo.uuid, table)
 				return rtrInfo, nil
 			}
 		}
 	}
 	return nil, errors.New("no entry found in vrf table")
+}
+
+/*  Lets get router id for the asn
+ */
+func (ovsHdl *BGPOvsdbHandler) GetBGPRouterId(rtUuid UUID, table ovsdb.TableUpdate) string {
+	rtrId := ""
+	ok := false
+
+	for key, value := range table.Rows {
+		// sanity check for router uuid
+		if sameUUID(rtUuid, key) {
+			/*
+				ovsHdl.logger.Info(fmt.Sprintln("key:", key))
+				ovsHdl.logger.Info(fmt.Sprintln("new value:", value.New))
+				ovsHdl.logger.Info(fmt.Sprintln("old value:", value.Old))
+			*/
+			rtrId, ok = value.New.Fields["router_id"].(string)
+			if ok {
+				ovsHdl.logger.Info("Router ID is " + rtrId)
+				return rtrId
+			}
+		}
+	}
+
+	return rtrId
 }
 
 /*  Get bgp neighbor uuids and addrs information
@@ -163,8 +189,6 @@ func (ovsHdl *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 					ovsHdl.logger.Info(fmt.Sprintln("Advertisement Interval",
 						newAdverInt))
 				}
-
-				//neighborInfo := &bgpd.BGPNeighbor{}
 			}
 		}
 	}
@@ -173,8 +197,7 @@ func (ovsHdl *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 /*  Creating bgp global flexswitch object using BGP_Router information that was
  *  parse/collected from ovsdb update
  */
-func (ovsHdl *BGPOvsdbHandler) CreateBgpGlobalConfig(
-	rtrInfo *BGPOvsRouterInfo) *bgpd.BGPGlobal {
+func (ovsHdl *BGPOvsdbHandler) CreateBgpGlobalConfig(rtrInfo *BGPOvsRouterInfo) *bgpd.BGPGlobal {
 	bgpGlobal := &bgpd.BGPGlobal{
 		ASNum:            int32(rtrInfo.asn),
 		RouterId:         rtrInfo.routerId,
@@ -189,13 +212,7 @@ func (ovsHdl *BGPOvsdbHandler) CreateBgpGlobalConfig(
 /*  BGP neighbor update in ovsdb... we will update our backend object
  */
 func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) error {
-	//asn, bgpRouterUUID, err := ovsHdl.GetBGPRouterInfo()
-	routerInfo, err := ovsHdl.GetBGPRouterInfo()
-	if err != nil {
-		return err
-	}
-	ovsHdl.logger.Info(fmt.Sprintln("asn:", routerInfo.asn, "BGP_Router UUID:",
-		routerInfo.uuid))
+	routerInfo := ovsHdl.routerInfo
 	rtrId, neighborAddrs, neighborUUIDs, err := ovsHdl.GetBGPNeighborInfo(routerInfo.uuid)
 	if rtrId != "" {
 		routerInfo.routerId = rtrId
@@ -203,15 +220,29 @@ func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) err
 	if err != nil {
 		return err
 	}
-	ovsHdl.routerInfo = routerInfo
-	bgpGlobal := ovsHdl.CreateBgpGlobalConfig(ovsHdl.routerInfo)
 	ovsHdl.logger.Info(fmt.Sprintln("neighborAddrs:", neighborAddrs, "uuid's:",
 		neighborUUIDs))
-	ovsHdl.logger.Info(fmt.Sprintln(bgpGlobal))
 	ovsHdl.DumpBgpNeighborInfo(neighborAddrs, neighborUUIDs, table)
 	return nil
 }
 
 func (ovsHdl *BGPOvsdbHandler) HandleBGPRouteUpd(table ovsdb.TableUpdate) error {
+	var err error
+	if ovsHdl.routerInfo == nil {
+		ovsHdl.routerInfo, err = ovsHdl.GetBGPRouterAsn(table)
+		if err != nil {
+			return err
+		}
+		ovsHdl.logger.Info(fmt.Sprintln("Got BGP_Router Update asn:",
+			ovsHdl.routerInfo.asn, "BGP_Router UUID:", ovsHdl.routerInfo.uuid))
+	} else {
+		ovsHdl.routerInfo.routerId = ovsHdl.GetBGPRouterId(ovsHdl.routerInfo.uuid, table)
+	}
+	if ovsHdl.routerInfo.routerId == "" {
+		ovsHdl.logger.Info("Waiting for router id to be configured before starting bgp server")
+		return nil
+	}
+	bgpGlobal := ovsHdl.CreateBgpGlobalConfig(ovsHdl.routerInfo)
+	ovsHdl.logger.Info(fmt.Sprintln(bgpGlobal))
 	return nil
 }
