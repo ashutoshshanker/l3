@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"bytes"
 	"crypto/md5"
 	"crypto/sha1"
@@ -246,7 +246,7 @@ func (server *BFDServer) GetIfIndexAndLocalIpFromDestIp(DestIp string) (int32, s
 		return int32(0), ""
 	}
 	server.ribdClient.ClientHdl.TrackReachabilityStatus(DestIp, "BFD", "add")
-	ifIndex := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(reachabilityInfo.NextHopIfIndex), int(reachabilityInfo.NextHopIfType))
+	ifIndex := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(reachabilityInfo.NextHopIfIndex), int(reachabilityInfo.NextHopIfType))
 	server.logger.Info(fmt.Sprintln("GetIfIndexAndLocalIpFromDestIp: DestIp: ", DestIp, "IfIndex: ", ifIndex))
 	return ifIndex, reachabilityInfo.NextHopIp
 }
@@ -334,7 +334,7 @@ func (server *BFDServer) NewBfdSession(DestIp string, ParamName string, Interfac
 		server.logger.Info(fmt.Sprintln("RemoteIP ", DestIp, " is not reachable"))
 		return nil
 	} else {
-		IfType = asicdConstDefs.GetIntfTypeFromIfIndex(IfIndex)
+		IfType = asicdCommonDefs.GetIntfTypeFromIfIndex(IfIndex)
 		IfName, err := server.getLinuxIntfName(IfIndex)
 		if err == nil {
 			if Interface != "" && IfName != Interface {

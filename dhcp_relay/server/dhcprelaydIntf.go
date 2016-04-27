@@ -2,7 +2,7 @@
 package relayServer
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"dhcprelayd"
 	"encoding/json"
@@ -56,7 +56,7 @@ func DhcpRelayAgentListenAsicUpdate(address string) error {
 	return nil
 }
 
-func DhcpRelayAgentUpdateVlanInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
+func DhcpRelayAgentUpdateVlanInfo(vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg, msgType uint8) {
 	logger.Info(fmt.Sprintln("DRA: Vlan update message for ",
 		vlanNotifyMsg.VlanName, "vlan id is ", vlanNotifyMsg.VlanId))
 	var linuxInterface *net.Interface
@@ -66,7 +66,7 @@ func DhcpRelayAgentUpdateVlanInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, ms
 		logger.Err(fmt.Sprintln("DRA: getting interface by name failed", err))
 		return
 	}
-	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
+	if msgType == asicdCommonDefs.NOTIFY_VLAN_CREATE { // Create Vlan
 		dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index] =
 			int32(vlanNotifyMsg.VlanId)
 	} else { // Delete interface id
@@ -74,12 +74,12 @@ func DhcpRelayAgentUpdateVlanInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, ms
 	}
 }
 
-func DhcpRelayAgentUpdateIntfPortMap(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
-	logicalId := int32(asicdConstDefs.GetIntfIdFromIfIndex(msg.IfIndex))
+func DhcpRelayAgentUpdateIntfPortMap(msg asicdCommonDefs.IPv4IntfNotifyMsg, msgType uint8) {
+	logicalId := int32(asicdCommonDefs.GetIntfIdFromIfIndex(msg.IfIndex))
 	intfId := msg.IfIndex
 	logger.Info(fmt.Sprintln("DRA: Got a ipv4 interface notification for:", msgType,
 		"for If Id:", intfId, "original id is", msg.IfIndex))
-	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
+	if msgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE {
 		dhcprelayLogicalIntf2IfIndex[logicalId] = intfId
 		// @TODO: fix netmask later on...
 		// Init DRA Global Handling for new interface....
@@ -103,11 +103,11 @@ func DhcpRelayAgentUpdateIntfPortMap(msg asicdConstDefs.IPv4IntfNotifyMsg, msgTy
 	}
 }
 
-func DhcpRelayAgentUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
-	if msg.IfState == asicdConstDefs.INTF_STATE_UP {
+func DhcpRelayAgentUpdateL3IntfStateChange(msg asicdCommonDefs.L3IntfStateNotifyMsg) {
+	if msg.IfState == asicdCommonDefs.INTF_STATE_UP {
 		logger.Info(fmt.Sprintln("DRA: Got intf state up notification"))
 
-	} else if msg.IfState == asicdConstDefs.INTF_STATE_DOWN {
+	} else if msg.IfState == asicdCommonDefs.INTF_STATE_DOWN {
 		logger.Info(fmt.Sprintln("DRA: Got intf state down notification"))
 
 	}
@@ -121,34 +121,34 @@ func DhcpRelayAsicdSubscriber() {
 			continue
 		}
 		//logger.Info(fmt.Sprintln("DRA: asicd Subscriber recv returned:", rxBuf))
-		var msg asicdConstDefs.AsicdNotification
+		var msg asicdCommonDefs.AsicdNotification
 		err = json.Unmarshal(rxBuf, &msg)
 		if err != nil {
 			logger.Err(fmt.Sprintln("DRA: Unable to Unmarshal asicd msg:", msg.Msg))
 			continue
 		}
-		if msg.MsgType == asicdConstDefs.NOTIFY_VLAN_CREATE ||
-			msg.MsgType == asicdConstDefs.NOTIFY_VLAN_DELETE {
+		if msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_CREATE ||
+			msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_DELETE {
 			//Vlan Create Msg
-			var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
+			var vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg
 			err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
 			if err != nil {
 				logger.Err(fmt.Sprintln("DRA: Unable to unmashal vlanNotifyMsg:", msg.Msg))
 				return
 			}
 			DhcpRelayAgentUpdateVlanInfo(vlanNotifyMsg, msg.MsgType)
-		} else if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE ||
-			msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_DELETE {
-			var ipv4IntfNotifyMsg asicdConstDefs.IPv4IntfNotifyMsg
+		} else if msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE ||
+			msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_DELETE {
+			var ipv4IntfNotifyMsg asicdCommonDefs.IPv4IntfNotifyMsg
 			err = json.Unmarshal(msg.Msg, &ipv4IntfNotifyMsg)
 			if err != nil {
 				logger.Err(fmt.Sprintln("DRA: Unable to Unmarshal ipv4IntfNotifyMsg:", msg.Msg))
 				continue
 			}
 			DhcpRelayAgentUpdateIntfPortMap(ipv4IntfNotifyMsg, msg.MsgType)
-		} else if msg.MsgType == asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE {
+		} else if msg.MsgType == asicdCommonDefs.NOTIFY_L3INTF_STATE_CHANGE {
 			//INTF_STATE_CHANGE
-			var l3IntfStateNotifyMsg asicdConstDefs.L3IntfStateNotifyMsg
+			var l3IntfStateNotifyMsg asicdCommonDefs.L3IntfStateNotifyMsg
 			err = json.Unmarshal(msg.Msg, &l3IntfStateNotifyMsg)
 			if err != nil {
 				logger.Err(fmt.Sprintln("DRA: unable to Unmarshal l3 intf state change:", msg.Msg))
@@ -179,7 +179,7 @@ func DhcpRelayAgentAllocateMemory() {
 }
 
 func DhcpRelayAgentGetPortList() {
-	currMarker := int64(asicdConstDefs.MIN_SYS_PORTS)
+	currMarker := int64(asicdCommonDefs.MIN_SYS_PORTS)
 	more := false
 	objCount := 0
 	count := 10
@@ -270,7 +270,7 @@ func DhcpRelayInitPortParams() error {
 		logger.Info("DRA: is not connected to asicd.... is it bad?")
 		return nil
 	}
-	err := DhcpRelayAgentListenAsicUpdate(asicdConstDefs.PUB_SOCKET_ADDR)
+	err := DhcpRelayAgentListenAsicUpdate(asicdCommonDefs.PUB_SOCKET_ADDR)
 	if err == nil {
 		// Asicd subscriber thread
 		go DhcpRelayAsicdSubscriber()

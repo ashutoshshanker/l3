@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"errors"
 	"fmt"
 	"utils/commonDefs"
@@ -12,7 +12,7 @@ func (server *ARPServer) processResolveIPv4(conf ResolveIPv4) {
 	if conf.TargetIP == "0.0.0.0" {
 		return
 	}
-	IfIndex := int(asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(conf.IfId, conf.IfType))
+	IfIndex := int(asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(conf.IfId, conf.IfType))
 	if conf.IfType == commonDefs.IfTypeVlan {
 		vlanEnt := server.vlanPropMap[IfIndex]
 		for port, _ := range vlanEnt.UntagPortMap {

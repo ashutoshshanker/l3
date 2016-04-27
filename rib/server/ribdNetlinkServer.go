@@ -2,7 +2,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"fmt"
 	"github.com/vishvananda/netlink"
 	"l3/rib/ribdCommonDefs"
@@ -22,7 +22,7 @@ func delLinuxRoute(route RouteInfoRecord) {
 		IP:   maskedIP, //route.destNetIp,
 		Mask: mask,     //net.CIDRMask(prefixLen, 32),//net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
 	}
-	ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
+	ifId := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
 	logger.Info(fmt.Sprintln("IfId = ", ifId))
 	intfEntry, ok := IntfIdNameMap[ifId]
 	if !ok {
@@ -58,7 +58,7 @@ func addLinuxRoute(route RouteInfoRecord) {
 		IP:   maskedIP, //route.destNetIp,
 		Mask: mask,     //net.CIDRMask(prefixLen, 32),//net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
 	}
-	ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
+	ifId := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
 	logger.Info(fmt.Sprintln("IfId = ", ifId))
 	intfEntry, ok := IntfIdNameMap[ifId]
 	if !ok {

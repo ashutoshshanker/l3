@@ -2,7 +2,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"database/sql"
 	"fmt"
@@ -157,7 +157,7 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 				tempRoute.Ipaddr = ipAddrStr
 				tempRoute.Mask = ipMaskStr
 				tempRoute.NextHopIp = "0.0.0.0"
-				tempRoute.NextHopIfType = ribdInt.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))
+				tempRoute.NextHopIfType = ribdInt.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))
 				nextHopIfTypeStr := ""
 				switch tempRoute.NextHopIfType {
 				case commonDefs.IfTypePort:
@@ -170,7 +170,7 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 					nextHopIfTypeStr = "NULL"
 					break
 				}
-				tempRoute.IfIndex = ribdInt.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))
+				tempRoute.IfIndex = ribdInt.Int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))
 				tempRoute.Prototype = ribdCommonDefs.CONNECTED
 				tempRoute.Metric = 0
 				entity, err := buildPolicyEntityFromRoute(tempRoute, params)
@@ -191,9 +191,9 @@ func policyEngineActionUndoRejectRoute(conditionsList []string, params interface
 					Cost:              0,
 					NetworkMask:       tempRoute.Mask,
 					NextHopIp:         "0.0.0.0"}
-				_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
+				_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
 				if err != nil {
-					logger.Info(fmt.Sprintf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))))
+					logger.Info(fmt.Sprintf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))))
 				}
 			}
 			if IPIntfBulk.More == false {
