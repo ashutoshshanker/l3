@@ -1,7 +1,7 @@
 package FSMgr
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"encoding/json"
 	"errors"
@@ -41,7 +41,7 @@ func NewFSIntfMgr(logger *logging.Writer, fileName string) (*FSIntfMgr, error) {
 /*  Do any necessary init. Called from server..
  */
 func (mgr *FSIntfMgr) Start() {
-	mgr.asicdL3IntfSubSocket, _ = mgr.setupSubSocket(asicdConstDefs.PUB_SOCKET_ADDR)
+	mgr.asicdL3IntfSubSocket, _ = mgr.setupSubSocket(asicdCommonDefs.PUB_SOCKET_ADDR)
 	go mgr.listenForAsicdEvents()
 }
 
@@ -89,7 +89,7 @@ func (mgr *FSIntfMgr) listenForAsicdEvents() {
 		}
 
 		mgr.logger.Info(fmt.Sprintln("Asicd subscriber recv returned", rxBuf))
-		event := asicdConstDefs.AsicdNotification{}
+		event := asicdCommonDefs.AsicdNotification{}
 		err = json.Unmarshal(rxBuf, &event)
 		if err != nil {
 			mgr.logger.Err(fmt.Sprintf("Unmarshal Asicd event failed with err %s", err))
@@ -97,8 +97,8 @@ func (mgr *FSIntfMgr) listenForAsicdEvents() {
 		}
 
 		switch event.MsgType {
-		case asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE:
-			var msg asicdConstDefs.L3IntfStateNotifyMsg
+		case asicdCommonDefs.NOTIFY_L3INTF_STATE_CHANGE:
+			var msg asicdCommonDefs.L3IntfStateNotifyMsg
 			err = json.Unmarshal(event.Msg, &msg)
 			if err != nil {
 				mgr.logger.Err(fmt.Sprintf("Unmarshal Asicd L3INTF",
@@ -108,7 +108,7 @@ func (mgr *FSIntfMgr) listenForAsicdEvents() {
 
 			mgr.logger.Info(fmt.Sprintf("Asicd L3INTF event idx %d ip %s state %d\n",
 				msg.IfIndex, msg.IpAddr, msg.IfState))
-			if msg.IfState == asicdConstDefs.INTF_STATE_DOWN {
+			if msg.IfState == asicdCommonDefs.INTF_STATE_DOWN {
 				api.SendIntfNotification(msg.IfIndex, msg.IpAddr,
 					config.INTF_STATE_DOWN)
 			} else {
@@ -128,5 +128,5 @@ func (mgr *FSIntfMgr) GetIPv4Information(ifIndex int32) (string, error) {
 }
 
 func (mgr *FSIntfMgr) GetIfIndex(ifIndex, ifType int) int32 {
-	return asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(ifIndex, ifType)
+	return asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(ifIndex, ifType)
 }

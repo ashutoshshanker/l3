@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"encoding/json"
 	"fmt"
@@ -17,7 +17,7 @@ type AsicdClient struct {
 
 func (server *BFDServer) CreateASICdSubscriber() {
 	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
+	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
 	for {
 		server.logger.Info("Read on ASICd subscriber socket...")
 		asicdrxBuf, err := server.asicdSubSocket.Recv(0)
@@ -57,16 +57,16 @@ func (server *BFDServer) listenForASICdUpdates(address string) error {
 }
 
 func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
-	var msg asicdConstDefs.AsicdNotification
+	var msg asicdCommonDefs.AsicdNotification
 	err := json.Unmarshal(asicdrxBuf, &msg)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to unmarshal asicdrxBuf:", asicdrxBuf))
 		return
 	}
-	if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE ||
-		msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_DELETE {
+	if msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE ||
+		msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_DELETE {
 		// IPV4INTF Create, Delete
-		var NewIpv4IntfMsg asicdConstDefs.IPv4IntfNotifyMsg
+		var NewIpv4IntfMsg asicdCommonDefs.IPv4IntfNotifyMsg
 		var ipv4IntfMsg IPv4IntfNotifyMsg
 		err = json.Unmarshal(msg.Msg, &NewIpv4IntfMsg)
 		if err != nil {
@@ -75,29 +75,29 @@ func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
 		}
 		ipv4IntfMsg.IpAddr = NewIpv4IntfMsg.IpAddr
 		ipv4IntfMsg.IfId = NewIpv4IntfMsg.IfIndex
-		if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
+		if msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_CREATE", ipv4IntfMsg))
 			server.createIPIntfConfMap(ipv4IntfMsg)
-			if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypePort { // PHY
+			if asicdCommonDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
-			} else if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypeVlan { // Vlan
+			} else if asicdCommonDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypeVlan { // Vlan
 				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
 			}
 		} else {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_DELETE", ipv4IntfMsg))
 			server.deleteIPIntfConfMap(ipv4IntfMsg)
-			if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypePort { // PHY
+			if asicdCommonDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypePort { // PHY
 				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
-			} else if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypeVlan { // Vlan
+			} else if asicdCommonDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.IfTypeVlan { // Vlan
 				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
 			}
 		}
-	} else if msg.MsgType == asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE {
+	} else if msg.MsgType == asicdCommonDefs.NOTIFY_L3INTF_STATE_CHANGE {
 		// L3INTF state change
-	} else if msg.MsgType == asicdConstDefs.NOTIFY_VLAN_CREATE ||
-		msg.MsgType == asicdConstDefs.NOTIFY_VLAN_DELETE {
+	} else if msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_CREATE ||
+		msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_DELETE {
 		// VLAN Create, Delete
-		var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
+		var vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg
 		err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Unable to unmashal vlanNotifyMsg:", msg.Msg))
@@ -105,11 +105,11 @@ func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
 		}
 		server.updatePortPropertyMap(vlanNotifyMsg, msg.MsgType)
 		server.updateVlanPropertyMap(vlanNotifyMsg, msg.MsgType)
-	} else if msg.MsgType == asicdConstDefs.NOTIFY_LAG_CREATE ||
-		msg.MsgType == asicdConstDefs.NOTIFY_LAG_DELETE {
+	} else if msg.MsgType == asicdCommonDefs.NOTIFY_LAG_CREATE ||
+		msg.MsgType == asicdCommonDefs.NOTIFY_LAG_DELETE {
 		// LAG Create, Delete
 		server.logger.Info("Recvd NOTIFY_LAG notification")
-		var lagNotifyMsg asicdConstDefs.LagNotifyMsg
+		var lagNotifyMsg asicdCommonDefs.LagNotifyMsg
 		err = json.Unmarshal(msg.Msg, &lagNotifyMsg)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Unable to unmashal lagNotifyMsg:", msg.Msg))
