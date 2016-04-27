@@ -2,24 +2,27 @@
 package main
 
 import (
-	"asicdServices"
-	"bfdd"
 	"flag"
 	"fmt"
+	"l3/bgp/flexswitch"
+	"l3/bgp/ovs"
 	bgppolicy "l3/bgp/policy"
 	"l3/bgp/rpc"
 	"l3/bgp/server"
 	"l3/bgp/utils"
-	"ribd"
 	"utils/keepalive"
 	"utils/logging"
 )
 
-const IP string = "localhost" //"10.0.2.15"
-const BGPPort string = "179"
-const CONF_PORT string = "2001"
-const BGPConfPort string = "4050"
-const RIBConfPort string = "5000"
+const (
+	IP          string = "10.1.10.229"
+	BGPPort     string = "179"
+	CONF_PORT   string = "2001"
+	BGPConfPort string = "4050"
+	RIBConfPort string = "5000"
+
+	OVSDB_PLUGIN = "ovsdb"
+)
 
 func main() {
 	fmt.Println("Starting bgp daemon")
@@ -41,54 +44,68 @@ func main() {
 	// Start keepalive routine
 	go keepalive.InitKeepAlive("bgpd", fileName)
 
-	var asicdClient *asicdServices.ASICDServicesClient = nil
-	asicdClientChan := make(chan *asicdServices.ASICDServicesClient)
-
-	logger.Info("Connecting to ASICd")
-	go rpc.StartAsicdClient(logger, fileName, asicdClientChan)
-	asicdClient = <-asicdClientChan
-	if asicdClient == nil {
-		logger.Err("Failed to connect to ASICd")
-		return
-	} else {
-		logger.Info("Connected to ASICd")
-	}
-
-	var ribdClient *ribd.RIBDServicesClient = nil
-	ribdClientChan := make(chan *ribd.RIBDServicesClient)
-
-	logger.Info("Connecting to RIBd")
-	go rpc.StartRibdClient(logger, fileName, ribdClientChan)
-	ribdClient = <-ribdClientChan
-	if ribdClient == nil {
-		logger.Err("Failed to connect to RIBd\n")
-		return
-	} else {
-		logger.Info("Connected to RIBd")
-	}
-
-	var bfddClient *bfdd.BFDDServicesClient = nil
-	bfddClientChan := make(chan *bfdd.BFDDServicesClient)
-
-	logger.Info("Connecting to BFDd")
-	go rpc.StartBfddClient(logger, fileName, bfddClientChan)
-	bfddClient = <-bfddClientChan
-	if bfddClient == nil {
-		logger.Err("Failed to connect to BFDd\n")
-		return
-	} else {
-		logger.Info("Connected to BFDd")
-	}
-
+	// starting bgp policy engine...
 	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
 	bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger)
 	go bgpPolicyEng.StartPolicyEngine()
 
-	logger.Info(fmt.Sprintln("Starting BGP Server..."))
-	bgpServer := server.NewBGPServer(logger, bgpPolicyEng, ribdClient, bfddClient, asicdClient)
-	go bgpServer.StartServer()
+	// @FIXME: Plugin name should come for json readfile...
+	//plugin := OVSDB_PLUGIN
+	plugin := ""
+	switch plugin {
+	case OVSDB_PLUGIN:
+		// if plugin used is ovs db then lets start ovsdb client listener
+		quit := make(chan bool)
+		rMgr := ovsMgr.NewOvsRouteMgr()
+		pMgr := ovsMgr.NewOvsPolicyMgr()
+		iMgr := ovsMgr.NewOvsIntfMgr()
+		bMgr := ovsMgr.NewOvsBfdMgr()
 
-	logger.Info(fmt.Sprintln("Starting config listener..."))
-	confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
-	rpc.StartServer(logger, confIface, fileName)
+		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr, pMgr,
+			rMgr, bMgr)
+		go bgpServer.StartServer()
+
+		logger.Info(fmt.Sprintln("Starting config listener..."))
+		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
+
+		// create and start ovsdb handler
+		ovsdbManager, err := ovsMgr.NewBGPOvsdbHandler(logger, confIface)
+		if err != nil {
+			fmt.Println("Starting OVDB client failed ERROR:", err)
+			return
+		}
+		err = ovsdbManager.StartMonitoring()
+		if err != nil {
+			fmt.Println("OVSDB Serve failed ERROR:", err)
+			return
+		}
+
+		<-quit
+	default:
+		// flexswitch plugin lets connect to clients first and then
+		// start flexswitch client listener
+		iMgr, err := FSMgr.NewFSIntfMgr(logger, fileName)
+		if err != nil {
+			return
+		}
+		rMgr, err := FSMgr.NewFSRouteMgr(logger, fileName)
+		if err != nil {
+			return
+		}
+		bMgr, err := FSMgr.NewFSBfdMgr(logger, fileName)
+		if err != nil {
+			return
+		}
+		pMgr := FSMgr.NewFSPolicyMgr(logger, fileName)
+
+		logger.Info(fmt.Sprintln("Starting BGP Server..."))
+
+		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr, pMgr,
+			rMgr, bMgr)
+		go bgpServer.StartServer()
+
+		logger.Info(fmt.Sprintln("Starting config listener..."))
+		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
+		rpc.StartServer(logger, confIface, fileName)
+	}
 }

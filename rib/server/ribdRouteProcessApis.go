@@ -10,7 +10,7 @@ import (
 	"utils/patriciaDB"
 	"utils/policy/policyCommonDefs"
 	//		"patricia"
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"bytes"
 	"errors"
 	"utils/commonDefs"
@@ -193,7 +193,7 @@ func getConnectedRoutes() {
 			ipMaskStr := net.IP(ipMask).String()
 			logger.Info(fmt.Sprintln("Calling createv4Route with ipaddr ", ipAddrStr, " mask ", ipMaskStr, "ifIndex : ", IPIntfBulk.IPv4IntfStateList[i].IfIndex))
 			nextHopIfTypeStr := ""
-			switch asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex) {
+			switch asicdCommonDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex) {
 			case commonDefs.IfTypePort:
 				nextHopIfTypeStr = "PHY"
 				break
@@ -211,14 +211,14 @@ func getConnectedRoutes() {
 			cfg := ribd.IPv4Route{
 				DestinationNw:     ipAddrStr,
 				Protocol:          "CONNECTED",
-				OutgoingInterface: strconv.Itoa(int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))),
+				OutgoingInterface: strconv.Itoa(int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))),
 				OutgoingIntfType:  nextHopIfTypeStr,
 				Cost:              0,
 				NetworkMask:       ipMaskStr,
 				NextHopIp:         "0.0.0.0"}
-			_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
+			_, err = routeServiceHandler.ProcessRouteCreateConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
 			if err != nil {
-				logger.Info(fmt.Sprintf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(asicdConstDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex)), ribd.Int(asicdConstDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))))
+				logger.Info(fmt.Sprintf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))))
 			}
 		}
 		if IPIntfBulk.More == false {

@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdInt"
 	"asicdServices"
 	"encoding/json"
@@ -56,15 +56,15 @@ func (server *OSPFServer) listenForASICdUpdates(address string) error {
 }
 
 func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
-	var msg asicdConstDefs.AsicdNotification
+	var msg asicdCommonDefs.AsicdNotification
 	err := json.Unmarshal(asicdrxBuf, &msg)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to unmarshal asicdrxBuf:", asicdrxBuf))
 		return
 	}
-	if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE ||
-		msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_DELETE {
-		var NewIpv4IntfMsg asicdConstDefs.IPv4IntfNotifyMsg
+	if msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE ||
+		msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_DELETE {
+		var NewIpv4IntfMsg asicdCommonDefs.IPv4IntfNotifyMsg
 		var ipv4IntfMsg IPv4IntfNotifyMsg
 		err = json.Unmarshal(msg.Msg, &NewIpv4IntfMsg)
 		if err != nil {
@@ -72,9 +72,9 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 			return
 		}
 		ipv4IntfMsg.IpAddr = NewIpv4IntfMsg.IpAddr
-		ipv4IntfMsg.IfType = uint8(asicdConstDefs.GetIntfTypeFromIfIndex(NewIpv4IntfMsg.IfIndex))
-		ipv4IntfMsg.IfId = uint16(asicdConstDefs.GetIntfIdFromIfIndex(NewIpv4IntfMsg.IfIndex))
-		if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
+		ipv4IntfMsg.IfType = uint8(asicdCommonDefs.GetIntfTypeFromIfIndex(NewIpv4IntfMsg.IfIndex))
+		ipv4IntfMsg.IfId = uint16(asicdCommonDefs.GetIntfIdFromIfIndex(NewIpv4IntfMsg.IfIndex))
+		if msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE {
 			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_CREATE", ipv4IntfMsg))
 			mtu := server.computeMinMTU(ipv4IntfMsg)
 			// We need more information from Asicd about numbered/unnumbered p2p
@@ -107,10 +107,10 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
 			}
 		}
-	} else if msg.MsgType == asicdConstDefs.NOTIFY_VLAN_CREATE ||
-		msg.MsgType == asicdConstDefs.NOTIFY_VLAN_DELETE {
+	} else if msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_CREATE ||
+		msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_DELETE {
 		//Vlan Create Msg
-		var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
+		var vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg
 		err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Unable to unmashal vlanNotifyMsg:", msg.Msg))
