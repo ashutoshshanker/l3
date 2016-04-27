@@ -983,7 +983,7 @@ func (server *BGPServer) removePeerFromList(peer *Peer) {
 func (server *BGPServer) StopPeersByGroup(groupName string) []*Peer {
 	peers := make([]*Peer, 0)
 	for peerIP, peer := range server.PeerMap {
-		if peer.NeighborConf.Group.Name == groupName {
+		if peer.NeighborConf.Group != nil && peer.NeighborConf.Group.Name == groupName {
 			server.logger.Info(fmt.Sprintln("Clean up peer", peerIP))
 			peer.Cleanup()
 			server.ProcessRemoveNeighbor(peerIP, peer)
