@@ -105,7 +105,7 @@ func (server *OSPFServer) getRibdRoutes() {
 			return
 		}
 		server.logger.Info(fmt.Sprintln("ASBR: len(getBulkInfo.RouteList)  = ", len(getBulkInfo.RouteList), " num objects returned = ", getBulkInfo.Count))
-	/*	
+		/*
 			for  range getBulkInfo.RouteList {
 				server.logger.Info(fmt.Sprintln("Receive  route, dest:", route.RouteInfo.Ipaddr, "netmask:", route.RouteInfo.Mask, "nexthop:", route.RouteInfo.NextHopIp))
 				server.ProcessRibdRoutes(route, ribdCommonDefs.NOTIFY_ROUTE_CREATED)
@@ -149,6 +149,10 @@ func (server *OSPFServer) ProcessRibdRoutes(route ribdCommonDefs.RoutelistInfo, 
 Verify if the RIBD route exists in the OSPF routes
 */
 func (server *OSPFServer) verifyOspfRoute(ipaddr uint32, mask uint32) bool {
+	/* HACK */
+	if ipaddr == 855703813 {
+		return false
+	}
 	for key, _ := range server.IntfConfMap {
 		intf, _ := server.IntfConfMap[key]
 		ip_str := intf.IfIpAddr.String()
