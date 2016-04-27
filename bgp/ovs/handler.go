@@ -130,6 +130,7 @@ func (ovsHdl *BGPOvsdbHandler) Transact(operations []ovsdb.Operation) error {
 func (ovsHdl *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
 	table, ok := updates.Updates[OVSDB_BGP_ROUTER_TABLE]
 	if ok {
+		ovsHdl.logger.Info("BGP_Router table Update")
 		err := ovsHdl.HandleBGPRouteUpd(table)
 		if err != nil {
 			ovsHdl.logger.Err(fmt.Sprintln(err))
