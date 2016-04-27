@@ -23,8 +23,8 @@ type RouteMdata struct {
 }
 
 func (server *OSPFServer) startRibdUpdates() error {
-	server.logger.Info("Listen for RIBd updates")
-	server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
+	server.logger.Info("ASBR: Listen for RIBd updates")
+	server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_OSPFD_ADDR)
 
 	go server.createRIBSubscriber()
 	return nil
@@ -33,23 +33,23 @@ func (server *OSPFServer) startRibdUpdates() error {
 func (server *OSPFServer) listenForRIBUpdates(address string) error {
 	var err error
 	if server.ribSubSocket, err = nanomsg.NewSubSocket(); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to create RIB subscribe socket, error:", err))
+		server.logger.Err(fmt.Sprintln("ERR: Failed to create RIB subscribe socket, error:", err))
 		return err
 	}
 
 	if err = server.ribSubSocket.Subscribe(""); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to subscribe to \"\" on RIB subscribe socket, error:", err))
+		server.logger.Err(fmt.Sprintln("ERR: Failed to subscribe to \"\" on RIB subscribe socket, error:", err))
 		return err
 	}
 
 	if _, err = server.ribSubSocket.Connect(address); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to connect to RIB publisher socket, address:", address, "error:", err))
+		server.logger.Err(fmt.Sprintln("ERR: Failed to connect to RIB publisher socket, address:", address, "error:", err))
 		return err
 	}
 
 	server.logger.Info(fmt.Sprintln("Connected to RIB publisher at address:", address))
 	if err = server.ribSubSocket.SetRecvBuffer(1024 * 1024); err != nil {
-		server.logger.Err(fmt.Sprintln("Failed to set the buffer size for RIB publisher socket, error:", err))
+		server.logger.Err(fmt.Sprintln("ERR: Failed to set the buffer size for RIB publisher socket, error:", err))
 		return err
 	}
 	return nil
@@ -60,16 +60,16 @@ func (server *OSPFServer) createRIBSubscriber() {
 		server.logger.Info("Read on RIB subscriber socket...")
 		ribrxBuf, err := server.ribSubSocket.Recv(0)
 		if err != nil {
-			server.logger.Err(fmt.Sprintln("Recv on RIB subscriber socket failed with error:", err))
+			server.logger.Err(fmt.Sprintln("ERR: Recv on RIB subscriber socket failed with error:", err))
 			server.ribSubSocketErrCh <- err
 			continue
 		}
-		server.logger.Info(fmt.Sprintln("RIB subscriber recv returned:", ribrxBuf))
 		server.ribSubSocketCh <- ribrxBuf
 	}
 }
 
 func (server *OSPFServer) processRibdNotification(ribrxBuf []byte) {
+	server.logger.Info(fmt.Sprintln("ASBR: Ribd notification received."))
 	var route ribdCommonDefs.RoutelistInfo
 
 	reader := bytes.NewReader(ribrxBuf)
@@ -80,7 +80,7 @@ func (server *OSPFServer) processRibdNotification(ribrxBuf []byte) {
 		if err != nil {
 			server.logger.Err("ASBR: Err in processing routes from RIB")
 		}
-		server.logger.Info(fmt.Sprintln("Receive  route, dest:", route.RouteInfo.Ipaddr, "netmask:", route.RouteInfo.Mask, "nexthop:", route.RouteInfo.NextHopIp))
+		server.logger.Info(fmt.Sprintln("ASBR: Receive  route, dest:", route.RouteInfo.Ipaddr, "netmask:", route.RouteInfo.Mask, "nexthop:", route.RouteInfo.NextHopIp))
 		server.ProcessRibdRoutes(route, msg.MsgType)
 	}
 
@@ -94,22 +94,22 @@ func (server *OSPFServer) getRibdRoutes() {
 	var count ribdInt.Int
 	count = 100
 	for {
-		server.logger.Info(fmt.Sprintln("Getting ", count, " objects from currMarker", currMarker))
+		server.logger.Info(fmt.Sprintln("ASBR: Getting ", count, " objects from currMarker", currMarker))
 		getBulkInfo, err := server.ribdClient.ClientHdl.GetBulkRoutesForProtocol("OSPF", currMarker, count)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("GetBulkRoutesForProtocol with err ", err))
 			return
 		}
 		if getBulkInfo.Count == 0 {
-			server.logger.Info("0 objects returned from GetBulkRoutesForProtocol")
+			server.logger.Info("ASBR: 0 objects returned from GetBulkRoutesForProtocol")
 			return
 		}
 		server.logger.Info(fmt.Sprintln("ASBR: len(getBulkInfo.RouteList)  = ", len(getBulkInfo.RouteList), " num objects returned = ", getBulkInfo.Count))
-	/*
-		for  range getBulkInfo.RouteList {
-			server.logger.Info(fmt.Sprintln("Receive  route, dest:", route.RouteInfo.Ipaddr, "netmask:", route.RouteInfo.Mask, "nexthop:", route.RouteInfo.NextHopIp))
-			server.ProcessRibdRoutes(route, ribdCommonDefs.NOTIFY_ROUTE_CREATED)
-		} */
+		/*
+			for  range getBulkInfo.RouteList {
+				server.logger.Info(fmt.Sprintln("Receive  route, dest:", route.RouteInfo.Ipaddr, "netmask:", route.RouteInfo.Mask, "nexthop:", route.RouteInfo.NextHopIp))
+				server.ProcessRibdRoutes(route, ribdCommonDefs.NOTIFY_ROUTE_CREATED)
+			}  */
 		if getBulkInfo.More == false {
 			server.logger.Info("more returned as false, so no more get bulks")
 			return
@@ -140,7 +140,8 @@ func (server *OSPFServer) ProcessRibdRoutes(route ribdCommonDefs.RoutelistInfo, 
 	ignore := server.verifyOspfRoute(ipaddr, mask)
 	if !ignore {
 		server.logger.Info(fmt.Sprintln("ASBR: Generate As external for ", route.RouteInfo.Ipaddr, route.RouteInfo.Mask))
-		server.generateASExternalLsa(routemdata)
+		/* send message to LSDB to generate AS ext LSA */
+		server.ExternalRouteNotif <- routemdata
 	}
 }
 
@@ -148,13 +149,17 @@ func (server *OSPFServer) ProcessRibdRoutes(route ribdCommonDefs.RoutelistInfo, 
 Verify if the RIBD route exists in the OSPF routes
 */
 func (server *OSPFServer) verifyOspfRoute(ipaddr uint32, mask uint32) bool {
+	/* HACK */
+	if ipaddr == 855703813 {
+		return false
+	}
 	for key, _ := range server.IntfConfMap {
 		intf, _ := server.IntfConfMap[key]
 		ip_str := intf.IfIpAddr.String()
 		ip := convertAreaOrRouterIdUint32(ip_str)
-		server.logger.Info(fmt.Sprintln("RIBD: verify OSPF routes  ip ", ip, " mask ", mask, " ipaddr ", ipaddr))
-		if ip&mask == ipaddr {
-			server.logger.Info(fmt.Sprintln("ASBR: Ignore route from RIB as ospf is added to the IF ", ipaddr))
+		server.logger.Info(fmt.Sprintln("ASBR: verify OSPF routes  ip ", ip, " mask ", mask, " ipaddr ", ipaddr))
+		if ip == ipaddr {
+			server.logger.Info(fmt.Sprintln("ASBR: Ignore route from RIB as ospf is configured to the IF ", ipaddr))
 			return true
 		}
 	}

@@ -1,10 +1,12 @@
 package server
+
 import (
 	"fmt"
 	"ribd"
 	"ribdInt"
 	"utils/policy"
 )
+
 type PolicyExtensions struct {
 	hitCounter    int
 	routeList     []string
@@ -16,6 +18,7 @@ type Policy struct {
 	routeList     []string
 	routeInfoList []ribdInt.Routes
 }
+
 func (m RIBDServer) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg: ", cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.MatchProtocol}

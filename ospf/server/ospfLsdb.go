@@ -544,13 +544,10 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 }
 
 func (server *OSPFServer) generateASExternalLsa(route RouteMdata) LsaKey {
-	server.logger.Info("Generating AS External LSA")
-	areaid := convertAreaOrRouterIdUint32("0.0.0.0")
-	lsdbKey := LsdbKey{
-		AreaId: areaid,
-	}
+	server.logger.Info(fmt.Sprintln("LSDB: Generating AS External LSA routemdata ", route))
+
 	LSType := ASExternalLSA
-	LSId := route.ipaddr
+	LSId := route.ipaddr & route.mask
 	AdvRouter := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
 
 	lsaKey := LsaKey{
@@ -560,38 +557,53 @@ func (server *OSPFServer) generateASExternalLsa(route RouteMdata) LsaKey {
 	}
 
 	BitE := true
-
-	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-	ent, exist := lsDbEnt.ASExternalLsaMap[lsaKey]
-	ent.LsaMd.LSAge = 0
-	ent.LsaMd.LSChecksum = 0
-	ent.LsaMd.Options = 0x20
-	ent.LsaMd.LSLen = uint16(OSPF_LSA_HEADER_SIZE + 32)
-	if !exist {
-		ent.LsaMd.LSSequenceNum = InitialSequenceNumber
-	} else {
-		if route.isDel {
-			ent.LsaMd.LSAge = LSA_MAX_AGE
+	for lsdbKey, _ := range server.AreaLsdb {
+		lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+		ent, exist := lsDbEnt.ASExternalLsaMap[lsaKey]
+		LSAge := 0
+		ent.LsaMd.LSChecksum = 0
+		ent.LsaMd.Options = 0x20
+		ent.LsaMd.LSLen = uint16(OSPF_LSA_HEADER_SIZE + 16)
+		if !exist {
+			ent.LsaMd.LSSequenceNum = InitialSequenceNumber
 		} else {
-			ent.LsaMd.LSSequenceNum = ent.LsaMd.LSSequenceNum + 1
+			if route.isDel {
+				ent.LsaMd.LSAge = LSA_MAX_AGE
+			} else {
+				ent.LsaMd.LSSequenceNum = ent.LsaMd.LSSequenceNum + 1
+			}
+		}
+		ent.BitE = BitE
+		ent.FwdAddr = convertAreaOrRouterIdUint32("0.0.0.0")
+		ent.Metric = route.metric // TODO - need to be revisited
+		ent.Netmask = route.mask
+		ent.ExtRouteTag = 0
+
+		LsaEnc := encodeASExternalLsa(ent, lsaKey)
+		checksumOffset := uint16(14)
+		ent.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc[2:], checksumOffset)
+		ent.LsaMd.LSAge = uint16(LSAge)
+		lsDbEnt.ASExternalLsaMap[lsaKey] = ent
+		server.AreaLsdb[lsdbKey] = lsDbEnt
+
+		selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+		if !route.isDel {
+			selfOrigLsaEnt[lsaKey] = true
+			server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
+		} else {
+			selfOrigLsaEnt[lsaKey] = false
+		}
+		server.logger.Info(fmt.Sprintln("ASBR: Added LSA to area ", lsdbKey, " lsaKey ", lsaKey))
+		if !exist {
+			var val LsdbSliceEnt
+			val.AreaId = lsdbKey.AreaId
+			val.LSType = lsaKey.LSType
+			val.LSId = lsaKey.LSId
+			val.AdvRtr = lsaKey.AdvRouter
+			server.LsdbSlice = append(server.LsdbSlice, val)
 		}
 	}
-	ent.BitE = BitE
-	ent.FwdAddr = convertAreaOrRouterIdUint32("0.0.0.0")
-	ent.Metric = route.metric // TODO - need to be revisited
-	ent.Netmask = route.mask
-	ent.ExtRouteTag = 0
 
-	lsDbEnt.ASExternalLsaMap[lsaKey] = ent
-	server.AreaLsdb[lsdbKey] = lsDbEnt
-
-	selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
-	if !route.isDel {
-		selfOrigLsaEnt[lsaKey] = true
-		server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
-	} else {
-		selfOrigLsaEnt[lsaKey] = false
-	}
 	return lsaKey
 }
 

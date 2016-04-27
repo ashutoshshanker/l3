@@ -12,7 +12,7 @@ import (
 	"utils/commonDefs"
 )
 
-func (ribdServiceHandler *RIBDServer)  ProcessAsicdEvents(sub *nanomsg.SubSocket) {
+func (ribdServiceHandler *RIBDServer) ProcessAsicdEvents(sub *nanomsg.SubSocket) {
 
 	ribdServiceHandler.Logger.Info("in process Asicd events")
 	ribdServiceHandler.Logger.Info(fmt.Sprintln(" asicdConstDefs.NOTIFY_IPV4INTF_CREATE = ", asicdConstDefs.NOTIFY_IPV4INTF_CREATE, "asicdConstDefs.asicdConstDefs.NOTIFY_IPV4INTF_DELETE: ", asicdConstDefs.NOTIFY_IPV4INTF_DELETE))

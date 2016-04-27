@@ -14,6 +14,7 @@ const (
 	BGP                                     = 17
 	PUB_SOCKET_ADDR                         = "ipc:///tmp/ribd.ipc"
 	PUB_SOCKET_BGPD_ADDR                    = "ipc:///tmp/ribd_bgpd.ipc"
+	PUB_SOCKET_OSPFD_ADDR                   = "ipc:///tmp/ribd_ospfd.ipc"
 	  PUB_SOCKET_BFDD_ADDR = "ipc:///tmp/ribd_bfdd.ipc"
 	NOTIFY_ROUTE_CREATED                    = 1
 	NOTIFY_ROUTE_DELETED                    = 2
