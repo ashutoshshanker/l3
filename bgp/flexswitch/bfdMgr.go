@@ -39,7 +39,7 @@ func NewFSBfdMgr(logger *logging.Writer, fileName string) (*FSBfdMgr, error) {
 
 /*  Do any necessary init. Called from server..
  */
-func (mgr *FSBfdMgr) Init() {
+func (mgr *FSBfdMgr) Start() {
 	// create bfd sub socket listener
 	mgr.bfdSubSocket, _ = mgr.SetupSubSocket(bfddCommonDefs.PUB_SOCKET_ADDR)
 	go mgr.listenForBFDNotifications()

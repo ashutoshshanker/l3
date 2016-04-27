@@ -3,7 +3,7 @@ package config
 /*  Port/Interface state change manager.
  */
 type IntfStateMgrIntf interface {
-	Init()
+	Start()
 	PortStateChange()
 	GetIPv4Information(ifIndex int32) (string, error)
 	GetIfIndex(int, int) int32
@@ -12,7 +12,7 @@ type IntfStateMgrIntf interface {
 /*  Adding routes to rib/switch/linux interface
  */
 type RouteMgrIntf interface {
-	Init()
+	Start()
 	GetNextHopInfo(ipAddr string) (*NextHopInfo, error)
 	CreateRoute(*RouteConfig)
 	DeleteRoute(*RouteConfig)
@@ -28,7 +28,7 @@ type PolicyMgrIntf interface {
 /*  Interface for handling bfd state notifications
  */
 type BfdMgrIntf interface {
-	Init()
+	Start()
 	CreateBfdSession(ipAddr string) (bool, error)
 	DeleteBfdSession(ipAddr string) (bool, error)
 }

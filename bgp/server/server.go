@@ -64,6 +64,10 @@ type BGPServer struct {
 	PeerCommandCh    chan config.PeerCommand
 	ReachabilityCh   chan config.ReachabilityInfo
 	BGPPktSrcCh      chan *packet.BGPPktSrc
+	bfdCh            chan config.BfdInfo
+	intfCh           chan config.IntfStateInfo
+	routesCh         chan *config.RouteCh
+	acceptCh         chan *net.TCPConn
 
 	NeighborMutex  sync.RWMutex
 	PeerMap        map[string]*Peer
@@ -112,7 +116,6 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.ifaceIP = nil
 	bgpServer.actionFuncMap = make(map[int]bgppolicy.PolicyActionFunc)
 	bgpServer.AddPathCount = 0
-	//bgpServer.actionFuncMap[ribdCommonDefs.PolicyActionTypeAggregate] = make([2]policy.ApplyActionFunc)
 
 	var aggrActionFunc bgppolicy.PolicyActionFunc
 	aggrActionFunc.ApplyFunc = bgpServer.ApplyAggregateAction
@@ -151,7 +154,7 @@ func (server *BGPServer) listenForPeers(acceptCh chan *net.TCPConn) {
 			continue
 		}
 		server.logger.Info(fmt.Sprintln("Got a peer connection from %s", tcpConn.RemoteAddr()))
-		acceptCh <- tcpConn
+		server.acceptCh <- tcpConn
 	}
 }
 
@@ -681,8 +684,9 @@ func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*config.RouteI
 }
 
 func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
-	updated, withdrawn, withdrawPath, updatedAddPaths := server.AdjRib.RemoveUpdatesFromNeighbor(peerIp,
-		peer.NeighborConf, server.AddPathCount)
+	updated, withdrawn, withdrawPath, updatedAddPaths :=
+		server.AdjRib.RemoveUpdatesFromNeighbor(peerIp,
+			peer.NeighborConf, server.AddPathCount)
 	server.logger.Info(fmt.Sprintf("ProcessRemoveNeighbor - Neighbor %s,",
 		"send updated paths %v, withdrawn paths %v\n",
 		peerIp, updated, withdrawn))
@@ -847,38 +851,10 @@ func (server *BGPServer) constructBGPGlobalState(gConf *config.GlobalConfig) {
 	server.BgpConfig.Global.State.IBGPMaxPaths = gConf.IBGPMaxPaths
 }
 
-func (server *BGPServer) StartServer() {
-	gConf := <-server.GlobalConfigCh
-	server.logger.Info(fmt.Sprintln("Recieved global conf:", gConf))
-	server.BgpConfig.Global.Config = gConf
-	server.constructBGPGlobalState(&gConf)
-	server.BgpConfig.PeerGroups = make(map[string]*config.PeerGroup)
-
-	pathAttrs := packet.ConstructPathAttrForConnRoutes(gConf.RouterId, gConf.AS)
-	server.ConnRoutesPath = bgprib.NewPath(server.AdjRib, nil, pathAttrs,
-		false, false, bgprib.RouteTypeConnected)
-
-	server.logger.Info("Listen for RIBd updates")
-
-	server.logger.Info("Setting up Peer connections")
-	acceptCh := make(chan *net.TCPConn)
-	go server.listenForPeers(acceptCh)
-
-	// Channel for handling BFD notifications
-	bfdCh := make(chan config.BfdInfo)
-	// Channel for handling Interface notifications
-	intfCh := make(chan config.IntfStateInfo)
-	// Channel for handling route notifications
-	routesCh := make(chan config.RouteCh)
-
-	api.Init(bfdCh, intfCh, routesCh)
-	server.IntfMgr.Init()
-	server.routeMgr.Init()
-	server.bfdMgr.Init()
-
+func (server *BGPServer) listenChannelUpdates() {
 	for {
 		select {
-		case gConf = <-server.GlobalConfigCh:
+		case gConf := <-server.GlobalConfigCh:
 			for peerIP, peer := range server.PeerMap {
 				server.logger.Info(fmt.Sprintf("Cleanup peer %s", peerIP))
 				peer.Cleanup()
@@ -1001,7 +977,7 @@ func (server *BGPServer) StartServer() {
 			delete(server.BgpConfig.PeerGroups, groupName)
 			server.UpdatePeerGroupInPeers(groupName, nil)
 
-		case tcpConn := <-acceptCh:
+		case tcpConn := <-server.acceptCh:
 			server.logger.Info(fmt.Sprintln("Connected to", tcpConn.RemoteAddr().String()))
 			host, _, _ := net.SplitHostPort(tcpConn.RemoteAddr().String())
 			peer, ok := server.PeerMap[host]
@@ -1132,10 +1108,10 @@ func (server *BGPServer) StartServer() {
 			} else {
 				reachabilityInfo.ReachableCh <- true
 			}
-		case bfdNotify := <-bfdCh:
+		case bfdNotify := <-server.bfdCh:
 			server.handleBfdNotifications(bfdNotify.Oper,
 				bfdNotify.DestIp, bfdNotify.State)
-		case ifState := <-intfCh:
+		case ifState := <-server.intfCh:
 			if peerList, ok := server.IfacePeerMap[ifState.Idx]; ok &&
 				ifState.State == config.INTF_STATE_DOWN {
 				for _, peerIP := range peerList {
@@ -1144,10 +1120,42 @@ func (server *BGPServer) StartServer() {
 					}
 				}
 			}
-		case routeInfo := <-routesCh:
+		case routeInfo := <-server.routesCh:
 			server.ProcessConnectedRoutes(routeInfo.Add, routeInfo.Remove)
 		}
 	}
+
+}
+
+func (server *BGPServer) StartServer() {
+	gConf := <-server.GlobalConfigCh
+	server.logger.Info(fmt.Sprintln("Recieved global conf:", gConf))
+	server.BgpConfig.Global.Config = gConf
+	server.constructBGPGlobalState(&gConf)
+	server.BgpConfig.PeerGroups = make(map[string]*config.PeerGroup)
+
+	pathAttrs := packet.ConstructPathAttrForConnRoutes(gConf.RouterId, gConf.AS)
+	server.ConnRoutesPath = bgprib.NewPath(server.AdjRib, nil, pathAttrs,
+		false, false, bgprib.RouteTypeConnected)
+
+	server.logger.Info("Setting up Peer connections")
+	// channel for accepting connections
+	server.acceptCh = make(chan *net.TCPConn)
+	// Channel for handling BFD notifications
+	server.bfdCh = make(chan config.BfdInfo)
+	// Channel for handling Interface notifications
+	server.intfCh = make(chan config.IntfStateInfo)
+	// Channel for handling route notifications
+	server.routesCh = make(chan *config.RouteCh)
+
+	go server.listenForPeers(server.acceptCh)
+	go server.listenChannelUpdates()
+
+	server.logger.Info("Start all managers and initialize API Layer")
+	api.Init(server.bfdCh, server.intfCh, server.routesCh)
+	server.IntfMgr.Start()
+	server.routeMgr.Start()
+	server.bfdMgr.Start()
 }
 
 func (s *BGPServer) GetBGPGlobalState() config.GlobalState {

@@ -3,9 +3,7 @@ package FSMgr
 import (
 	"asicdServices"
 	"bfdd"
-	"errors"
 	nanomsg "github.com/op/go-nanomsg"
-	"l3/bgp/rpc"
 	"ribd"
 	"utils/logging"
 )
@@ -55,31 +53,6 @@ func NewFSPolicyMgr(logger *logging.Writer, fileName string) *FSPolicyMgr {
 	}
 
 	return mgr
-}
-
-/*  Init route manager with ribd client as its core
- */
-func NewFSRouteMgr(logger *logging.Writer, fileName string) (*FSRouteMgr, error) {
-	var ribdClient *ribd.RIBDServicesClient = nil
-	ribdClientChan := make(chan *ribd.RIBDServicesClient)
-
-	logger.Info("Connecting to RIBd")
-	go rpc.StartRibdClient(logger, fileName, ribdClientChan)
-	ribdClient = <-ribdClientChan
-	if ribdClient == nil {
-		logger.Err("Failed to connect to RIBd\n")
-		return nil, errors.New("Failed to connect to RIBd")
-	} else {
-		logger.Info("Connected to RIBd")
-	}
-
-	mgr := &FSRouteMgr{
-		plugin:     "ovsdb",
-		ribdClient: ribdClient,
-		logger:     logger,
-	}
-
-	return mgr, nil
 }
 
 func (mgr *FSPolicyMgr) AddPolicy() {

@@ -61,7 +61,7 @@ func (mgr *OvsRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
 
 }
 
-func (mgr *OvsRouteMgr) Init() {
+func (mgr *OvsRouteMgr) Start() {
 
 }
 
@@ -77,7 +77,7 @@ func (mgr *OvsIntfMgr) PortStateChange() {
 
 }
 
-func (mgr *OvsIntfMgr) Init() {
+func (mgr *OvsIntfMgr) Start() {
 
 }
 
@@ -89,7 +89,7 @@ func (mgr *OvsIntfMgr) GetIfIndex(ifIndex, ifType int) int32 {
 	return 1
 }
 
-func (mgr *OvsBfdMgr) Init() {
+func (mgr *OvsBfdMgr) Start() {
 
 }
 
