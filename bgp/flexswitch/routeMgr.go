@@ -3,17 +3,46 @@ package FSMgr
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
 	"l3/bgp/api"
 	"l3/bgp/config"
-	_ "l3/bgp/packet"
+	"l3/bgp/rpc"
 	"l3/rib/ribdCommonDefs"
 	"ribd"
 	"ribdInt"
+	"utils/logging"
 )
 
-func (mgr *FSRouteMgr) Init() {
+/*  Init route manager with ribd client as its core
+ */
+func NewFSRouteMgr(logger *logging.Writer, fileName string) (*FSRouteMgr, error) {
+	var ribdClient *ribd.RIBDServicesClient = nil
+	ribdClientChan := make(chan *ribd.RIBDServicesClient)
+
+	logger.Info("Connecting to RIBd")
+	go rpc.StartRibdClient(logger, fileName, ribdClientChan)
+	ribdClient = <-ribdClientChan
+	if ribdClient == nil {
+		logger.Err("Failed to connect to RIBd\n")
+		return nil, errors.New("Failed to connect to RIBd")
+	} else {
+		logger.Info("Connected to RIBd")
+	}
+
+	mgr := &FSRouteMgr{
+		plugin:     "ovsdb",
+		ribdClient: ribdClient,
+		logger:     logger,
+	}
+
+	return mgr, nil
+}
+
+/*  Start nano msg socket with ribd
+ */
+func (mgr *FSRouteMgr) Start() {
 	mgr.ribSubSocket, _ = mgr.setupSubSocket(ribdCommonDefs.PUB_SOCKET_ADDR)
 	mgr.ribSubBGPSocket, _ = mgr.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go mgr.listenForRIBUpdates(mgr.ribSubSocket)
@@ -98,14 +127,15 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 			routeListInfo.RouteInfo.Ipaddr, "netmask:",
 			routeListInfo.RouteInfo.Mask, "nexthop:",
 			routeListInfo.RouteInfo.NextHopIp))
-		routes = append(routes, mgr.populateConfigRoute(&routeListInfo.RouteInfo))
+		route := mgr.populateConfigRoute(&routeListInfo.RouteInfo)
+		routes = append(routes, route)
 	}
 
 	if len(routes) > 0 {
 		if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_CREATED {
-			api.SendRouteNotification(routes, nil)
+			api.SendRouteNotification(routes, make([]*config.RouteInfo, 0))
 		} else if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-			api.SendRouteNotification(nil, routes)
+			api.SendRouteNotification(make([]*config.RouteInfo, 0), routes)
 		} else {
 			mgr.logger.Err(fmt.Sprintf("**** Received RIB update with ",
 				"unknown type %d ****", msg.MsgType))
@@ -136,12 +166,12 @@ func (mgr *FSRouteMgr) processRoutesFromRIB() {
 		mgr.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ",
 			len(getBulkInfo.RouteList), " num objects returned = ",
 			getBulkInfo.Count))
-		routes := make([]*config.RouteInfo, len(getBulkInfo.RouteList))
+		routes := make([]*config.RouteInfo, 0, len(getBulkInfo.RouteList))
 		for idx, _ := range getBulkInfo.RouteList {
-			routes = append(routes,
-				mgr.populateConfigRoute(getBulkInfo.RouteList[idx]))
+			route := mgr.populateConfigRoute(getBulkInfo.RouteList[idx])
+			routes = append(routes, route)
 		}
-		api.SendRouteNotification(routes, nil) //make([]*ribdInt.Routes, 0))
+		api.SendRouteNotification(routes, make([]*config.RouteInfo, 0))
 		if getBulkInfo.More == false {
 			mgr.logger.Info("more returned as false, so no more get bulks")
 			return
@@ -152,6 +182,11 @@ func (mgr *FSRouteMgr) processRoutesFromRIB() {
 
 func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error) {
 	info, err := mgr.ribdClient.GetRouteReachabilityInfo(ipAddr)
+	if err != nil {
+		mgr.logger.Err(fmt.Sprintln("Getting route reachability for ",
+			ipAddr, "failed, error:", err))
+		return nil, err
+	}
 	reachInfo := &config.NextHopInfo{
 		Ipaddr:         info.Ipaddr,
 		Mask:           info.Mask,
@@ -160,9 +195,6 @@ func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error
 		IsReachable:    info.IsReachable,
 		NextHopIfType:  int32(info.NextHopIfType),
 		NextHopIfIndex: int32(info.NextHopIfIndex),
-	}
-	if err != nil {
-		return reachInfo, err
 	}
 	return reachInfo, err
 }

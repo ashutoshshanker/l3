@@ -39,7 +39,7 @@ func NewFSIntfMgr(logger *logging.Writer, fileName string) (*FSIntfMgr, error) {
 
 /*  Do any necessary init. Called from server..
  */
-func (mgr *FSIntfMgr) Init() {
+func (mgr *FSIntfMgr) Start() {
 	mgr.asicdL3IntfSubSocket, _ = mgr.setupSubSocket(asicdConstDefs.PUB_SOCKET_ADDR)
 	go mgr.listenForAsicdEvents()
 }

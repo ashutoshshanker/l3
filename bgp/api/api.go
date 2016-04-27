@@ -8,7 +8,7 @@ import (
 type ApiLayer struct {
 	bfdCh   chan config.BfdInfo
 	intfCh  chan config.IntfStateInfo
-	routeCh chan config.RouteCh
+	routeCh chan *config.RouteCh
 	//routeCh chan []*config.RouteInfo
 }
 
@@ -27,9 +27,7 @@ func getInstance() *ApiLayer {
 /*  Initialize bgp api layer with the channels that will be used for communicating
  *  with the server
  */
-func Init(bfdCh chan config.BfdInfo, intfCh chan config.IntfStateInfo,
-	rCh chan config.RouteCh) {
-	//rCh chan []*config.RouteInfo) {
+func Init(bfdCh chan config.BfdInfo, intfCh chan config.IntfStateInfo, rCh chan *config.RouteCh) {
 	bgpapi = getInstance()
 	bgpapi.bfdCh = bfdCh
 	bgpapi.intfCh = intfCh
@@ -59,7 +57,7 @@ func SendIntfNotification(ifIndex int32, ipAddr string, state config.Operation) 
 /*  Send Routes information to server
  */
 func SendRouteNotification(add []*config.RouteInfo, remove []*config.RouteInfo) {
-	bgpapi.routeCh <- config.RouteCh{
+	bgpapi.routeCh <- &config.RouteCh{
 		Add:    add,
 		Remove: remove,
 	}

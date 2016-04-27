@@ -196,6 +196,7 @@ func (server *BFDServer) SigHandler(dbHdl redis.Conn) {
 			case syscall.SIGHUP:
 				server.SendDeleteToAllSessions()
 				dbHdl.Close()
+				server.logger.Info("Exting!!!")
 				os.Exit(0)
 			default:
 			}

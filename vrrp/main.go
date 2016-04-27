@@ -19,12 +19,11 @@ func main() {
 	}
 
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(fileName, "vrrpd", "VRRP")
+	logger, err := logging.NewLogger("vrrpd", "VRRP", true)
 	if err != nil {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
 	}
-	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
 
 	// Start keepalive routine
