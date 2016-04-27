@@ -1200,3 +1200,7 @@ func (s *BGPServer) BulkGetBGPNeighbors(index int, count int) (int, int, []*conf
 	}
 	return index, count, result
 }
+
+func (svr *BGPServer) VerifyBgpGlobalConfig() bool {
+	return (svr.BgpConfig.Global.Config.AS != 0)
+}
