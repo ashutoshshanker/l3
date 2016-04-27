@@ -57,7 +57,7 @@ func (server *ARPServer) processIPv4IntfCreate(msg asicdConstDefs.IPv4IntfNotify
 	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
 	ifIdx := int(msg.IfIndex)
 
-	server.logger.Info(fmt.Sprintln("Received IPv4 Create Notification for IP:", ip, "IfIndex:", msg.IfIndex))
+	server.logger.Debug(fmt.Sprintln("Received IPv4 Create Notification for IP:", ip, "IfIndex:", msg.IfIndex))
 
 	l3IntfEnt, _ := server.l3IntfPropMap[ifIdx]
 	l3IntfEnt.IpAddr = ip.String()
@@ -66,26 +66,26 @@ func (server *ARPServer) processIPv4IntfCreate(msg asicdConstDefs.IPv4IntfNotify
 
 	if ifType == commonDefs.IfTypeVlan {
 		vlanEnt, _ := server.vlanPropMap[ifIdx]
-		server.logger.Info(fmt.Sprintln("Received IPv4 Create Notification for Untag Port List:", vlanEnt.UntagPortMap))
+		server.logger.Debug(fmt.Sprintln("Received IPv4 Create Notification for Untag Port List:", vlanEnt.UntagPortMap))
 		for port, _ := range vlanEnt.UntagPortMap {
 			portEnt := server.portPropMap[port]
 			portEnt.IpAddr = ip.String()
 			portEnt.Netmask = ipNet.Mask
 			portEnt.L3IfIdx = ifIdx
 			server.portPropMap[port] = portEnt
-			server.logger.Info(fmt.Sprintln("Start Rx on port:", port))
+			server.logger.Debug(fmt.Sprintln("Start Rx on port:", port))
 			server.StartArpRxTx(port)
 		}
 	} else if ifType == commonDefs.IfTypeLag {
 		lagEnt, _ := server.lagPropMap[ifIdx]
-		server.logger.Info(fmt.Sprintln("Received IPv4 Create Notification for LagId:", ifIdx, "Port List:", lagEnt.PortMap))
+		server.logger.Debug(fmt.Sprintln("Received IPv4 Create Notification for LagId:", ifIdx, "Port List:", lagEnt.PortMap))
 		for port, _ := range lagEnt.PortMap {
 			portEnt := server.portPropMap[port]
 			portEnt.IpAddr = ip.String()
 			portEnt.Netmask = ipNet.Mask
 			portEnt.L3IfIdx = ifIdx
 			server.portPropMap[port] = portEnt
-			server.logger.Info(fmt.Sprintln("Start Rx on port:", port))
+			server.logger.Debug(fmt.Sprintln("Start Rx on port:", port))
 			server.StartArpRxTx(port)
 		}
 	} else if ifType == commonDefs.IfTypePort {
@@ -95,7 +95,7 @@ func (server *ARPServer) processIPv4IntfCreate(msg asicdConstDefs.IPv4IntfNotify
 		portEnt.Netmask = ipNet.Mask
 		portEnt.L3IfIdx = ifIdx
 		server.portPropMap[port] = portEnt
-		server.logger.Info(fmt.Sprintln("Start Rx on port:", port))
+		server.logger.Debug(fmt.Sprintln("Start Rx on port:", port))
 		server.StartArpRxTx(port)
 	}
 }
@@ -109,12 +109,12 @@ func (server *ARPServer) processIPv4IntfDelete(msg asicdConstDefs.IPv4IntfNotify
 		for port, _ := range vlanEnt.UntagPortMap {
 			portEnt := server.portPropMap[port]
 			// Stop Rx Thread
-			server.logger.Info(fmt.Sprintln("Closing Rx on port:", port))
+			server.logger.Debug(fmt.Sprintln("Closing Rx on port:", port))
 			portEnt.CtrlCh <- true
 			<-portEnt.CtrlCh
-			server.logger.Info(fmt.Sprintln("Rx is closed successfully on port:", port))
+			server.logger.Debug(fmt.Sprintln("Rx is closed successfully on port:", port))
 			//Delete ARP Entry
-			server.logger.Info(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
+			server.logger.Debug(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
 			server.arpEntryDeleteCh <- DeleteArpEntryMsg{
 				PortNum: port,
 			}
@@ -128,12 +128,12 @@ func (server *ARPServer) processIPv4IntfDelete(msg asicdConstDefs.IPv4IntfNotify
 		for port, _ := range lagEnt.PortMap {
 			portEnt := server.portPropMap[port]
 			// Stop Rx Thread
-			server.logger.Info(fmt.Sprintln("Closing Rx on port:", port))
+			server.logger.Debug(fmt.Sprintln("Closing Rx on port:", port))
 			portEnt.CtrlCh <- true
 			<-portEnt.CtrlCh
-			server.logger.Info(fmt.Sprintln("Rx is closed successfully on port:", port))
+			server.logger.Debug(fmt.Sprintln("Rx is closed successfully on port:", port))
 			//Delete ARP Entry
-			server.logger.Info(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
+			server.logger.Debug(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
 			server.arpEntryDeleteCh <- DeleteArpEntryMsg{
 				PortNum: port,
 			}
@@ -146,12 +146,12 @@ func (server *ARPServer) processIPv4IntfDelete(msg asicdConstDefs.IPv4IntfNotify
 		port := ifIdx
 		portEnt := server.portPropMap[port]
 		// Stop Rx Thread
-		server.logger.Info(fmt.Sprintln("Closing Rx on port:", port))
+		server.logger.Debug(fmt.Sprintln("Closing Rx on port:", port))
 		portEnt.CtrlCh <- true
 		<-portEnt.CtrlCh
-		server.logger.Info(fmt.Sprintln("Rx is closed successfully on port:", port))
+		server.logger.Debug(fmt.Sprintln("Rx is closed successfully on port:", port))
 		//Delete ARP Entry
-		server.logger.Info(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
+		server.logger.Debug(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
 		server.arpEntryDeleteCh <- DeleteArpEntryMsg{
 			PortNum: port,
 		}
@@ -179,7 +179,7 @@ func (server *ARPServer) processL3StateChange(msg asicdConstDefs.L3IntfStateNoti
 			vlanEnt := server.vlanPropMap[ifIdx]
 			for port, _ := range vlanEnt.UntagPortMap {
 				//Delete ARP Entry
-				server.logger.Info(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
+				server.logger.Debug(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
 				server.arpEntryDeleteCh <- DeleteArpEntryMsg{
 					PortNum: port,
 				}
@@ -188,7 +188,7 @@ func (server *ARPServer) processL3StateChange(msg asicdConstDefs.L3IntfStateNoti
 			lagEnt := server.lagPropMap[ifIdx]
 			for port, _ := range lagEnt.PortMap {
 				//Delete ARP Entry
-				server.logger.Info(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
+				server.logger.Debug(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
 				server.arpEntryDeleteCh <- DeleteArpEntryMsg{
 					PortNum: port,
 				}
@@ -196,7 +196,7 @@ func (server *ARPServer) processL3StateChange(msg asicdConstDefs.L3IntfStateNoti
 		} else if ifType == commonDefs.IfTypePort {
 			port := ifIdx
 			//Delete ARP Entry
-			server.logger.Info(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
+			server.logger.Debug(fmt.Sprintln("Flushing Arp Entry learned on port:", port))
 			server.arpEntryDeleteCh <- DeleteArpEntryMsg{
 				PortNum: port,
 			}
@@ -247,18 +247,18 @@ func (server *ARPServer) processArpInfra() {
 		if ifType == commonDefs.IfTypeVlan {
 			vlanEnt := server.vlanPropMap[ifIdx]
 			for port, _ := range vlanEnt.UntagPortMap {
-				server.logger.Info(fmt.Sprintln("Start Rx on port:", port))
+				server.logger.Debug(fmt.Sprintln("Start Rx on port:", port))
 				server.StartArpRxTx(port)
 			}
 		} else if ifType == commonDefs.IfTypeLag {
 			lagEnt := server.lagPropMap[ifIdx]
 			for port, _ := range lagEnt.PortMap {
-				server.logger.Info(fmt.Sprintln("Start Rx on port:", port))
+				server.logger.Debug(fmt.Sprintln("Start Rx on port:", port))
 				server.StartArpRxTx(port)
 			}
 		} else if ifType == commonDefs.IfTypePort {
 			port := ifIdx
-			server.logger.Info(fmt.Sprintln("Start Rx on port:", port))
+			server.logger.Debug(fmt.Sprintln("Start Rx on port:", port))
 			server.StartArpRxTx(port)
 		}
 	}
@@ -277,7 +277,7 @@ func (server *ARPServer) buildArpInfra() {
 
 func (server *ARPServer) constructL3Infra() {
 	curMark := 0
-	server.logger.Info("Calling Asicd for getting L3 Interfaces")
+	server.logger.Debug("Calling Asicd for getting L3 Interfaces")
 	count := 100
 	for {
 		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkIPv4IntfState(asicdServices.Int(curMark), asicdServices.Int(count))
@@ -338,7 +338,7 @@ func (server *ARPServer) constructPortInfra() {
 
 func (server *ARPServer) getBulkPortConfig() {
 	curMark := int(asicdConstDefs.MIN_SYS_PORTS)
-	server.logger.Info("Calling Asicd for getting Port Property")
+	server.logger.Debug("Calling Asicd for getting Port Property")
 	count := 100
 	for {
 		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPort(asicdServices.Int(curMark), asicdServices.Int(count))
@@ -363,7 +363,7 @@ func (server *ARPServer) getBulkPortConfig() {
 
 func (server *ARPServer) getBulkPortState() {
 	curMark := int(asicdConstDefs.MIN_SYS_PORTS)
-	server.logger.Info("Calling Asicd for getting Port Property")
+	server.logger.Debug("Calling Asicd for getting Port Property")
 	count := 100
 	for {
 		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPortState(asicdServices.Int(curMark), asicdServices.Int(count))
@@ -391,7 +391,7 @@ func (server *ARPServer) getBulkPortState() {
 
 func (server *ARPServer) constructVlanInfra() {
 	curMark := 0
-	server.logger.Info("Calling Asicd for getting Vlan Property")
+	server.logger.Debug("Calling Asicd for getting Vlan Property")
 	count := 100
 	for {
 		bulkVlanInfo, _ := server.asicdClient.ClientHdl.GetBulkVlan(asicdInt.Int(curMark), asicdInt.Int(count))
@@ -430,7 +430,7 @@ func (server *ARPServer) updateVlanInfra(msg asicdConstDefs.VlanNotifyMsg, msgTy
 	//server.logger.Info(fmt.Sprintln("Vlan Property Map:", server.vlanPropMap))
 	vlanEnt, _ := server.vlanPropMap[ifIdx]
 	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // VLAN CREATE
-		server.logger.Info(fmt.Sprintln("Received Vlan Create or Update Notification Vlan:", vlanId, "PortList:", portList))
+		server.logger.Debug(fmt.Sprintln("Received Vlan Create or Update Notification Vlan:", vlanId, "PortList:", portList))
 		vlanEnt.UntagPortMap = nil
 		vlanEnt.UntagPortMap = make(map[int]bool)
 		for i := 0; i < len(portList); i++ {
@@ -461,7 +461,7 @@ func (server *ARPServer) updateVlanInfra(msg asicdConstDefs.VlanNotifyMsg, msgTy
 		}
 		server.vlanPropMap[ifIdx] = vlanEnt
 	} else { // VLAN DELETE
-		server.logger.Info(fmt.Sprintln("Received Vlan Delete Notification Vlan:", vlanId, "PortList:", portList))
+		server.logger.Debug(fmt.Sprintln("Received Vlan Delete Notification Vlan:", vlanId, "PortList:", portList))
 		/*
 		   // Note : To be Discussed
 		   for portNum, _ := range vlanEnt.UntagPortMap {
@@ -482,7 +482,7 @@ func (server *ARPServer) updateLagInfra(msg asicdConstDefs.LagNotifyMsg, msgType
 	//server.logger.Info(fmt.Sprintln("Lag Property Map:", server.lagPropMap))
 	lagEnt, _ := server.lagPropMap[ifIdx]
 	if msgType == asicdConstDefs.NOTIFY_LAG_CREATE {
-		server.logger.Info(fmt.Sprintln("Received Lag Create Notification IfIdx:", ifIdx, "PortList:", portList))
+		server.logger.Debug(fmt.Sprintln("Received Lag Create Notification IfIdx:", ifIdx, "PortList:", portList))
 		lagEnt.PortMap = nil
 		lagEnt.PortMap = make(map[int]bool)
 		for i := 0; i < len(portList); i++ {
@@ -522,7 +522,7 @@ func (server *ARPServer) updateLagInfra(msg asicdConstDefs.LagNotifyMsg, msgType
 		}
 		server.lagPropMap[ifIdx] = lagEnt
 	} else {
-		server.logger.Info(fmt.Sprintln("Received Lag Delete Notification IfIdx:", ifIdx, "PortList:", portList))
+		server.logger.Debug(fmt.Sprintln("Received Lag Delete Notification IfIdx:", ifIdx, "PortList:", portList))
 		for i := 0; i < len(portList); i++ {
 			port := int(portList[i])
 			portEnt, _ := server.portPropMap[port]

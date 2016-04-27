@@ -580,7 +580,7 @@ func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
 	case BGPEventBGPOpen: // Collision Detection... needs work
 
 	case BGPEventHeaderErr, BGPEventOpenMsgErr:
-		bgpMsgErr := data.(packet.BGPMessageError)
+		bgpMsgErr := data.(*packet.BGPMessageError)
 		st.fsm.SendNotificationMessage(bgpMsgErr.TypeCode, bgpMsgErr.SubTypeCode, bgpMsgErr.Data)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
@@ -715,7 +715,7 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ProcessUpdateMessage(bgpMsg)
 
 	case BGPEventUpdateMsgErr:
-		bgpMsgErr := data.(packet.BGPMessageError)
+		bgpMsgErr := data.(*packet.BGPMessageError)
 		st.fsm.SendNotificationMessage(bgpMsgErr.TypeCode, bgpMsgErr.SubTypeCode, bgpMsgErr.Data)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()

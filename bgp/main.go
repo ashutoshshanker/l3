@@ -33,12 +33,11 @@ func main() {
 		fileName = fileName + "/"
 	}
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(fileName, "bgpd", "BGP")
+	logger, err := logging.NewLogger("bgpd", "BGP", true)
 	if err != nil {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
 	}
-	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
 	utils.SetLogger(logger)
 
