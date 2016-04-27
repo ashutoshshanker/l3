@@ -658,6 +658,7 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, //prefix of the nod
 					v[i].resolvedNextHopIpIntf.IsReachable = false
 					rmapInfoRecordList.routeInfoProtocolMap[k] = v
 					RouteInfoMap.Set(prefix, rmapInfoRecordList)
+		            routeServiceHandler.WriteIPv4RouteStateEntryToDB(v[i],rmapInfoRecordList)
 					logger.Info(fmt.Sprintln("Bringing down route : ip: ", v[i].networkAddr))
 					RouteReachabilityStatusUpdate(k, RouteReachabilityStatusInfo{v[i].networkAddr, "Down", k, nextHopIntf})
 					if routeServiceHandler.NextHopInfoMap[NextHopInfoKey{string(prefix)}].refCount > 0 {
@@ -669,6 +670,7 @@ func UpdateRouteReachabilityStatus(prefix patriciaDB.Prefix, //prefix of the nod
 					v[i].resolvedNextHopIpIntf.IsReachable = true
 					rmapInfoRecordList.routeInfoProtocolMap[k] = v
 					RouteInfoMap.Set(prefix, rmapInfoRecordList)
+		            routeServiceHandler.WriteIPv4RouteStateEntryToDB(v[i],rmapInfoRecordList)
 					RouteReachabilityStatusUpdate(k, RouteReachabilityStatusInfo{v[i].networkAddr, "Up", k, nextHopIntf})
 					if routeServiceHandler.NextHopInfoMap[NextHopInfoKey{string(prefix)}].refCount > 0 {
 						logger.Info(fmt.Sprintln("There are dependent routes for this ip ", v[i].networkAddr))
@@ -882,6 +884,7 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 			destNetSlice = make([]localDB, 0)
 		}
 		destNetSlice = append(destNetSlice, localDBRecord)
+		routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecord,routeInfoRecordList)
 	}
 	if routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]] == nil {
 		routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]] = make([]RouteInfoRecord, 0)
@@ -900,6 +903,7 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		currRecord.routeUpdatedTime = t1.String()
 		currRecord.resolvedNextHopIpIntf.IsReachable = true
 		routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]][idx] = currRecord
+		routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecord,routeInfoRecordList)
 	}
 
 	RouteInfoMap.Set(patriciaDB.Prefix(destNetPrefix), routeInfoRecordList)
@@ -997,6 +1001,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 		return
 	}
 	destNetSlice[routeInfoRecord.sliceIdx].isValid = false //invalidate this entry in the local db
+	routeServiceHandler.DelIPv4RouteStateEntryFromDB(routeInfoRecord)
 	//the following operations delete this node from the RIB DB
 	if delType == FIBAndRIB {
 		logger.Info("Del type = FIBAndRIB, so delete the entry in RIB DB")
@@ -1269,6 +1274,7 @@ func createV4Route(destNetIp string,
 			//update the ref count for the resolved next hop ip
 			updateNextHopMap(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}, add)
 		}
+		routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecord,newRouteInfoRecordList)
 		//update in the event log
 		eventInfo := "Installed " + ReverseRouteProtoTypeMapDB[int(policyRoute.Prototype)] + " route " + policyRoute.Ipaddr + ":" + policyRoute.Mask + " nextHopIp :" + routeInfoRecord.nextHopIp.String() + " in Hardware and RIB "
 		t1 := time.Now()
@@ -1535,6 +1541,7 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 		}
 		routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol][index] = routeInfoRecord
 		RouteInfoMap.Set(destNet, routeInfoRecordList)
+		routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecord,routeInfoRecordList)
 		if callUpdate == false {
 			return val, err
 		}
