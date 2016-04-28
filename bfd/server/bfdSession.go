@@ -1018,7 +1018,7 @@ func (session *BfdSession) SendPeriodicControlPackets() {
 }
 
 func (session *BfdSession) HandleSessionTimeout() {
-	if session.state.SessionState != STATE_DOWN ||
+	if session.state.SessionState != STATE_DOWN &&
 		session.state.SessionState != STATE_ADMIN_DOWN {
 		session.server.logger.Info(fmt.Sprintln("Timer expired for: ", session.state.IpAddr, " session id ", session.state.SessionId, " prev state ", session.server.ConvertBfdSessionStateValToStr(session.state.SessionState), " at ", time.Now().String()))
 	}
