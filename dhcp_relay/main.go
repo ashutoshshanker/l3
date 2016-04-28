@@ -20,8 +20,7 @@ func main() {
 	fmt.Println("Start logger")
 	logger, err := logging.NewLogger("dhcprelayd", "DRA", true)
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
 	logger.Info("Started the logger successfully.")
 
