@@ -31,9 +31,11 @@ type BGPOvsOperations struct {
 }
 
 type BGPOvsRouterInfo struct {
-	asn      uint32 // this is bgp asn number
-	uuid     UUID   // this is key
-	routerId string // This is ip address
+	asn           uint32 // this is bgp asn number
+	uuid          UUID   // this is key
+	routerId      string // This is ip address
+	HoldTime      uint32 // default is 180 seconds
+	KeepaliveTime uint32 // default is 60 seconds
 }
 
 type BGPOvsdbHandler struct {

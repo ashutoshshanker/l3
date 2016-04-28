@@ -483,6 +483,17 @@ func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string,
 	return ip, ifIndex, err
 }
 
+// Set BGP Default values.. This needs to move to API Layer once Northbound interfaces are implemented
+// for all the listeners
+func (h *BGPHandler) setDefault(pconf *config.NeighborConfig) {
+	if pconf.BaseConfig.HoldTime == 0 { // default hold time is 180 seconds
+		pconf.BaseConfig.HoldTime = 180
+	}
+	if pconf.BaseConfig.KeepaliveTime == 0 { // default keep alive time is 60 seconds
+		pconf.BaseConfig.KeepaliveTime = 60
+	}
+}
+
 func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf config.NeighborConfig,
 	err error) {
 	if bgpNeighbor == nil {
@@ -524,6 +535,7 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf c
 		IfIndex:         ifIndex,
 		PeerGroup:       bgpNeighbor.PeerGroup,
 	}
+	h.setDefault(&pConf)
 	return pConf, err
 }
 
