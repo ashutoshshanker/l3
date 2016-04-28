@@ -1,7 +1,7 @@
 package vrrpServer
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"encoding/json"
 	"errors"
@@ -270,7 +270,7 @@ func (svr *VrrpServer) VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
 	if found {
 		return
 	}
-	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
+	vlanId := asicdCommonDefs.GetIntfIdFromIfIndex(IfIndex)
 	vlanName, ok := svr.vrrpVlanId2Name[vlanId]
 	if ok == false {
 		svr.logger.Err(fmt.Sprintln("no mapping for vlan", vlanId))
@@ -494,7 +494,7 @@ func VrrpNewServer(log *logging.Writer) *VrrpServer {
 
 func (svr *VrrpServer) VrrpValidateIntfConfig(IfIndex int32) error {
 	// Check Vlan is created
-	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
+	vlanId := asicdCommonDefs.GetIntfIdFromIfIndex(IfIndex)
 	_, created := svr.vrrpVlanId2Name[vlanId]
 	if !created {
 		return errors.New(VRRP_VLAN_NOT_CREATED)

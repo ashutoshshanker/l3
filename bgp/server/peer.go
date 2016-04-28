@@ -22,7 +22,8 @@ type Peer struct {
 	ribOut       map[string]map[uint32]*bgprib.Path
 }
 
-func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *config.PeerGroupConfig, peerConf config.NeighborConfig) *Peer {
+func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *config.PeerGroupConfig,
+	peerConf config.NeighborConfig) *Peer {
 	peer := Peer{
 		Server: server,
 		logger: server.logger,
@@ -31,8 +32,8 @@ func NewPeer(server *BGPServer, globalConf *config.GlobalConfig, peerGroup *conf
 	}
 
 	peer.NeighborConf = base.NewNeighborConf(peer.logger, globalConf, peerGroup, peerConf)
-	peer.fsmManager = fsm.NewFSMManager(peer.logger, peer.NeighborConf, server.BGPPktSrcCh, server.PeerFSMConnCh,
-		server.ReachabilityCh)
+	peer.fsmManager = fsm.NewFSMManager(peer.logger, peer.NeighborConf, server.BGPPktSrcCh,
+		server.PeerFSMConnCh, server.ReachabilityCh)
 	return &peer
 }
 
@@ -46,14 +47,15 @@ func (p *Peer) UpdateNeighborConf(nConf config.NeighborConfig, bgp *config.Bgp) 
 
 func (p *Peer) Init() {
 	if p.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
-		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n", p.NeighborConf.Neighbor.NeighborAddress))
+		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n",
+			p.NeighborConf.Neighbor.NeighborAddress))
 		return
 	}
 	if p.fsmManager == nil {
 		p.logger.Info(fmt.Sprintf("Instantiating new FSM Manager for neighbor %s\n",
 			p.NeighborConf.Neighbor.NeighborAddress))
-		p.fsmManager = fsm.NewFSMManager(p.logger, p.NeighborConf, p.Server.BGPPktSrcCh, p.Server.PeerFSMConnCh,
-			p.Server.ReachabilityCh)
+		p.fsmManager = fsm.NewFSMManager(p.logger, p.NeighborConf, p.Server.BGPPktSrcCh,
+			p.Server.PeerFSMConnCh, p.Server.ReachabilityCh)
 	}
 
 	go p.fsmManager.Init()
@@ -83,7 +85,8 @@ func (p *Peer) getIfIdx() int32 {
 
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
 	if p.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
-		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n", p.NeighborConf.Neighbor.NeighborAddress))
+		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n",
+			p.NeighborConf.Neighbor.NeighborAddress))
 		(*conn).Close()
 		return
 	}
@@ -111,8 +114,8 @@ func (p *Peer) getAddPathsMaxTx() int {
 
 func (p *Peer) updatePathAttrs(bgpMsg *packet.BGPMessage, path *bgprib.Path) bool {
 	if p.NeighborConf.Neighbor.Transport.Config.LocalAddress == nil {
-		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message, FSM is not in Established state\n",
-			p.NeighborConf.Neighbor.NeighborAddress))
+		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message, FSM is not",
+			"in Established state\n", p.NeighborConf.Neighbor.NeighborAddress))
 		return false
 	}
 
@@ -199,7 +202,8 @@ func (p *Peer) sendUpdateMsg(msg *packet.BGPMessage, path *bgprib.Path) {
 		}
 
 		// Don't send the update to the peer that sent the update.
-		if p.NeighborConf.RunningConf.NeighborAddress.String() == path.NeighborConf.RunningConf.NeighborAddress.String() {
+		if p.NeighborConf.RunningConf.NeighborAddress.String() ==
+			path.NeighborConf.RunningConf.NeighborAddress.String() {
 			return
 		}
 	}
@@ -222,7 +226,8 @@ func (p *Peer) isAdvertisable(path *bgprib.Path) bool {
 		}
 
 		// Don't send the update to the peer that sent the update.
-		if p.NeighborConf.RunningConf.NeighborAddress.String() == path.NeighborConf.RunningConf.NeighborAddress.String() {
+		if p.NeighborConf.RunningConf.NeighborAddress.String() ==
+			path.NeighborConf.RunningConf.NeighborAddress.String() {
 			return false
 		}
 	}
@@ -236,7 +241,8 @@ func (p *Peer) calculateAddPathsAdvertisements(dest *bgprib.Destination, path *b
 	ip := dest.IPPrefix.Prefix.String()
 
 	if _, ok := p.ribOut[ip]; !ok {
-		p.logger.Info(fmt.Sprintf("Neighbor %s: calculateAddPathsAdvertisements - processing updates, dest %s not"+
+		p.logger.Info(fmt.Sprintf("Neighbor %s: calculateAddPathsAdvertisements -",
+			"processing updates, dest %s not",
 			"found in rib out", p.NeighborConf.Neighbor.NeighborAddress, ip))
 		p.ribOut[ip] = make(map[uint32]*bgprib.Path)
 	}
@@ -294,12 +300,14 @@ func (p *Peer) calculateAddPathsAdvertisements(dest *bgprib.Destination, path *b
 	return newUpdated, withdrawList
 }
 
-func (p *Peer) SendUpdate(updated map[*bgprib.Path][]*bgprib.Destination, withdrawn []*bgprib.Destination, withdrawPath *bgprib.Path,
+func (p *Peer) SendUpdate(updated map[*bgprib.Path][]*bgprib.Destination,
+	withdrawn []*bgprib.Destination, withdrawPath *bgprib.Path,
 	updatedAddPaths []*bgprib.Destination) {
 	p.logger.Info(fmt.Sprintf("Neighbor %s: Send update message valid routes:%v, withdraw routes:%v",
 		p.NeighborConf.Neighbor.NeighborAddress, updated, withdrawn))
 	if p.NeighborConf.Neighbor.Transport.Config.LocalAddress == nil {
-		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message, FSM is not in Established state",
+		p.logger.Err(fmt.Sprintf("Neighbor %s: Can't send Update message,",
+			"FSM is not in Established state",
 			p.NeighborConf.Neighbor.NeighborAddress))
 		return
 	}
@@ -314,7 +322,8 @@ func (p *Peer) SendUpdate(updated map[*bgprib.Path][]*bgprib.Destination, withdr
 				if addPathsTx > 0 {
 					pathIdMap, ok := p.ribOut[ip]
 					if !ok {
-						p.logger.Err(fmt.Sprintf("Neighbor %s: SendUpdate - processing withdraws, dest %s not found in rib out",
+						p.logger.Err(fmt.Sprintf("Neighbor %s: SendUpdate -",
+							"processing withdraws, dest %s not found in rib out",
 							p.NeighborConf.Neighbor.NeighborAddress, ip))
 						continue
 					}
@@ -336,8 +345,9 @@ func (p *Peer) SendUpdate(updated map[*bgprib.Path][]*bgprib.Destination, withdr
 			if dest != nil {
 				ip := dest.IPPrefix.Prefix.String()
 				if addPathsTx > 0 {
-					newUpdated, withdrawList = p.calculateAddPathsAdvertisements(dest, path, newUpdated, withdrawList,
-						addPathsTx)
+					newUpdated, withdrawList =
+						p.calculateAddPathsAdvertisements(dest, path,
+							newUpdated, withdrawList, addPathsTx)
 				} else {
 					if !p.isAdvertisable(path) {
 						withdrawList = append(withdrawList, dest.IPPrefix)
@@ -353,11 +363,13 @@ func (p *Peer) SendUpdate(updated map[*bgprib.Path][]*bgprib.Destination, withdr
 								delete(p.ribOut[ip], ribPathId)
 							}
 						}
-						if ribPath, ok := p.ribOut[ip][pathId]; !ok || ribPath != path {
+						if ribPath, ok := p.ribOut[ip][pathId]; !ok ||
+							ribPath != path {
 							if _, ok := newUpdated[path]; !ok {
 								newUpdated[path] = make([]packet.NLRI, 0)
 							}
-							newUpdated[path] = append(newUpdated[path], dest.IPPrefix)
+							newUpdated[path] =
+								append(newUpdated[path], dest.IPPrefix)
 						}
 						p.ribOut[ip][pathId] = path
 					}
@@ -368,7 +380,8 @@ func (p *Peer) SendUpdate(updated map[*bgprib.Path][]*bgprib.Destination, withdr
 
 	if addPathsTx > 0 {
 		for _, dest := range updatedAddPaths {
-			newUpdated, withdrawList = p.calculateAddPathsAdvertisements(dest, nil, newUpdated, withdrawList, addPathsTx)
+			newUpdated, withdrawList = p.calculateAddPathsAdvertisements(dest, nil,
+				newUpdated, withdrawList, addPathsTx)
 		}
 	}
 

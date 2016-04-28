@@ -213,3 +213,13 @@ type Bgp struct {
 	Neighbors  []Neighbor
 	BgpAggs    map[string]*BGPAggregate
 }
+
+type RouteConfig struct {
+	Cost              int32
+	IntfType          int32
+	Protocol          string
+	NextHopIp         string
+	NetworkMask       string
+	DestinationNw     string
+	OutgoingInterface string
+}

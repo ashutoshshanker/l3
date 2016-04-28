@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"fmt"
 	"time"
 	"utils/commonDefs"
@@ -58,7 +58,7 @@ func (server *ARPServer) processArpEntryCntUpdateMsg(cnt int) {
 	}
 }
 
-func (server *ARPServer) processArpEntryMacMoveMsg(msg asicdConstDefs.IPv4NbrMacMoveNotifyMsg) {
+func (server *ARPServer) processArpEntryMacMoveMsg(msg asicdCommonDefs.IPv4NbrMacMoveNotifyMsg) {
 	if entry, ok := server.arpCache[msg.IpAddr]; ok {
 		entry.PortNum = int(msg.IfIndex)
 		server.arpCache[msg.IpAddr] = entry
@@ -93,11 +93,11 @@ func (server *ARPServer) processArpEntryDeleteMsg(msg DeleteArpEntryMsg) {
 func (server *ARPServer) processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
 	portEnt, _ := server.portPropMap[msg.PortNum]
 	l3IfIdx := portEnt.L3IfIdx
-	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(l3IfIdx))
-	ifId := asicdConstDefs.GetIntfIdFromIfIndex(int32(l3IfIdx))
+	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(int32(l3IfIdx))
+	ifId := asicdCommonDefs.GetIntfIdFromIfIndex(int32(l3IfIdx))
 	var vlanId int
 	if l3IfIdx == -1 {
-		vlanId = asicdConstDefs.SYS_RSVD_VLAN
+		vlanId = asicdCommonDefs.SYS_RSVD_VLAN
 	} else {
 		_, exist := server.l3IntfPropMap[l3IfIdx]
 		if !exist {
@@ -107,7 +107,7 @@ func (server *ARPServer) processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
 		if ifType == commonDefs.IfTypeVlan {
 			vlanId = ifId
 		} else {
-			vlanId = asicdConstDefs.SYS_RSVD_VLAN
+			vlanId = asicdCommonDefs.SYS_RSVD_VLAN
 		}
 	}
 	arpEnt, exist := server.arpCache[msg.IpAddr]

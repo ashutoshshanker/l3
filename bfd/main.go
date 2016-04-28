@@ -45,6 +45,9 @@ func main() {
 	// Start bfd server
 	go bfdServer.StartServer(clientsFileName, dbHdl)
 
+	<-bfdServer.ServerStartedCh
+	logger.Info(fmt.Sprintln("BFD Server started"))
+
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewBFDHandler(logger, bfdServer)
 	// Read BFD configurations already present in DB
