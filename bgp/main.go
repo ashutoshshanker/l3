@@ -76,6 +76,7 @@ func main() {
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
 		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, dbUtil, fileName)
+		dbUtil.Disconnect()
 
 		// create and start ovsdb handler
 		ovsdbManager, err := ovsMgr.NewBGPOvsdbHandler(logger, confIface)
@@ -115,6 +116,8 @@ func main() {
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
 		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, dbUtil, fileName)
+		dbUtil.Disconnect()
+
 		rpc.StartServer(logger, confIface, fileName)
 	}
 }
