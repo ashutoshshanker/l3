@@ -46,7 +46,7 @@ func main() {
 	go routeServer.StartArpdServer()
 	go routeServer.StartServer(*paramsDir)
 	up := <-routeServer.ServerUpCh
-	dbHdl.Close()
+	//dbHdl.Close()
 	logger.Info(fmt.Sprintln("RIBD server is up: ", up))
 	if !up {
 		logger.Err(fmt.Sprintln("Exiting!!"))
