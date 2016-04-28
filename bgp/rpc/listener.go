@@ -196,7 +196,8 @@ func (h *BGPHandler) handleNeighborConfig() error {
 	return nil
 }
 
-func convertModelToPolicyConditionConfig(cfg models.BGPPolicyCondition) *utilspolicy.PolicyConditionConfig {
+func convertModelToPolicyConditionConfig(
+	cfg models.BGPPolicyCondition) *utilspolicy.PolicyConditionConfig {
 	destIPMatch := utilspolicy.PolicyDstIpMatchPrefixSetCondition{
 		Prefix: utilspolicy.PolicyPrefix{
 			IpPrefix:        cfg.IpPrefix,
@@ -215,13 +216,16 @@ func (h *BGPHandler) handlePolicyConditions() error {
 	var conditionObj models.BGPPolicyCondition
 	conditionList, err := h.dbUtil.GetAllObjFromDb(conditionObj)
 	if err != nil {
-		h.logger.Err(fmt.Sprintln("handlePolicyConditions - Failed to create policy condition config on restart with error", err))
+		h.logger.Err(fmt.Sprintln("handlePolicyConditions - Failed to create policy",
+			"condition config on restart with error", err))
 		return err
 	}
 
 	for idx := 0; idx < len(conditionList); idx++ {
-		policyCondCfg := convertModelToPolicyConditionConfig(conditionList[idx].(models.BGPPolicyCondition))
-		h.logger.Info(fmt.Sprintln("handlePolicyConditions - create policy condition", policyCondCfg.Name))
+		policyCondCfg :=
+			convertModelToPolicyConditionConfig(conditionList[idx].(models.BGPPolicyCondition))
+		h.logger.Info(fmt.Sprintln("handlePolicyConditions - create policy condition",
+			policyCondCfg.Name))
 		h.bgpPE.ConditionCfgCh <- *policyCondCfg
 	}
 	return nil
@@ -241,13 +245,16 @@ func (h *BGPHandler) handlePolicyActions() error {
 	var actionObj models.BGPPolicyAction
 	actionList, err := h.dbUtil.GetAllObjFromDb(actionObj)
 	if err != nil {
-		h.logger.Err(fmt.Sprintln("handlePolicyActions - Failed to create policy action config on restart with error", err))
+		h.logger.Err(fmt.Sprintln("handlePolicyActions - Failed to create policy action",
+			"config on restart with error", err))
 		return err
 	}
 
 	for idx := 0; idx < len(actionList); idx++ {
-		policyActionCfg := convertModelToPolicyActionConfig(actionList[idx].(models.BGPPolicyAction))
-		h.logger.Info(fmt.Sprintln("handlePolicyActions - create policy action", policyActionCfg.Name))
+		policyActionCfg :=
+			convertModelToPolicyActionConfig(actionList[idx].(models.BGPPolicyAction))
+		h.logger.Info(fmt.Sprintln("handlePolicyActions - create policy action",
+			policyActionCfg.Name))
 		h.bgpPE.ActionCfgCh <- *policyActionCfg
 	}
 	return nil
@@ -267,19 +274,22 @@ func (h *BGPHandler) handlePolicyStmts() error {
 	var stmtObj models.BGPPolicyStmt
 	stmtList, err := h.dbUtil.GetAllObjFromDb(stmtObj)
 	if err != nil {
-		h.logger.Err(fmt.Sprintln("handlePolicyStmts - Failed to create policy statement config on restart with error", err))
+		h.logger.Err(fmt.Sprintln("handlePolicyStmts - Failed to create policy statement",
+			"config on restart with error", err))
 		return err
 	}
 
 	for idx := 0; idx < len(stmtList); idx++ {
 		policyStmtCfg := convertModelToPolicyStmtConfig(stmtList[idx].(models.BGPPolicyStmt))
-		h.logger.Info(fmt.Sprintln("handlePolicyStmts - create policy statement", policyStmtCfg.Name))
+		h.logger.Info(fmt.Sprintln("handlePolicyStmts - create policy statement",
+			policyStmtCfg.Name))
 		h.bgpPE.StmtCfgCh <- *policyStmtCfg
 	}
 	return nil
 }
 
-func convertModelToPolicyDefinitionConfig(cfg models.BGPPolicyDefinition) *utilspolicy.PolicyDefinitionConfig {
+func convertModelToPolicyDefinitionConfig(
+	cfg models.BGPPolicyDefinition) *utilspolicy.PolicyDefinitionConfig {
 	stmtPrecedenceList := make([]utilspolicy.PolicyDefinitionStmtPrecedence, 0)
 	for i := 0; i < len(cfg.StatementList); i++ {
 		stmtPrecedence := utilspolicy.PolicyDefinitionStmtPrecedence{
@@ -302,13 +312,16 @@ func (h *BGPHandler) handlePolicyDefinitions() error {
 	var defObj models.BGPPolicyDefinition
 	definitionList, err := h.dbUtil.GetAllObjFromDb(defObj)
 	if err != nil {
-		h.logger.Err(fmt.Sprintln("handlePolicyDefinitions - Failed to create policy definition config on restart with error", err))
+		h.logger.Err(fmt.Sprintln("handlePolicyDefinitions - Failed to create policy",
+			"definition config on restart with error", err))
 		return err
 	}
 
 	for idx := 0; idx < len(definitionList); idx++ {
-		policyDefCfg := convertModelToPolicyDefinitionConfig(definitionList[idx].(models.BGPPolicyDefinition))
-		h.logger.Info(fmt.Sprintln("handlePolicyDefinitions - create policy definition", policyDefCfg.Name))
+		policyDefCfg := convertModelToPolicyDefinitionConfig(
+			definitionList[idx].(models.BGPPolicyDefinition))
+		h.logger.Info(fmt.Sprintln("handlePolicyDefinitions - create policy definition",
+			policyDefCfg.Name))
 		h.bgpPE.DefinitionCfgCh <- *policyDefCfg
 	}
 	return nil
@@ -396,7 +409,8 @@ func (h *BGPHandler) GetBGPGlobalState(rtrId string) (*bgpd.BGPGlobalState, erro
 	return bgpGlobalResponse, nil
 }
 
-func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int, count bgpd.Int) (*bgpd.BGPGlobalStateGetInfo, error) {
+func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int,
+	count bgpd.Int) (*bgpd.BGPGlobalStateGetInfo, error) {
 	bgpGlobalStateBulk := bgpd.NewBGPGlobalStateGetInfo()
 	bgpGlobalStateBulk.EndIdx = bgpd.Int(0)
 	bgpGlobalStateBulk.Count = bgpd.Int(1)
@@ -406,7 +420,8 @@ func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int, count bgpd.Int) (*bgp
 	return bgpGlobalStateBulk, nil
 }
 
-func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal, attrSet []bool) (bool, error) {
+func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal,
+	attrSet []bool) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update global config attrs:", updatedG, "old config:", origG))
 	return h.SendBGPGlobal(updatedG)
 }
@@ -416,7 +431,8 @@ func (h *BGPHandler) DeleteBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 	return true, nil
 }
 
-func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string, neighborIfIndex int32) (ip net.IP, ifIndex int32,
+func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string,
+	neighborIfIndex int32) (ip net.IP, ifIndex int32,
 	err error) {
 	if strings.TrimSpace(neighborIP) != "" {
 		ip = net.ParseIP(strings.TrimSpace(neighborIP))
@@ -512,8 +528,13 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf c
 }
 
 func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighbor,
-	newNeighbor *bgpd.BGPNeighbor, attrSet []bool) (
-	bool, error) {
+	newNeighbor *bgpd.BGPNeighbor, attrSet []bool) (bool, error) {
+	created := h.server.VerifyBgpGlobalConfig()
+	if !created {
+		return created,
+			errors.New("Create BGP Local AS and router id before configuring Neighbor")
+	}
+
 	oldNeighConf, err := h.ValidateBGPNeighbor(oldNeighbor)
 	if err != nil {
 		return false, err
