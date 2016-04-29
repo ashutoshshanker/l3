@@ -46,8 +46,11 @@ const (
 )
 
 const (
-	BGPMsgHeaderLen = 19
-	BGPMsgMaxLen    = 4096
+	BGPUpdateMsgWithdrawnRouteLen = 2
+	BGPUpdateMsgTotalPathAttrsLen = 2
+	BGPMsgHeaderLen               = 19
+	BGPUpdateMsgMinLen            = 23
+	BGPMsgMaxLen                  = 4096
 )
 
 const (
