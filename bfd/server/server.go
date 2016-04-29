@@ -125,6 +125,7 @@ type RecvedBfdPacket struct {
 
 type BFDServer struct {
 	logger                *logging.Writer
+	ServerStartedCh       chan bool
 	ribdClient            RibdClient
 	asicdClient           AsicdClient
 	GlobalConfigCh        chan GlobalConfig
@@ -156,6 +157,7 @@ type BFDServer struct {
 func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer := &BFDServer{}
 	bfdServer.logger = logger
+	bfdServer.ServerStartedCh = make(chan bool)
 	bfdServer.GlobalConfigCh = make(chan GlobalConfig)
 	bfdServer.asicdSubSocketCh = make(chan []byte)
 	bfdServer.asicdSubSocketErrCh = make(chan error)
@@ -329,6 +331,8 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl redis.Conn) {
 	go server.StartSessionHandler()
 	// Initialize and run notification publisher
 	go server.PublishSessionNotifications()
+
+	server.ServerStartedCh <- true
 
 	// Now, wait on below channels to process
 	for {

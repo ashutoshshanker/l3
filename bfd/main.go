@@ -22,8 +22,7 @@ func main() {
 	fmt.Println("Start logger")
 	logger, err := logging.NewLogger("bfdd", "BFD", true)
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
 	logger.Info("Started the logger successfully.")
 
@@ -44,6 +43,9 @@ func main() {
 	go bfdServer.SigHandler(dbHdl)
 	// Start bfd server
 	go bfdServer.StartServer(clientsFileName, dbHdl)
+
+	<-bfdServer.ServerStartedCh
+	logger.Info(fmt.Sprintln("BFD Server started"))
 
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewBFDHandler(logger, bfdServer)
