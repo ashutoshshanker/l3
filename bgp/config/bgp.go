@@ -214,6 +214,13 @@ type Bgp struct {
 	BgpAggs    map[string]*BGPAggregate
 }
 
+type ConditionInfo struct {
+	ConditionType string
+	Protocol  string
+	IpPrefix  string
+	MasklengthRange string
+	
+}
 type RouteConfig struct {
 	Cost              int32
 	IntfType          int32

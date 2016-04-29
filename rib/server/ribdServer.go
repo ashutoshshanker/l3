@@ -76,6 +76,7 @@ type RIBDServer struct {
 	PolicyDefinitionDeleteConfCh chan *ribd.PolicyDefinition
 	PolicyDefinitionUpdateConfCh chan *ribd.PolicyDefinition
 	PolicyApplyCh                chan ApplyPolicyInfo
+	PolicyUpdateApplyCh          chan ApplyPolicyInfo
 	AcceptConfig                 bool
 	ServerUpCh                   chan bool
 	DbHdl                        redis.Conn
@@ -490,6 +491,7 @@ func NewRIBDServicesHandler(dbHdl redis.Conn, loggerC *logging.Writer) *RIBDServ
 	ribdServicesHandler.PolicyDefinitionDeleteConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.PolicyApplyCh = make(chan ApplyPolicyInfo,100)
+	ribdServicesHandler.PolicyUpdateApplyCh = make(chan ApplyPolicyInfo,100)
 	ribdServicesHandler.ServerUpCh = make(chan bool)
 	ribdServicesHandler.DbHdl = dbHdl
 	routeServiceHandler = ribdServicesHandler
@@ -532,33 +534,11 @@ func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 			/*		case routeInfo := <-ribdServiceHandler.RouteInstallCh:
 			    logger.Println("received message on RouteInstallConfCh channel")
 				ribdServiceHandler.ProcessRouteInstall(routeInfo)*/
-		case condCreateConf := <-ribdServiceHandler.PolicyConditionCreateConfCh:
-			logger.Info("received message on PolicyConditionCreateConfCh channel")
-			ribdServiceHandler.ProcessPolicyConditionConfigCreate(condCreateConf,GlobalPolicyEngineDB)
-		case condDeleteConf := <-ribdServiceHandler.PolicyConditionDeleteConfCh:
-			logger.Info("received message on PolicyConditionDeleteConfCh channel")
-			ribdServiceHandler.ProcessPolicyConditionConfigDelete(condDeleteConf,GlobalPolicyEngineDB)
-		case actionCreateConf := <-ribdServiceHandler.PolicyActionCreateConfCh:
-			logger.Info("received message on PolicyActionCreateConfCh channel")
-			ribdServiceHandler.ProcessPolicyActionConfigCreate(actionCreateConf,GlobalPolicyEngineDB)
-		case actionDeleteConf := <-ribdServiceHandler.PolicyActionDeleteConfCh:
-			logger.Info("received message on PolicyActionDeleteConfCh channel")
-			ribdServiceHandler.ProcessPolicyActionConfigDelete(actionDeleteConf,GlobalPolicyEngineDB)
-		case stmtCreateConf := <-ribdServiceHandler.PolicyStmtCreateConfCh:
-			logger.Info("received message on PolicyStmtCreateConfCh channel")
-			ribdServiceHandler.ProcessPolicyStmtConfigCreate(stmtCreateConf,GlobalPolicyEngineDB)
-		case stmtDeleteConf := <-ribdServiceHandler.PolicyStmtDeleteConfCh:
-			logger.Info("received message on PolicyStmtDeleteConfCh channel")
-			ribdServiceHandler.ProcessPolicyStmtConfigDelete(stmtDeleteConf,GlobalPolicyEngineDB)
-		case policyCreateConf := <-ribdServiceHandler.PolicyDefinitionCreateConfCh:
-			logger.Info("received message on PolicyDefinitionCreateConfCh channel")
-			ribdServiceHandler.ProcessPolicyDefinitionConfigCreate(policyCreateConf,GlobalPolicyEngineDB)
-		case policyDeleteConf := <-ribdServiceHandler.PolicyDefinitionDeleteConfCh:
-			logger.Info("received message on PolicyDefinitionDeleteConfCh channel")
-			ribdServiceHandler.ProcessPolicyDefinitionConfigDelete(policyDeleteConf,GlobalPolicyEngineDB)
 		case info := <-ribdServiceHandler.PolicyApplyCh:
 		    logger.Info("received message on PolicyApplyCh channel")
-			ribdServiceHandler.ApplyPolicy(info)
+			//update the local policyEngineDB
+			ribdServiceHandler.UpdateApplyPolicy(info, true, PolicyEngineDB)
+	         ribdServiceHandler.PolicyUpdateApplyCh <- info
 		case info := <-ribdServiceHandler.TrackReachabilityCh:
 			logger.Info("received message on TrackReachabilityCh channel")
 			ribdServiceHandler.TrackReachabilityStatus(info.IpAddr, info.Protocol, info.Op)

@@ -227,3 +227,14 @@ func (mgr *FSRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
 	mgr.ribdClient.OnewayDeleteIPv4Route(mgr.createRibdIPv4RouteCfg(cfg,
 		false /*delete*/))
 }
+func (mgr *FSRouteMgr) ApplyPolicy(protocol string,policy string,action string,conditions []*config.ConditionInfo) {
+	temp := make ([]ribdInt.ConditionInfo,len(conditions))
+	ribdConditions := make([]*ribdInt.ConditionInfo,0)
+	j :=0
+	for i := 0;i<len(conditions);i++ {
+		temp[j] = ribdInt.ConditionInfo{conditions[i].ConditionType, conditions[i].Protocol, conditions[i].IpPrefix, conditions[i].MasklengthRange}
+		ribdConditions = append(ribdConditions, &temp[j])
+		j++
+	}
+	mgr.ribdClient.ApplyPolicy(protocol,policy,action,ribdConditions)
+}

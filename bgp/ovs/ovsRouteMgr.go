@@ -30,3 +30,6 @@ func (mgr *OvsRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
 func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error) {
 	return nil, nil
 }
+func (mgr *OvsRouteMgr) ApplyPolicy(protocol string,policy string,action string,conditions []*config.ConditionInfo) {
+	return 
+}

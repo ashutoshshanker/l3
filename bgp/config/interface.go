@@ -16,6 +16,7 @@ type RouteMgrIntf interface {
 	GetNextHopInfo(ipAddr string) (*NextHopInfo, error)
 	CreateRoute(*RouteConfig)
 	DeleteRoute(*RouteConfig)
+    ApplyPolicy(protocol string,policy string,action string,conditions []*ConditionInfo)
 }
 
 /*  Interface for handling policy related operations

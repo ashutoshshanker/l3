@@ -865,8 +865,6 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 	}
 	logger.Info(fmt.Sprintln("addNewRoute policy path ", policyPathStr))
 	logger.Info(fmt.Sprintln(" addNewRoute for next hop ip: ", routeInfoRecord.nextHopIp.String(), " ifType/index:", routeInfoRecord.nextHopIfType, "/", routeInfoRecord.nextHopIfIndex))
-	policyRoute := ribdInt.Routes{Ipaddr: routeInfoRecord.destNetIp.String(), Mask: routeInfoRecord.networkMask.String(), NextHopIp: routeInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(routeInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(routeInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(routeInfoRecord.metric), Prototype: ribdInt.Int(routeInfoRecord.protocol), IsPolicyBasedStateValid: routeInfoRecordList.isPolicyBasedStateValid}
-	var params RouteParams
 	if destNetSlice != nil && (len(destNetSlice) > int(routeInfoRecord.sliceIdx)) { //&& bytes.Equal(destNetSlice[routeInfoRecord.sliceIdx].prefix, destNet)) {
 		if bytes.Equal(destNetSlice[routeInfoRecord.sliceIdx].prefix, destNetPrefix) == false {
 			logger.Info(fmt.Sprintln("Unexpected destination network prefix ", destNetSlice[routeInfoRecord.sliceIdx].prefix, " found at the slice Idx ", routeInfoRecord.sliceIdx, " expected prefix ", destNetPrefix))
@@ -912,17 +910,9 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		return
 	}
 	logger.Info("This is a selected route, so install and parse through export policy engine")
-	policyRoute.Prototype = ribdInt.Int(routeInfoRecord.protocol)
-	params.routeType = ribd.Int(policyRoute.Prototype)
-	params.destNetIp = routeInfoRecord.destNetIp.String()
-	params.sliceIdx = ribd.Int(routeInfoRecord.sliceIdx)
-	params.networkMask = routeInfoRecord.networkMask.String()
-	params.metric = routeInfoRecord.metric
-	params.nextHopIp = routeInfoRecord.nextHopIp.String()
-	params.nextHopIfType = ribd.Int(routeInfoRecord.nextHopIfType)
-	params.nextHopIfIndex = routeInfoRecord.nextHopIfIndex
-	policyRoute.Ipaddr = routeInfoRecord.destNetIp.String()
-	policyRoute.Mask = routeInfoRecord.networkMask.String()
+	policyRoute := ribdInt.Routes{Ipaddr: routeInfoRecord.destNetIp.String(), Mask: routeInfoRecord.networkMask.String(), NextHopIp: routeInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(routeInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(routeInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(routeInfoRecord.metric), Prototype: ribdInt.Int(routeInfoRecord.protocol), IsPolicyBasedStateValid: routeInfoRecordList.isPolicyBasedStateValid}
+	var params RouteParams
+	params = BuildRouteParamsFromRouteInoRecord(routeInfoRecord)
 	if policyPath == policyCommonDefs.PolicyPath_Export {
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIp = routeInfoRecord.nextHopIp.String()
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType = ribdInt.Int(routeInfoRecord.nextHopIfType)
@@ -1086,7 +1076,6 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 		return
 	}
 	policyRoute := ribdInt.Routes{Ipaddr: routeInfoRecord.destNetIp.String(), Mask: routeInfoRecord.networkMask.String(), NextHopIp: routeInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(routeInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(routeInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(routeInfoRecord.metric), Prototype: ribdInt.Int(routeInfoRecord.protocol), IsPolicyBasedStateValid: routeInfoRecordList.isPolicyBasedStateValid}
-	var params RouteParams
 	if policyPath != policyCommonDefs.PolicyPath_Export {
 		logger.Info("Expected export path for delete op")
 		return
@@ -1119,14 +1108,11 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	t1 := time.Now()
 	routeEventInfo := RouteEventInfo{timeStamp: t1.String(), eventInfo: eventInfo}
 	localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
-	params.createType = Invalid
-	params.destNetIp = routeInfoRecord.destNetIp.String()
-	params.metric = routeInfoRecord.metric
-	params.networkMask = routeInfoRecord.networkMask.String()
-	params.nextHopIp = routeInfoRecord.nextHopIp.String()
-	params.sliceIdx = ribd.Int(routeInfoRecord.sliceIdx)
-	policyRoute.PolicyList = routeInfoRecordList.policyList
-	PolicyEngineFilter(policyRoute, policyPath, params)
+	var params RouteParams
+    params = BuildRouteParamsFromRouteInoRecord(routeInfoRecord)	 
+    params.createType = Invalid
+    policyRoute.PolicyList = routeInfoRecordList.policyList
+    PolicyEngineFilter(policyRoute, policyPath, params)
 }
 func deleteRoutes(destNetPrefix patriciaDB.Prefix,
 	deleteRouteList []RouteOpInfoRecord,
@@ -1311,14 +1297,15 @@ func createV4Route(destNetIp string,
 		}
 
 		var params RouteParams
-		params.destNetIp = destNetIp
+		params = BuildRouteParamsFromRouteInoRecord(routeInfoRecord)
+		params.createType = addType
+		params.deleteType = Invalid
+/*		params.destNetIp = destNetIp
 		params.networkMask = networkMask
 		params.nextHopIp = nextHopIp
 		params.routeType = routeType
-		params.createType = addType
-		params.deleteType = Invalid
 		params.metric = metric
-		params.sliceIdx = sliceIdx
+		params.sliceIdx = sliceIdx*/
 		policyRoute.IsPolicyBasedStateValid = newRouteInfoRecordList.isPolicyBasedStateValid
 		PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Export, params)
 	} else {

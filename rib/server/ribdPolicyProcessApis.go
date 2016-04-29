@@ -25,15 +25,7 @@ func (m RIBDServer) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.Protocol}
 	matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.IpPrefix, MasklengthRange: cfg.MaskLengthRange}
 	newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{Prefix: matchPrefix}
-	/*	if cfg.MatchDstIpPrefixConditionInfo != nil {
-		matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.MatchDstIpPrefixConditionInfo.Prefix.IpPrefix, MasklengthRange: cfg.MatchDstIpPrefixConditionInfo.Prefix.MasklengthRange}
-		newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{PrefixSet: cfg.MatchDstIpPrefixConditionInfo.PrefixSet, Prefix: matchPrefix}
-	}*/
 	val, err = db.CreatePolicyCondition(newPolicy)
-	//send event for condition create
-	if err == nil {
-	    PolicyEngineDB.CreatePolicyCondition(newPolicy)
-	}
 	return val, err
 }
 
@@ -41,7 +33,6 @@ func (m RIBDServer) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyCondition
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition: ", cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name}
 	val, err = db.DeletePolicyCondition(newPolicy)
-	//deleteInternalPolicyCondition(newPolicy)
 	return val, err
 }
 
@@ -69,9 +60,6 @@ func (m RIBDServer) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmt,db *polic
 	newPolicyStmt.Actions = make([]string, 0)
 	newPolicyStmt.Actions = append(newPolicyStmt.Actions,cfg.Action)
 	err = db.CreatePolicyStatement(newPolicyStmt)
-	if err == nil {
-	    PolicyEngineDB.CreatePolicyStatement(newPolicyStmt)
-	}
 	return err
 }
 
@@ -94,9 +82,6 @@ func (m RIBDServer) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefiniti
 	}
 	newPolicy.Extensions = PolicyExtensions{}
 	err = db.CreatePolicyDefinition(newPolicy)
-	if err == nil {
-	    PolicyEngineDB.CreatePolicyDefinition(newPolicy)
-	}
 	return err
 }
 
@@ -350,7 +335,7 @@ func (m RIBDServer) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd
 	return policyStmts, err
 }
 
-func (m RIBDServer) ApplyPolicy(info ApplyPolicyInfo)  {
+func (m RIBDServer) UpdateApplyPolicy(info ApplyPolicyInfo, apply bool, db *policy.PolicyEngineDB)  {
 	var err error
 	conditionName := ""
 	source := info.Source 
@@ -358,7 +343,11 @@ func (m RIBDServer) ApplyPolicy(info ApplyPolicyInfo)  {
 	action := info.Action
 	var policyAction policy.PolicyAction
 	conditionNameList := make([]string,0)
-	nodeGet := PolicyEngineDB.PolicyDB.Get(patriciaDB.Prefix(policyName))
+	
+	policyDB := db.PolicyDB
+	policyConditionsDB := db.PolicyConditionsDB
+	
+	nodeGet := policyDB.Get(patriciaDB.Prefix(policyName))
 	if nodeGet == nil {
 		logger.Err(fmt.Sprintln("Policy ", policyName, " not defined"))
 		return
@@ -368,18 +357,18 @@ func (m RIBDServer) ApplyPolicy(info ApplyPolicyInfo)  {
 	for i:=0;i<len(info.Conditions);i++ {
 		conditions = append(conditions,*info.Conditions[i])
 	}
-	logger.Info(fmt.Sprintln("RIB handler ApplyPolicy source:", source, " policy:", policyName, " action:", action," conditions: "))
+	logger.Info(fmt.Sprintln("RIB handler UpdateApplyPolicy source:", source, " policy:", policyName, " action:", action," apply:", apply, "conditions: ", ))
 	for j:=0;j<len(conditions);j++ {
 		logger.Info(fmt.Sprintf("ConditionType = %s :", conditions[j].ConditionType))
 		switch conditions[j].ConditionType {
 			case "MatchProtocol":
 			    logger.Info(fmt.Sprintln(conditions[j].Protocol))
 				conditionName := "Match"+conditions[j].Protocol
-				ok := PolicyEngineDB.PolicyConditionsDB.Match(patriciaDB.Prefix(conditionName))
+				ok := policyConditionsDB.Match(patriciaDB.Prefix(conditionName))
 				if !ok {
 					logger.Info(fmt.Sprintln("Define condition ", conditionName))
 					policyCondition := ribd.PolicyCondition{Name:conditionName,ConditionType:conditions[j].ConditionType,Protocol:conditions[j].Protocol}
-					_,err = m.ProcessPolicyConditionConfigCreate(&policyCondition,PolicyEngineDB)
+					_,err = m.ProcessPolicyConditionConfigCreate(&policyCondition,db)
 				}
 			case "MatchDstIpPrefix":
 			case "MatchSrcIpPrefix":
@@ -408,6 +397,6 @@ func (m RIBDServer) ApplyPolicy(info ApplyPolicyInfo)  {
 		default:
 		    logger.Info(fmt.Sprintln("Action ", action, "currently a no-op"))
 	}
-	PolicyEngineDB.ApplyPolicy(policy.ApplyPolicyInfo{node,policyAction,conditionNameList})
+	db.UpdateApplyPolicy(policy.ApplyPolicyInfo{node,policyAction,conditionNameList},apply)
 	return 
 }

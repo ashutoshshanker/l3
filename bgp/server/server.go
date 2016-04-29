@@ -759,7 +759,7 @@ func (server *BGPServer) SetupRedistribution(gConf config.GlobalConfig) {
 		server.logger.Info("No redistribution policies configured")
 		return
 	}
-	conditions := make([]*ribdInt.ConditionInfo,0)
+	conditions := make([]*config.ConditionInfo,0)
 	for i := 0;i<len(gConf.Redistribution);i++ {
 		server.logger.Info(fmt.Sprintln("Sources: ",gConf.Redistribution[i].Sources))
 	    sources := make([]string,0)
@@ -767,10 +767,10 @@ func (server *BGPServer) SetupRedistribution(gConf config.GlobalConfig) {
 		server.logger.Info(fmt.Sprintf("Setting up %s as redistribution policy for source(s): ", gConf.Redistribution[i].Policy))
 		for j :=0;j<len(sources);j++ {
 			server.logger.Info(fmt.Sprintf("%s ",sources[j]))
-			conditions = append(conditions,&ribdInt.ConditionInfo{ConditionType:"MatchProtocol",Protocol:sources[j]})
+			conditions = append(conditions,&config.ConditionInfo{ConditionType:"MatchProtocol",Protocol:sources[j]})
 		}
 		server.logger.Info(fmt.Sprintln(""))
-		server.ribdClient.ApplyPolicy("BGP",gConf.Redistribution[i].Policy,"Redistribution",conditions)
+		server.routeMgr.ApplyPolicy("BGP",gConf.Redistribution[i].Policy,"Redistribution",conditions)
 	}
 }
 func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
@@ -1186,7 +1186,7 @@ func (server *BGPServer) StartServer() {
 	server.IntfMgr.Start()
 	server.routeMgr.Start()
 	server.bfdMgr.Start()
-	server.SetupRedistribution()
+	server.SetupRedistribution(gConf)
 }
 
 func (s *BGPServer) GetBGPGlobalState() config.GlobalState {

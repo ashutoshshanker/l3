@@ -272,6 +272,18 @@ func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entit
 	}
 	return entity, err
 }
+func BuildRouteParamsFromRouteInoRecord(routeInfoRecord RouteInfoRecord) RouteParams {
+	var params RouteParams
+	params.routeType = ribd.Int(routeInfoRecord.protocol)
+	params.destNetIp = routeInfoRecord.destNetIp.String()
+	params.sliceIdx = ribd.Int(routeInfoRecord.sliceIdx)
+	params.networkMask = routeInfoRecord.networkMask.String()
+	params.metric = routeInfoRecord.metric
+	params.nextHopIp = routeInfoRecord.nextHopIp.String()
+	params.nextHopIfType = ribd.Int(routeInfoRecord.nextHopIfType)
+	params.nextHopIfIndex = routeInfoRecord.nextHopIfIndex
+    return params
+}
 func findRouteWithNextHop(routeInfoList []RouteInfoRecord, nextHopIP string) (found bool, routeInfoRecord RouteInfoRecord, index int) {
 	logger.Println("findRouteWithNextHop")
 	index = -1
@@ -546,7 +558,7 @@ func UpdateRedistributeTargetMap(evt int, protocol string, route ribdInt.Routes)
 		}
 	}
 }
-func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes, evt int) {
+func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes, evt int, targetProtocol string) {
 	logger.Println("RedistributionNotificationSend")
 	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: route}
 	msgbufbytes, err := json.Marshal(msgBuf)
@@ -566,7 +578,7 @@ func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes
 	if route.NetworkStatement == true {
 		eventInfo = " Advertise Network Statement "
 	}
-	eventInfo = eventInfo + evtStr + " for route " + route.Ipaddr + " " + route.Mask + " type" + ReverseRouteProtoTypeMapDB[int(route.Prototype)]
+	eventInfo = eventInfo + evtStr + " for route " + route.Ipaddr + " " + route.Mask + " type " + ReverseRouteProtoTypeMapDB[int(route.Prototype)] + " to " + targetProtocol
 	logger.Info(fmt.Sprintln("Adding ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " to notification channel"))
 	routeServiceHandler.NotificationChannel <- NotificationMsg{PUB, buf, eventInfo}
 }
