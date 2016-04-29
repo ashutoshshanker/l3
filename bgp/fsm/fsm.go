@@ -1179,17 +1179,21 @@ func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {
 }
 
 func (fsm *FSM) sendUpdateMessage(bgpMsg *packet.BGPMessage) {
+	updateMsgs := packet.ConstructMaxSizedUpdatePackets(bgpMsg)
 	atomic.AddUint32(&fsm.neighborConf.Neighbor.State.Queues.Output, ^uint32(0))
-	packet, _ := bgpMsg.Encode()
-	num, err := (*fsm.peerConn.conn).Write(packet)
-	if err != nil {
+
+	for idx, _ := range updateMsgs {
+		packet, _ := updateMsgs[idx].Encode()
+		num, err := (*fsm.peerConn.conn).Write(packet)
+		if err != nil {
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+				"Conn.Write failed to send Update message with error:", err))
+			return
+		}
+		fsm.neighborConf.Neighbor.State.Messages.Sent.Update++
 		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
-			"Conn.Write failed to send Update message with error:", err))
-		return
+			"Conn.Write succeeded. sent Update message of", num, "bytes"))
 	}
-	fsm.neighborConf.Neighbor.State.Messages.Sent.Update++
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
-		"Conn.Write succeeded. sent Update message of", num, "bytes"))
 	fsm.StartKeepAliveTimer()
 }
 

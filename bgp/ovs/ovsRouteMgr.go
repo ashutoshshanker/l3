@@ -20,7 +20,7 @@ func (mgr *OvsRouteMgr) Start() {
 }
 
 func (mgr *OvsRouteMgr) CreateRoute(cfg *config.RouteConfig) {
-	fmt.Println("Create Route called in", mgr.plugin)
+	fmt.Println("Create Route called in", mgr.plugin, "with configs", cfg)
 }
 
 func (mgr *OvsRouteMgr) DeleteRoute(cfg *config.RouteConfig) {

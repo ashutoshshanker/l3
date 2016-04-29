@@ -10,6 +10,7 @@ import (
 	"l3/bgp/rpc"
 	"l3/bgp/server"
 	"l3/bgp/utils"
+	"utils/dbutils"
 	"utils/keepalive"
 	"utils/logging"
 )
@@ -35,11 +36,18 @@ func main() {
 	fmt.Println("Start logger")
 	logger, err := logging.NewLogger("bgpd", "BGP", true)
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
 	logger.Info("Started the logger successfully.")
 	utils.SetLogger(logger)
+
+	// Start DB Util
+	dbUtil := dbutils.NewDBUtil(logger)
+	err = dbUtil.Connect()
+	if err != nil {
+		logger.Err(fmt.Sprintf("DB connect failed with error %s. Exiting!!", err))
+		return
+	}
 
 	// Start keepalive routine
 	go keepalive.InitKeepAlive("bgpd", fileName)
@@ -66,17 +74,18 @@ func main() {
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
-		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
+		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, dbUtil, fileName)
+		dbUtil.Disconnect()
 
 		// create and start ovsdb handler
 		ovsdbManager, err := ovsMgr.NewBGPOvsdbHandler(logger, confIface)
 		if err != nil {
-			fmt.Println("Starting OVDB client failed ERROR:", err)
+			logger.Info(fmt.Sprintln("Starting OVDB client failed ERROR:", err))
 			return
 		}
 		err = ovsdbManager.StartMonitoring()
 		if err != nil {
-			fmt.Println("OVSDB Serve failed ERROR:", err)
+			logger.Info(fmt.Sprintln("OVSDB Serve failed ERROR:", err))
 			return
 		}
 
@@ -105,7 +114,9 @@ func main() {
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
-		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
+		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, dbUtil, fileName)
+		dbUtil.Disconnect()
+
 		rpc.StartServer(logger, confIface, fileName)
 	}
 }

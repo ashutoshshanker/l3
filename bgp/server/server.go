@@ -69,6 +69,7 @@ type BGPServer struct {
 	intfCh           chan config.IntfStateInfo
 	routesCh         chan *config.RouteCh
 	acceptCh         chan *net.TCPConn
+	GlobalCfgDone    bool
 
 	NeighborMutex  sync.RWMutex
 	PeerMap        map[string]*Peer
@@ -79,10 +80,11 @@ type BGPServer struct {
 	ifaceIP        net.IP
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 	AddPathCount   int
-	IntfMgr        config.IntfStateMgrIntf
-	policyMgr      config.PolicyMgrIntf
-	routeMgr       config.RouteMgrIntf
-	bfdMgr         config.BfdMgrIntf
+	// all managers
+	IntfMgr   config.IntfStateMgrIntf
+	policyMgr config.PolicyMgrIntf
+	routeMgr  config.RouteMgrIntf
+	bfdMgr    config.BfdMgrIntf
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
@@ -92,6 +94,7 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.logger = logger
 	bgpServer.bgpPE = policyEngine
 	bgpServer.BgpConfig = config.Bgp{}
+	bgpServer.GlobalCfgDone = false
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
 	bgpServer.AddPeerCh = make(chan PeerUpdate)
 	bgpServer.RemPeerCh = make(chan string)
@@ -1159,6 +1162,7 @@ func (server *BGPServer) listenChannelUpdates() {
 
 func (server *BGPServer) StartServer() {
 	gConf := <-server.GlobalConfigCh
+	server.GlobalCfgDone = true
 	server.logger.Info(fmt.Sprintln("Recieved global conf:", gConf))
 	server.BgpConfig.Global.Config = gConf
 	server.constructBGPGlobalState(&gConf)
@@ -1224,5 +1228,5 @@ func (s *BGPServer) BulkGetBGPNeighbors(index int, count int) (int, int, []*conf
 }
 
 func (svr *BGPServer) VerifyBgpGlobalConfig() bool {
-	return (svr.BgpConfig.Global.Config.AS != 0)
+	return svr.GlobalCfgDone
 }
