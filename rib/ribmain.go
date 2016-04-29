@@ -4,10 +4,10 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	"utils/keepalive"
-	"utils/logging"
 	"l3/rib/rpc"
 	"l3/rib/server"
+	"utils/keepalive"
+	"utils/logging"
 )
 
 func main() {
@@ -22,8 +22,7 @@ func main() {
 	fmt.Println("Start logger")
 	logger, err := logging.NewLogger(fileName, "ribd", "RIB")
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
 	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
@@ -42,7 +41,7 @@ func main() {
 		fmt.Println(fmt.Sprintln("Failed to keep DB connection alive"))
 		return
 	}
-	routeServer := server.NewRIBDServicesHandler(dbHdl,logger)
+	routeServer := server.NewRIBDServicesHandler(dbHdl, logger)
 	if routeServer == nil {
 		logger.Println("routeServer nil")
 		return
@@ -59,6 +58,6 @@ func main() {
 		logger.Err(fmt.Sprintln("Exiting!!"))
 		return
 	}
-	ribdServicesHandler := rpc.NewRIBdHandler(logger,routeServer)
-	rpc.NewRIBdRPCServer(logger,ribdServicesHandler,fileName)
+	ribdServicesHandler := rpc.NewRIBdHandler(logger, routeServer)
+	rpc.NewRIBdRPCServer(logger, ribdServicesHandler, fileName)
 }

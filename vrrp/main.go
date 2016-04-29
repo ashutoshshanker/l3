@@ -21,8 +21,7 @@ func main() {
 	fmt.Println("Start logger")
 	logger, err := logging.NewLogger(fileName, "vrrpd", "VRRP")
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
 	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
