@@ -74,7 +74,7 @@ func (h *BGPHandler) handleGlobalConfig() error {
 		obj = confObj.(models.BGPGlobal)
 
 		gConf, err := h.convertModelToBGPGlobalConfig(obj)
-		if err == nil {
+		if err != nil {
 			h.logger.Err(fmt.Sprintln("handleGlobalConfig - Failed to convert Model object BGP Global, error:", err))
 			return err
 		}
