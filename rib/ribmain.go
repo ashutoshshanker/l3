@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/garyburd/redigo/redis"
 	"l3/rib/rpc"
 	"l3/rib/server"
-	"github.com/garyburd/redigo/redis"
 	"utils/keepalive"
 	"utils/logging"
 )
@@ -22,8 +22,7 @@ func main() {
 	fmt.Println("Start logger")
 	logger, err := logging.NewLogger("ribd", "RIB", true)
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
 	logger.Info("Started the logger successfully.")
 
@@ -46,7 +45,7 @@ func main() {
 	go routeServer.StartArpdServer()
 	go routeServer.StartServer(*paramsDir)
 	up := <-routeServer.ServerUpCh
-	dbHdl.Close()
+	//dbHdl.Close()
 	logger.Info(fmt.Sprintln("RIBD server is up: ", up))
 	if !up {
 		logger.Err(fmt.Sprintln("Exiting!!"))

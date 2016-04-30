@@ -77,7 +77,7 @@ func (m RIBDServicesHandler) OnewayUpdateIPv4Route(origconfig *ribd.IPv4Route, n
 	m.UpdateIPv4Route(origconfig, newconfig, attrset)
 	return err
 }
-func (m RIBDServicesHandler) GetIPv4RouteState(destNw string, nextHop string) (*ribd.IPv4RouteState, error) {
+func (m RIBDServicesHandler) GetIPv4RouteState(destNw string) (*ribd.IPv4RouteState, error) {
 	logger.Info("Get state for IPv4Route")
 	route := ribd.NewIPv4RouteState()
 	return route, nil
