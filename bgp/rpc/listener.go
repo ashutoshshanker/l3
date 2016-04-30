@@ -5,17 +5,15 @@ import (
 	"bgpd"
 	"errors"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	"l3/bgp/config"
 	bgppolicy "l3/bgp/policy"
 	"l3/bgp/server"
 	"models"
 	"net"
 	"strings"
+	"utils/dbutils"
 	"utils/logging"
 	utilspolicy "utils/policy"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 const DBName string = "UsrConfDb.db"
@@ -30,95 +28,176 @@ type BGPHandler struct {
 	server        *server.BGPServer
 	bgpPE         *bgppolicy.BGPPolicyEngine
 	logger        *logging.Writer
+	dbUtil        *dbutils.DBUtil
 }
 
-func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, logger *logging.Writer, filePath string) *BGPHandler {
+func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, logger *logging.Writer,
+	dbUtil *dbutils.DBUtil, filePath string) *BGPHandler {
 	h := new(BGPHandler)
 	h.PeerCommandCh = make(chan PeerConfigCommands)
 	h.server = server
 	h.bgpPE = policy
 	h.logger = logger
-	h.readConfigFromDB(filePath)
+	h.dbUtil = dbUtil
+	//h.readConfigFromDB(filePath)
 	return h
 }
 
-func (h *BGPHandler) handleGlobalConfig(dbHdl redis.Conn) error {
-	return nil
+func (h *BGPHandler) convertModelToBGPGlobalConfig(obj models.BGPGlobal) (config.GlobalConfig, error) {
+	var err error
+	gConf := config.GlobalConfig{
+		AS:                  obj.ASNum,
+		RouterId:            h.convertStrIPToNetIP(obj.RouterId),
+		UseMultiplePaths:    obj.UseMultiplePaths,
+		EBGPMaxPaths:        obj.EBGPMaxPaths,
+		EBGPAllowMultipleAS: obj.EBGPAllowMultipleAS,
+		IBGPMaxPaths:        obj.IBGPMaxPaths,
+	}
+
+	if gConf.RouterId == nil {
+		h.logger.Err(fmt.Sprintln("convertModelToBGPGlobalConfig - IP is not valid:", obj.RouterId))
+		err = config.IPError{obj.RouterId}
+	}
+
+	return gConf, err
 }
 
-func (h *BGPHandler) handlePeerGroup(dbHdl redis.Conn) error {
-	/*
-		dbCmd := "select * from BGPPeerGroup"
-		rows, err := dbHdl.Query(dbCmd)
+func (h *BGPHandler) handleGlobalConfig() error {
+	var obj models.BGPGlobal
+	objList, err := h.dbUtil.GetAllObjFromDb(obj)
+	if err != nil {
+		h.logger.Err(fmt.Sprintf("GetAllObjFromDb failed for BGPGlobal with error %s", err))
+		return err
+	}
+
+	for _, confObj := range objList {
+		obj = confObj.(models.BGPGlobal)
+
+		gConf, err := h.convertModelToBGPGlobalConfig(obj)
 		if err != nil {
-			h.logger.Err(fmt.Sprintf("DB method Query failed for '%s' with error %s", dbCmd, err))
+			h.logger.Err(fmt.Sprintln("handleGlobalConfig - Failed to convert Model object BGP Global, error:", err))
 			return err
 		}
 
-		defer rows.Close()
-
-		var group config.PeerGroupConfig
-		for rows.Next() {
-			if err = rows.Scan(&group.PeerAS, &group.LocalAS, &group.AuthPassword, &group.Description, &group.Name,
-				&group.RouteReflectorClusterId, &group.RouteReflectorClient, &group.MultiHopEnable, &group.MultiHopTTL,
-				&group.ConnectRetryTime, &group.HoldTime, &group.KeepaliveTime, &group.AddPathsRx,
-				&group.AddPathsMaxTx, &group.MaxPrefixes, &group.MaxPrefixesThresholdPct, &group.MaxPrefixesDisconnect,
-				&group.MaxPrefixesRestartTimer); err != nil {
-				h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPPeerGroup rows with error %s", err))
-				return err
-			}
-
-			h.server.AddPeerGroupCh <- server.PeerGroupUpdate{config.PeerGroupConfig{}, group, make([]bool, 0)}
-		}
-	*/
+		h.server.GlobalConfigCh <- gConf
+	}
 	return nil
 }
 
-func (h *BGPHandler) handleNeighborConfig(dbHdl redis.Conn) error {
-	/*
-		dbCmd := "select * from BGPNeighbor"
-		rows, err := dbHdl.Query(dbCmd)
+func (h *BGPHandler) convertModelToBGPPeerGroup(obj models.BGPPeerGroup) (group config.PeerGroupConfig, err error) {
+	group = config.PeerGroupConfig{
+		BaseConfig: config.BaseConfig{
+			PeerAS:                  uint32(obj.PeerAS),
+			LocalAS:                 uint32(obj.LocalAS),
+			AuthPassword:            obj.AuthPassword,
+			Description:             obj.Description,
+			RouteReflectorClusterId: uint32(obj.RouteReflectorClusterId),
+			RouteReflectorClient:    obj.RouteReflectorClient,
+			MultiHopEnable:          obj.MultiHopEnable,
+			MultiHopTTL:             uint8(obj.MultiHopTTL),
+			ConnectRetryTime:        uint32(obj.ConnectRetryTime),
+			HoldTime:                uint32(obj.HoldTime),
+			KeepaliveTime:           uint32(obj.KeepaliveTime),
+			AddPathsRx:              obj.AddPathsRx,
+			AddPathsMaxTx:           uint8(obj.AddPathsMaxTx),
+			MaxPrefixes:             uint32(obj.MaxPrefixes),
+			MaxPrefixesThresholdPct: uint8(obj.MaxPrefixesThresholdPct),
+			MaxPrefixesDisconnect:   obj.MaxPrefixesDisconnect,
+			MaxPrefixesRestartTimer: uint8(obj.MaxPrefixesRestartTimer),
+		},
+		Name: obj.Name,
+	}
+	return group, err
+}
+
+func (h *BGPHandler) handlePeerGroup() error {
+	var obj models.BGPPeerGroup
+	objList, err := h.dbUtil.GetAllObjFromDb(obj)
+	if err != nil {
+		h.logger.Err(fmt.Sprintf("GetAllObjFromDb for BGPPeerGroup failed with error %s", err))
+		return err
+	}
+
+	for _, confObj := range objList {
+		obj = confObj.(models.BGPPeerGroup)
+
+		group, err := h.convertModelToBGPPeerGroup(obj)
 		if err != nil {
-			h.logger.Err(fmt.Sprintf("DB method Query failed for '%s' with error %s", dbCmd, err))
+			h.logger.Err(fmt.Sprintln("handlePeerGroup - Failed to convert Model object to BGP Peer group, error:",
+				err))
 			return err
 		}
 
-		defer rows.Close()
+		h.server.AddPeerGroupCh <- server.PeerGroupUpdate{config.PeerGroupConfig{}, group, make([]bool, 0)}
+	}
 
-		var nConf config.NeighborConfig
-		var neighborIP string
-		var neighborIfIndex int32
-		for rows.Next() {
-			if err = rows.Scan(&nConf.PeerAS, &nConf.LocalAS, &nConf.AuthPassword, &nConf.Description, &neighborIP,
-				&neighborIfIndex, &nConf.RouteReflectorClusterId, &nConf.RouteReflectorClient, &nConf.MultiHopEnable,
-				&nConf.MultiHopTTL, &nConf.ConnectRetryTime, &nConf.HoldTime, &nConf.KeepaliveTime, &nConf.AddPathsRx,
-				&nConf.AddPathsMaxTx, &nConf.PeerGroup, &nConf.BfdEnable, &nConf.MaxPrefixes,
-				&nConf.MaxPrefixesThresholdPct, &nConf.MaxPrefixesDisconnect, &nConf.MaxPrefixesRestartTimer); err != nil {
-				h.logger.Err(fmt.Sprintf("DB method Scan failed when iterating over BGPNeighbor rows with error %s", err))
-				return err
-			}
-
-			ip, ifIndex, err := h.getIPAndIfIndexForNeighbor(neighborIP, neighborIfIndex)
-			if err != nil {
-				h.logger.Info(fmt.Sprintln("handleNeighborConfig: getIPAndIfIndexForNeighbor failed for neighbor address",
-					neighborIP, "and ifIndex", neighborIfIndex))
-				continue
-			}
-			if ip == nil {
-				h.logger.Info(fmt.Sprintln("Can't create BGP neighbor - IP[%s] not valid", neighborIP))
-				continue
-			}
-
-			nConf.NeighborAddress = ip
-			nConf.IfIndex = ifIndex
-
-			h.server.AddPeerCh <- server.PeerUpdate{config.NeighborConfig{}, nConf, make([]bool, 0)}
-		}
-	*/
 	return nil
 }
 
-func convertModelToPolicyConditionConfig(cfg models.BGPPolicyCondition) *utilspolicy.PolicyConditionConfig {
+func (h *BGPHandler) convertModelToBGPNeighbor(obj models.BGPNeighbor) (neighbor config.NeighborConfig, err error) {
+	var ip net.IP
+	var ifIndex int32
+	ip, ifIndex, err = h.getIPAndIfIndexForNeighbor(obj.NeighborAddress, obj.IfIndex)
+	if err != nil {
+		h.logger.Info(fmt.Sprintln("convertModelToBGPNeighbor: getIPAndIfIndexForNeighbor",
+			"failed for neighbor address", obj.NeighborAddress, "and ifIndex", obj.IfIndex))
+		return neighbor, err
+	}
+
+	neighbor = config.NeighborConfig{
+		BaseConfig: config.BaseConfig{
+			PeerAS:                  uint32(obj.PeerAS),
+			LocalAS:                 uint32(obj.LocalAS),
+			AuthPassword:            obj.AuthPassword,
+			Description:             obj.Description,
+			RouteReflectorClusterId: uint32(obj.RouteReflectorClusterId),
+			RouteReflectorClient:    obj.RouteReflectorClient,
+			MultiHopEnable:          obj.MultiHopEnable,
+			MultiHopTTL:             uint8(obj.MultiHopTTL),
+			ConnectRetryTime:        uint32(obj.ConnectRetryTime),
+			HoldTime:                uint32(obj.HoldTime),
+			KeepaliveTime:           uint32(obj.KeepaliveTime),
+			BfdEnable:               obj.BfdEnable,
+			AddPathsRx:              obj.AddPathsRx,
+			AddPathsMaxTx:           uint8(obj.AddPathsMaxTx),
+			MaxPrefixes:             uint32(obj.MaxPrefixes),
+			MaxPrefixesThresholdPct: uint8(obj.MaxPrefixesThresholdPct),
+			MaxPrefixesDisconnect:   obj.MaxPrefixesDisconnect,
+			MaxPrefixesRestartTimer: uint8(obj.MaxPrefixesRestartTimer),
+		},
+		NeighborAddress: ip,
+		IfIndex:         ifIndex,
+		PeerGroup:       obj.PeerGroup,
+	}
+	return neighbor, err
+}
+
+func (h *BGPHandler) handleNeighborConfig() error {
+	var obj models.BGPNeighbor
+	objList, err := h.dbUtil.GetAllObjFromDb(obj)
+	if err != nil {
+		h.logger.Err(fmt.Sprintf("GetAllObjFromDb for BGPNeighbor failed with error %s", err))
+		return err
+	}
+
+	for _, confObj := range objList {
+		obj = confObj.(models.BGPNeighbor)
+
+		neighbor, err := h.convertModelToBGPNeighbor(obj)
+		if err != nil {
+			h.logger.Err(fmt.Sprintln("handleNeighborConfig - Failed to convert Model object to BGP neighbor, error:",
+				err))
+			return err
+		}
+
+		h.server.AddPeerCh <- server.PeerUpdate{config.NeighborConfig{}, neighbor, make([]bool, 0)}
+	}
+
+	return nil
+}
+
+func convertModelToPolicyConditionConfig(
+	cfg models.BGPPolicyCondition) *utilspolicy.PolicyConditionConfig {
 	destIPMatch := utilspolicy.PolicyDstIpMatchPrefixSetCondition{
 		Prefix: utilspolicy.PolicyPrefix{
 			IpPrefix:        cfg.IpPrefix,
@@ -132,18 +211,21 @@ func convertModelToPolicyConditionConfig(cfg models.BGPPolicyCondition) *utilspo
 	}
 }
 
-func (h *BGPHandler) handlePolicyConditions(dbHdl redis.Conn) error {
+func (h *BGPHandler) handlePolicyConditions() error {
 	h.logger.Info(fmt.Sprintln("handlePolicyConditions"))
-	conditionObj := models.BGPPolicyCondition{}
-	conditionList, err := conditionObj.GetAllObjFromDb(dbHdl)
+	var conditionObj models.BGPPolicyCondition
+	conditionList, err := h.dbUtil.GetAllObjFromDb(conditionObj)
 	if err != nil {
-		h.logger.Err(fmt.Sprintln("handlePolicyConditions - Failed to create policy condition config on restart with error", err))
+		h.logger.Err(fmt.Sprintln("handlePolicyConditions - Failed to create policy",
+			"condition config on restart with error", err))
 		return err
 	}
 
 	for idx := 0; idx < len(conditionList); idx++ {
-		policyCondCfg := convertModelToPolicyConditionConfig(conditionList[idx].(models.BGPPolicyCondition))
-		h.logger.Info(fmt.Sprintln("handlePolicyConditions - create policy condition", policyCondCfg.Name))
+		policyCondCfg :=
+			convertModelToPolicyConditionConfig(conditionList[idx].(models.BGPPolicyCondition))
+		h.logger.Info(fmt.Sprintln("handlePolicyConditions - create policy condition",
+			policyCondCfg.Name))
 		h.bgpPE.ConditionCfgCh <- *policyCondCfg
 	}
 	return nil
@@ -158,18 +240,21 @@ func convertModelToPolicyActionConfig(cfg models.BGPPolicyAction) *utilspolicy.P
 	}
 }
 
-func (h *BGPHandler) handlePolicyActions(dbHdl redis.Conn) error {
+func (h *BGPHandler) handlePolicyActions() error {
 	h.logger.Info(fmt.Sprintln("handlePolicyActions"))
-	actionObj := models.BGPPolicyAction{}
-	actionList, err := actionObj.GetAllObjFromDb(dbHdl)
+	var actionObj models.BGPPolicyAction
+	actionList, err := h.dbUtil.GetAllObjFromDb(actionObj)
 	if err != nil {
-		h.logger.Err(fmt.Sprintln("handlePolicyActions - Failed to create policy action config on restart with error", err))
+		h.logger.Err(fmt.Sprintln("handlePolicyActions - Failed to create policy action",
+			"config on restart with error", err))
 		return err
 	}
 
 	for idx := 0; idx < len(actionList); idx++ {
-		policyActionCfg := convertModelToPolicyActionConfig(actionList[idx].(models.BGPPolicyAction))
-		h.logger.Info(fmt.Sprintln("handlePolicyActions - create policy action", policyActionCfg.Name))
+		policyActionCfg :=
+			convertModelToPolicyActionConfig(actionList[idx].(models.BGPPolicyAction))
+		h.logger.Info(fmt.Sprintln("handlePolicyActions - create policy action",
+			policyActionCfg.Name))
 		h.bgpPE.ActionCfgCh <- *policyActionCfg
 	}
 	return nil
@@ -184,24 +269,27 @@ func convertModelToPolicyStmtConfig(cfg models.BGPPolicyStmt) *utilspolicy.Polic
 	}
 }
 
-func (h *BGPHandler) handlePolicyStmts(dbHdl redis.Conn) error {
+func (h *BGPHandler) handlePolicyStmts() error {
 	h.logger.Info(fmt.Sprintln("handlePolicyStmts"))
-	stmtObj := models.BGPPolicyStmt{}
-	stmtList, err := stmtObj.GetAllObjFromDb(dbHdl)
+	var stmtObj models.BGPPolicyStmt
+	stmtList, err := h.dbUtil.GetAllObjFromDb(stmtObj)
 	if err != nil {
-		h.logger.Err(fmt.Sprintln("handlePolicyStmts - Failed to create policy statement config on restart with error", err))
+		h.logger.Err(fmt.Sprintln("handlePolicyStmts - Failed to create policy statement",
+			"config on restart with error", err))
 		return err
 	}
 
 	for idx := 0; idx < len(stmtList); idx++ {
 		policyStmtCfg := convertModelToPolicyStmtConfig(stmtList[idx].(models.BGPPolicyStmt))
-		h.logger.Info(fmt.Sprintln("handlePolicyStmts - create policy statement", policyStmtCfg.Name))
+		h.logger.Info(fmt.Sprintln("handlePolicyStmts - create policy statement",
+			policyStmtCfg.Name))
 		h.bgpPE.StmtCfgCh <- *policyStmtCfg
 	}
 	return nil
 }
 
-func convertModelToPolicyDefinitionConfig(cfg models.BGPPolicyDefinition) *utilspolicy.PolicyDefinitionConfig {
+func convertModelToPolicyDefinitionConfig(
+	cfg models.BGPPolicyDefinition) *utilspolicy.PolicyDefinitionConfig {
 	stmtPrecedenceList := make([]utilspolicy.PolicyDefinitionStmtPrecedence, 0)
 	for i := 0; i < len(cfg.StatementList); i++ {
 		stmtPrecedence := utilspolicy.PolicyDefinitionStmtPrecedence{
@@ -219,63 +307,56 @@ func convertModelToPolicyDefinitionConfig(cfg models.BGPPolicyDefinition) *utils
 	}
 }
 
-func (h *BGPHandler) handlePolicyDefinitions(dbHdl redis.Conn) error {
+func (h *BGPHandler) handlePolicyDefinitions() error {
 	h.logger.Info(fmt.Sprintln("handlePolicyDefinitions"))
-	defObj := models.BGPPolicyDefinition{}
-	definitionList, err := defObj.GetAllObjFromDb(dbHdl)
+	var defObj models.BGPPolicyDefinition
+	definitionList, err := h.dbUtil.GetAllObjFromDb(defObj)
 	if err != nil {
-		h.logger.Err(fmt.Sprintln("handlePolicyDefinitions - Failed to create policy definition config on restart with error", err))
+		h.logger.Err(fmt.Sprintln("handlePolicyDefinitions - Failed to create policy",
+			"definition config on restart with error", err))
 		return err
 	}
 
 	for idx := 0; idx < len(definitionList); idx++ {
-		policyDefCfg := convertModelToPolicyDefinitionConfig(definitionList[idx].(models.BGPPolicyDefinition))
-		h.logger.Info(fmt.Sprintln("handlePolicyDefinitions - create policy definition", policyDefCfg.Name))
+		policyDefCfg := convertModelToPolicyDefinitionConfig(
+			definitionList[idx].(models.BGPPolicyDefinition))
+		h.logger.Info(fmt.Sprintln("handlePolicyDefinitions - create policy definition",
+			policyDefCfg.Name))
 		h.bgpPE.DefinitionCfgCh <- *policyDefCfg
 	}
 	return nil
 }
 
 func (h *BGPHandler) readConfigFromDB(filePath string) error {
-	/*
-		var dbPath string = filePath + DBName
+	var err error
 
-		dbHdl, err := sql.Open("sqlite3", dbPath)
-		if err != nil {
-			h.logger.Err(fmt.Sprintf("Failed to open the DB at %s with error %s", dbPath, err))
-			return err
-		}
+	if err = h.handlePolicyConditions(); err != nil {
+		return err
+	}
 
-		defer dbHdl.Close()
+	if err = h.handlePolicyActions(); err != nil {
+		return err
+	}
 
-		if err = h.handlePolicyConditions(dbHdl); err != nil {
-			return err
-		}
+	if err = h.handlePolicyStmts(); err != nil {
+		return err
+	}
 
-		if err = h.handlePolicyActions(dbHdl); err != nil {
-			return err
-		}
+	if err = h.handlePolicyDefinitions(); err != nil {
+		return err
+	}
 
-		if err = h.handlePolicyStmts(dbHdl); err != nil {
-			return err
-		}
+	if err = h.handleGlobalConfig(); err != nil {
+		return err
+	}
 
-		if err = h.handlePolicyDefinitions(dbHdl); err != nil {
-			return err
-		}
+	if err = h.handlePeerGroup(); err != nil {
+		return err
+	}
 
-		if err = h.handleGlobalConfig(dbHdl); err != nil {
-			return err
-		}
-
-		if err = h.handlePeerGroup(dbHdl); err != nil {
-			return err
-		}
-
-		if err = h.handleNeighborConfig(dbHdl); err != nil {
-			return err
-		}
-	*/
+	if err = h.handleNeighborConfig(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -328,7 +409,8 @@ func (h *BGPHandler) GetBGPGlobalState(rtrId string) (*bgpd.BGPGlobalState, erro
 	return bgpGlobalResponse, nil
 }
 
-func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int, count bgpd.Int) (*bgpd.BGPGlobalStateGetInfo, error) {
+func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int,
+	count bgpd.Int) (*bgpd.BGPGlobalStateGetInfo, error) {
 	bgpGlobalStateBulk := bgpd.NewBGPGlobalStateGetInfo()
 	bgpGlobalStateBulk.EndIdx = bgpd.Int(0)
 	bgpGlobalStateBulk.Count = bgpd.Int(1)
@@ -338,7 +420,8 @@ func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int, count bgpd.Int) (*bgp
 	return bgpGlobalStateBulk, nil
 }
 
-func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal, attrSet []bool) (bool, error) {
+func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal,
+	attrSet []bool) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update global config attrs:", updatedG, "old config:", origG))
 	return h.SendBGPGlobal(updatedG)
 }
@@ -348,7 +431,8 @@ func (h *BGPHandler) DeleteBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 	return true, nil
 }
 
-func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string, neighborIfIndex int32) (ip net.IP, ifIndex int32,
+func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string,
+	neighborIfIndex int32) (ip net.IP, ifIndex int32,
 	err error) {
 	if strings.TrimSpace(neighborIP) != "" {
 		ip = net.ParseIP(strings.TrimSpace(neighborIP))
@@ -399,6 +483,20 @@ func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string, neighborIfInd
 	return ip, ifIndex, err
 }
 
+// Set BGP Default values.. This needs to move to API Layer once Northbound interfaces are implemented
+// for all the listeners
+func (h *BGPHandler) setDefault(pconf *config.NeighborConfig) {
+	if pconf.BaseConfig.HoldTime == 0 { // default hold time is 180 seconds
+		pconf.BaseConfig.HoldTime = 180
+	}
+	if pconf.BaseConfig.KeepaliveTime == 0 { // default keep alive time is 60 seconds
+		pconf.BaseConfig.KeepaliveTime = 60
+	}
+	if pconf.BaseConfig.ConnectRetryTime == 0 { // default connect retry timer to 60 seconds
+		pconf.BaseConfig.ConnectRetryTime = 60
+	}
+}
+
 func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf config.NeighborConfig,
 	err error) {
 	if bgpNeighbor == nil {
@@ -440,12 +538,18 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf c
 		IfIndex:         ifIndex,
 		PeerGroup:       bgpNeighbor.PeerGroup,
 	}
+	h.setDefault(&pConf)
 	return pConf, err
 }
 
 func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighbor,
-	newNeighbor *bgpd.BGPNeighbor, attrSet []bool) (
-	bool, error) {
+	newNeighbor *bgpd.BGPNeighbor, attrSet []bool) (bool, error) {
+	created := h.server.VerifyBgpGlobalConfig()
+	if !created {
+		return created,
+			errors.New("Create BGP Local AS and router id before configuring Neighbor")
+	}
+
 	oldNeighConf, err := h.ValidateBGPNeighbor(oldNeighbor)
 	if err != nil {
 		return false, err
@@ -456,6 +560,7 @@ func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighbor,
 		return false, err
 	}
 
+	h.logger.Info(fmt.Sprintln("BGP neighbor attrs forwarded on Server AddPeerCh:", newNeighConf))
 	h.server.AddPeerCh <- server.PeerUpdate{oldNeighConf, newNeighConf, attrSet}
 	return true, nil
 }

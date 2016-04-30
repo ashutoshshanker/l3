@@ -501,6 +501,7 @@ func ConstructOptParams(as uint32, afiSAfiMap map[uint32]bool, addPathsRx bool, 
 	for protoFamily, _ := range afiSAfiMap {
 		afi, safi := GetAfiSafi(protoFamily)
 		utils.Logger.Info(fmt.Sprintf("Advertising capability for afi %d safi %d\n", afi, safi))
+
 		capAfiSafi := NewBGPCapMPExt(afi, safi)
 		capParams = append(capParams, capAfiSafi)
 
@@ -733,4 +734,64 @@ func NormalizeASPath(updateMsg *BGPMessage, data interface{}) {
 			removePathAttr(updateMsg, BGPPathAttrTypeAS4Path)
 		}
 	}
+}
+
+func ConstructMaxSizedUpdatePackets(bgpMsg *BGPMessage) []*BGPMessage {
+	var withdrawnRoutes []NLRI
+	newUpdateMsgs := make([]*BGPMessage, 0)
+	pktLen := uint32(BGPUpdateMsgMinLen)
+	startIdx := 0
+	lastIdx := 0
+	updateMsg := bgpMsg.Body.(*BGPUpdate)
+
+	if updateMsg.WithdrawnRoutes != nil {
+		for lastIdx = 0; lastIdx < len(updateMsg.WithdrawnRoutes); lastIdx++ {
+			nlriLen := updateMsg.WithdrawnRoutes[lastIdx].Len()
+			if nlriLen+pktLen > BGPMsgMaxLen {
+				newMsg := NewBGPUpdateMessage(updateMsg.WithdrawnRoutes[startIdx:lastIdx], nil, nil)
+				newUpdateMsgs = append(newUpdateMsgs, newMsg)
+				startIdx = lastIdx
+				pktLen = uint32(BGPUpdateMsgMinLen)
+			}
+			pktLen += nlriLen
+		}
+	}
+
+	if lastIdx > startIdx {
+		withdrawnRoutes = updateMsg.WithdrawnRoutes[startIdx:lastIdx]
+	}
+
+	paLen := uint32(0)
+	for i := 0; i < len(updateMsg.PathAttributes); i++ {
+		paLen += updateMsg.PathAttributes[i].TotalLen()
+	}
+	if pktLen+paLen > BGPMsgMaxLen {
+		newMsg := NewBGPUpdateMessage(withdrawnRoutes, nil, nil)
+		withdrawnRoutes = nil
+		newUpdateMsgs = append(newUpdateMsgs, newMsg)
+		pktLen = BGPUpdateMsgMinLen
+	}
+
+	startIdx = 0
+	lastIdx = 0
+	for lastIdx = 0; lastIdx < len(updateMsg.NLRI); lastIdx++ {
+		nlriLen := updateMsg.NLRI[lastIdx].Len()
+		if nlriLen+pktLen+paLen > BGPMsgMaxLen {
+			newMsg := NewBGPUpdateMessage(withdrawnRoutes, updateMsg.PathAttributes, updateMsg.NLRI[startIdx:lastIdx])
+			newUpdateMsgs = append(newUpdateMsgs, newMsg)
+			if withdrawnRoutes != nil {
+				withdrawnRoutes = nil
+			}
+			startIdx = lastIdx
+			pktLen = uint32(BGPUpdateMsgMinLen)
+		}
+		pktLen += nlriLen
+	}
+
+	if (withdrawnRoutes != nil && len(withdrawnRoutes) > 0) || (lastIdx > startIdx) {
+		newMsg := NewBGPUpdateMessage(withdrawnRoutes, updateMsg.PathAttributes, updateMsg.NLRI[startIdx:lastIdx])
+		newUpdateMsgs = append(newUpdateMsgs, newMsg)
+	}
+
+	return newUpdateMsgs
 }

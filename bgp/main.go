@@ -10,7 +10,8 @@ import (
 	"l3/bgp/rpc"
 	"l3/bgp/server"
 	"l3/bgp/utils"
-	"utils/keepalive"
+	"utils/dbutils"
+	_ "utils/keepalive"
 	"utils/logging"
 )
 
@@ -38,11 +39,9 @@ func main() {
 		fmt.Println("Failed to start the logger. Exiting!!")
 		return
 	}
+	ovsLogger := logging.NewLog()
 	logger.Info("Started the logger successfully.")
-	utils.SetLogger(logger)
-
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("bgpd", fileName)
+	utils.SetLogger(ovsLogger)
 
 	// starting bgp policy engine...
 	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
@@ -50,13 +49,15 @@ func main() {
 	go bgpPolicyEng.StartPolicyEngine()
 
 	// @FIXME: Plugin name should come for json readfile...
-	//plugin := OVSDB_PLUGIN
-	plugin := ""
+	plugin := OVSDB_PLUGIN
+	//plugin := ""
 	switch plugin {
 	case OVSDB_PLUGIN:
 		// if plugin used is ovs db then lets start ovsdb client listener
+		// create and start ovsdb handler
+		ovsdbManager := &ovsMgr.BGPOvsdbHandler{}
 		quit := make(chan bool)
-		rMgr := ovsMgr.NewOvsRouteMgr()
+		rMgr := ovsMgr.NewOvsRouteMgr(ovsLogger, ovsdbManager)
 		pMgr := ovsMgr.NewOvsPolicyMgr()
 		iMgr := ovsMgr.NewOvsIntfMgr()
 		bMgr := ovsMgr.NewOvsBfdMgr()
@@ -66,22 +67,29 @@ func main() {
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
-		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
-
-		// create and start ovsdb handler
-		ovsdbManager, err := ovsMgr.NewBGPOvsdbHandler(logger, confIface)
+		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, nil, /*dbUtil*/
+			fileName)
+		err := ovsMgr.NewBGPOvsdbHandler(ovsLogger, confIface, ovsdbManager)
 		if err != nil {
-			fmt.Println("Starting OVDB client failed ERROR:", err)
+			logger.Info(fmt.Sprintln("Starting OVDB client failed ERROR:", err))
 			return
 		}
 		err = ovsdbManager.StartMonitoring()
 		if err != nil {
-			fmt.Println("OVSDB Serve failed ERROR:", err)
+			logger.Info(fmt.Sprintln("OVSDB Serve failed ERROR:", err))
+			return
+		}
+		fmt.Println("BGP Started and waiting for quit")
+		<-quit
+	default:
+		// Start DB Util
+		dbUtil := dbutils.NewDBUtil(logger)
+		err = dbUtil.Connect()
+		if err != nil {
+			logger.Err(fmt.Sprintf("DB connect failed with error %s. Exiting!!", err))
 			return
 		}
 
-		<-quit
-	default:
 		// flexswitch plugin lets connect to clients first and then
 		// start flexswitch client listener
 		iMgr, err := FSMgr.NewFSIntfMgr(logger, fileName)
@@ -105,7 +113,9 @@ func main() {
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
-		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, fileName)
+		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, dbUtil, fileName)
+		dbUtil.Disconnect()
+
 		rpc.StartServer(logger, confIface, fileName)
 	}
 }

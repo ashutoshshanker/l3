@@ -613,13 +613,15 @@ func (session *BfdSession) CanProcessBfdControlPacket(bfdPacket *BfdControlPacke
 		canProcess = false
 		session.server.logger.Info(fmt.Sprintln("Can't process remote discriminator ", bfdPacket.MyDiscriminator))
 	}
-	if bfdPacket.YourDiscriminator == 0 {
-		if session.state.SessionState != STATE_DOWN &&
-			session.state.SessionState != STATE_ADMIN_DOWN {
-			canProcess = false
-			session.server.logger.Info(fmt.Sprintln("Can't process my discriminator ", bfdPacket.YourDiscriminator))
+	/*
+		if bfdPacket.YourDiscriminator == 0 {
+			if session.state.SessionState != STATE_DOWN &&
+				session.state.SessionState != STATE_ADMIN_DOWN {
+				canProcess = false
+				session.server.logger.Info(fmt.Sprintln("Can't process my discriminator ", bfdPacket.YourDiscriminator))
+			}
 		}
-	}
+	*/
 	/*
 		if bfdPacket.YourDiscriminator == 0 {
 			canProcess = false
@@ -1018,7 +1020,7 @@ func (session *BfdSession) SendPeriodicControlPackets() {
 }
 
 func (session *BfdSession) HandleSessionTimeout() {
-	if session.state.SessionState != STATE_DOWN ||
+	if session.state.SessionState != STATE_DOWN &&
 		session.state.SessionState != STATE_ADMIN_DOWN {
 		session.server.logger.Info(fmt.Sprintln("Timer expired for: ", session.state.IpAddr, " session id ", session.state.SessionId, " prev state ", session.server.ConvertBfdSessionStateValToStr(session.state.SessionState), " at ", time.Now().String()))
 	}

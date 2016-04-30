@@ -88,6 +88,12 @@ func (ovsHdl *BGPOvsdbHandler) GetBGPRouterAsn(table ovsdb.TableUpdate) (*BGPOvs
 	return nil, errors.New("no entry found in vrf table")
 }
 
+/*
+func (ovsHdl *BGPOvsdbHandler) GetRouteInfo(ipAddr string) {
+
+}
+*/
+
 /*  Lets get router id for the asn
  */
 func (ovsHdl *BGPOvsdbHandler) GetBGPRouterId(rtUuid UUID, table ovsdb.TableUpdate) string {
@@ -97,11 +103,6 @@ func (ovsHdl *BGPOvsdbHandler) GetBGPRouterId(rtUuid UUID, table ovsdb.TableUpda
 	for key, value := range table.Rows {
 		// sanity check for router uuid
 		if sameUUID(rtUuid, key) {
-			/*
-				ovsHdl.logger.Info(fmt.Sprintln("key:", key))
-				ovsHdl.logger.Info(fmt.Sprintln("new value:", value.New))
-				ovsHdl.logger.Info(fmt.Sprintln("old value:", value.Old))
-			*/
 			rtrId, ok = value.New.Fields["router_id"].(string)
 			if ok {
 				ovsHdl.logger.Info("Router ID is " + rtrId)
@@ -113,27 +114,26 @@ func (ovsHdl *BGPOvsdbHandler) GetBGPRouterId(rtUuid UUID, table ovsdb.TableUpda
 	return rtrId
 }
 
-/*  Get bgp neighbor uuids and addrs information
+/*  Get bgp neighbor uuids and addrs information from bgp router table
  */
-func (ovsHdl *BGPOvsdbHandler) GetBGPNeighborInfo(rtUuid UUID) (string,
-	[]net.IP, []UUID, error) {
-	rtrId := ""
+func (ovsHdl *BGPOvsdbHandler) GetBGPNeighInfoFromBgpRouter() ([]net.IP, []UUID, error) {
 	var ok bool
+	rtrId := ""
 	bgpRouterEntries, exists := ovsHdl.cache[OVSDB_BGP_ROUTER_TABLE]
 	if !exists {
-		return rtrId, nil, nil,
-			errors.New("There is no bgp router table entry")
+		return nil, nil, errors.New("There is no bgp router table entry")
 	}
 	// scan through bgp router table and fetch all the addresses and uuids
 	for key, value := range bgpRouterEntries {
 		rtrId, ok = value.Fields["router_id"].(string)
-		if ok {
-			ovsHdl.logger.Info(fmt.Sprintln("router id", rtrId))
+		if ok && strings.Compare(rtrId, ovsHdl.routerInfo.routerId) != 0 {
+			ovsHdl.logger.Err("Mis match in router id")
+			return nil, nil, errors.New("Mismatch in router id")
 		}
-		if sameUUID(rtUuid, key) {
+		if sameUUID(ovsHdl.routerInfo.uuid, key) {
 			neighbors := value.Fields[OVSDB_BGP_NEIGHBOR_ENTRIES].(ovsdb.OvsMap).GoMap
 			if len(neighbors) < 1 {
-				return rtrId, nil, nil, errors.New("no bgp neighbor configured")
+				return nil, nil, errors.New("no bgp neighbor configured")
 			}
 			// Create slice of addresses and slice of UUID's which
 			// defines all the entries of bgp neighbor in bgp router
@@ -146,18 +146,18 @@ func (ovsHdl *BGPOvsdbHandler) GetBGPNeighborInfo(rtUuid UUID) (string,
 				if id == "" {
 					addresses = nil
 					uuids = nil
-					return rtrId, nil, nil,
+					return nil, nil,
 						errors.New("uuid schema has error")
 				}
 				uuids = append(uuids, id)
 			}
-			return rtrId, addresses, uuids, nil
+			return addresses, uuids, nil
 		}
 	}
-	return rtrId, nil, nil, nil
+	return nil, nil, errors.New("Mis match in bgp router table and ovsdb cached routerInfo")
 }
 
-func (ovsHdl *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
+func (ovsHdl *BGPOvsdbHandler) CreateBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 	table ovsdb.TableUpdate) {
 	for key, value := range table.Rows {
 		for idx, uuid := range uuids {
@@ -171,6 +171,13 @@ func (ovsHdl *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 					continue
 				}
 				newNeighborAddr := addrs[idx].String()
+				// @TODO: remove this neighbor config thrift call once interface for
+				// listener side is already implemented
+				neighborCfg := &bgpd.BGPNeighbor{
+					PeerAS:          int32(newPeerAS),
+					LocalAS:         int32(ovsHdl.routerInfo.asn),
+					NeighborAddress: newNeighborAddr,
+				}
 				ovsHdl.logger.Info(fmt.Sprintln("PeerAS",
 					newPeerAS))
 				ovsHdl.logger.Info(fmt.Sprintln("Neighbor Addr",
@@ -178,17 +185,57 @@ func (ovsHdl *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 				newDesc, ok := value.New.Fields["description"].(string)
 				if ok {
 					ovsHdl.logger.Info(fmt.Sprintln("Description", newDesc))
+					neighborCfg.Description = newDesc
 				}
+
+				/* Not Support yet from OVS-DB
 				newLocalAS, ok := value.New.Fields["local_as"].(ovsdb.OvsSet)
 				if ok {
 					ovsHdl.logger.Info(fmt.Sprintln("Local AS:", newLocalAS))
+				} else {
+					// if not configured then we will use cached asn value from
+					// routerInfo
+					newLocalAS := ovsHdl.routerInfo.asn
 				}
+				*/
 
 				newAdverInt, ok := value.New.Fields["advertisement_interval"].(float64)
 				if ok {
+					//@TODO: jgheewala talk with Harsha and figure out what is this
+					//interval
 					ovsHdl.logger.Info(fmt.Sprintln("Advertisement Interval",
 						newAdverInt))
 				}
+				// CreateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor)
+				/*
+					type BGPNeighbor struct {
+						ConfigObj
+						PeerAS                  uint32
+						LocalAS                 uint32
+						AuthPassword            string
+						Description             string
+						NeighborAddress         string
+						IfIndex                 int32
+						RouteReflectorClusterId uint32
+						RouteReflectorClient    bool
+						MultiHopEnable          bool
+						MultiHopTTL             uint8
+						ConnectRetryTime        uint32
+						HoldTime                uint32
+						KeepaliveTime           uint32
+						AddPathsRx              bool
+						AddPathsMaxTx           uint8
+						PeerGroup               string
+						BfdEnable               bool
+						MaxPrefixes             uint32
+						MaxPrefixesThresholdPct uint8
+						MaxPrefixesDisconnect   bool
+						MaxPrefixesRestartTimer uint8
+					}
+				*/
+				ovsHdl.logger.Info(fmt.Sprintln("OVS Neighbor config for thrift is",
+					neighborCfg))
+				ovsHdl.rpcHdl.CreateBGPNeighbor(neighborCfg)
 			}
 		}
 	}
@@ -212,17 +259,16 @@ func (ovsHdl *BGPOvsdbHandler) CreateBgpGlobalConfig(rtrInfo *BGPOvsRouterInfo) 
 /*  BGP neighbor update in ovsdb... we will update our backend object
  */
 func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) error {
-	routerInfo := ovsHdl.routerInfo
-	rtrId, neighborAddrs, neighborUUIDs, err := ovsHdl.GetBGPNeighborInfo(routerInfo.uuid)
-	if rtrId != "" {
-		routerInfo.routerId = rtrId
+	if ovsHdl.routerInfo.asn == 0 || ovsHdl.routerInfo.routerId == "" {
+		ovsHdl.logger.Info("Configure ASN & Router ID before configuring bgp neighbor")
+		return errors.New("Configure ASN & Router ID before configuring bgp neighbor")
 	}
+	// we got all neighbor address and neighbor UUID's
+	neighborAddrs, neighborUUIDs, err := ovsHdl.GetBGPNeighInfoFromBgpRouter()
 	if err != nil {
 		return err
 	}
-	ovsHdl.logger.Info(fmt.Sprintln("neighborAddrs:", neighborAddrs, "uuid's:",
-		neighborUUIDs))
-	ovsHdl.DumpBgpNeighborInfo(neighborAddrs, neighborUUIDs, table)
+	ovsHdl.CreateBgpNeighborInfo(neighborAddrs, neighborUUIDs, table)
 	return nil
 }
 
