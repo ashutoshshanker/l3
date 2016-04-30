@@ -88,6 +88,12 @@ func (ovsHdl *BGPOvsdbHandler) GetBGPRouterAsn(table ovsdb.TableUpdate) (*BGPOvs
 	return nil, errors.New("no entry found in vrf table")
 }
 
+/*
+func (ovsHdl *BGPOvsdbHandler) GetRouteInfo(ipAddr string) {
+
+}
+*/
+
 /*  Lets get router id for the asn
  */
 func (ovsHdl *BGPOvsdbHandler) GetBGPRouterId(rtUuid UUID, table ovsdb.TableUpdate) string {
@@ -151,7 +157,7 @@ func (ovsHdl *BGPOvsdbHandler) GetBGPNeighInfoFromBgpRouter() ([]net.IP, []UUID,
 	return nil, nil, errors.New("Mis match in bgp router table and ovsdb cached routerInfo")
 }
 
-func (ovsHdl *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
+func (ovsHdl *BGPOvsdbHandler) CreateBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 	table ovsdb.TableUpdate) {
 	for key, value := range table.Rows {
 		for idx, uuid := range uuids {
@@ -227,6 +233,8 @@ func (ovsHdl *BGPOvsdbHandler) DumpBgpNeighborInfo(addrs []net.IP, uuids []UUID,
 						MaxPrefixesRestartTimer uint8
 					}
 				*/
+				ovsHdl.logger.Info(fmt.Sprintln("OVS Neighbor config for thrift is",
+					neighborCfg))
 				ovsHdl.rpcHdl.CreateBGPNeighbor(neighborCfg)
 			}
 		}
@@ -260,9 +268,7 @@ func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) err
 	if err != nil {
 		return err
 	}
-	ovsHdl.logger.Info(fmt.Sprintln("neighborAddrs:", neighborAddrs, "uuid's:",
-		neighborUUIDs))
-	ovsHdl.DumpBgpNeighborInfo(neighborAddrs, neighborUUIDs, table)
+	ovsHdl.CreateBgpNeighborInfo(neighborAddrs, neighborUUIDs, table)
 	return nil
 }
 

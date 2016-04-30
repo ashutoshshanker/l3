@@ -11,7 +11,7 @@ import (
 
 const (
 	// OVSDB Server Location
-	OVSDB_HANDLER_HOST_IP   = "10.1.10.229"
+	OVSDB_HANDLER_HOST_IP   = "172.17.0.11" //"10.1.10.229"
 	OVSDB_HANDLER_HOST_PORT = 6640
 
 	// OVSDB Table
@@ -39,7 +39,7 @@ type BGPOvsRouterInfo struct {
 }
 
 type BGPOvsdbHandler struct {
-	logger         *logging.Writer
+	logger         *logging.LogFile
 	bgpovs         *ovsdb.OvsdbClient
 	ovsUpdateCh    chan *ovsdb.TableUpdates
 	cache          map[string]map[string]ovsdb.Row
@@ -55,24 +55,35 @@ func NewBGPOvsdbNotifier(ch chan *ovsdb.TableUpdates) *BGPOvsdbNotifier {
 	}
 }
 
-func NewBGPOvsdbHandler(logger *logging.Writer, handler *rpc.BGPHandler) (*BGPOvsdbHandler, error) {
-	ovs, err := ovsdb.Connect(OVSDB_HANDLER_HOST_IP, OVSDB_HANDLER_HOST_PORT)
+func NewBGPOvsdbHandler(logger *logging.LogFile, handler *rpc.BGPHandler, mgr *BGPOvsdbHandler) error {
+	//ovs, err := ovsdb.Connect(OVSDB_HANDLER_HOST_IP, OVSDB_HANDLER_HOST_PORT)
+	ovs, err := ovsdb.Connect("", OVSDB_HANDLER_HOST_PORT)
 	if err != nil {
-		return nil, err
+		//return nil, err
+		return err
 	}
 	ovsUpdateCh := make(chan *ovsdb.TableUpdates)
 	n := NewBGPOvsdbNotifier(ovsUpdateCh)
 	ovs.Register(n)
-
-	return &BGPOvsdbHandler{
-		logger:         logger,
-		bgpovs:         ovs,
-		ovsUpdateCh:    ovsUpdateCh,
-		operCh:         make(chan *BGPOvsOperations, OVSDB_HANDLER_OPERATIONS_SIZE),
-		cache:          make(map[string]map[string]ovsdb.Row),
-		bgpCachedOvsdb: make(map[UUID]BGPFlexSwitch, OVSDB_FS_INITIAL_SIZE),
-		rpcHdl:         handler,
-	}, nil
+	mgr.logger = logger
+	mgr.bgpovs = ovs
+	mgr.ovsUpdateCh = ovsUpdateCh
+	mgr.operCh = make(chan *BGPOvsOperations, OVSDB_HANDLER_OPERATIONS_SIZE)
+	mgr.cache = make(map[string]map[string]ovsdb.Row)
+	mgr.bgpCachedOvsdb = make(map[UUID]BGPFlexSwitch, OVSDB_FS_INITIAL_SIZE)
+	mgr.rpcHdl = handler
+	/*
+		return &BGPOvsdbHandler{
+			logger:         logger,
+			bgpovs:         ovs,
+			ovsUpdateCh:    ovsUpdateCh,
+			operCh:         make(chan *BGPOvsOperations, OVSDB_HANDLER_OPERATIONS_SIZE),
+			cache:          make(map[string]map[string]ovsdb.Row),
+			bgpCachedOvsdb: make(map[UUID]BGPFlexSwitch, OVSDB_FS_INITIAL_SIZE),
+			rpcHdl:         handler,
+		}, nil
+	*/
+	return nil
 }
 
 /*  BGP OVS DB populate cache with the latest update information from the
@@ -124,8 +135,34 @@ func (ovsHdl BGPOvsdbNotifier) Disconnected(client *ovsdb.OvsdbClient) {
 /*  BGP OVS DB transaction api handler
  */
 func (ovsHdl *BGPOvsdbHandler) Transact(operations []ovsdb.Operation) error {
+	ovsHdl.logger.Info(fmt.Sprintln("config....", operations))
+	reply, err := ovsHdl.bgpovs.Transact(OVSDB_HANDLER_DB_TABLE, operations...)
+	if len(reply) < len(operations) {
+		ovsHdl.logger.Info(fmt.Sprintln("Unexpected number of replies, err:", err))
+		return err
+	}
+	ok := true
+	errors := []string{}
+	for i, o := range reply {
+		if o.Error != "" && i < len(operations) {
+			errors = append(errors, fmt.Sprintf("%s(%s)", o.Error, o.Details))
+			ok = false
+		} else if o.Error != "" {
+			errors = append(errors, fmt.Sprintf("%s(%s)", o.Error, o.Details))
+			ok = false
+		}
+	}
+	if ok {
+		ovsHdl.logger.Info(fmt.Sprintln("Operation Successful: ", reply[0].UUID.GoUuid))
+		return nil
+	} else {
+		ovsHdl.logger.Info(fmt.Sprintln("Operation Failed:", errors))
+	}
+
 	return nil
 }
+
+var bgp_done = false
 
 /*  BGP OVS DB handle update information
  */
@@ -141,12 +178,17 @@ func (ovsHdl *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
 	}
 	table, ok = updates.Updates[OVSDB_BGP_NEIGHBOR_TABLE]
 	if ok {
+		if bgp_done == true {
+			return
+		}
 		err := ovsHdl.HandleBGPNeighborUpd(table)
 		if err != nil {
 			ovsHdl.logger.Err(fmt.Sprintln(err))
 			return
 		}
-		ovsHdl.logger.Info(fmt.Sprintln(ovsHdl.routerInfo))
+		ovsHdl.logger.Info("BGP Neighbor send out")
+		bgp_done = true
+		//ovsHdl.logger.Info(fmt.Sprintln(ovsHdl.routerInfo))
 	}
 }
 

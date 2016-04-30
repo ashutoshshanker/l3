@@ -501,6 +501,7 @@ func ConstructOptParams(as uint32, afiSAfiMap map[uint32]bool, addPathsRx bool, 
 	for protoFamily, _ := range afiSAfiMap {
 		afi, safi := GetAfiSafi(protoFamily)
 		utils.Logger.Info(fmt.Sprintf("Advertising capability for afi %d safi %d\n", afi, safi))
+
 		capAfiSafi := NewBGPCapMPExt(afi, safi)
 		capParams = append(capParams, capAfiSafi)
 

@@ -39,7 +39,7 @@ func NewBGPHandler(server *server.BGPServer, policy *bgppolicy.BGPPolicyEngine, 
 	h.bgpPE = policy
 	h.logger = logger
 	h.dbUtil = dbUtil
-	h.readConfigFromDB(filePath)
+	//h.readConfigFromDB(filePath)
 	return h
 }
 
@@ -492,6 +492,9 @@ func (h *BGPHandler) setDefault(pconf *config.NeighborConfig) {
 	if pconf.BaseConfig.KeepaliveTime == 0 { // default keep alive time is 60 seconds
 		pconf.BaseConfig.KeepaliveTime = 60
 	}
+	if pconf.BaseConfig.ConnectRetryTime == 0 { // default connect retry timer to 60 seconds
+		pconf.BaseConfig.ConnectRetryTime = 60
+	}
 }
 
 func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf config.NeighborConfig,
@@ -557,6 +560,7 @@ func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighbor,
 		return false, err
 	}
 
+	h.logger.Info(fmt.Sprintln("BGP neighbor attrs forwarded on Server AddPeerCh:", newNeighConf))
 	h.server.AddPeerCh <- server.PeerUpdate{oldNeighConf, newNeighConf, attrSet}
 	return true, nil
 }

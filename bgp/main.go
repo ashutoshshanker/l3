@@ -11,7 +11,7 @@ import (
 	"l3/bgp/server"
 	"l3/bgp/utils"
 	"utils/dbutils"
-	"utils/keepalive"
+	_ "utils/keepalive"
 	"utils/logging"
 )
 
@@ -36,21 +36,12 @@ func main() {
 	fmt.Println("Start logger")
 	logger, err := logging.NewLogger("bgpd", "BGP", true)
 	if err != nil {
-		fmt.Println("Failed to start the logger. Nothing will be logged...")
-	}
-	logger.Info("Started the logger successfully.")
-	utils.SetLogger(logger)
-
-	// Start DB Util
-	dbUtil := dbutils.NewDBUtil(logger)
-	err = dbUtil.Connect()
-	if err != nil {
-		logger.Err(fmt.Sprintf("DB connect failed with error %s. Exiting!!", err))
+		fmt.Println("Failed to start the logger. Exiting!!")
 		return
 	}
-
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("bgpd", fileName)
+	ovsLogger := logging.NewLog()
+	logger.Info("Started the logger successfully.")
+	utils.SetLogger(ovsLogger)
 
 	// starting bgp policy engine...
 	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
@@ -58,13 +49,15 @@ func main() {
 	go bgpPolicyEng.StartPolicyEngine()
 
 	// @FIXME: Plugin name should come for json readfile...
-	//plugin := OVSDB_PLUGIN
-	plugin := ""
+	plugin := OVSDB_PLUGIN
+	//plugin := ""
 	switch plugin {
 	case OVSDB_PLUGIN:
 		// if plugin used is ovs db then lets start ovsdb client listener
+		// create and start ovsdb handler
+		ovsdbManager := &ovsMgr.BGPOvsdbHandler{}
 		quit := make(chan bool)
-		rMgr := ovsMgr.NewOvsRouteMgr()
+		rMgr := ovsMgr.NewOvsRouteMgr(ovsLogger, ovsdbManager)
 		pMgr := ovsMgr.NewOvsPolicyMgr()
 		iMgr := ovsMgr.NewOvsIntfMgr()
 		bMgr := ovsMgr.NewOvsBfdMgr()
@@ -74,11 +67,9 @@ func main() {
 		go bgpServer.StartServer()
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
-		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, dbUtil, fileName)
-		dbUtil.Disconnect()
-
-		// create and start ovsdb handler
-		ovsdbManager, err := ovsMgr.NewBGPOvsdbHandler(logger, confIface)
+		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, nil, /*dbUtil*/
+			fileName)
+		err := ovsMgr.NewBGPOvsdbHandler(ovsLogger, confIface, ovsdbManager)
 		if err != nil {
 			logger.Info(fmt.Sprintln("Starting OVDB client failed ERROR:", err))
 			return
@@ -88,9 +79,17 @@ func main() {
 			logger.Info(fmt.Sprintln("OVSDB Serve failed ERROR:", err))
 			return
 		}
-
+		fmt.Println("BGP Started and waiting for quit")
 		<-quit
 	default:
+		// Start DB Util
+		dbUtil := dbutils.NewDBUtil(logger)
+		err = dbUtil.Connect()
+		if err != nil {
+			logger.Err(fmt.Sprintf("DB connect failed with error %s. Exiting!!", err))
+			return
+		}
+
 		// flexswitch plugin lets connect to clients first and then
 		// start flexswitch client listener
 		iMgr, err := FSMgr.NewFSIntfMgr(logger, fileName)

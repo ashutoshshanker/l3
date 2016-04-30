@@ -783,43 +783,47 @@ func (server *BGPServer) handleBfdNotifications(oper config.Operation, DestIp st
 }
 
 func (server *BGPServer) setInterfaceMapForPeer(peerIP string, peer *Peer) {
-	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer,
-		"calling GetRouteReachabilityInfo"))
-	reachInfo, err := server.routeMgr.GetNextHopInfo(peerIP)
-	server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer",
-		peer, "GetRouteReachabilityInfo returned", reachInfo))
-	if err != nil {
-		server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
-	} else {
-		// @TODO: jgheewala think of something better for ovsdb....
-		ifIdx := server.IntfMgr.GetIfIndex(int(reachInfo.NextHopIfIndex),
-			int(reachInfo.NextHopIfType))
-		///		ifIdx := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
-		server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d", peerIP, ifIdx))
-		if _, ok := server.IfacePeerMap[ifIdx]; !ok {
-			server.IfacePeerMap[ifIdx] = make([]string, 0)
+	/*
+		server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer", peer,
+			"calling GetRouteReachabilityInfo"))
+		reachInfo, err := server.routeMgr.GetNextHopInfo(peerIP)
+		server.logger.Info(fmt.Sprintln("Server: setInterfaceMapForPeer Peer",
+			peer, "GetRouteReachabilityInfo returned", reachInfo))
+		if err != nil {
+			server.logger.Info(fmt.Sprintf("Server: Peer %s is not reachable", peerIP))
+		} else {
+			// @TODO: jgheewala think of something better for ovsdb....
+			ifIdx := server.IntfMgr.GetIfIndex(int(reachInfo.NextHopIfIndex),
+				int(reachInfo.NextHopIfType))
+			///		ifIdx := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(reachInfo.NextHopIfIndex), int(reachInfo.NextHopIfType))
+			server.logger.Info(fmt.Sprintf("Server: Peer %s IfIdx %d", peerIP, ifIdx))
+			if _, ok := server.IfacePeerMap[ifIdx]; !ok {
+				server.IfacePeerMap[ifIdx] = make([]string, 0)
+			}
+			server.IfacePeerMap[ifIdx] = append(server.IfacePeerMap[ifIdx], peerIP)
+			peer.setIfIdx(ifIdx)
 		}
-		server.IfacePeerMap[ifIdx] = append(server.IfacePeerMap[ifIdx], peerIP)
-		peer.setIfIdx(ifIdx)
-	}
+	*/
 }
 
 func (server *BGPServer) clearInterfaceMapForPeer(peerIP string, peer *Peer) {
-	ifIdx := peer.getIfIdx()
-	server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection broken ifIdx %v", peerIP, ifIdx))
-	if peerList, ok := server.IfacePeerMap[ifIdx]; ok {
-		for idx, ip := range peerList {
-			if ip == peerIP {
-				server.IfacePeerMap[ifIdx] = append(server.IfacePeerMap[ifIdx][:idx],
-					server.IfacePeerMap[ifIdx][idx+1:]...)
-				if len(server.IfacePeerMap[ifIdx]) == 0 {
-					delete(server.IfacePeerMap, ifIdx)
+	/*
+		ifIdx := peer.getIfIdx()
+		server.logger.Info(fmt.Sprintf("Server: Peer %s FSM connection broken ifIdx %v", peerIP, ifIdx))
+		if peerList, ok := server.IfacePeerMap[ifIdx]; ok {
+			for idx, ip := range peerList {
+				if ip == peerIP {
+					server.IfacePeerMap[ifIdx] = append(server.IfacePeerMap[ifIdx][:idx],
+						server.IfacePeerMap[ifIdx][idx+1:]...)
+					if len(server.IfacePeerMap[ifIdx]) == 0 {
+						delete(server.IfacePeerMap, ifIdx)
+					}
+					break
 				}
-				break
 			}
 		}
-	}
-	peer.setIfIdx(-1)
+		peer.setIfIdx(-1)
+	*/
 }
 
 func (server *BGPServer) constructBGPGlobalState(gConf *config.GlobalConfig) {
