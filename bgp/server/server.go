@@ -765,37 +765,6 @@ func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.IBGPMaxPaths = gConf.IBGPMaxPaths
 }
 
-func (server *BGPServer) ProcessBfd(peer *Peer) {
-	ipAddr := peer.NeighborConf.Neighbor.NeighborAddress.String()
-	if peer.NeighborConf.RunningConf.BfdEnable {
-		server.logger.Info(fmt.Sprintln("Bfd enabled on :",
-			peer.NeighborConf.Neighbor.NeighborAddress))
-		ret, err := server.bfdMgr.CreateBfdSession(ipAddr)
-		if !ret {
-			server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:",
-				ret, "err:", err))
-		} else {
-			server.logger.Info("Bfd session configured")
-			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
-		}
-	} else {
-		if peer.NeighborConf.Neighbor.State.BfdNeighborState != "" {
-			server.logger.Info(fmt.Sprintln("Bfd disabled on :",
-				peer.NeighborConf.Neighbor.NeighborAddress))
-			ret, err := server.bfdMgr.DeleteBfdSession(ipAddr)
-			if !ret {
-				server.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:",
-					ret, "err:", err))
-			} else {
-				server.logger.Info(fmt.Sprintln("Bfd session removed for ",
-					peer.NeighborConf.Neighbor.NeighborAddress))
-				peer.NeighborConf.Neighbor.State.BfdNeighborState = ""
-			}
-		}
-	}
-
-}
-
 func (server *BGPServer) handleBfdNotifications(oper config.Operation, DestIp string,
 	State bool) {
 	if peer, ok := server.PeerMap[DestIp]; ok {
@@ -936,7 +905,6 @@ func (server *BGPServer) listenChannelUpdates() {
 				server.addPeerToList(peer)
 				server.NeighborMutex.Unlock()
 			}
-			server.ProcessBfd(peer)
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:
