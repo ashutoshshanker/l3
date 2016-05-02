@@ -78,9 +78,10 @@ func (mgr *FSBfdMgr) handleBfdNotifications(rxBuf []byte) {
 	}
 }
 
-func (mgr *FSBfdMgr) CreateBfdSession(ipAddr string) (bool, error) {
+func (mgr *FSBfdMgr) CreateBfdSession(ipAddr string, sessionParam string) (bool, error) {
 	bfdSession := bfdd.NewBfdSession()
 	bfdSession.IpAddr = ipAddr
+	bfdSession.ParamName = sessionParam
 	bfdSession.Owner = "bgp"
 	mgr.logger.Info(fmt.Sprintln("Creating BFD Session: ", bfdSession))
 	ret, err := mgr.bfddClient.CreateBfdSession(bfdSession)
@@ -92,7 +93,7 @@ func (mgr *FSBfdMgr) DeleteBfdSession(ipAddr string) (bool, error) {
 	bfdSession.IpAddr = ipAddr
 	bfdSession.Owner = "bgp"
 	mgr.logger.Info(fmt.Sprintln("Deleting BFD Session: ", bfdSession))
-	ret, err := mgr.bfddClient.CreateBfdSession(bfdSession)
+	ret, err := mgr.bfddClient.DeleteBfdSession(bfdSession)
 	return ret, err
 }
 
