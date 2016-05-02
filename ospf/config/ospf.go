@@ -90,8 +90,9 @@ type IfType int
 const (
 	Broadcast         IfType = 1
 	Nbma              IfType = 2
-	PointToPoint      IfType = 3
-	PointToMultipoint IfType = 4
+	NumberedP2P       IfType = 3
+	UnnumberedP2P     IfType = 4
+	PointToMultipoint IfType = 5
 )
 
 type MulticastForwarding int
