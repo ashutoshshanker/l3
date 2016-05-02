@@ -53,6 +53,13 @@ func (h *BGPHandler) convertModelToBGPGlobalConfig(obj models.BGPGlobal) (config
 		EBGPAllowMultipleAS: obj.EBGPAllowMultipleAS,
 		IBGPMaxPaths:        obj.IBGPMaxPaths,
 	}
+    if obj.Redistribution != nil {
+		gConf.Redistribution = make([]config.SourcePolicyMap,0)
+		for i := 0;i<len(obj.Redistribution);i++ {
+			redistribution := config.SourcePolicyMap{obj.Redistribution[i].Sources, obj.Redistribution[i].Policy}
+			gConf.Redistribution = append(gConf.Redistribution,redistribution)
+		}
+	}
 
 	if gConf.RouterId == nil {
 		h.logger.Err(fmt.Sprintln("convertModelToBGPGlobalConfig - IP is not valid:", obj.RouterId))
@@ -78,7 +85,6 @@ func (h *BGPHandler) handleGlobalConfig() error {
 			h.logger.Err(fmt.Sprintln("handleGlobalConfig - Failed to convert Model object BGP Global, error:", err))
 			return err
 		}
-
 		h.server.GlobalConfigCh <- gConf
 	}
 	return nil

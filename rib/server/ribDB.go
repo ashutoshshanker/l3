@@ -45,10 +45,11 @@ func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyConditionsFromDB(dbHdl r
 				obj := ribd.NewPolicyCondition()
 				dbObj := objList[idx].(models.PolicyCondition)
 				models.ConvertribdPolicyConditionObjToThrift(&dbObj, obj)
-				rv, _ := ribdServiceHandler.ProcessPolicyConditionConfigCreate(obj,GlobalPolicyEngineDB)
+	             ribdServiceHandler.PolicyConditionCreateConfCh <- obj
+				/*rv, _ := ribdServiceHandler.ProcessPolicyConditionConfigCreate(obj,GlobalPolicyEngineDB)
 				if rv == false {
 					logger.Err("PolicyCondition create failed during init")
-				}
+				}*/
 			}
 		} else {
 			logger.Err("DB Query failed during PolicyCondition query: RIBd init")
@@ -70,10 +71,11 @@ func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyStmtsFromDB(dbHdl redis.
 				obj := ribd.NewPolicyStmt()
 				dbObj := objList[idx].(models.PolicyStmt)
 				models.ConvertribdPolicyStmtObjToThrift(&dbObj, obj)
-				err = ribdServiceHandler.ProcessPolicyStmtConfigCreate(obj,GlobalPolicyEngineDB)
+				ribdServiceHandler.PolicyStmtCreateConfCh <- obj
+				/*err = ribdServiceHandler.ProcessPolicyStmtConfigCreate(obj,GlobalPolicyEngineDB)
 				if err != nil {
 					logger.Err("PolicStmt create failed during init")
-				}
+				}*/
 			}
 		} else {
 			logger.Err("DB Query failed during PolicyStmt query: RIBd init")
@@ -95,10 +97,11 @@ func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyFromDB(dbHdl redis.Conn)
 				obj := ribd.NewPolicyDefinition()
 				dbObj := objList[idx].(models.PolicyDefinition)
 				models.ConvertribdPolicyDefinitionObjToThrift(&dbObj, obj)
-				err = ribdServiceHandler.ProcessPolicyDefinitionConfigCreate(obj,GlobalPolicyEngineDB)
+				ribdServiceHandler.PolicyDefinitionCreateConfCh <- obj
+				/*err = ribdServiceHandler.ProcessPolicyDefinitionConfigCreate(obj,GlobalPolicyEngineDB)
 				if err != nil {
 					logger.Err("PolicyDefinition create failed during init")
-				}
+				}*/
 			}
 		} else {
 			logger.Err("DB Query failed during PolicyDefinition query: RIBd init")

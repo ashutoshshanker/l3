@@ -22,6 +22,11 @@ func (m RIBDServicesHandler) CreatePolicyCondition(cfg *ribd.PolicyCondition) (v
 }
 func (m RIBDServicesHandler) DeletePolicyCondition(cfg *ribd.PolicyCondition) (val bool, err error) {
 	logger.Info(fmt.Sprintln("DeletePolicyConditionConfig: ", cfg.Name))
+	err = m.server.GlobalPolicyEngineDB.ValidateConditionConfigDelete(policy.PolicyConditionConfig{Name:cfg.Name})
+	if err != nil {
+		logger.Err(fmt.Sprintln("PolicyEngine validation failed with err: ",err))
+		return false,err
+	}
 	m.server.PolicyConditionDeleteConfCh <- cfg
 	return true, err
 }

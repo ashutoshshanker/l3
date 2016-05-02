@@ -48,6 +48,7 @@ var ProtocolAdminDistanceMapDB map[string]RouteDistanceConfig
 var ProtocolAdminDistanceSlice AdminDistanceSlice
 var PublisherInfoMap map[string]PublisherMapInfo
 var RIBD_PUB *nanomsg.PubSocket
+var RIBD_POLICY_PUB *nanomsg.PubSocket
 
 func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 	logger.Info(fmt.Sprintln("Setting up %s", pub_str, "publisher"))
@@ -71,6 +72,7 @@ func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 
 func BuildPublisherMap() {
 	RIBD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_ADDR)
+	RIBD_POLICY_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_POLICY_ADDR)
 	for k, _ := range RouteProtocolTypeMapDB {
 		logger.Info(fmt.Sprintln("Building publisher map for protocol ", k))
 		if k == "CONNECTED" || k == "STATIC" {
@@ -262,6 +264,7 @@ func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entit
 		return entity, err
 	}
 	entity.DestNetIp = destNetIp
+	logger.Info(fmt.Sprintln("buildPolicyEntityFromRoute: destNetIp:", entity.DestNetIp))
 	entity.NextHopIp = route.NextHopIp
 	entity.RouteProtocol = ReverseRouteProtoTypeMapDB[int(route.Prototype)]
 	if routeInfo.createType != Invalid {
@@ -350,6 +353,7 @@ func getNetworkPrefixFromCIDR(ipAddr string) (ipPrefix patriciaDB.Prefix, err er
 func getPolicyRouteMapIndex(entity policy.PolicyEngineFilterEntityParams, policy string) (policyRouteIndex policy.PolicyEntityMapIndex) {
 	logger.Println("getPolicyRouteMapIndex")
 	policyRouteIndex = PolicyRouteIndex{destNetIP: entity.DestNetIp, policy: policy}
+	logger.Info(fmt.Sprintln("Returning policyRouteIndex as : ", policyRouteIndex))
 	return policyRouteIndex
 }
 func addPolicyRouteMap(route ribdInt.Routes, policyName string) {
@@ -483,6 +487,7 @@ func addRoutePolicyState(route ribdInt.Routes, policy string, policyStmt string)
 	    routeInfoRecordList.policyList[policy] = policyStmtList*/
 	routeInfoRecordList.policyList = append(routeInfoRecordList.policyList, policy)
 	RouteInfoMap.Set(destNet, routeInfoRecordList)
+	routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecordList.routeInfoProtocolMap[routeInfoRecordList.selectedRouteProtocol][0],routeInfoRecordList)
 	return
 }
 func deleteRoutePolicyState(ipPrefix patriciaDB.Prefix, policyName string) {
@@ -721,7 +726,7 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(entry RouteInfoRecord, routeLis
 	obj.Protocol = ReverseRouteProtoTypeMapDB[int(entry.protocol)]*/
 	obj.NextHopList = make([] *ribd.NextHopInfo,0)
 	routeInfoList := routeList.routeInfoProtocolMap[routeList.selectedRouteProtocol]
-	logger.Info(fmt.Sprintln("len of routeInfoList - ", len(routeInfoList), "selected route protocol = ", routeList.selectedRouteProtocol))
+	logger.Info(fmt.Sprintln("len of routeInfoList - ", len(routeInfoList), "selected route protocol = ", routeList.selectedRouteProtocol, "len(routeList.policyList): ", len(routeList.policyList)))
 	nextHopInfo := make([]ribd.NextHopInfo,len(routeInfoList))
 	i := 0
 	for sel := 0; sel < len(routeInfoList); sel++ {
@@ -742,8 +747,10 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(entry RouteInfoRecord, routeLis
 		for k := 0; k < len(routeList.policyList); k++ {
 			routePolicyListInfo = "policy " + routeList.policyList[k] + "["
 			policyRouteIndex := PolicyRouteIndex{destNetIP: entry.networkAddr, policy: routeList.policyList[k]}
+			logger.Info(fmt.Sprintln("Finding policyEntityMap for policyRouteIndex: ", policyRouteIndex.destNetIP, policyRouteIndex.policy))
 			policyStmtMap, ok := PolicyEngineDB.PolicyEntityMap[policyRouteIndex]
 			if !ok || policyStmtMap.PolicyStmtMap == nil {
+				logger.Info(fmt.Sprintln("policyStmtMap nil, continuing"))
 				continue
 			}
 			routePolicyListInfo = routePolicyListInfo + " stmtlist[["
@@ -762,6 +769,7 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(entry RouteInfoRecord, routeLis
 			obj.PolicyList = append(obj.PolicyList, routePolicyListInfo)
 		}
 	}
+	logger.Info(fmt.Sprintln("len(obj.PolicyList) = ", len(obj.PolicyList)))
 	models.ConvertThriftToribdIPv4RouteStateObj(obj, &dbObj)
 	err := dbObj.StoreObjectInDb(m.DbHdl)
 	if err != nil {

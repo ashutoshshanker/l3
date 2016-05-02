@@ -33,6 +33,7 @@ type FSIntfMgr struct {
 type FSPolicyMgr struct {
 	plugin string
 	logger *logging.Writer
+	policySubSocket *nanomsg.SubSocket
 }
 
 /*  BFD manager will handle all the communication with bfd daemon
@@ -42,25 +43,6 @@ type FSBfdMgr struct {
 	logger       *logging.Writer
 	bfddClient   *bfdd.BFDDServicesClient
 	bfdSubSocket *nanomsg.SubSocket
-}
-
-/*  Init policy manager with specific needs
- */
-func NewFSPolicyMgr(logger *logging.Writer, fileName string) *FSPolicyMgr {
-	mgr := &FSPolicyMgr{
-		plugin: "ovsdb",
-		logger: logger,
-	}
-
-	return mgr
-}
-
-func (mgr *FSPolicyMgr) AddPolicy() {
-
-}
-
-func (mgr *FSPolicyMgr) RemovePolicy() {
-
 }
 
 func (mgr *FSIntfMgr) PortStateChange() {

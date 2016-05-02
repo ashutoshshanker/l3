@@ -113,9 +113,6 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 	decoder := json.NewDecoder(reader)
 	msg := ribdCommonDefs.RibdNotifyMsg{}
 	updateMsg := "Add"
-	if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-		updateMsg = "Remove"
-	}
 
 	for err := decoder.Decode(&msg); err == nil; err = decoder.Decode(&msg) {
 		err = json.Unmarshal(msg.MsgBuf, &routeListInfo)
@@ -123,6 +120,9 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 			mgr.logger.Err(fmt.Sprintf(
 				"Unmarshal RIB route update failed with err %s", err))
 		}
+	    if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
+		    updateMsg = "Remove"
+	    }
 		mgr.logger.Info(fmt.Sprintln(updateMsg, "connected route, dest:",
 			routeListInfo.RouteInfo.Ipaddr, "netmask:",
 			routeListInfo.RouteInfo.Mask, "nexthop:",

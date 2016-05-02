@@ -112,42 +112,42 @@ func (ribdServiceHandler *RIBDServer) StartPolicyServer() {
 			logger.Info("received message on PolicyConditionCreateConfCh channel")
 			_,err := ribdServiceHandler.ProcessPolicyConditionConfigCreate(condCreateConf,ribdServiceHandler.GlobalPolicyEngineDB)
 			if err == nil {
-				ribdServiceHandler.PolicyConditionNotificationSend(RIBD_PUB, *condCreateConf, ribdCommonDefs.NOTIFY_POLICY_CONDITION_CREATED)
+				ribdServiceHandler.PolicyConditionNotificationSend(RIBD_POLICY_PUB, *condCreateConf, ribdCommonDefs.NOTIFY_POLICY_CONDITION_CREATED)
 	             ribdServiceHandler.ProcessPolicyConditionConfigCreate(condCreateConf,ribdServiceHandler.PolicyEngineDB)
 			}
 		case condDeleteConf := <-ribdServiceHandler.PolicyConditionDeleteConfCh:
 			logger.Info("received message on PolicyConditionDeleteConfCh channel")
 			_,err :=ribdServiceHandler.ProcessPolicyConditionConfigDelete(condDeleteConf,ribdServiceHandler.GlobalPolicyEngineDB)
 			if err == nil {
-				ribdServiceHandler.PolicyConditionNotificationSend(RIBD_PUB, *condDeleteConf, ribdCommonDefs.NOTIFY_POLICY_CONDITION_DELETED)
+				ribdServiceHandler.PolicyConditionNotificationSend(RIBD_POLICY_PUB, *condDeleteConf, ribdCommonDefs.NOTIFY_POLICY_CONDITION_DELETED)
 	             ribdServiceHandler.ProcessPolicyConditionConfigDelete(condDeleteConf,ribdServiceHandler.PolicyEngineDB)
 			}
 		case stmtCreateConf := <-ribdServiceHandler.PolicyStmtCreateConfCh:
 			logger.Info("received message on PolicyStmtCreateConfCh channel")
 			err := ribdServiceHandler.ProcessPolicyStmtConfigCreate(stmtCreateConf,GlobalPolicyEngineDB)
 			if err == nil {
-				ribdServiceHandler.PolicyStmtNotificationSend(RIBD_PUB, *stmtCreateConf, ribdCommonDefs.NOTIFY_POLICY_STMT_CREATED)
+				ribdServiceHandler.PolicyStmtNotificationSend(RIBD_POLICY_PUB, *stmtCreateConf, ribdCommonDefs.NOTIFY_POLICY_STMT_CREATED)
 	             ribdServiceHandler.ProcessPolicyStmtConfigCreate(stmtCreateConf,ribdServiceHandler.PolicyEngineDB)
 			}
 		case stmtDeleteConf := <-ribdServiceHandler.PolicyStmtDeleteConfCh:
 			logger.Info("received message on PolicyStmtDeleteConfCh channel")
 			err := ribdServiceHandler.ProcessPolicyStmtConfigDelete(stmtDeleteConf,GlobalPolicyEngineDB)
 			if err == nil {
-				ribdServiceHandler.PolicyStmtNotificationSend(RIBD_PUB,* stmtDeleteConf, ribdCommonDefs.NOTIFY_POLICY_STMT_DELETED)
+				ribdServiceHandler.PolicyStmtNotificationSend(RIBD_POLICY_PUB,* stmtDeleteConf, ribdCommonDefs.NOTIFY_POLICY_STMT_DELETED)
 	             ribdServiceHandler.ProcessPolicyStmtConfigDelete(stmtDeleteConf,ribdServiceHandler.PolicyEngineDB)
 			}
 		case policyCreateConf := <-ribdServiceHandler.PolicyDefinitionCreateConfCh:
 			logger.Info("received message on PolicyDefinitionCreateConfCh channel")
 			err := ribdServiceHandler.ProcessPolicyDefinitionConfigCreate(policyCreateConf,GlobalPolicyEngineDB)
 			if err == nil {
-				ribdServiceHandler.PolicyDefinitionNotificationSend(RIBD_PUB, *policyCreateConf, ribdCommonDefs.NOTIFY_POLICY_DEFINITION_CREATED)
+				ribdServiceHandler.PolicyDefinitionNotificationSend(RIBD_POLICY_PUB, *policyCreateConf, ribdCommonDefs.NOTIFY_POLICY_DEFINITION_CREATED)
 	             ribdServiceHandler.ProcessPolicyDefinitionConfigCreate(policyCreateConf,ribdServiceHandler.PolicyEngineDB)
 			}
 		case policyDeleteConf := <-ribdServiceHandler.PolicyDefinitionDeleteConfCh:
 			logger.Info("received message on PolicyDefinitionDeleteConfCh channel")
 			err := ribdServiceHandler.ProcessPolicyDefinitionConfigDelete(policyDeleteConf,GlobalPolicyEngineDB)
 			if err == nil {
-				ribdServiceHandler.PolicyDefinitionNotificationSend(RIBD_PUB, *policyDeleteConf, ribdCommonDefs.NOTIFY_POLICY_DEFINITION_DELETED)
+				ribdServiceHandler.PolicyDefinitionNotificationSend(RIBD_POLICY_PUB, *policyDeleteConf, ribdCommonDefs.NOTIFY_POLICY_DEFINITION_DELETED)
 	             ribdServiceHandler.ProcessPolicyDefinitionConfigDelete(policyDeleteConf,ribdServiceHandler.PolicyEngineDB)
 			}
 		case info := <-ribdServiceHandler.PolicyUpdateApplyCh:

@@ -82,13 +82,12 @@ type BGPServer struct {
 	AddPathCount   int
 	// all managers
 	IntfMgr   config.IntfStateMgrIntf
-	policyMgr config.PolicyMgrIntf
 	routeMgr  config.RouteMgrIntf
 	bfdMgr    config.BfdMgrIntf
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
-	iMgr config.IntfStateMgrIntf, pMgr config.PolicyMgrIntf, rMgr config.RouteMgrIntf,
+	iMgr config.IntfStateMgrIntf, rMgr config.RouteMgrIntf,
 	bMgr config.BfdMgrIntf) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
@@ -113,7 +112,6 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.Neighbors = make([]*Peer, 0)
 	bgpServer.IntfMgr = iMgr
 	bgpServer.routeMgr = rMgr
-	bgpServer.policyMgr = pMgr
 	bgpServer.bfdMgr = bMgr
 	bgpServer.AdjRib = bgprib.NewAdjRib(logger, rMgr, &bgpServer.BgpConfig.Global.Config)
 	bgpServer.IfacePeerMap = make(map[int32][]string)
@@ -1181,7 +1179,7 @@ func (server *BGPServer) StartServer() {
 	server.intfCh = make(chan config.IntfStateInfo)
 	// Channel for handling route notifications
 	server.routesCh = make(chan *config.RouteCh)
-
+	
 	go server.listenForPeers(server.acceptCh)
 	go server.listenChannelUpdates()
 
