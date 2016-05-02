@@ -166,10 +166,11 @@ func (p *Peer) clearRibOut() {
 
 func (p *Peer) ProcessBfd() {
 	ipAddr := p.NeighborConf.Neighbor.NeighborAddress.String()
+	sessionParam := p.NeighborConf.RunningConf.BfdSessionParam
 	if p.NeighborConf.RunningConf.BfdEnable {
 		p.logger.Info(fmt.Sprintln("Bfd enabled on :",
 			p.NeighborConf.Neighbor.NeighborAddress))
-		ret, err := p.Server.bfdMgr.CreateBfdSession(ipAddr)
+		ret, err := p.Server.bfdMgr.CreateBfdSession(ipAddr, sessionParam)
 		if !ret {
 			p.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:",
 				ret, "err:", err))
