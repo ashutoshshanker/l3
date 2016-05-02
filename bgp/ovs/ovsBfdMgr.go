@@ -14,7 +14,7 @@ func (mgr *OvsBfdMgr) Start() {
 
 }
 
-func (mgr *OvsBfdMgr) CreateBfdSession(ipAddr string) (bool, error) {
+func (mgr *OvsBfdMgr) CreateBfdSession(ipAddr string, sessionParam string) (bool, error) {
 	return true, nil
 }
 
