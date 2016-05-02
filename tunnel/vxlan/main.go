@@ -27,12 +27,13 @@ func main() {
 	}
 	logger.Info("Started the logger successfully.")
 
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("vxland", path)
-
 	// create a new vxlan server
 	server := vxlan.NewVXLANServer(logger, path)
 	handler := rpc.NewVXLANDServiceHandler(server, logger)
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("vxland", path)
+
 	// blocking call
 	handler.StartThriftServer()
 }
