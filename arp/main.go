@@ -25,15 +25,15 @@ func main() {
 	}
 	logger.Info("Started the logger successfully.")
 
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("arpd", fileName)
-
 	logger.Info(fmt.Sprintln("Starting ARP server..."))
 	arpServer := server.NewARPServer(logger)
 	//go arpServer.StartServer(fileName)
 	go arpServer.StartServer(*paramsDir)
 
 	<-arpServer.InitDone
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("arpd", fileName)
 
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewARPHandler(arpServer, logger)

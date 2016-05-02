@@ -49,9 +49,6 @@ func main() {
 		return
 	}
 
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("bgpd", fileName)
-
 	// starting bgp policy engine...
 	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
 	bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger)
@@ -112,6 +109,9 @@ func main() {
 		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr, pMgr,
 			rMgr, bMgr)
 		go bgpServer.StartServer()
+
+		// Start keepalive routine
+		go keepalive.InitKeepAlive("bgpd", fileName)
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
 		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, dbUtil, fileName)
