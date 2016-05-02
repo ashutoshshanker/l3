@@ -435,22 +435,13 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 		case RouterLSA:
 			rlsa := NewRouterLsa()
 			decodeRouterLsa(lsdb_msg.Data, rlsa, lsa_key)
-			discard = server.selfGenLsaCheck(*lsa_key)
-			if discard {
-				server.logger.Info(fmt.Sprintln("LSAUPD: discard . Received self generated. ", lsa_key))
-				return
-			}
+
 			drlsa, ret := server.getRouterLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckRouterLsa(*rlsa, drlsa, nbr, intf, ret, lsa_max_age)
 
 		case NetworkLSA:
 			nlsa := NewNetworkLsa()
 			decodeNetworkLsa(lsdb_msg.Data, nlsa, lsa_key)
-			discard = server.selfGenLsaCheck(*lsa_key)
-			if discard {
-				server.logger.Info(fmt.Sprintln("LSAUPD: discard . Received self generated. ", lsa_key))
-				return
-			}
 			dnlsa, ret := server.getNetworkLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckNetworkLsa(*lsa_key, *nlsa, dnlsa, nbr, intf, ret, lsa_max_age)
 
@@ -458,11 +449,6 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 			server.logger.Info(fmt.Sprintln("Received summary Lsa Packet :", lsdb_msg.Data))
 			slsa := NewSummaryLsa()
 			decodeSummaryLsa(lsdb_msg.Data, slsa, lsa_key)
-			discard = server.selfGenLsaCheck(*lsa_key)
-			if discard {
-				server.logger.Info(fmt.Sprintln("LSAUPD: discard . Received self generated. ", lsa_key))
-				return
-			}
 			server.logger.Info(fmt.Sprintln("Decoded summary Lsa Packet :", slsa))
 			dslsa, ret := server.getSummaryLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckSummaryLsa(*slsa, dslsa, nbr, intf, ret, lsa_max_age)
@@ -470,11 +456,6 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 		case ASExternalLSA:
 			alsa := NewASExternalLsa()
 			decodeASExternalLsa(lsdb_msg.Data, alsa, lsa_key)
-			discard = server.selfGenLsaCheck(*lsa_key)
-			if discard {
-				server.logger.Info(fmt.Sprintln("LSAUPD: discard . Received self generated. ", lsa_key))
-				return
-			}
 			dalsa, ret := server.getASExternalLsaFromLsdb(msg.areaId, *lsa_key)
 			discard, op = server.sanityCheckASExternalLsa(*alsa, dalsa, nbr, intf, intf.IfAreaId, ret, lsa_max_age)
 
@@ -482,7 +463,14 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 		lsid := convertUint32ToIPv4(lsa_header.LinkId)
 		router_id := convertUint32ToIPv4(lsa_header.Adv_router)
 
-		if !discard && op == FloodLsa {
+		self_gen := false
+		self_gen = server.selfGenLsaCheck(*lsa_key)
+		if self_gen {
+			server.logger.Info(fmt.Sprintln("LSAUPD: discard . Received self generated. ", lsa_key))
+
+		}
+
+		if !discard && !self_gen && op == FloodLsa {
 			server.logger.Info(fmt.Sprintln("LSAUPD: add to lsdb lsid ", lsid, " router_id ", router_id, " lstype ", lsa_header.LSType))
 			lsdb_msg.MsgType = LsdbAdd
 			server.LsdbUpdateCh <- *lsdb_msg
@@ -498,7 +486,7 @@ func (server *OSPFServer) DecodeLSAUpd(msg ospfNeighborLSAUpdMsg) {
 		}
 		flood_pkt.pkt = make([]byte, end_index-index)
 		copy(flood_pkt.pkt, lsdb_msg.Data)
-		if lsop != LSASUMMARYFLOOD { // for ABR summary lsa is flooded after LSDB/SPF changes are done.
+		if lsop != LSASUMMARYFLOOD && !self_gen { // for ABR summary lsa is flooded after LSDB/SPF changes are done.
 			server.ospfNbrLsaUpdSendCh <- flood_pkt
 		}
 

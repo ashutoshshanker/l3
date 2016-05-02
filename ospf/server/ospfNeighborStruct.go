@@ -221,18 +221,15 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey] = nbrConf
 				nbrConf.NbrDeadTimer.Stop()
 				nbrConf.NbrDeadTimer.Reset(nbrMsg.ospfNbrEntry.OspfNbrDeadTimer)
-				/*server.logger.Info(fmt.Sprintln("UPDATE neighbor with nbr id - ",
-				nbrMsg.ospfNbrConfKey.OspfNbrRtrId)) */
 			}
 			if nbrMsg.nbrMsgType == NBRDEL {
-				//server.neighborBulkSlice = append(server.neighborBulkSlice, INVALID_NEIGHBOR_CONF_KEY)
 				delete(server.NeighborConfigMap, nbrMsg.ospfNbrConfKey)
 				server.logger.Info(fmt.Sprintln("DELETE neighbor with nbr id - ",
 					nbrMsg.ospfNbrEntry.OspfNbrRtrId))
 			}
 
-			rtr_id := convertUint32ToIPv4(nbrMsg.ospfNbrEntry.OspfNbrRtrId)
-			server.logger.Info(fmt.Sprintln("NBR UPDATE: Nbr , state ", rtr_id, " : ", nbrConf.OspfNbrState))
+			//rtr_id := convertUint32ToIPv4(nbrMsg.ospfNbrEntry.OspfNbrRtrId)
+		//	server.logger.Info(fmt.Sprintln("NBR UPDATE: Nbr , state ", rtr_id, " : ", nbrConf.OspfNbrState))
 
 		case state := <-(server.neighborConfStopCh):
 			server.logger.Info("Exiting update neighbor config thread..")
@@ -259,8 +256,10 @@ func (server *OSPFServer) neighborExist(nbrKey NeighborConfKey) bool {
 
 func (server *OSPFServer) initNeighborMdata(intf IntfConfKey) {
 	nbrMdata := newospfNbrMdata()
+	intfConf, _ := server.IntfConfMap[intf]
 	nbrMdata.nbrList = []NeighborConfKey{}
 	nbrMdata.intf = intf
+	nbrMdata.areaId = convertIPv4ToUint32(intfConf.IfAreaId)
 	ospfIntfToNbrMap[intf] = *nbrMdata
 }
 
@@ -301,7 +300,6 @@ func (server *OSPFServer) sendLsdbToNeighborEvent(intfKey IntfConfKey, nbrKey Ne
 		lsOp:    op,
 	}
 	server.ospfNbrLsaUpdSendCh <- msg
-	//server.logger.Info("Send flood data to Tx thread")
 }
 
 func (server *OSPFServer) resetNeighborLists(nbr NeighborConfKey, intf IntfConfKey) {
