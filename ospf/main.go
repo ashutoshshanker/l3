@@ -26,14 +26,14 @@ func main() {
 	}
 	logger.Info("Started the logger successfully.")
 
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("ospfd", fileName)
-
 	fileName = fileName + "clients.json"
 
 	logger.Info(fmt.Sprintln("Starting OSPF Server..."))
 	ospfServer := server.NewOSPFServer(logger)
 	go ospfServer.StartServer(fileName)
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("ospfd", fileName)
 
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewOSPFHandler(ospfServer, logger)
