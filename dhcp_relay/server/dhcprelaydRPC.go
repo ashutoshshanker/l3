@@ -15,21 +15,7 @@ import (
 func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobal(
 	config *dhcprelayd.DhcpRelayGlobal) (bool, error) {
 
-	if config.Enable {
-		if dhcprelayRefCountMutex == nil {
-			dhcprelayRefCountMutex = &sync.RWMutex{}
-			dhcprelayEnabledIntfRefCount = 0
-		}
-		dhcprelayEnable = config.Enable
-		if dhcprelayClientConn != nil {
-			logger.Info("DRA: no need to create pcap as its already created")
-			return true, nil
-		} else {
-			DhcpRelayAgentCreateClientServerConn()
-		}
-	} else {
-		dhcprelayEnable = config.Enable
-	}
+	DhcpRelayGlobalInit(config.Enable)
 	return true, nil
 }
 
@@ -288,4 +274,22 @@ func (h *DhcpRelayServiceHandler) GetBulkDhcpRelayIntfServerState(fromIndex dhcp
 	intfServerEntry.Count = dhcprelayd.Int(cnt)
 
 	return intfServerEntry, err
+}
+
+func (h *DhcpRelayServiceHandler) GetDhcpRelayHostDhcpState(macAddr string) (*dhcprelayd.DhcpRelayHostDhcpState, error) {
+	logger.Info("Get State Info for host")
+	response := dhcprelayd.NewDhcpRelayHostDhcpState()
+	return response, nil
+}
+
+func (h *DhcpRelayServiceHandler) GetDhcpRelayIntfServerState(ifIndex int32) (*dhcprelayd.DhcpRelayIntfServerState, error) {
+	logger.Info("Get State Info for interface server")
+	response := dhcprelayd.NewDhcpRelayIntfServerState()
+	return response, nil
+}
+
+func (h *DhcpRelayServiceHandler) GetDhcpRelayIntfState(ifIndex int32) (*dhcprelayd.DhcpRelayIntfState, error) {
+	logger.Info("Get State Info for interface")
+	response := dhcprelayd.NewDhcpRelayIntfState()
+	return response, nil
 }

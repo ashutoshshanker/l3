@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"errors"
 	"fmt"
@@ -39,7 +39,7 @@ type IPv4IntfNotifyMsg struct {
 }
 
 func (server *BFDServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
-	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
+	if msgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
 		ent := server.vlanPropertyMap[msg.IfId]
 		ip, _, _ := net.ParseCIDR(msg.IpAddr)
 		ent.IpAddr = ip
@@ -52,7 +52,7 @@ func (server *BFDServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgTyp
 }
 
 func (server *BFDServer) updateIpInPortPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
-	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
+	if msgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
 		ent := server.portPropertyMap[int32(msg.IfId)]
 		ip, _, _ := net.ParseCIDR(msg.IpAddr)
 		ent.IpAddr = ip
@@ -64,8 +64,8 @@ func (server *BFDServer) updateIpInPortPropertyMap(msg IPv4IntfNotifyMsg, msgTyp
 	}
 }
 
-func (server *BFDServer) updateVlanPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
-	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
+func (server *BFDServer) updateVlanPropertyMap(vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg, msgType uint8) {
+	if msgType == asicdCommonDefs.NOTIFY_VLAN_CREATE { // Create Vlan
 		ent := server.vlanPropertyMap[int32(vlanNotifyMsg.VlanId)]
 		ent.Name = vlanNotifyMsg.VlanName
 		ent.UntagPorts = vlanNotifyMsg.UntagPorts
@@ -75,8 +75,8 @@ func (server *BFDServer) updateVlanPropertyMap(vlanNotifyMsg asicdConstDefs.Vlan
 	}
 }
 
-func (server *BFDServer) updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
-	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
+func (server *BFDServer) updatePortPropertyMap(vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg, msgType uint8) {
+	if msgType == asicdCommonDefs.NOTIFY_VLAN_CREATE { // Create Vlan
 		for _, portNum := range vlanNotifyMsg.UntagPorts {
 			ent := server.portPropertyMap[portNum]
 			ent.VlanId = vlanNotifyMsg.VlanId
@@ -94,7 +94,7 @@ func (server *BFDServer) updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.Vlan
 }
 
 func (server *BFDServer) BuildPortPropertyMap() error {
-	currMarker := asicdServices.Int(asicdConstDefs.MIN_SYS_PORTS)
+	currMarker := asicdServices.Int(asicdCommonDefs.MIN_SYS_PORTS)
 	if server.asicdClient.IsConnected {
 		server.logger.Info("Calling asicd for port property")
 		count := 10
@@ -138,19 +138,19 @@ func (server *BFDServer) BuildIPv4InterfacesMap() error {
 	for {
 		var ipv4IntfMsg IPv4IntfNotifyMsg
 		server.logger.Info(fmt.Sprintf("Getting %d objects from currMarker %d\n", count, currMarker))
-		IPIntfBulk, err := server.asicdClient.ClientHdl.GetBulkIPv4Intf(currMarker, count)
+		IPIntfBulk, err := server.asicdClient.ClientHdl.GetBulkIPv4IntfState(currMarker, count)
 		if err != nil {
-			server.logger.Info(fmt.Sprintln("GetBulkIPv4Intf with err ", err))
+			server.logger.Info(fmt.Sprintln("GetBulkIPv4IntfState with err ", err))
 			return err
 		}
 		if IPIntfBulk.Count == 0 {
-			server.logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4Intf"))
+			server.logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4IntfState"))
 			return nil
 		}
-		server.logger.Info(fmt.Sprintf("Got IPv4 interfaces - len  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfList), IPIntfBulk.Count))
+		server.logger.Info(fmt.Sprintf("Got IPv4 interfaces - len  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfStateList), IPIntfBulk.Count))
 		for i := 0; i < int(IPIntfBulk.Count); i++ {
-			ipv4IntfMsg.IpAddr = IPIntfBulk.IPv4IntfList[i].IpAddr
-			ipv4IntfMsg.IfId = IPIntfBulk.IPv4IntfList[i].IfIndex
+			ipv4IntfMsg.IpAddr = IPIntfBulk.IPv4IntfStateList[i].IpAddr
+			ipv4IntfMsg.IfId = IPIntfBulk.IPv4IntfStateList[i].IfIndex
 			server.createIPIntfConfMap(ipv4IntfMsg)
 			server.logger.Info(fmt.Sprintf("Created IPv4 interface (%d : %s)\n", ipv4IntfMsg.IfId, ipv4IntfMsg.IpAddr))
 		}
@@ -163,9 +163,9 @@ func (server *BFDServer) BuildIPv4InterfacesMap() error {
 	return nil
 }
 
-func (server *BFDServer) updateLagPropertyMap(msg asicdConstDefs.LagNotifyMsg, msgType uint8) {
+func (server *BFDServer) updateLagPropertyMap(msg asicdCommonDefs.LagNotifyMsg, msgType uint8) {
 	_, exists := server.lagPropertyMap[msg.IfIndex]
-	if msgType == asicdConstDefs.NOTIFY_LAG_CREATE { // Create LAG
+	if msgType == asicdCommonDefs.NOTIFY_LAG_CREATE { // Create LAG
 		if exists {
 			server.logger.Info(fmt.Sprintln("CreateLag: already exists", msg.IfIndex))
 		} else {
@@ -177,7 +177,7 @@ func (server *BFDServer) updateLagPropertyMap(msg asicdConstDefs.LagNotifyMsg, m
 			}
 			server.lagPropertyMap[msg.IfIndex] = lagEntry
 		}
-	} else if msgType == asicdConstDefs.NOTIFY_LAG_DELETE { // Delete Lag
+	} else if msgType == asicdCommonDefs.NOTIFY_LAG_DELETE { // Delete Lag
 		if exists {
 			server.logger.Info(fmt.Sprintln("Deleting lag ", msg.IfIndex))
 			delete(server.lagPropertyMap, msg.IfIndex)
@@ -188,10 +188,10 @@ func (server *BFDServer) updateLagPropertyMap(msg asicdConstDefs.LagNotifyMsg, m
 }
 
 func (server *BFDServer) getLinuxIntfName(ifIndex int32) (ifName string, err error) {
-	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(ifIndex)
-	if ifType == commonDefs.L2RefTypeVlan { // Vlan
+	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(ifIndex)
+	if ifType == commonDefs.IfTypeVlan { // Vlan
 		ifName = server.vlanPropertyMap[ifIndex].Name
-	} else if ifType == commonDefs.L2RefTypePort { // PHY
+	} else if ifType == commonDefs.IfTypePort { // PHY
 		ifName = server.portPropertyMap[int32(ifIndex)].Name
 	} else {
 		ifName = ""

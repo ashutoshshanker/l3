@@ -9,6 +9,11 @@ import (
 
 var ALLSPFROUTER string = "224.0.0.5"
 var ALLDROUTER string = "224.0.0.6"
+var ALLSPFROUTERMAC string = "01:00:5e:00:00:05"
+var ALLDROUTERMAC string = "01:00:5e:00:00:06"
+var MASKMAC string = "ff:ff:ff:ff:ff:ff"
+
+var LSInfinity uint32 = 0x00ffffff
 
 type OspfHdrMetadata struct {
 	pktType  OspfType
@@ -90,7 +95,7 @@ type IntfToNeighMsg struct {
 }
 
 type NbrStateChangeMsg struct {
-	RouterId uint32
+	nbrKey NeighborConfKey
 }
 
 const (
@@ -123,6 +128,7 @@ type AdjOKEvtMsg struct {
 type NbrFullStateMsg struct {
 	FullState bool
 	NbrRtrId  uint32
+	nbrKey NeighborConfKey
 }
 
 const (

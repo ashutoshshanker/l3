@@ -65,8 +65,13 @@ type BaseConfig struct {
 	HoldTime                uint32
 	KeepaliveTime           uint32
 	BfdEnable               bool
+	BfdSessionParam         string
 	AddPathsRx              bool
 	AddPathsMaxTx           uint8
+	MaxPrefixes             uint32
+	MaxPrefixesThresholdPct uint8
+	MaxPrefixesDisconnect   bool
+	MaxPrefixesRestartTimer uint8
 }
 
 type NeighborConfig struct {
@@ -98,6 +103,11 @@ type NeighborState struct {
 	PeerGroup               string
 	AddPathsRx              bool
 	AddPathsMaxTx           uint8
+	MaxPrefixes             uint32
+	MaxPrefixesThresholdPct uint8
+	MaxPrefixesDisconnect   bool
+	MaxPrefixesRestartTimer uint8
+	TotalPrefixes           uint32
 }
 
 type TransportConfig struct {
@@ -199,4 +209,14 @@ type Bgp struct {
 	PeerGroups map[string]*PeerGroup
 	Neighbors  []Neighbor
 	BgpAggs    map[string]*BGPAggregate
+}
+
+type RouteConfig struct {
+	Cost              int32
+	IntfType          int32
+	Protocol          string
+	NextHopIp         string
+	NetworkMask       string
+	DestinationNw     string
+	OutgoingInterface string
 }

@@ -1,59 +1,59 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"errors"
 	"fmt"
 	"utils/commonDefs"
 )
 
 func (server *ARPServer) processResolveIPv4(conf ResolveIPv4) {
-	server.logger.Info(fmt.Sprintln("Received ResolveIPv4 call for TargetIP:", conf.TargetIP, "ifType:", conf.IfType, "ifId:", conf.IfId))
+	server.logger.Debug(fmt.Sprintln("Received ResolveIPv4 call for TargetIP:", conf.TargetIP, "ifType:", conf.IfType, "ifId:", conf.IfId))
 	if conf.TargetIP == "0.0.0.0" {
 		return
 	}
-	IfIndex := int(asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(conf.IfId, conf.IfType))
-	if conf.IfType == commonDefs.L2RefTypeVlan {
+	IfIndex := int(asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(conf.IfId, conf.IfType))
+	if conf.IfType == commonDefs.IfTypeVlan {
 		vlanEnt := server.vlanPropMap[IfIndex]
 		for port, _ := range vlanEnt.UntagPortMap {
-			server.sendArpReq(conf.TargetIP, port)
 			server.arpEntryUpdateCh <- UpdateArpEntryMsg{
 				PortNum: port,
 				IpAddr:  conf.TargetIP,
 				MacAddr: "incomplete",
 				Type:    true,
 			}
+			server.sendArpReq(conf.TargetIP, port)
 		}
-	} else if conf.IfType == commonDefs.L2RefTypeLag {
+	} else if conf.IfType == commonDefs.IfTypeLag {
 		lagEnt := server.lagPropMap[IfIndex]
 		for port, _ := range lagEnt.PortMap {
-			server.sendArpReq(conf.TargetIP, port)
 			server.arpEntryUpdateCh <- UpdateArpEntryMsg{
 				PortNum: port,
 				IpAddr:  conf.TargetIP,
 				MacAddr: "incomplete",
 				Type:    true,
 			}
+			server.sendArpReq(conf.TargetIP, port)
 		}
-	} else if conf.IfType == commonDefs.L2RefTypePort {
-		server.sendArpReq(conf.TargetIP, IfIndex)
+	} else if conf.IfType == commonDefs.IfTypePort {
 		server.arpEntryUpdateCh <- UpdateArpEntryMsg{
 			PortNum: IfIndex,
 			IpAddr:  conf.TargetIP,
 			MacAddr: "incomplete",
 			Type:    true,
 		}
+		server.sendArpReq(conf.TargetIP, IfIndex)
 	}
 }
 
 func (server *ARPServer) processArpConf(conf ArpConf) (int, error) {
-	server.logger.Info(fmt.Sprintln("Received ARP Timeout Value via Configuration:", conf.RefTimeout))
+	server.logger.Debug(fmt.Sprintln("Received ARP Timeout Value via Configuration:", conf.RefTimeout))
 	if conf.RefTimeout < server.minRefreshTimeout {
-		server.logger.Info(fmt.Sprintln("Refresh Timeout is below minimum allowed refresh timeout value of:", server.minRefreshTimeout))
+		server.logger.Err(fmt.Sprintln("Refresh Timeout is below minimum allowed refresh timeout value of:", server.minRefreshTimeout))
 		err := errors.New("Invalid Timeout Value")
 		return 0, err
 	} else if conf.RefTimeout == server.confRefreshTimeout {
-		server.logger.Info(fmt.Sprintln("Arp is already configured with Refresh Timeout Value of:", server.confRefreshTimeout, "(seconds)"))
+		server.logger.Err(fmt.Sprintln("Arp is already configured with Refresh Timeout Value of:", server.confRefreshTimeout, "(seconds)"))
 		return 0, nil
 	}
 

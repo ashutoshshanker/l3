@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"errors"
 	"net"
@@ -44,10 +44,10 @@ type IpProperty struct {
 
 func (server *OSPFServer) computeMinMTU(msg IPv4IntfNotifyMsg) int32 {
 	var minMtu int32 = 10000                    //in bytes
-	if msg.IfType == commonDefs.L2RefTypePort { // PHY
+	if msg.IfType == commonDefs.IfTypePort { // PHY
 		ent, _ := server.portPropertyMap[int32(msg.IfId)]
 		minMtu = ent.Mtu
-	} else if msg.IfType == commonDefs.L2RefTypeVlan { // Vlan
+	} else if msg.IfType == commonDefs.IfTypeVlan { // Vlan
 		ent, _ := server.vlanPropertyMap[msg.IfId]
 		for _, portNum := range ent.UntagPorts {
 			entry, _ := server.portPropertyMap[portNum]
@@ -62,7 +62,7 @@ func (server *OSPFServer) computeMinMTU(msg IPv4IntfNotifyMsg) int32 {
 func (server *OSPFServer) updateIpPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
 	ipAddr, _, _ := net.ParseCIDR(msg.IpAddr)
 	ip := convertAreaOrRouterIdUint32(ipAddr.String())
-	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
+	if msgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
 		ent := server.ipPropertyMap[ip]
 		ent.IfId = msg.IfId
 		ent.IfType = msg.IfType
@@ -73,7 +73,7 @@ func (server *OSPFServer) updateIpPropertyMap(msg IPv4IntfNotifyMsg, msgType uin
 }
 
 func (server *OSPFServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
-	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
+	if msgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
 		ent := server.vlanPropertyMap[msg.IfId]
 		ip, _, _ := net.ParseCIDR(msg.IpAddr)
 		ent.IpAddr = ip
@@ -86,7 +86,7 @@ func (server *OSPFServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgTy
 }
 
 func (server *OSPFServer) updateIpInPortPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
-	if msgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
+	if msgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
 		ent := server.portPropertyMap[int32(msg.IfId)]
 		ip, _, _ := net.ParseCIDR(msg.IpAddr)
 		ent.IpAddr = ip
@@ -98,8 +98,8 @@ func (server *OSPFServer) updateIpInPortPropertyMap(msg IPv4IntfNotifyMsg, msgTy
 	}
 }
 
-func (server *OSPFServer) updateVlanPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
-	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
+func (server *OSPFServer) updateVlanPropertyMap(vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg, msgType uint8) {
+	if msgType == asicdCommonDefs.NOTIFY_VLAN_CREATE { // Create Vlan
 		ent := server.vlanPropertyMap[vlanNotifyMsg.VlanId]
 		ent.Name = vlanNotifyMsg.VlanName
 		ent.UntagPorts = vlanNotifyMsg.UntagPorts
@@ -109,8 +109,8 @@ func (server *OSPFServer) updateVlanPropertyMap(vlanNotifyMsg asicdConstDefs.Vla
 	}
 }
 
-func (server *OSPFServer) updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
-	if msgType == asicdConstDefs.NOTIFY_VLAN_CREATE { // Create Vlan
+func (server *OSPFServer) updatePortPropertyMap(vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg, msgType uint8) {
+	if msgType == asicdCommonDefs.NOTIFY_VLAN_CREATE { // Create Vlan
 		for _, portNum := range vlanNotifyMsg.UntagPorts {
 			ent := server.portPropertyMap[portNum]
 			ent.VlanId = vlanNotifyMsg.VlanId
@@ -128,7 +128,7 @@ func (server *OSPFServer) updatePortPropertyMap(vlanNotifyMsg asicdConstDefs.Vla
 }
 
 func (server *OSPFServer) BuildPortPropertyMap() {
-	currMarker := asicdServices.Int(asicdConstDefs.MIN_SYS_PORTS)
+	currMarker := asicdServices.Int(asicdCommonDefs.MIN_SYS_PORTS)
 	if server.asicdClient.IsConnected {
 		server.logger.Info("Calling asicd for getting port state")
 		count := 10
@@ -153,7 +153,7 @@ func (server *OSPFServer) BuildPortPropertyMap() {
 			}
 		}
 	}
-	currMarker = asicdServices.Int(asicdConstDefs.MIN_SYS_PORTS)
+	currMarker = asicdServices.Int(asicdCommonDefs.MIN_SYS_PORTS)
 	if server.asicdClient.IsConnected {
 		server.logger.Info("Calling asicd for getting the Port Config")
 		count := 10
@@ -179,9 +179,9 @@ func (server *OSPFServer) BuildPortPropertyMap() {
 }
 
 func (server *OSPFServer) getLinuxIntfName(ifId uint16, ifType uint8) (ifName string, err error) {
-	if ifType == commonDefs.L2RefTypeVlan { // Vlan
+	if ifType == commonDefs.IfTypeVlan { // Vlan
 		ifName = server.vlanPropertyMap[ifId].Name
-	} else if ifType == commonDefs.L2RefTypePort { // PHY
+	} else if ifType == commonDefs.IfTypePort { // PHY
 		ifName = server.portPropertyMap[int32(ifId)].Name
 	} else {
 		ifName = ""

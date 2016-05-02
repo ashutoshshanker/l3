@@ -67,7 +67,7 @@ func (server *BFDServer) ConvertBfdSessionDiagValToStr(diag BfdDiagnostic) strin
 	case DIAG_NONE:
 		diagStr = "None"
 	case DIAG_TIME_EXPIRED:
-		diagStr = "Control detectection timer expired"
+		diagStr = "Control detection timer expired"
 	case DIAG_ECHO_FAILED:
 		diagStr = "Echo function failed"
 	case DIAG_NEIGHBOR_SIGNAL_DOWN:
@@ -109,8 +109,8 @@ type BfdControlPacket struct {
 const (
 	DEFAULT_BFD_VERSION                   = 1
 	DEFAULT_DETECT_MULTI                  = 3
-	DEFAULT_DESIRED_MIN_TX_INTERVAL       = 1000000
-	DEFAULT_REQUIRED_MIN_RX_INTERVAL      = 1000000
+	DEFAULT_DESIRED_MIN_TX_INTERVAL       = 250000
+	DEFAULT_REQUIRED_MIN_RX_INTERVAL      = 250000
 	DEFAULT_REQUIRED_MIN_ECHO_RX_INTERVAL = 0
 	DEFAULT_CONTROL_PACKET_LEN            = 24
 	MAX_NUM_SESSIONS                      = 1024

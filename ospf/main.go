@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"l3/ospf/rpc"
 	"l3/ospf/server"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -19,12 +20,10 @@ func main() {
 	}
 
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(fileName, "ospfd", "OSPF")
+	logger, err := logging.NewLogger("ospfd", "OSPF", true)
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
-	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
 
 	fileName = fileName + "clients.json"
@@ -32,6 +31,9 @@ func main() {
 	logger.Info(fmt.Sprintln("Starting OSPF Server..."))
 	ospfServer := server.NewOSPFServer(logger)
 	go ospfServer.StartServer(fileName)
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("ospfd", fileName)
 
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewOSPFHandler(ospfServer, logger)

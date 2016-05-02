@@ -1,6 +1,7 @@
 package vrrpServer
 
 import (
+	"asicdServices"
 	"bytes"
 	"fmt"
 	"github.com/google/gopacket"
@@ -56,35 +57,52 @@ func (svr *VrrpServer) VrrpCreateObject(gblInfo VrrpGlobalInfo) (fsmObj VrrpFsm)
 	}
 }
 
-func (svr *VrrpServer) VrrpUpdateSecIp(gblInfo VrrpGlobalInfo, configure bool) {
-	// @TODO: this api will send create secondary ip address... By doing so
-	// we are in-directly blocking ping to the host
-
-	// JGHEEWALA: commented out the below code as arp will be handled by creating sec ip
-	// (115) + If the protected IPvX address is an IPv4 address, then:
-	//ip, _, _ := net.ParseCIDR(gblInfo.IpAddr)
-	//if ip.To4() != nil { // If not nill then its ipv4
+/*
+ * This API will create config object with MacAddr and configure....
+ * Configure will enable/disable the link...
+ */
+func (svr *VrrpServer) VrrpUpdateSubIntf(gblInfo VrrpGlobalInfo, configure bool) {
+	vip := gblInfo.IntfConfig.VirtualIPv4Addr
+	if !strings.Contains(vip, "/") {
+		vip = vip + "/32"
+	}
+	config := asicdServices.SubIPv4Intf{
+		IpAddr:  vip,
+		IntfRef: strconv.Itoa(int(gblInfo.IntfConfig.IfIndex)),
+		Enable:  configure,
+		MacAddr: gblInfo.VirtualRouterMACAddress,
+	}
+	svr.logger.Info(fmt.Sprintln("updating sub interface config obj is", config))
 	/*
-	   (120) * Broadcast a gratuitous ARP request containing the
-	   virtual router MAC address for each IP address associated
-	   with the virtual router.
+		struct SubIPv4Intf {
+			0 1 : string IpAddr
+			1 2 : i32 IfIndex
+			2 3 : string Type
+			3 4 : string MacAddr
+			4 5 : bool Enable
+		}
 	*/
-	//svr.VrrpSendGratuitousArp(gblInfo)
-	//} else { // @TODO: ipv6 implementation
-	// (125) + else // IPv6
-	/*
-	   (130) * For each IPv6 address associated with the virtual
-	   router, send an unsolicited ND Neighbor Advertisement with
-	   the Router Flag (R) set, the Solicited Flag (S) unset, the
-	   Override flag (O) set, the target address set to the IPv6
-	   address of the virtual router, and the target link-layer
-	   address set to the virtual router MAC address.
-	*/
-	//}
+	var attrset []bool
+	// The len of attrset is set to 5 for 5 elements in the object...
+	// if no.of elements changes then index for mac address and enable needs
+	// to change..
+	attrset = make([]bool, 5)
+	elems := len(attrset)
+	attrset[elems-1] = true
+	if configure {
+		attrset[elems-2] = true
+	}
+	_, err := svr.asicdClient.ClientHdl.UpdateSubIPv4Intf(&config, &config,
+		attrset)
+	if err != nil {
+		svr.logger.Err(fmt.Sprintln("updating sub interface config failed",
+			"Error:", err))
+	}
 	return
 }
 
-func (svr *VrrpServer) VrrpUpdateStateInfo(key string, reason string, currentSt string) {
+func (svr *VrrpServer) VrrpUpdateStateInfo(key string, reason string,
+	currentSt string) {
 	gblInfo, exists := svr.vrrpGblInfo[key]
 	if !exists {
 		svr.logger.Err("No entry found ending fsm")
@@ -103,20 +121,20 @@ func (svr *VrrpServer) VrrpUpdateStateInfo(key string, reason string, currentSt 
 func (svr *VrrpServer) VrrpHandleMasterAdverTimer(key string) {
 	var timerCheck_func func()
 	timerCheck_func = func() {
-		svr.logger.Info(fmt.Sprintln("time to send advertisement to backup"))
 		// Send advertisment every time interval expiration
 		svr.vrrpTxPktCh <- VrrpTxChannelInfo{
 			key:      key,
 			priority: VRRP_IGNORE_PRIORITY,
 		}
+		<-svr.vrrpPktSend
 		gblInfo, exists := svr.vrrpGblInfo[key]
 		if !exists {
 			svr.logger.Err("Gbl Config for " + key + " doesn't exists")
 			return
 		}
-		svr.logger.Info("resetting advertisement timer")
 		gblInfo.AdverTimer.Reset(
-			time.Duration(gblInfo.IntfConfig.AdvertisementInterval) * time.Second)
+			time.Duration(gblInfo.IntfConfig.AdvertisementInterval) *
+				time.Second)
 		svr.vrrpGblInfo[key] = gblInfo
 	}
 	gblInfo, exists := svr.vrrpGblInfo[key]
@@ -141,7 +159,9 @@ func (svr *VrrpServer) VrrpTransitionToMaster(key string, reason string) {
 		key:      key,
 		priority: VRRP_IGNORE_PRIORITY,
 	}
-
+	// Wait for the packet to be send out
+	<-svr.vrrpPktSend
+	// After Advertisment update fsm state info
 	svr.VrrpUpdateStateInfo(key, reason, VRRP_MASTER_STATE)
 
 	gblInfo, exists := svr.vrrpGblInfo[key]
@@ -149,9 +169,8 @@ func (svr *VrrpServer) VrrpTransitionToMaster(key string, reason string) {
 		svr.logger.Err("No entry found ending fsm")
 		return
 	}
-	svr.logger.Info(fmt.Sprintln("adver sent for vrid", gblInfo.IntfConfig.VRID))
-	// Configure secondary interface with VMAC and VIP
-	svr.VrrpUpdateSecIp(gblInfo, true /*configure or set*/)
+	// Set Sub-intf state up and send out garp via linux stack
+	svr.VrrpUpdateSubIntf(gblInfo, true /*configure or set*/)
 	// (140) + Set the Adver_Timer to Advertisement_Interval
 	// Start Advertisement Timer
 	svr.VrrpHandleMasterAdverTimer(key)
@@ -164,20 +183,22 @@ func (svr *VrrpServer) VrrpHandleMasterDownTimer(key string) {
 		return
 	}
 	if gblInfo.MasterDownTimer != nil {
-		svr.logger.Info("Resetting down timer")
 		gblInfo.MasterDownLock.Lock()
-		gblInfo.MasterDownTimer.Reset(time.Duration(gblInfo.MasterDownValue) * time.Second)
+		gblInfo.MasterDownTimer.Reset(time.Duration(gblInfo.MasterDownValue) *
+			time.Second)
 		gblInfo.MasterDownLock.Unlock()
 	} else {
 		var timerCheck_func func()
 		// On Timer expiration we will transition to master
 		timerCheck_func = func() {
-			svr.logger.Info(fmt.Sprintln("master down timer expired..transition to Master"))
+			svr.logger.Info(fmt.Sprintln("master down timer",
+				"expired..transition to Master"))
 			// do timer expiry handling here
 			svr.VrrpTransitionToMaster(key, "Master Down Timer expired")
 		}
 		svr.logger.Info("initiating master down timer")
-		svr.logger.Info(fmt.Sprintln("setting down timer to", gblInfo.MasterDownValue))
+		svr.logger.Info(fmt.Sprintln("setting down timer to",
+			gblInfo.MasterDownValue))
 		// Set Timer expire func...
 		gblInfo.MasterDownLock.Lock()
 		gblInfo.MasterDownTimer = time.AfterFunc(
@@ -213,7 +234,9 @@ func (svr *VrrpServer) VrrpTransitionToBackup(key string, AdvertisementInterval 
 		svr.logger.Err("No entry found ending fsm")
 		return
 	}
-
+	// Bring Down Sub-Interface
+	svr.VrrpUpdateSubIntf(gblInfo, false /*configure or set*/)
+	// Re-Calculate Down timer value
 	gblInfo.MasterDownLock.Lock()
 	svr.VrrpCalculateDownValue(AdvertisementInterval, &gblInfo)
 	gblInfo.MasterDownLock.Unlock()
@@ -234,7 +257,6 @@ func (svr *VrrpServer) VrrpInitState(key string) {
 		svr.VrrpTransitionToMaster(key, "Priority is 255")
 	} else {
 		svr.logger.Info("Transitioning to Backup State")
-		svr.VrrpUpdateSecIp(gblInfo, false /*configure or set*/)
 		// Transition to backup state first
 		svr.VrrpTransitionToBackup(key,
 			gblInfo.IntfConfig.AdvertisementInterval,
@@ -338,6 +360,7 @@ func (svr *VrrpServer) VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 			key:      key,
 			priority: VRRP_IGNORE_PRIORITY,
 		}
+		<-svr.vrrpPktSend
 		svr.VrrpHandleMasterAdverTimer(key)
 	} else {
 		ipLayer := inPkt.Layer(layers.LayerTypeIPv4)
@@ -360,7 +383,7 @@ func (svr *VrrpServer) VrrpMasterState(inPkt gopacket.Packet, vrrpHdr *VrrpPktHe
 			}
 			svr.vrrpGblInfo[key] = gblInfo
 			svr.VrrpTransitionToBackup(key, int32(vrrpHdr.MaxAdverInt),
-				"Remote Priority is higher or priority are equal remote ip is higher than local ip")
+				"Remote Priority is higher OR (priority are equal AND remote ip is higher than local ip)")
 		} else { // new Master logic
 			// Discard Advertisement
 			return
@@ -379,8 +402,6 @@ func (svr *VrrpServer) VrrpFsmStart(fsmObj VrrpFsm) {
 		svr.logger.Err("No entry found ending fsm")
 		return
 	}
-	svr.logger.Info(fmt.Sprintln("Received fsm request for vrid",
-		gblInfo.IntfConfig.VRID))
 	gblInfo.StateNameLock.Lock()
 	currentState := gblInfo.StateName
 	gblInfo.StateNameLock.Unlock()
@@ -429,14 +450,18 @@ func (svr *VrrpServer) VrrpStopTimers(IfIndex int32) {
 		}
 		// If state is Master then we need to send an advertisement with
 		// priority as 0
-		gblInfo.StateNameLock.Lock()
-		if gblInfo.StateName == VRRP_MASTER_STATE {
+		gblInfo.StateNameLock.RLock()
+		state := gblInfo.StateName
+		gblInfo.StateNameLock.RUnlock()
+		if state == VRRP_MASTER_STATE {
 			svr.vrrpTxPktCh <- VrrpTxChannelInfo{
 				key:      key,
 				priority: VRRP_MASTER_DOWN_PRIORITY,
 			}
+			<-svr.vrrpPktSend
 		}
 		// Transition to Init State
+		gblInfo.StateNameLock.Lock()
 		gblInfo.StateName = VRRP_INITIALIZE_STATE
 		gblInfo.StateNameLock.Unlock()
 		svr.vrrpGblInfo[key] = gblInfo

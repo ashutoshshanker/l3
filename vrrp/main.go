@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"l3/vrrp/rpc"
 	"l3/vrrp/server"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -18,12 +19,10 @@ func main() {
 	}
 
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(fileName, "vrrpd", "VRRP")
+	logger, err := logging.NewLogger("vrrpd", "VRRP", true)
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
-	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
 
 	logger.Info("Starting VRRP server....")
@@ -31,6 +30,10 @@ func main() {
 	vrrpSvr := vrrpServer.VrrpNewServer(logger)
 	// Until Server is connected to clients do not start with RPC
 	vrrpSvr.VrrpStartServer(*paramsDir)
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("vrrpd", fileName)
+
 	// Create vrrp rpc handler
 	vrrpHdl := vrrpRpc.VrrpNewHandler(vrrpSvr, logger)
 	logger.Info("Starting VRRP RPC listener....")

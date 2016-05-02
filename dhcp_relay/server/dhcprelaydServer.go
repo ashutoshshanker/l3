@@ -2,7 +2,7 @@
 package relayServer
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"dhcprelayd"
 	"encoding/json"
@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 	"utils/ipcutils"
@@ -58,8 +59,6 @@ func DhcpRelayAgentOSSignalHandle() {
 }
 
 func DhcpRelayConnectToAsicd(client ClientJson) error {
-	logger.Info(fmt.Sprintln("DRA: Connecting to asicd at port",
-		client.Port))
 	var err error
 	asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
 	asicdClient.Transport, asicdClient.PtrProtocolFactory, err =
@@ -67,8 +66,6 @@ func DhcpRelayConnectToAsicd(client ClientJson) error {
 	if asicdClient.Transport == nil ||
 		asicdClient.PtrProtocolFactory == nil ||
 		err != nil {
-		logger.Err(fmt.Sprintln("DRA: Connecting to",
-			client.Name, "failed ", err))
 		return err
 	}
 	asicdClient.ClientHdl =
@@ -76,7 +73,6 @@ func DhcpRelayConnectToAsicd(client ClientJson) error {
 			asicdClient.Transport,
 			asicdClient.PtrProtocolFactory)
 	asicdClient.IsConnected = true
-	logger.Info("DRA: is connected to asicd")
 	return nil
 }
 
@@ -86,7 +82,6 @@ func DhcpRelayConnectToAsicd(client ClientJson) error {
  *	    connect to clients like asicd, etc..
  */
 func DhcpRelayAgentConnectToClients(client ClientJson) error {
-	logger.Info(fmt.Sprintln("DRA: Client name is", client.Name))
 	switch client.Name {
 	case "asicd":
 		return DhcpRelayConnectToAsicd(client)
@@ -106,8 +101,8 @@ func InitDhcpRelayPortPktHandler() error {
 	logger.Info(fmt.Sprintln("DRA: configFile is ", configFile))
 	bytes, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		logger.Err(fmt.Sprintln("DRA:Error while reading configuration file",
-			configFile))
+		logger.Err(fmt.Sprintln("DRA:Error while reading",
+			"configuration file", configFile))
 		return err
 	}
 	var unConnectedClients []ClientJson
@@ -118,26 +113,36 @@ func InitDhcpRelayPortPktHandler() error {
 	}
 
 	logger.Info("DRA: Connecting to Clients")
+	re_connect := 25
+	count := 0
 	// connect to client
 	for {
 		time.Sleep(time.Millisecond * 500)
 		for i := 0; i < len(unConnectedClients); i++ {
-			err := DhcpRelayAgentConnectToClients(unConnectedClients[i])
+			err := DhcpRelayAgentConnectToClients(
+				unConnectedClients[i])
 			if err == nil {
 				logger.Info("DRA: Connected to " +
 					unConnectedClients[i].Name)
-				unConnectedClients = append(unConnectedClients[:i],
+				unConnectedClients = append(
+					unConnectedClients[:i],
 					unConnectedClients[i+1:]...)
 
 			} else if err.Error() == CLIENT_CONNECTION_NOT_REQUIRED {
-				logger.Info("DRA: connection to " + unConnectedClients[i].Name +
-					" not required")
-				unConnectedClients = append(unConnectedClients[:i],
+				unConnectedClients = append(
+					unConnectedClients[:i],
 					unConnectedClients[i+1:]...)
+			} else {
+				count++
+				if count == re_connect {
+					logger.Err(fmt.Sprintln("Connecting to",
+						unConnectedClients[i].Name,
+						"failed ", err))
+					count = 0
+				}
 			}
 		}
 		if len(unConnectedClients) == 0 {
-			logger.Info("DRA: all clients connected successfully")
 			break
 		}
 	}
@@ -178,7 +183,7 @@ func DhcpRelayAgentInitIntfState(IntfId int32) {
 }
 
 func DhcpRelayAgentInitGblHandling(ifNum int32, enable bool) {
-	logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(int(ifNum)))
+	//logger.Info("DRA: Initializaing Global Info for " + strconv.Itoa(int(ifNum)))
 	// Created a global Entry for Interface
 	gblEntry := dhcprelayGblInfo[ifNum]
 	// Setting up default values for globalEntry
@@ -213,7 +218,7 @@ func DhcpRelayAgentUpdateIntfIpAddr(ifIndexList []int32) {
 				ifIndexList[i]))
 			continue
 		}
-		logicalId := int32(asicdConstDefs.GetIntfIdFromIfIndex(obj.IfIndex))
+		logicalId := int32(asicdCommonDefs.GetIntfIdFromIfIndex(obj.IfIndex))
 		dhcprelayLogicalIntf2IfIndex[logicalId] = obj.IfIndex
 		gblEntry := dhcprelayGblInfo[ifIndexList[i]]
 		ip, ipnet, err := net.ParseCIDR(obj.IpAddr)
@@ -228,7 +233,6 @@ func DhcpRelayAgentUpdateIntfIpAddr(ifIndexList []int32) {
 			" Ip address:", gblEntry.IpAddr,
 			" netmask:", gblEntry.Netmask))
 	}
-	dhcprelayDbHdl.Close()
 }
 
 func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
@@ -244,7 +248,44 @@ func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
 	dhcprelayLogicalIntfId2LinuxIntId[linuxInterface.Index] = VlanId
 }
 
-func StartServer(log *logging.Writer, handler *DhcpRelayServiceHandler, addr string, params string) error {
+func DhcpRelayGetClient(logger *logging.Writer, fileName string,
+	process string) (*DhcpRelayClientJson, error) {
+	var allClients []DhcpRelayClientJson
+
+	data, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		logger.Err(fmt.Sprintln("Failed to open dhcpd config file",
+			err, fileName))
+		return nil, err
+	}
+	json.Unmarshal(data, &allClients)
+	for _, client := range allClients {
+		if client.Name == process {
+			return &client, nil
+		}
+	}
+	return nil, errors.New("couldn't find dhcprelay port info")
+}
+
+func DhcpRelayGlobalInit(enable bool) {
+	if enable {
+		if dhcprelayRefCountMutex == nil {
+			dhcprelayRefCountMutex = &sync.RWMutex{}
+			dhcprelayEnabledIntfRefCount = 0
+		}
+		dhcprelayEnable = enable
+		if dhcprelayClientConn != nil {
+			logger.Info("DRA: no need to create pcap as its already created")
+			return
+		} else {
+			DhcpRelayAgentCreateClientServerConn()
+		}
+	} else {
+		dhcprelayEnable = enable
+	}
+}
+
+func StartServer(log *logging.Writer, handler *DhcpRelayServiceHandler, params string) error {
 	logger = log
 	paramsDir = params
 	// Allocate Memory for Global DS
@@ -260,10 +301,20 @@ func StartServer(log *logging.Writer, handler *DhcpRelayServiceHandler, addr str
 	// Initialize port information and packet handler for dhcp
 	go InitDhcpRelayPortPktHandler()
 	dhcprelayEnable = false
+	fileName := params + "/clients.json"
+	clientJson, err := DhcpRelayGetClient(logger, fileName, "dhcprelayd")
+	if err != nil || clientJson == nil {
+		return err
+	}
+
+	logger.Info(fmt.Sprintln("Got Client info for", clientJson.Name, "port",
+		clientJson.Port))
+
 	// create transport and protocol for server
 	transportFactory := thrift.NewTBufferedTransportFactory(8192)
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
-	transport, err := thrift.NewTServerSocket(addr)
+	transport, err := thrift.NewTServerSocket("localhost:" +
+		strconv.Itoa(clientJson.Port))
 	if err != nil {
 		logger.Info(fmt.Sprintln("DRA: StartServer: NewTServerSocket "+
 			"failed with error:", err))

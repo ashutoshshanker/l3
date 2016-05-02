@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"l3/ospf/config"
 	"net"
-	"time"
 )
 
 func (server *OSPFServer) GetBulkOspfAreaEntryState(idx int, cnt int) (int, int, []config.AreaState) {
@@ -68,7 +67,7 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 	result := make([]config.LsdbState, cnt)
 	var i int
 	var j int
-	server.logger.Info(fmt.Sprintln("idx:", idx, "cnt:", cnt, "length of Ls DB Slice:", length))
+	//server.logger.Info(fmt.Sprintln("idx:", idx, "cnt:", cnt, "length of Ls DB Slice:", length))
 	for i, j = 0, idx; i < cnt && j < length; j++ {
 		var lsaEnc []byte
 		var lsaMd LsaMetadata
@@ -125,9 +124,9 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 		}
 
 		server.logger.Info(fmt.Sprintln(lsaEnc))
-		server.logger.Info(fmt.Sprintln("lsaEnc:", lsaEnc))
+		//server.logger.Info(fmt.Sprintln("lsaEnc:", lsaEnc))
 		adv := convertByteToOctetString(lsaEnc[OSPF_LSA_HEADER_SIZE:])
-		server.logger.Info(fmt.Sprintln("adv:", adv))
+		//server.logger.Info(fmt.Sprintln("adv:", adv))
 		result[i].LsdbAreaId = config.AreaId(convertUint32ToIPv4(lsdbKey.AreaId))
 		result[i].LsdbType = config.LsaType(lsaKey.LSType)
 		result[i].LsdbLsid = config.IpAddress(convertUint32ToIPv4(lsaKey.LSId))
@@ -136,7 +135,7 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 		result[i].LsdbAge = int(lsaMd.LSAge)
 		result[i].LsdbCheckSum = int(lsaMd.LSChecksum)
 		result[i].LsdbAdvertisement = adv
-		server.logger.Info(fmt.Sprintln("Result of GetBulk:", result))
+		//server.logger.Info(fmt.Sprintln("Result of GetBulk:", result))
 		i++
 	}
 
@@ -146,7 +145,7 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 	count = i
 
 	server.LsdbStateTimer.Reset(server.RefreshDuration)
-	server.logger.Info(fmt.Sprintln("length:", length, "count:", count, "nextIdx:", nextIdx, "result:", result))
+	//server.logger.Info(fmt.Sprintln("length:", length, "count:", count, "nextIdx:", nextIdx, "result:", result))
 	return nextIdx, count, result
 }
 
@@ -225,10 +224,11 @@ func (server *OSPFServer) GetOspfGlobalState() *config.GlobalState {
 }
 
 func (server *OSPFServer) GetBulkOspfNbrEntryState(idx int, cnt int) (int, int, []config.NeighborState) {
+	server.logger.Info(fmt.Sprintln("Getbulk: nbr states called."))
 	var nextIdx int
 	var count int
 
-	server.neighborSliceRefCh.Stop()
+	server.neighborSliceStartCh <- false
 	/*	if ret == false {
 		server.logger.Err("Ospf is busy refreshing the cache")
 		return nextIdx, count, nil
@@ -249,12 +249,11 @@ func (server *OSPFServer) GetBulkOspfNbrEntryState(idx int, cnt int) (int, int, 
 		if ent, ok := server.NeighborConfigMap[key]; ok {
 			result[i].NbrIpAddress = config.IpAddress(ent.OspfNbrIPAddr.String())
 			result[i].NbrAddressLessIndex = int(ent.intfConfKey.IntfIdx)
-			id := net.IPv4(result[i].NbrRtrId[0], result[i].NbrRtrId[1], result[i].NbrRtrId[2], result[i].NbrRtrId[3])
-			result[i].NbrRtrId = id.String()
+			result[i].NbrRtrId = convertUint32ToIPv4(ent.OspfNbrRtrId)
 			result[i].NbrOptions = ent.OspfNbrOptions
 			result[i].NbrPriority = uint8(ent.OspfRtrPrio)
 			result[i].NbrState = ent.OspfNbrState
-			result[i].NbrEvents = 0
+			result[i].NbrEvents = int(ent.nbrEvent)
 			result[i].NbrLsRetransQLen = 0
 			result[i].NbmaNbrPermanence = 0
 			result[i].NbrHelloSuppressed = false
@@ -265,8 +264,7 @@ func (server *OSPFServer) GetBulkOspfNbrEntryState(idx int, cnt int) (int, int, 
 
 	}
 
-	server.neighborSliceRefCh = time.NewTicker(time.Minute * 10)
-	server.refreshNeighborSlice()
+	server.neighborSliceStartCh <- true
 	server.logger.Info(fmt.Sprintln("length:", length, "count:", count, "nextIdx:", nextIdx, "result:", result))
 	return nextIdx, count, result
 }

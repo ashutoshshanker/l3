@@ -1,25 +1,30 @@
 COMPS=arp\
+      rib\
 		bgp\
 		ospf\
-		rib\
 		dhcp_relay\
 		bfd \
 		vrrp\
 		tunnel/vxlan
 
 IPCS=arp\
+     rib\
 	  bgp\
 	  ospf\
-	  rib\
 	  dhcp_relay\
 	  bfd\
 	  vrrp\
 	tunnel/vxlan
 
+define timedMake
+@echo -n "Building component $(1) started at :`date`\n"
+make -C $(1) exe 
+@echo -n "Done building component $(1) at :`date`\n\n"
+endef
 all: ipc exe install
 
 exe: $(COMPS)
-	 $(foreach f,$^, make -C $(f) exe;)
+	@$(foreach f,$^, $(call timedMake, $(f)))
 
 ipc: $(IPCS)
 	 $(foreach f,$^, make -C $(f) ipc;)

@@ -1,16 +1,17 @@
 package vrrpServer
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
+	"utils/commonDefs"
 )
 
 func (svr *VrrpServer) VrrpCreateIfIndexEntry(IfIndex int32, IpAddr string) {
 	svr.vrrpIfIndexIpAddr[IfIndex] = IpAddr
-	svr.logger.Info(fmt.Sprintln("VRRP: ip address for ifindex ", IfIndex,
+	svr.logger.Info(fmt.Sprintln("ip address for ifindex", IfIndex,
 		"is", IpAddr))
 }
 
@@ -18,50 +19,17 @@ func (svr *VrrpServer) VrrpCreateVlanEntry(vlanId int, vlanName string) {
 	svr.vrrpVlanId2Name[vlanId] = vlanName
 }
 
-func (svr *VrrpServer) VrrpGetPortList() {
-	svr.logger.Info("VRRP: Get Port List")
-	currMarker := int64(asicdConstDefs.MIN_SYS_PORTS)
-	more := false
-	objCount := 0
-	count := 10
-	for {
-		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkPortState(
-			asicdServices.Int(currMarker), asicdServices.Int(count))
-		if err != nil {
-			svr.logger.Err(fmt.Sprintln("VRRP: getting bulk port config"+
-				" from asicd failed with reason", err))
-			return
-		}
-		objCount = int(bulkInfo.Count)
-		more = bool(bulkInfo.More)
-		currMarker = int64(bulkInfo.EndIdx)
-		for i := 0; i < objCount; i++ {
-			/*
-				var ifName string
-				var portNum int32
-				portNum = bulkInfo.PortStateList[i].IfIndex
-				ifName = bulkInfo.PortStateList[i].Name
-				//svr.logger.Info("VRRP: interface global init for " + ifName)
-				//VrrpInitGblInfo(portNum, ifName, "")
-			*/
-		}
-		if more == false {
-			break
-		}
-	}
-}
-
 func (svr *VrrpServer) VrrpGetIPv4IntfList() {
-	svr.logger.Info("VRRP: Get IPv4 Interface List")
+	svr.logger.Info("Get IPv4 Interface List")
 	objCount := 0
 	var currMarker int64
 	more := false
 	count := 10
 	for {
-		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkIPv4Intf(
+		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkIPv4IntfState(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
-			svr.logger.Err(fmt.Sprintln("DRA: getting bulk ipv4 intf config",
+			svr.logger.Err(fmt.Sprintln("getting bulk ipv4 intf config",
 				"from asicd failed with reason", err))
 			return
 		}
@@ -69,8 +37,9 @@ func (svr *VrrpServer) VrrpGetIPv4IntfList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			svr.VrrpCreateIfIndexEntry(bulkInfo.IPv4IntfList[i].IfIndex,
-				bulkInfo.IPv4IntfList[i].IpAddr)
+			svr.VrrpCreateIfIndexEntry(bulkInfo.IPv4IntfStateList[i].IfIndex,
+				bulkInfo.IPv4IntfStateList[i].IpAddr)
+			svr.VrrpMapIfIndexToLinuxIfIndex(bulkInfo.IPv4IntfStateList[i].IfIndex)
 		}
 		if more == false {
 			break
@@ -79,16 +48,16 @@ func (svr *VrrpServer) VrrpGetIPv4IntfList() {
 }
 
 func (svr *VrrpServer) VrrpGetVlanList() {
-	svr.logger.Info("VRRP: Get Vlans")
+	svr.logger.Info("Get Vlans")
 	objCount := 0
 	var currMarker int64
 	more := false
 	count := 10
 	for {
-		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkVlan(
+		bulkInfo, err := svr.asicdClient.ClientHdl.GetBulkVlanState(
 			asicdServices.Int(currMarker), asicdServices.Int(count))
 		if err != nil {
-			svr.logger.Err(fmt.Sprintln("DRA: getting bulk vlan config",
+			svr.logger.Err(fmt.Sprintln("getting bulk vlan config",
 				"from asicd failed with reason", err))
 			return
 		}
@@ -96,8 +65,8 @@ func (svr *VrrpServer) VrrpGetVlanList() {
 		more = bool(bulkInfo.More)
 		currMarker = int64(bulkInfo.EndIdx)
 		for i := 0; i < objCount; i++ {
-			svr.VrrpCreateVlanEntry(int(bulkInfo.VlanList[i].VlanId),
-				bulkInfo.VlanList[i].VlanName)
+			svr.VrrpCreateVlanEntry(int(bulkInfo.VlanStateList[i].VlanId),
+				bulkInfo.VlanStateList[i].VlanName)
 		}
 		if more == false {
 			break
@@ -105,82 +74,92 @@ func (svr *VrrpServer) VrrpGetVlanList() {
 	}
 }
 
-func (svr *VrrpServer) VrrpUpdateVlanGblInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
+func (svr *VrrpServer) VrrpUpdateVlanGblInfo(vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg, msgType uint8) {
 	svr.logger.Info(fmt.Sprintln("Vlan Update msg for", vlanNotifyMsg))
 	switch msgType {
-	case asicdConstDefs.NOTIFY_VLAN_CREATE:
+	case asicdCommonDefs.NOTIFY_VLAN_CREATE:
 		svr.VrrpCreateVlanEntry(int(vlanNotifyMsg.VlanId), vlanNotifyMsg.VlanName)
-	case asicdConstDefs.NOTIFY_VLAN_DELETE:
+	case asicdCommonDefs.NOTIFY_VLAN_DELETE:
 		delete(svr.vrrpVlanId2Name, int(vlanNotifyMsg.VlanId))
 	}
 }
 
-func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
+func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdCommonDefs.IPv4IntfNotifyMsg, msgType uint8) {
+	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
+	if ifType == commonDefs.IfTypeVirtual || ifType == commonDefs.IfTypeSecondary {
+		svr.logger.Info("Ignoring ipv4 interface notifcation for sub interface")
+		return
+	}
 	switch msgType {
-	case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
+	case asicdCommonDefs.NOTIFY_IPV4INTF_CREATE:
 		svr.VrrpCreateIfIndexEntry(msg.IfIndex, msg.IpAddr)
 		svr.VrrpMapIfIndexToLinuxIfIndex(msg.IfIndex)
 		// @TODO: add this call only when we support update of ip addr
 		//go svr.VrrpChecknUpdateGblInfo(msg.IfIndex, msg.IpAddr)
-	case asicdConstDefs.NOTIFY_IPV4INTF_DELETE:
+	case asicdCommonDefs.NOTIFY_IPV4INTF_DELETE:
 		delete(svr.vrrpIfIndexIpAddr, msg.IfIndex)
 	}
 }
 
-func (svr *VrrpServer) VrrpUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
+func (svr *VrrpServer) VrrpUpdateL3IntfStateChange(msg asicdCommonDefs.L3IntfStateNotifyMsg) {
+	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
+	if ifType == commonDefs.IfTypeVirtual || ifType == commonDefs.IfTypeSecondary {
+		svr.logger.Info("Ignoring ipv4 interface notifcation for sub interface")
+		return
+	}
 	switch msg.IfState {
-	case asicdConstDefs.INTF_STATE_UP:
+	case asicdCommonDefs.INTF_STATE_UP:
 		svr.VrrpHandleIntfUpEvent(msg.IfIndex)
-		svr.logger.Info("VRRP: Got Interface state up notification")
-	case asicdConstDefs.INTF_STATE_DOWN:
+		svr.logger.Info("Got Interface state up notification")
+	case asicdCommonDefs.INTF_STATE_DOWN:
 		svr.VrrpHandleIntfShutdownEvent(msg.IfIndex)
-		svr.logger.Info("VRRP: Got Interface state down notification")
+		svr.logger.Info("Got Interface state down notification")
 	}
 }
 
 func (svr *VrrpServer) VrrpAsicdSubscriber() {
 	for {
-		svr.logger.Info("VRRP: Read on Asic Subscriber socket....")
+		svr.logger.Info("Read on Asic Subscriber socket....")
 		rxBuf, err := svr.asicdSubSocket.Recv(0)
 		if err != nil {
-			svr.logger.Err(fmt.Sprintln("VRRP: Recv on asicd Subscriber",
+			svr.logger.Err(fmt.Sprintln("Recv on asicd Subscriber",
 				"socket failed with error:", err))
 			continue
 		}
-		var msg asicdConstDefs.AsicdNotification
+		var msg asicdCommonDefs.AsicdNotification
 		err = json.Unmarshal(rxBuf, &msg)
 		if err != nil {
-			svr.logger.Err(fmt.Sprintln("VRRP: Unable to Unmarshal",
+			svr.logger.Err(fmt.Sprintln("Unable to Unmarshal",
 				"asicd msg:", msg.Msg))
 			continue
 		}
-		if msg.MsgType == asicdConstDefs.NOTIFY_VLAN_CREATE ||
-			msg.MsgType == asicdConstDefs.NOTIFY_VLAN_DELETE {
+		if msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_CREATE ||
+			msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_DELETE {
 			//Vlan Create Msg
-			var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
+			var vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg
 			err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
 			if err != nil {
-				svr.logger.Err(fmt.Sprintln("VRRP: Unable to",
+				svr.logger.Err(fmt.Sprintln("Unable to",
 					"unmashal vlanNotifyMsg:", msg.Msg))
 				return
 			}
 			svr.VrrpUpdateVlanGblInfo(vlanNotifyMsg, msg.MsgType)
-		} else if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE ||
-			msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_DELETE {
-			var ipv4IntfNotifyMsg asicdConstDefs.IPv4IntfNotifyMsg
+		} else if msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE ||
+			msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_DELETE {
+			var ipv4IntfNotifyMsg asicdCommonDefs.IPv4IntfNotifyMsg
 			err = json.Unmarshal(msg.Msg, &ipv4IntfNotifyMsg)
 			if err != nil {
-				svr.logger.Err(fmt.Sprintln("VRRP: Unable to Unmarshal",
+				svr.logger.Err(fmt.Sprintln("Unable to Unmarshal",
 					"ipv4IntfNotifyMsg:", msg.Msg))
 				continue
 			}
 			svr.VrrpUpdateIPv4GblInfo(ipv4IntfNotifyMsg, msg.MsgType)
-		} else if msg.MsgType == asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE {
+		} else if msg.MsgType == asicdCommonDefs.NOTIFY_L3INTF_STATE_CHANGE {
 			//INTF_STATE_CHANGE
-			var l3IntfStateNotifyMsg asicdConstDefs.L3IntfStateNotifyMsg
+			var l3IntfStateNotifyMsg asicdCommonDefs.L3IntfStateNotifyMsg
 			err = json.Unmarshal(msg.Msg, &l3IntfStateNotifyMsg)
 			if err != nil {
-				svr.logger.Err(fmt.Sprintln("VRRP: unable to Unmarshal l3 intf",
+				svr.logger.Err(fmt.Sprintln("unable to Unmarshal l3 intf",
 					"state change:", msg.Msg))
 				continue
 			}
@@ -221,15 +200,12 @@ func (svr *VrrpServer) VrrpRegisterWithAsicdUpdates(address string) error {
 }
 
 func (svr *VrrpServer) VrrpGetInfoFromAsicd() error {
-	svr.logger.Info("VRRP: Calling Asicd to initialize port properties")
-	err := svr.VrrpRegisterWithAsicdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
+	svr.logger.Info("Calling Asicd to initialize port properties")
+	err := svr.VrrpRegisterWithAsicdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
 	if err == nil {
 		// Asicd subscriber thread
 		go svr.VrrpAsicdSubscriber()
 	}
-	// Get Port List Most Likely Not needed...as we are only interested
-	// in Ipv4Intf...
-	//VrrpGetPortList()
 	// Get Vlan List
 	svr.VrrpGetVlanList()
 	// Get IPv4 Interface List

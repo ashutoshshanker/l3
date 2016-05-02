@@ -15,6 +15,7 @@ func (session *BfdSession) StartPerLinkSessionServer(bfdServer *BFDServer) error
 	var err error
 	var myMacAddr net.HardwareAddr
 	bfdServer.logger.Info(fmt.Sprintln("Starting perlink session ", session.state.SessionId, " on ", ifName))
+	sessionId := session.state.SessionId
 	ifName, err = bfdServer.getLinuxIntfName(session.state.InterfaceId)
 	if err != nil {
 		bfdServer.logger.Info(fmt.Sprintln("Failed to get ifname for ", session.state.InterfaceId))
@@ -39,7 +40,6 @@ func (session *BfdSession) StartPerLinkSessionServer(bfdServer *BFDServer) error
 		}
 	}
 	bfdPacketSrc := gopacket.NewPacketSource(session.recvPcapHandle, layers.LayerTypeEthernet)
-	sessionId := session.state.SessionId
 	defer session.recvPcapHandle.Close()
 	for receivedPacket := range bfdPacketSrc.Packets() {
 		if bfdServer.bfdGlobal.Sessions[sessionId] == nil {
@@ -96,11 +96,13 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 	ifName, err = bfdServer.getLinuxIntfName(session.state.InterfaceId)
 	if err != nil {
 		bfdServer.logger.Info(fmt.Sprintln("Failed to get ifname for ", session.state.InterfaceId))
+		bfdServer.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
 	myMacAddr, err = bfdServer.getMacAddrFromIntfName(ifName)
 	if err != nil {
 		bfdServer.logger.Info(fmt.Sprintln("Unable to get the MAC addr of ", ifName, err))
+		bfdServer.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
 	bfdServer.logger.Info(fmt.Sprintln("MAC is  ", myMacAddr, " on ", ifName))
@@ -108,8 +110,11 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 	session.sendPcapHandle, err = pcap.OpenLive(ifName, bfdSnapshotLen, bfdPromiscuous, bfdPcapTimeout)
 	if session.sendPcapHandle == nil {
 		bfdServer.logger.Info(fmt.Sprintln("Failed to open sendPcapHandle for ", ifName, err))
+		bfdServer.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
+	session.TxTimeoutCh = make(chan int32)
+	session.SessionTimeoutCh = make(chan int32)
 	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier / 1000)
 	txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
@@ -131,8 +136,7 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 				EthernetType: layers.EthernetTypeIPv4,
 			}
 			ipLayer := &layers.IPv4{
-				SrcIP:    net.ParseIP(bfdSession.state.LocalIpAddr),
-				DstIP:    net.ParseIP(bfdSession.state.RemoteIpAddr),
+				DstIP:    net.ParseIP(bfdSession.state.IpAddr),
 				Protocol: layers.IPProtocolUDP,
 			}
 			udpLayer := &layers.UDP{

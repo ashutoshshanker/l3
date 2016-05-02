@@ -2,10 +2,9 @@ package vrrpServer
 
 import (
 	"asicdServices"
-	"database/sql"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/garyburd/redigo/redis"
 	"github.com/google/gopacket"
-	_ "github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"net"
@@ -136,7 +135,7 @@ type VrrpTxChannelInfo struct {
 
 type VrrpServer struct {
 	logger                        *logging.Writer
-	vrrpDbHdl                     *sql.DB
+	vrrpDbHdl                     redis.Conn
 	paramsDir                     string
 	asicdClient                   VrrpAsicdClient
 	asicdSubSocket                *nanomsg.SubSocket
@@ -155,12 +154,14 @@ type VrrpServer struct {
 	vrrpSnapshotLen               int32
 	vrrpPromiscuous               bool
 	vrrpTimeout                   time.Duration
+	vrrpPktSend                   chan bool
 }
 
 const (
+	VRRP_REDDIS_DB_PORT = ":6379"
+	VRRP_INTF_DB        = "VrrpIntf"
+
 	// Error Message
-	VRRP_USR_CONF_DB                    = "/UsrConfDb.db"
-	VRRP_INTF_DB                        = "VrrpIntf"
 	VRRP_INVALID_VRID                   = "VRID is invalid"
 	VRRP_CLIENT_CONNECTION_NOT_REQUIRED = "Connection to Client is not required"
 	VRRP_INCORRECT_VERSION              = "Version is not correct for received VRRP Packet"

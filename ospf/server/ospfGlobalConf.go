@@ -35,6 +35,7 @@ type GlobalConf struct {
 	StubRouterSupport        bool
 	//DiscontinuityTime        string
 	DiscontinuityTime int32 // This should be string
+	isABR             bool
 }
 
 func (server *OSPFServer) updateGlobalConf(gConf config.GlobalConf) {
@@ -93,9 +94,19 @@ func (server *OSPFServer) initOspfGlobalConfDefault() {
 	server.ospfGlobalConf.StubRouterSupport = false
 	//server.ospfGlobalConf.DiscontinuityTime = "0"
 	server.ospfGlobalConf.DiscontinuityTime = 0 //This should be string
+	server.ospfGlobalConf.isABR = false
 	server.logger.Err("Global configuration initialized")
 }
 
+func (server *OSPFServer) processASBdrRtrStatus(isASBR bool) {
+	if isASBR {
+		server.logger.Info(fmt.Sprintln("GLOBAL: Router is ASBR. Listen to RIBD updates."))
+		//get ribd routes
+		//server.testASExternal()
+		server.getRibdRoutes()
+		server.startRibdUpdates()
+	}
+}
 func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {
 	var localIntfStateMap = make(map[IntfConfKey]config.Status)
 	for key, ent := range server.IntfConfMap {
@@ -118,14 +129,14 @@ func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {
 	if server.ospfGlobalConf.AdminStat == config.Enabled {
 		//server.NeighborListMap = make(map[IntfConfKey]list.List)
 		server.InitNeighborStateMachine()
-		go server.ProcessNbrStateMachine()
 		go server.UpdateNeighborConf()
+		go server.ProcessNbrStateMachine()
 		go server.ProcessTxNbrPkt()
 		go server.ProcessRxNbrPkt()
 		server.StartLSDatabase()
 
 	}
-
+	server.processASBdrRtrStatus(server.ospfGlobalConf.AreaBdrRtrStatus)
 	for key, ent := range localIntfStateMap {
 		if ent == config.Enabled &&
 			server.ospfGlobalConf.AdminStat == config.Enabled {

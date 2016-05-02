@@ -24,23 +24,31 @@ const (
 type LsaOp uint8
 
 const (
-	LSAFLOOD    = 0 // flood when FULL state reached
-	LSASELFLOOD = 1 // flood for received LSA
+	LSAFLOOD        = 0 // flood when FULL state reached
+	LSASELFLOOD     = 1 // flood for received LSA
+	LSAINTF         = 2 // Send LSA on the interface in reply to LSAREQ
+	LSAAGE          = 3 // flood aged LSAs.
+	LSASUMMARYFLOOD = 4 //flood summary LSAs in different areas.
+	LSAEXTFLOOD     = 5 //flood AS External summary LSA
 )
 
 type NeighborConfKey struct {
-	OspfNbrRtrId uint32
+	IPAddr  config.IpAddress
+	IntfIdx config.InterfaceIndexOrZero
+	//	OspfNbrRtrId uint32
 }
 
 var INVALID_NEIGHBOR_CONF_KEY uint32
 var neighborBulkSlice []NeighborConfKey
 
 type OspfNeighborEntry struct {
+	OspfNbrRtrId           uint32
 	OspfNbrIPAddr          net.IP
 	OspfRtrPrio            uint8
 	intfConfKey            IntfConfKey
 	OspfNbrOptions         int
 	OspfNbrState           config.NbrState
+	isStateUpdate          bool
 	OspfNbrInactivityTimer time.Time
 	OspfNbrDeadTimer       time.Duration
 	NbrDeadTimer           *time.Timer
@@ -49,6 +57,7 @@ type OspfNeighborEntry struct {
 	nbrEvent               config.NbrEvent
 	isSeqNumUpdate         bool
 	isMaster               bool
+	isMasterUpdate         bool
 	ospfNbrDBDTickerCh     *time.Ticker
 
 	ospfNbrLsaIndex        uint8       // db_summary list index
@@ -95,23 +104,15 @@ type ospfNeighborConfMsg struct {
 
 type ospfNeighborDBDMsg struct {
 	ospfNbrConfKey NeighborConfKey
+	nbrFull        bool
 	ospfNbrDBDData ospfDatabaseDescriptionData
-}
-
-type ospfFloodMsg struct {
-	key    uint32
-	areaId uint32
-	lsType uint8
-	linkid uint32
-	lsOp   uint8
-	pkt    []byte //LSA flood packet received from another neighbor
 }
 
 type ospfNbrMdata struct {
 	isDR    bool
 	areaId  uint32
 	intf    IntfConfKey
-	nbrList []uint32
+	nbrList []NeighborConfKey
 }
 
 func newospfNbrMdata() *ospfNbrMdata {
@@ -122,28 +123,30 @@ func newospfNbrMdata() *ospfNbrMdata {
 	Global structures for Neighbor
 */
 var OspfNeighborLastDbd map[NeighborConfKey]ospfDatabaseDescriptionData
-var ospfNeighborIPToMAC map[uint32]net.HardwareAddr
+var ospfNeighborIPToMAC map[NeighborConfKey]net.HardwareAddr
 
 /* neighbor lists each indexed by neighbor router id. */
-var ospfNeighborRequest_list map[uint32][]*ospfNeighborReq
-var ospfNeighborDBSummary_list map[uint32][]*ospfNeighborDBSummary
-var ospfNeighborRetx_list map[uint32][]*ospfNeighborRetx
+var ospfNeighborRequest_list map[NeighborConfKey][]*ospfNeighborReq
+var ospfNeighborDBSummary_list map[NeighborConfKey][]*ospfNeighborDBSummary
+var ospfNeighborRetx_list map[NeighborConfKey][]*ospfNeighborRetx
 
 /* List of Neighbors per interface instance */
 var ospfIntfToNbrMap map[IntfConfKey]ospfNbrMdata
 
 func (server *OSPFServer) InitNeighborStateMachine() {
 
-	server.neighborBulkSlice = []uint32{}
+	server.neighborBulkSlice = []NeighborConfKey{}
 	INVALID_NEIGHBOR_CONF_KEY = 0
 	OspfNeighborLastDbd = make(map[NeighborConfKey]ospfDatabaseDescriptionData)
-	ospfNeighborIPToMAC = make(map[uint32]net.HardwareAddr)
+	ospfNeighborIPToMAC = make(map[NeighborConfKey]net.HardwareAddr)
 	ospfIntfToNbrMap = make(map[IntfConfKey]ospfNbrMdata)
-	ospfNeighborRequest_list = make(map[uint32][]*ospfNeighborReq)
-	ospfNeighborDBSummary_list = make(map[uint32][]*ospfNeighborDBSummary)
-	ospfNeighborRetx_list = make(map[uint32][]*ospfNeighborRetx)
+	ospfNeighborRequest_list = make(map[NeighborConfKey][]*ospfNeighborReq)
+	ospfNeighborDBSummary_list = make(map[NeighborConfKey][]*ospfNeighborDBSummary)
+	ospfNeighborRetx_list = make(map[NeighborConfKey][]*ospfNeighborRetx)
 
 	go server.refreshNeighborSlice()
+	server.neighborSliceRefCh = time.NewTicker(server.RefreshDuration)
+	server.neighborSliceStartCh <- true
 	server.logger.Info("NBRINIT: Neighbor FSM init done..")
 }
 
@@ -169,16 +172,21 @@ func (server *OSPFServer) UpdateNeighborConf() {
 			var nbrConf OspfNeighborEntry
 			//server.logger.Info(fmt.Sprintln("Update neighbor conf.  received"))
 			if nbrMsg.nbrMsgType == NBRUPD {
-				nbrConf = server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId]
+				nbrConf = server.NeighborConfigMap[nbrMsg.ospfNbrConfKey]
 			}
-			nbrConf.OspfNbrState = nbrMsg.ospfNbrEntry.OspfNbrState
+			if nbrMsg.ospfNbrEntry.isStateUpdate {
+				nbrConf.OspfNbrState = nbrMsg.ospfNbrEntry.OspfNbrState
+			}
 			nbrConf.OspfNbrDeadTimer = nbrMsg.ospfNbrEntry.OspfNbrDeadTimer
 			nbrConf.OspfNbrInactivityTimer = time.Now()
 			if nbrMsg.ospfNbrEntry.isSeqNumUpdate {
 				nbrConf.ospfNbrSeqNum = nbrMsg.ospfNbrEntry.ospfNbrSeqNum
 			}
+			if nbrMsg.ospfNbrEntry.isMasterUpdate {
+				nbrConf.isMaster = nbrMsg.ospfNbrEntry.isMaster
+			}
+			nbrConf.OspfNbrRtrId = nbrMsg.ospfNbrEntry.OspfNbrRtrId
 			nbrConf.ospfNbrDBDTickerCh = nbrMsg.ospfNbrEntry.ospfNbrDBDTickerCh
-			nbrConf.isMaster = nbrMsg.ospfNbrEntry.isMaster
 			nbrConf.ospfNbrLsaReqIndex = nbrMsg.ospfNbrEntry.ospfNbrLsaReqIndex
 			nbrConf.nbrEvent = nbrMsg.ospfNbrEntry.nbrEvent
 
@@ -187,37 +195,45 @@ func (server *OSPFServer) UpdateNeighborConf() {
 				nbrConf.OspfRtrPrio = nbrMsg.ospfNbrEntry.OspfRtrPrio
 				nbrConf.intfConfKey = nbrMsg.ospfNbrEntry.intfConfKey
 				nbrConf.OspfNbrOptions = 0
-				server.neighborBulkSlice = append(server.neighborBulkSlice, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
+				if nbrMsg.ospfNbrEntry.isMasterUpdate {
+					nbrConf.isMaster = nbrMsg.ospfNbrEntry.isMaster
+				}
+				server.neighborBulkSlice = append(server.neighborBulkSlice, nbrMsg.ospfNbrConfKey)
 				nbrConf.req_list_mutex = &sync.Mutex{}
 				nbrConf.db_summary_list_mutex = &sync.Mutex{}
 				nbrConf.retx_list_mutex = &sync.Mutex{}
-				updateLSALists(nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
-				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
+				updateLSALists(nbrMsg.ospfNbrConfKey)
+				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey] = nbrConf
 				if nbrMsg.ospfNbrEntry.OspfNbrState >= config.NbrTwoWay {
+					seq_num := uint32(time.Now().Nanosecond())
 					server.ConstructAndSendDbdPacket(nbrMsg.ospfNbrConfKey, true, true, true,
-						INTF_OPTIONS, uint32(time.Now().Nanosecond()), false, false)
+						INTF_OPTIONS, seq_num, false, false)
 					nbrConf.OspfNbrState = config.NbrExchangeStart
 					nbrConf.nbrEvent = config.Nbr2WayReceived
+					nbrConf.ospfNbrSeqNum = seq_num
+					server.NeighborConfigMap[nbrMsg.ospfNbrConfKey] = nbrConf
 				}
 				server.neighborDeadTimerEvent(nbrMsg.ospfNbrConfKey)
-
+				server.logger.Info(fmt.Sprintln("CREATE: Create new neighbor with key ", nbrMsg.ospfNbrConfKey.IPAddr, nbrMsg.ospfNbrConfKey.IntfIdx))
 			}
 
 			if nbrMsg.nbrMsgType == NBRUPD {
-				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey.OspfNbrRtrId] = nbrConf
+				server.NeighborConfigMap[nbrMsg.ospfNbrConfKey] = nbrConf
 				nbrConf.NbrDeadTimer.Stop()
 				nbrConf.NbrDeadTimer.Reset(nbrMsg.ospfNbrEntry.OspfNbrDeadTimer)
 				/*server.logger.Info(fmt.Sprintln("UPDATE neighbor with nbr id - ",
 				nbrMsg.ospfNbrConfKey.OspfNbrRtrId)) */
 			}
 			if nbrMsg.nbrMsgType == NBRDEL {
-				server.neighborBulkSlice = append(server.neighborBulkSlice, INVALID_NEIGHBOR_CONF_KEY)
-				delete(server.NeighborConfigMap, nbrMsg.ospfNbrConfKey.OspfNbrRtrId)
+				//server.neighborBulkSlice = append(server.neighborBulkSlice, INVALID_NEIGHBOR_CONF_KEY)
+				delete(server.NeighborConfigMap, nbrMsg.ospfNbrConfKey)
 				server.logger.Info(fmt.Sprintln("DELETE neighbor with nbr id - ",
-					nbrMsg.ospfNbrConfKey.OspfNbrRtrId))
+					nbrMsg.ospfNbrEntry.OspfNbrRtrId))
 			}
 
-			//server.logger.Info(fmt.Sprintln("NBR UPDATE: Nbr , seq_no ", nbrMsg.ospfNbrConfKey.OspfNbrRtrId, nbrConf.ospfNbrSeqNum))
+			rtr_id := convertUint32ToIPv4(nbrMsg.ospfNbrEntry.OspfNbrRtrId)
+			server.logger.Info(fmt.Sprintln("NBR UPDATE: Nbr , state ", rtr_id, " : ", nbrConf.OspfNbrState))
+
 		case state := <-(server.neighborConfStopCh):
 			server.logger.Info("Exiting update neighbor config thread..")
 			if state == true {
@@ -227,34 +243,13 @@ func (server *OSPFServer) UpdateNeighborConf() {
 	}
 }
 
-func updateLSALists(id uint32) {
+func updateLSALists(id NeighborConfKey) {
 	ospfNeighborRequest_list[id] = []*ospfNeighborReq{}
 	ospfNeighborDBSummary_list[id] = []*ospfNeighborDBSummary{}
 	ospfNeighborRetx_list[id] = []*ospfNeighborRetx{}
 }
 
-func (server *OSPFServer) sendNeighborConf(nbrKey uint32, nbr OspfNeighborEntry, op NbrMsgType) {
-
-	nbrConfMsg := ospfNeighborConfMsg{
-		ospfNbrConfKey: NeighborConfKey{
-			OspfNbrRtrId: nbrKey,
-		},
-		ospfNbrEntry: OspfNeighborEntry{
-			OspfNbrIPAddr:          nbr.OspfNbrIPAddr,
-			OspfRtrPrio:            nbr.OspfRtrPrio,
-			intfConfKey:            nbr.intfConfKey,
-			OspfNbrOptions:         0,
-			OspfNbrState:           nbr.OspfNbrState,
-			OspfNbrInactivityTimer: time.Now(),
-			OspfNbrDeadTimer:       nbr.OspfNbrDeadTimer,
-		},
-		nbrMsgType: op,
-	}
-
-	server.neighborConfCh <- nbrConfMsg
-}
-
-func (server *OSPFServer) neighborExist(nbrKey uint32) bool {
+func (server *OSPFServer) neighborExist(nbrKey NeighborConfKey) bool {
 	_, exists := server.NeighborConfigMap[nbrKey]
 	if exists {
 		return true
@@ -264,12 +259,12 @@ func (server *OSPFServer) neighborExist(nbrKey uint32) bool {
 
 func (server *OSPFServer) initNeighborMdata(intf IntfConfKey) {
 	nbrMdata := newospfNbrMdata()
-	nbrMdata.nbrList = []uint32{}
+	nbrMdata.nbrList = []NeighborConfKey{}
 	nbrMdata.intf = intf
 	ospfIntfToNbrMap[intf] = *nbrMdata
 }
 
-func (server *OSPFServer) updateNeighborMdata(intf IntfConfKey, nbr uint32) {
+func (server *OSPFServer) updateNeighborMdata(intf IntfConfKey, nbr NeighborConfKey) {
 	nbrMdata, exists := ospfIntfToNbrMap[intf]
 	intfData := server.IntfConfMap[intf]
 	if !exists {
@@ -277,7 +272,13 @@ func (server *OSPFServer) updateNeighborMdata(intf IntfConfKey, nbr uint32) {
 		nbrMdata = ospfIntfToNbrMap[intf]
 	}
 	nbrMdata.areaId = binary.BigEndian.Uint32(intfData.IfAreaId)
-	nbrMdata.isDR = bytesEqual(intfData.IfDRIp, intfData.IfIpAddr.To4())
+	routerid := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
+	if intfData.IfDRtrId == routerid {
+		nbrMdata.isDR = true
+	} else {
+		nbrMdata.isDR = false
+	}
+
 	for inst := range nbrMdata.nbrList {
 		if nbrMdata.nbrList[inst] == nbr {
 			// nbr already exist no need to add.
@@ -288,45 +289,36 @@ func (server *OSPFServer) updateNeighborMdata(intf IntfConfKey, nbr uint32) {
 	ospfIntfToNbrMap[intf] = nbrMdata
 }
 
-func (server *OSPFServer) sendLsdbToNeighborEvent(key uint32, areaId uint32, lsType uint8,
-	linkId uint32, op uint8) {
-	_, exists := server.NeighborConfigMap[key]
-	if !exists {
-		server.logger.Info(fmt.Sprintln("Nbr-LSDB: Failed to get nbr instance key ", key))
-		return
-	}
+func (server *OSPFServer) sendLsdbToNeighborEvent(intfKey IntfConfKey, nbrKey NeighborConfKey,
+	areaId uint32, lsType uint8, linkId uint32, lsaKey LsaKey, op uint8) {
 	msg := ospfFloodMsg{
-		key:    key,
-		areaId: areaId,
-		lsType: lsType,
-		linkid: linkId,
-		lsOp:   op,
+		intfKey: intfKey,
+		nbrKey:  nbrKey,
+		areaId:  areaId,
+		lsType:  lsType,
+		linkid:  linkId,
+		lsaKey:  lsaKey,
+		lsOp:    op,
 	}
 	server.ospfNbrLsaUpdSendCh <- msg
 	//server.logger.Info("Send flood data to Tx thread")
 }
 
-func (server *OSPFServer) calculateDBLsaAttach(nbrKey NeighborConfKey, nbrConf OspfNeighborEntry) (last_exchange bool, lsa_attach uint8) {
-	last_exchange = true
-	lsa_attach = 0
-
-	max_lsa_headers := calculateMaxLsaHeaders()
-	db_list := ospfNeighborDBSummary_list[nbrKey.OspfNbrRtrId]
-	slice_len := len(db_list)
-	server.logger.Info(fmt.Sprintln("DBD: slice_len ", slice_len, "max_lsa_header ", max_lsa_headers,
-		"nbrConf.lsa_index ", nbrConf.ospfNbrLsaIndex))
-	if slice_len == int(nbrConf.ospfNbrLsaIndex) {
+func (server *OSPFServer) resetNeighborLists(nbr NeighborConfKey, intf IntfConfKey) {
+	/* List of Neighbors per interface instance */
+	updateLSALists(nbr)
+	nbrMdata, exists := ospfIntfToNbrMap[intf]
+	if !exists {
+		server.logger.Info(fmt.Sprintln("DEAD: Nbr dead but if to nbr map doesnt exist. ", nbr))
 		return
 	}
-	if max_lsa_headers > (uint8(slice_len) - uint8(nbrConf.ospfNbrLsaIndex)) {
-		lsa_attach = uint8(slice_len) - uint8(nbrConf.ospfNbrLsaIndex)
-	} else {
-		lsa_attach = max_lsa_headers
+	newList := []NeighborConfKey{}
+	for inst := range nbrMdata.nbrList {
+		if nbrMdata.nbrList[inst] != nbr {
+			newList = append(newList, nbrMdata.nbrList[inst])
+		}
 	}
-	if (nbrConf.ospfNbrLsaIndex + lsa_attach) >= uint8(slice_len) {
-		// the last slice in the list being sent
-		server.logger.Info(fmt.Sprintln("DBD:  Send the last dd packet with nbr/state ", nbrKey.OspfNbrRtrId, nbrConf.OspfNbrState))
-		last_exchange = true
-	}
-	return last_exchange, 0
+	nbrMdata.nbrList = newList
+	ospfIntfToNbrMap[intf] = nbrMdata
+	server.logger.Info(fmt.Sprintln("DEAD: nbrList ", nbrMdata.nbrList))
 }

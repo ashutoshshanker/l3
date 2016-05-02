@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/pluginManager/pluginCommon"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"container/list"
 	"encoding/json"
@@ -34,6 +34,10 @@ type LsdbKey struct {
 	AreaId uint32
 }
 
+type RoutingTblKey struct {
+	AreaId uint32
+}
+
 type LsdbSliceEnt struct {
 	AreaId uint32
 	LSType uint8
@@ -60,17 +64,18 @@ type OSPFServer struct {
 	LsdbUpdateCh       chan LsdbUpdateMsg
 	LsaUpdateRetCodeCh chan bool
 	IntfStateChangeCh  chan LSAChangeMsg
-	NetworkDRChangeCh  chan LSAChangeMsg
+	NetworkDRChangeCh  chan DrChangeMsg
 	FlushNetworkLSACh  chan NetworkLSAChangeMsg
 	CreateNetworkLSACh chan ospfNbrMdata
 	AdjOKEvtCh         chan AdjOKEvtMsg
+	maxAgeLsaCh        chan maxAgeLsaMsg
+	ExternalRouteNotif chan RouteMdata
 
-	/*
-	   connRoutesTimer         *time.Timer
-	   ribSubSocket        *nanomsg.SubSocket
-	   ribSubSocketCh      chan []byte
-	   ribSubSocketErrCh   chan error
-	*/
+	//	   connRoutesTimer         *time.Timer
+	ribSubSocket      *nanomsg.SubSocket
+	ribSubSocketCh    chan []byte
+	ribSubSocketErrCh chan error
+
 	asicdSubSocket        *nanomsg.SubSocket
 	asicdSubSocketCh      chan []byte
 	asicdSubSocketErrCh   chan error
@@ -78,7 +83,7 @@ type OSPFServer struct {
 	IntfConfMap           map[IntfConfKey]IntfConf
 	IntfTxMap             map[IntfConfKey]IntfTxHandle
 	IntfRxMap             map[IntfConfKey]IntfRxHandle
-	NeighborConfigMap     map[uint32]OspfNeighborEntry
+	NeighborConfigMap     map[NeighborConfKey]OspfNeighborEntry
 	NeighborListMap       map[IntfConfKey]list.List
 	neighborConfMutex     sync.Mutex
 	neighborHelloEventCh  chan IntfToNeighMsg
@@ -87,7 +92,8 @@ type OSPFServer struct {
 	neighborConfStopCh    chan bool
 	nbrFSMCtrlCh          chan bool
 	neighborSliceRefCh    *time.Ticker
-	neighborBulkSlice     []uint32
+	neighborSliceStartCh  chan bool
+	neighborBulkSlice     []NeighborConfKey
 	neighborDBDEventCh    chan ospfNeighborDBDMsg
 	neighborLSAReqEventCh chan ospfNeighborLSAreqMsg
 	neighborLSAUpdEventCh chan ospfNeighborLSAUpdMsg
@@ -96,8 +102,8 @@ type OSPFServer struct {
 	ospfNbrLsaReqSendCh   chan ospfNeighborLSAreqMsg
 	ospfNbrLsaUpdSendCh   chan ospfFloodMsg
 	ospfNbrLsaAckSendCh   chan ospfNeighborAckTxMsg
-	ospfRxNbrPktStopCh  chan bool
-	ospfTxNbrPktStopCh       chan bool
+	ospfRxNbrPktStopCh    chan bool
+	ospfTxNbrPktStopCh    chan bool
 
 	//neighborDBDEventCh   chan IntfToNeighDbdMsg
 
@@ -114,9 +120,13 @@ type OSPFServer struct {
 
 	RefreshDuration time.Duration
 
-	RoutingTbl     map[RoutingTblKey]RoutingTblEntry
-	OldRoutingTbl  map[RoutingTblKey]RoutingTblEntry
-	TempRoutingTbl map[RoutingTblKey]RoutingTblEntry
+	TempAreaRoutingTbl   map[AreaIdKey]AreaRoutingTbl
+	GlobalRoutingTbl     map[RoutingTblEntryKey]GlobalRoutingTblEntry
+	OldGlobalRoutingTbl  map[RoutingTblEntryKey]GlobalRoutingTblEntry
+	TempGlobalRoutingTbl map[RoutingTblEntryKey]GlobalRoutingTblEntry
+
+	SummaryLsDb map[LsdbKey]SummaryLsaMap
+
 	StartCalcSPFCh chan bool
 	DoneCalcSPFCh  chan bool
 	AreaGraph      map[VertexKey]Vertex
@@ -140,20 +150,22 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.AreaLsdb = make(map[LsdbKey]LSDatabase)
 	ospfServer.AreaSelfOrigLsa = make(map[LsdbKey]SelfOrigLsa)
 	ospfServer.IntfStateChangeCh = make(chan LSAChangeMsg)
-	ospfServer.NetworkDRChangeCh = make(chan LSAChangeMsg)
+	ospfServer.NetworkDRChangeCh = make(chan DrChangeMsg)
 	ospfServer.CreateNetworkLSACh = make(chan ospfNbrMdata)
 	ospfServer.FlushNetworkLSACh = make(chan NetworkLSAChangeMsg)
+	ospfServer.ExternalRouteNotif = make(chan RouteMdata)
 	ospfServer.LsdbSlice = []LsdbSliceEnt{}
 	ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
 	ospfServer.LsaUpdateRetCodeCh = make(chan bool)
 	ospfServer.AdjOKEvtCh = make(chan AdjOKEvtMsg)
-	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
+	ospfServer.maxAgeLsaCh = make(chan maxAgeLsaMsg)
+	ospfServer.NeighborConfigMap = make(map[NeighborConfKey]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
 	ospfServer.neighborHelloEventCh = make(chan IntfToNeighMsg)
 	ospfServer.neighborConfCh = make(chan ospfNeighborConfMsg)
 	ospfServer.neighborConfStopCh = make(chan bool)
-	ospfServer.neighborSliceRefCh = time.NewTicker(time.Minute * 10)
+	ospfServer.neighborSliceStartCh = make(chan bool)
 	ospfServer.AreaStateMutex = sync.RWMutex{}
 	ospfServer.AreaStateMap = make(map[AreaConfKey]AreaState)
 	ospfServer.AreaStateSlice = []AreaConfKey{}
@@ -165,28 +177,29 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.nbrFSMCtrlCh = make(chan bool)
 	ospfServer.RefreshDuration = time.Duration(10) * time.Minute
 	ospfServer.neighborDBDEventCh = make(chan ospfNeighborDBDMsg)
-	ospfServer.neighborLSAReqEventCh = make(chan ospfNeighborLSAreqMsg)
-	ospfServer.neighborLSAUpdEventCh = make(chan ospfNeighborLSAUpdMsg)
-	ospfServer.neighborLSAACKEventCh = make(chan ospfNeighborLSAAckMsg)
+	ospfServer.neighborLSAReqEventCh = make(chan ospfNeighborLSAreqMsg, 2)
+	ospfServer.neighborLSAUpdEventCh = make(chan ospfNeighborLSAUpdMsg, 2)
+	ospfServer.neighborLSAACKEventCh = make(chan ospfNeighborLSAAckMsg, 2)
 	ospfServer.ospfNbrDBDSendCh = make(chan ospfNeighborDBDMsg)
-	ospfServer.ospfNbrLsaAckSendCh = make(chan ospfNeighborAckTxMsg)
-	ospfServer.ospfNbrLsaReqSendCh = make(chan ospfNeighborLSAreqMsg)
-	ospfServer.ospfNbrLsaUpdSendCh = make(chan ospfFloodMsg)
+	ospfServer.ospfNbrLsaAckSendCh = make(chan ospfNeighborAckTxMsg, 2)
+	ospfServer.ospfNbrLsaReqSendCh = make(chan ospfNeighborLSAreqMsg, 2)
+	ospfServer.ospfNbrLsaUpdSendCh = make(chan ospfFloodMsg, 2)
 	ospfServer.ospfRxNbrPktStopCh = make(chan bool)
 	ospfServer.ospfTxNbrPktStopCh = make(chan bool)
 
-	/*
-	   ospfServer.ribSubSocketCh = make(chan []byte)
-	   ospfServer.ribSubSocketErrCh = make(chan error)
-	   ospfServer.connRoutesTimer = time.NewTimer(time.Duration(10) * time.Second)
-	   ospfServer.connRoutesTimer.Stop()
-	*/
+	ospfServer.ribSubSocketCh = make(chan []byte)
+	ospfServer.ribSubSocketErrCh = make(chan error)
+	// ospfServer.connRoutesTimer = time.NewTimer(time.Duration(10) * time.Second)
+	// ospfServer.connRoutesTimer.Stop()
+
 	ospfServer.asicdSubSocketCh = make(chan []byte)
 	ospfServer.asicdSubSocketErrCh = make(chan error)
 
-	ospfServer.RoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-	ospfServer.OldRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
-	ospfServer.TempRoutingTbl = make(map[RoutingTblKey]RoutingTblEntry)
+	ospfServer.GlobalRoutingTbl = make(map[RoutingTblEntryKey]GlobalRoutingTblEntry)
+	ospfServer.OldGlobalRoutingTbl = make(map[RoutingTblEntryKey]GlobalRoutingTblEntry)
+	ospfServer.TempGlobalRoutingTbl = make(map[RoutingTblEntryKey]GlobalRoutingTblEntry)
+	//ospfServer.OldRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
+	ospfServer.TempAreaRoutingTbl = make(map[AreaIdKey]AreaRoutingTbl)
 	ospfServer.StartCalcSPFCh = make(chan bool)
 	ospfServer.DoneCalcSPFCh = make(chan bool)
 
@@ -279,6 +292,10 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 func (server *OSPFServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Ospf Server"))
 	server.ConnectToClients(paramFile)
+	server.logger.Info("Listen for ASICd updates")
+	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
+	go server.createASICdSubscriber()
+
 	server.BuildPortPropertyMap()
 	server.initOspfGlobalConfDefault()
 	server.logger.Info(fmt.Sprintln("GlobalConf:", server.ospfGlobalConf))
@@ -291,9 +308,10 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	   go createRIBSubscriber()
 	   server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
 	*/
-	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
-	go server.createASICdSubscriber()
+	err := server.initAsicdForRxMulticastPkt()
+	if err != nil {
+		server.logger.Err(fmt.Sprintln("Unable to initialize asicd for receiving multicast packets", err))
+	}
 	go server.spfCalculation()
 
 }
@@ -314,18 +332,18 @@ func (server *OSPFServer) StartServer(paramFile string) {
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:
 
-			/*
-			   case ribrxBuf := <-server.ribSubSocketCh:
-			       server.processRibdNotification(ribdrxBuf)
-			   case <-server.connRoutesTimer.C:
-			       routes, _ := server.ribdClient.ClientHdl.GetConnectedRoutesInfo()
-			       server.logger.Info(fmt.Sprintln("Received Connected Routes:", routes))
-			       //server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
-			       //server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
+		case ribrxBuf := <-server.ribSubSocketCh:
+			server.processRibdNotification(ribrxBuf)
+		/*
+		   case <-server.connRoutesTimer.C:
+		       routes, _ := server.ribdClient.ClientHdl.GetConnectedRoutesInfo()
+		       server.logger.Info(fmt.Sprintln("Received Connected Routes:", routes))
+		       //server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
+		       //server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
 
-			   case <-server.ribSubSocketErrCh:
-			       ;
-			*/
+		   case <-server.ribSubSocketErrCh:
+		       ;
+		*/
 		case msg := <-server.IntfSliceRefreshCh:
 			if msg == true {
 				server.refreshIntfKeySlice()

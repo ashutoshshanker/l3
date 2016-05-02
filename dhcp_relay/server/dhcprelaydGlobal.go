@@ -1,9 +1,8 @@
 package relayServer
 
 import (
-	"asicdServices"
-	"database/sql"
 	"dhcprelayd"
+	"github.com/garyburd/redigo/redis"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"golang.org/x/net/ipv4"
@@ -58,6 +57,16 @@ type DhcpRelayPktChannel struct {
 	bytesRead int
 }
 
+type IPv4Intf struct {
+	IpAddr  string
+	IfIndex int32
+}
+
+type DhcpRelayClientJson struct {
+	Name string `json:Name`
+	Port int    `json:Port`
+}
+
 /*
  * Global Variable
  */
@@ -74,7 +83,7 @@ var (
 	dhcprelayClientConn               *ipv4.PacketConn
 	dhcprelayServerConn               *ipv4.PacketConn
 	logger                            *logging.Writer
-	dhcprelayDbHdl                    *sql.DB
+	dhcprelayDbHdl                    redis.Conn
 	paramsDir                         string
 	dhcprelayEnabledIntfRefCount      int
 	dhcprelayRefCountMutex            *sync.RWMutex
@@ -105,7 +114,7 @@ var (
 	dhcprelayIntfServerStateSlice []string
 
 	// map key is interface id and value is IPV4Intf
-	dhcprelayIntfIpv4Map map[int32]asicdServices.IPv4Intf
+	dhcprelayIntfIpv4Map map[int32]IPv4Intf
 )
 
 // Dhcp OpCodes Types
@@ -115,14 +124,16 @@ const (
 )
 
 // DHCP Packet global constants
-const DHCP_PACKET_MIN_SIZE = 272
-const DHCP_PACKET_HEADER_SIZE = 16
-const DHCP_PACKET_MIN_BYTES = 240
-const DHCP_SERVER_PORT = 67
-const DHCP_CLIENT_PORT = 68
-const DHCP_BROADCAST_IP = "255.255.255.255"
-const DHCP_NO_IP = "0.0.0.0"
-const USR_CONF_DB = "/UsrConfDb.db"
+const (
+	DHCP_PACKET_MIN_SIZE    = 272
+	DHCP_PACKET_HEADER_SIZE = 16
+	DHCP_PACKET_MIN_BYTES   = 240
+	DHCP_SERVER_PORT        = 67
+	DHCP_CLIENT_PORT        = 68
+	DHCP_BROADCAST_IP       = "255.255.255.255"
+	DHCP_NO_IP              = "0.0.0.0"
+	DHCP_REDDIS_DB_PORT     = ":6379"
+)
 
 // DHCP Client/Server Message Type 53
 const (
