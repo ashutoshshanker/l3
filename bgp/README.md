@@ -11,5 +11,3 @@ Exposed Interfaces
 
 ### Configuration
 Location of configuration and expected entries in configuration file
-
-Testing for Travis-CI
