@@ -26,9 +26,6 @@ func main() {
 	}
 	logger.Info("Started the logger successfully.")
 
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("ribd", fileName)
-
 	dbHdl, err := redis.Dial("tcp", ":6379")
 	if err != nil {
 		logger.Err("Failed to dial out to Redis server")
@@ -51,6 +48,10 @@ func main() {
 		logger.Err(fmt.Sprintln("Exiting!!"))
 		return
 	}
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("ribd", fileName)
+
 	ribdServicesHandler := rpc.NewRIBdHandler(logger, routeServer)
 	rpc.NewRIBdRPCServer(logger, ribdServicesHandler, fileName)
 }
