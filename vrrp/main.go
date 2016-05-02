@@ -25,14 +25,15 @@ func main() {
 	}
 	logger.Info("Started the logger successfully.")
 
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("vrrpd", fileName)
-
 	logger.Info("Starting VRRP server....")
 	// Create vrrp server handler
 	vrrpSvr := vrrpServer.VrrpNewServer(logger)
 	// Until Server is connected to clients do not start with RPC
 	vrrpSvr.VrrpStartServer(*paramsDir)
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("vrrpd", fileName)
+
 	// Create vrrp rpc handler
 	vrrpHdl := vrrpRpc.VrrpNewHandler(vrrpSvr, logger)
 	logger.Info("Starting VRRP RPC listener....")

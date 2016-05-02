@@ -613,15 +613,12 @@ func (session *BfdSession) CanProcessBfdControlPacket(bfdPacket *BfdControlPacke
 		canProcess = false
 		session.server.logger.Info(fmt.Sprintln("Can't process remote discriminator ", bfdPacket.MyDiscriminator))
 	}
-	/*
-		if bfdPacket.YourDiscriminator == 0 {
-			if session.state.SessionState != STATE_DOWN &&
-				session.state.SessionState != STATE_ADMIN_DOWN {
-				canProcess = false
-				session.server.logger.Info(fmt.Sprintln("Can't process my discriminator ", bfdPacket.YourDiscriminator))
-			}
+	if bfdPacket.YourDiscriminator == 0 {
+		if session.state.SessionState == STATE_UP {
+			canProcess = false
+			session.server.logger.Info(fmt.Sprintln("Can't process packet with my discriminator ", bfdPacket.YourDiscriminator, " in up state"))
 		}
-	*/
+	}
 	/*
 		if bfdPacket.YourDiscriminator == 0 {
 			canProcess = false
