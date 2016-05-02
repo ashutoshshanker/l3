@@ -164,6 +164,37 @@ func (p *Peer) clearRibOut() {
 	}
 }
 
+func (p *Peer) ProcessBfd() {
+	ipAddr := p.NeighborConf.Neighbor.NeighborAddress.String()
+	if p.NeighborConf.RunningConf.BfdEnable {
+		p.logger.Info(fmt.Sprintln("Bfd enabled on :",
+			p.NeighborConf.Neighbor.NeighborAddress))
+		ret, err := p.Server.bfdMgr.CreateBfdSession(ipAddr)
+		if !ret {
+			p.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:",
+				ret, "err:", err))
+		} else {
+			p.logger.Info("Bfd session configured")
+			p.NeighborConf.Neighbor.State.BfdNeighborState = "up"
+		}
+	} else {
+		if p.NeighborConf.Neighbor.State.BfdNeighborState != "" {
+			p.logger.Info(fmt.Sprintln("Bfd disabled on :",
+				p.NeighborConf.Neighbor.NeighborAddress))
+			ret, err := p.Server.bfdMgr.DeleteBfdSession(ipAddr)
+			if !ret {
+				p.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:",
+					ret, "err:", err))
+			} else {
+				p.logger.Info(fmt.Sprintln("Bfd session removed for ",
+					p.NeighborConf.Neighbor.NeighborAddress))
+				p.NeighborConf.Neighbor.State.BfdNeighborState = ""
+			}
+		}
+	}
+
+}
+
 func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 	host, _, err := net.SplitHostPort((*conn).LocalAddr().String())
 	if err != nil {
@@ -173,6 +204,7 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 	}
 	p.NeighborConf.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
 	p.clearRibOut()
+	p.ProcessBfd()
 	//p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
 }
 
