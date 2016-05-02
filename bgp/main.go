@@ -118,6 +118,5 @@ func main() {
 		dbUtil.Disconnect()
 
 		rpc.StartServer(logger, confIface, fileName)
-		//Sample test for TravisCI
 	}
 }
