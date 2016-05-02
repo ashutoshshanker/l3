@@ -4,6 +4,6 @@ bfd/rpc/bfdd.thrift
 bgp/rpc/bgpd.thrift
 dhcp_relay/server/dhcprelayd.thrift
 ospf/rpc/ospfd.thrift
-rib/ribd.thrift
+rib/rpc/ribd.thrift
 tunnel/vxlan/rpc/vxland.thrift
 vrrp/rpc/vrrpd.thrift

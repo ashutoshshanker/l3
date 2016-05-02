@@ -245,6 +245,7 @@ func (server *OSPFServer) flushSummaryLsa(lsdbKey LsdbKey, lsaKey LsaKey) {
 
 func (server *OSPFServer) installSummaryLsa() {
 	ifkey := IntfConfKey{}
+	nbr := NeighborConfKey{}
 	server.logger.Info("Installing summary Lsa...")
 	for lsdbKey, sLsa := range server.SummaryLsDb {
 		selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
@@ -264,14 +265,14 @@ func (server *OSPFServer) installSummaryLsa() {
 					server.updateSummaryLsa(lsdbKey, sKey, sEnt)
 					//Flood Updated Summary LSA
 					server.logger.Info(fmt.Sprintln("LSDB: Send message to flood ", sKey, lsdbKey.AreaId))
-					server.sendLsdbToNeighborEvent(ifkey, 0, lsdbKey.AreaId, 0, 0, sKey, LSASUMMARYFLOOD)
+					server.sendLsdbToNeighborEvent(ifkey, nbr, lsdbKey.AreaId, 0, 0, sKey, LSASUMMARYFLOOD)
 				} else {
 					continue
 				}
 			} else {
 				server.insertSummaryLsa(lsdbKey, sKey, sEnt)
 				//Flood New Summary LSA
-				server.sendLsdbToNeighborEvent(ifkey, 0, lsdbKey.AreaId, 0, 0, sKey, LSASUMMARYFLOOD)
+				server.sendLsdbToNeighborEvent(ifkey, nbr, lsdbKey.AreaId, 0, 0, sKey, LSASUMMARYFLOOD)
 				server.logger.Info(fmt.Sprintln("LSDB: Send message to flood ", sKey, lsdbKey.AreaId))
 
 			}
@@ -347,15 +348,19 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 
 	netmask := convertIPv4ToUint32(ent.IfNetmask)
 	attachedRtr := make([]uint32, 0)
+
 	for index := range nbrmdata.nbrList {
+		nbrKey := nbrmdata.nbrList[index]
+		nbrConf := server.NeighborConfigMap[nbrKey]
 		flag := false
 		for i := 0; i < len(attachedRtr); i++ {
-			if nbrmdata.nbrList[index] == attachedRtr[i] {
+
+			if nbrConf.OspfNbrRtrId == attachedRtr[i] {
 				flag = true
 			}
 		}
 		if flag == false {
-			attachedRtr = append(attachedRtr, nbrmdata.nbrList[index])
+			attachedRtr = append(attachedRtr, nbrConf.OspfNbrRtrId)
 		}
 	}
 	selfRtrId := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
@@ -538,6 +543,70 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 	return
 }
 
+func (server *OSPFServer) generateASExternalLsa(route RouteMdata) LsaKey {
+	server.logger.Info(fmt.Sprintln("LSDB: Generating AS External LSA routemdata ", route))
+
+	LSType := ASExternalLSA
+	LSId := route.ipaddr & route.mask
+	AdvRouter := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
+
+	lsaKey := LsaKey{
+		LSType:    LSType,
+		LSId:      LSId,
+		AdvRouter: AdvRouter,
+	}
+
+	BitE := true
+	for lsdbKey, _ := range server.AreaLsdb {
+		lsDbEnt, _ := server.AreaLsdb[lsdbKey]
+		ent, exist := lsDbEnt.ASExternalLsaMap[lsaKey]
+		LSAge := 0
+		ent.LsaMd.LSChecksum = 0
+		ent.LsaMd.Options = 0x20
+		ent.LsaMd.LSLen = uint16(OSPF_LSA_HEADER_SIZE + 16)
+		if !exist {
+			ent.LsaMd.LSSequenceNum = InitialSequenceNumber
+		} else {
+			if route.isDel {
+				ent.LsaMd.LSAge = LSA_MAX_AGE
+			} else {
+				ent.LsaMd.LSSequenceNum = ent.LsaMd.LSSequenceNum + 1
+			}
+		}
+		ent.BitE = BitE
+		ent.FwdAddr = convertAreaOrRouterIdUint32("0.0.0.0")
+		ent.Metric = route.metric // TODO - need to be revisited
+		ent.Netmask = route.mask
+		ent.ExtRouteTag = 0
+
+		LsaEnc := encodeASExternalLsa(ent, lsaKey)
+		checksumOffset := uint16(14)
+		ent.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc[2:], checksumOffset)
+		ent.LsaMd.LSAge = uint16(LSAge)
+		lsDbEnt.ASExternalLsaMap[lsaKey] = ent
+		server.AreaLsdb[lsdbKey] = lsDbEnt
+
+		selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+		if !route.isDel {
+			selfOrigLsaEnt[lsaKey] = true
+			server.AreaSelfOrigLsa[lsdbKey] = selfOrigLsaEnt
+		} else {
+			selfOrigLsaEnt[lsaKey] = false
+		}
+		server.logger.Info(fmt.Sprintln("ASBR: Added LSA to area ", lsdbKey, " lsaKey ", lsaKey))
+		if !exist {
+			var val LsdbSliceEnt
+			val.AreaId = lsdbKey.AreaId
+			val.LSType = lsaKey.LSType
+			val.LSId = lsaKey.LSId
+			val.AdvRtr = lsaKey.AdvRouter
+			server.LsdbSlice = append(server.LsdbSlice, val)
+		}
+	}
+
+	return lsaKey
+}
+
 func (server *OSPFServer) processDeleteRouterLsa(data []byte, areaId uint32) bool {
 	lsakey := NewLsaKey()
 	routerLsa := NewRouterLsa()
@@ -561,8 +630,9 @@ func (server *OSPFServer) processRecvdRouterLsa(data []byte, areaId uint32) bool
 	selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
 	_, exist := selfOrigLsaEnt[*lsakey]
 	if exist {
-		server.logger.Info("Recvd a self generated Router LSA")
-		return false
+		server.logger.Info("Recvd a self generated Router LSA increment sequence number and flood. ")
+		//increment sequence number and flood .
+		//	return false
 	}
 	//Check Checksum
 	csum := computeFletcherChecksum(data[2:], FLETCHER_CHECKSUM_VALIDATE)
@@ -572,13 +642,16 @@ func (server *OSPFServer) processRecvdRouterLsa(data []byte, areaId uint32) bool
 	}
 	//Todo: If there is already existing entry Verify the seq num
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
-	ent, exist := lsDbEnt.RouterLsaMap[*lsakey]
-	if exist {
-		if ent.LsaMd.LSSequenceNum >= routerLsa.LsaMd.LSSequenceNum {
-			server.logger.Err("Old instance of Router LSA Recvd")
-			return false
+	/*
+		ent, exist := lsDbEnt.RouterLsaMap[*lsakey]
+		if exist {
+			if ent.LsaMd.LSSequenceNum >= routerLsa.LsaMd.LSSequenceNum {
+				server.logger.Err("Old instance of Router LSA Recvd")
+				return false
+			}
+			routerLsa.LsaMd.LSSequenceNum += 1
 		}
-	}
+	*/
 	//Handle LsaAge
 	//Add entry in LSADatabase
 	lsDbEnt.RouterLsaMap[*lsakey] = *routerLsa
@@ -916,18 +989,10 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 			if server.ospfGlobalConf.AreaBdrRtrStatus == true {
 				server.installSummaryLsa()
 			}
-		/*
-			case msg := <-server.FlushNetworkLsACh:
-				server.logger.Info(fmt.Sprintf("Flush Network LSA msg", msg))
-				// Flush the old Network LSA
-				server.flushNetworkLSA(msg.areaId, msg.intfKey)
-				server.generateRouterLSA(msg.areaId)
-				//server.logger.Info(fmt.Sprintln("LS Database", server.AreaLsdb))
-				//Flood Lsas
-				server.StartCalcSPFCh <- true
-				spfStatus := <-server.DoneCalcSPFCh
-				server.logger.Info(fmt.Sprintln("SPF Calculation Return Status", spfStatus))
-		*/
+
+		case msg := <-server.ExternalRouteNotif:
+			server.processExtRouteUpd(msg)
+
 		case msg := <-server.maxAgeLsaCh:
 			server.processMaxAgeLsaMsg(msg)
 
@@ -939,6 +1004,19 @@ func (server *OSPFServer) processLSDatabaseUpdates() {
 	}
 }
 
+/*@fn processExtRouteUpd
+Generate / delete As external LSA.
+Send flood message if new route is added.
+*/
+func (server *OSPFServer) processExtRouteUpd(msg RouteMdata) {
+	ifkey := IntfConfKey{}
+	nbr := NeighborConfKey{}
+	lsaKey := server.generateASExternalLsa(msg)
+	if !msg.isDel {
+		server.sendLsdbToNeighborEvent(ifkey, nbr, 0, 0, 0, lsaKey, LSAEXTFLOOD)
+	}
+}
+
 /* @fn processNeighborFullEvent
 Generate network LSA if the router is DR.
 Send message for LSAFLOOD which will flood
@@ -946,6 +1024,7 @@ router (and network) LSA
 */
 func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
 	lsaKey := LsaKey{}
+	nbr := NeighborConfKey{}
 
 	rtr_id := binary.BigEndian.Uint32(server.ospfGlobalConf.RouterId)
 	intConf := server.IntfConfMap[msg.intf]
@@ -956,7 +1035,7 @@ func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
 		server.generateNetworkLSA(msg.areaId, msg.intf, true)
 	}
 	server.generateRouterLSA(msg.areaId)
-	server.sendLsdbToNeighborEvent(msg.intf, 0, msg.areaId, 0, 0, lsaKey, LSAFLOOD)
+	server.sendLsdbToNeighborEvent(msg.intf, nbr, msg.areaId, 0, 0, lsaKey, LSAFLOOD)
 }
 
 /* @fn processDrBdrChangeMsg
@@ -969,6 +1048,7 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 	/* check if any nbr attached to the intf if not dont generate network LSA
 	 */
 	lsaKey := LsaKey{}
+	nbr := NeighborConfKey{}
 	intf, _ := server.IntfConfMap[msg.intfKey]
 	server.logger.Info(fmt.Sprintln("LSDB: received DR BDR change message ",
 		intf.IfIpAddr, "dr ip ", intf.IfDRIp, " bdr ip ", intf.IfBDRIp))
@@ -985,30 +1065,7 @@ func (server *OSPFServer) processDrBdrChangeMsg(msg DrChangeMsg) {
 		}
 	}
 	server.generateRouterLSA(msg.areaId)
-	server.sendLsdbToNeighborEvent(msg.intfKey, 0, msg.areaId, 0, 0, lsaKey, LSAFLOOD)
-
-	/*
-		if msg.oldstate != msg.newstate {
-			if msg.newstate == config.DesignatedRouter {
-				server.logger.Info(fmt.Sprintln("Generate network and/or router LSA ", intf.IfIpAddr))
-				//server.generateRouterLSA(msg.areaId)
-				server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
-			} else if msg.oldstate == config.DesignatedRouter {
-				server.logger.Info(fmt.Sprintln("Flush network LSA . Generate router LSA ", intf.IfIpAddr))
-				server.flushNetworkLSA(msg.areaId, msg.intfKey)
-
-				flood_pkt := ospfFloodMsg{
-					lsOp: LSAAGE,
-				}
-				server.ospfNbrLsaUpdSendCh <- flood_pkt
-			}
-		} else {
-			if msg.newstate == config.DesignatedRouter {
-				server.logger.Info(fmt.Sprintln("Generate network LSA ", intf.IfIpAddr))
-				server.generateNetworkLSA(msg.areaId, msg.intfKey, true)
-			}
-			server.logger.Info(fmt.Sprintln("Generate router LSA ", intf.IfIpAddr))
-		} */
+	server.sendLsdbToNeighborEvent(msg.intfKey, nbr, msg.areaId, 0, 0, lsaKey, LSAFLOOD)
 
 }
 
@@ -1020,7 +1077,6 @@ flood LSA
 func (server *OSPFServer) processLSDatabaseTicker() {
 	/* scan through LSDB. Flood expired LSAs and
 	   delete from LSDB */
-	//server.logger.Info("LSDabase ticker called ")
 	for lsdbKey, lsDbEnt := range server.AreaLsdb {
 		server.processMaxAgeLSA(lsdbKey, lsDbEnt)
 

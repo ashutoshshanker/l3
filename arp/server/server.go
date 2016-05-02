@@ -1,10 +1,11 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/garyburd/redigo/redis"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
 	"os"
@@ -17,7 +18,6 @@ import (
 	//"github.com/google/gopacket/pcap"
 	"asicdServices"
 	//"utils/commonDefs"
-	"database/sql"
 )
 
 type ClientJson struct {
@@ -68,7 +68,7 @@ type ARPServer struct {
 	asicdSubSocket          *nanomsg.SubSocket
 	asicdSubSocketCh        chan []byte
 	asicdSubSocketErrCh     chan error
-	dbHdl                   *sql.DB
+	dbHdl                   redis.Conn
 	snapshotLen             int32
 	pcapTimeout             time.Duration
 	promiscuous             bool
@@ -94,7 +94,7 @@ type ARPServer struct {
 	arpEntryUpdateCh        chan UpdateArpEntryMsg
 	arpEntryDeleteCh        chan DeleteArpEntryMsg
 	//arpEntryCreateCh        chan CreateArpEntryMsg
-	arpEntryMacMoveCh      chan asicdConstDefs.IPv4NbrMacMoveNotifyMsg
+	arpEntryMacMoveCh      chan asicdCommonDefs.IPv4NbrMacMoveNotifyMsg
 	arpEntryCntUpdateCh    chan int
 	arpSliceRefreshStartCh chan bool
 	arpSliceRefreshDoneCh  chan bool
@@ -102,7 +102,7 @@ type ARPServer struct {
 	ResolveIPv4Ch          chan ResolveIPv4
 	ArpConfCh              chan ArpConf
 	dumpArpTable           bool
-	InitDone	       chan bool
+	InitDone               chan bool
 }
 
 func NewARPServer(logger *logging.Writer) *ARPServer {
@@ -130,7 +130,7 @@ func NewARPServer(logger *logging.Writer) *ARPServer {
 }
 
 func (server *ARPServer) initArpParams() {
-	server.logger.Info("Calling initParams...")
+	server.logger.Debug("Calling initParams...")
 	server.snapshotLen = 65549
 	server.promiscuous = false
 	server.minCnt = 1
@@ -148,33 +148,32 @@ func (server *ARPServer) initArpParams() {
 	server.probeMax = 20
 	server.probeMax = 10
 	server.arpSliceRefreshDuration = time.Duration(10) * time.Minute
-	server.usrConfDbName = "UsrConfDb.db"
 	server.dumpArpTable = false
 }
 
-func (server *ARPServer) connectToClients(paramsFile string) {
-	server.logger.Info(fmt.Sprintln("Inside connectToClients...paramsFile", paramsFile))
+func (server *ARPServer) connectToServers(paramsFile string) {
+	server.logger.Debug(fmt.Sprintln("Inside connectToServers...paramsFile", paramsFile))
 	var clientsList []ClientJson
 
 	bytes, err := ioutil.ReadFile(paramsFile)
 	if err != nil {
-		server.logger.Info("Error in reading configuration file")
+		server.logger.Err("Error in reading configuration file")
 		return
 	}
 
 	err = json.Unmarshal(bytes, &clientsList)
 	if err != nil {
-		server.logger.Info("Error in Unmarshalling Json")
+		server.logger.Err("Error in Unmarshalling Json")
 		return
 	}
 
 	for _, client := range clientsList {
 		if client.Name == "asicd" {
-			server.logger.Info(fmt.Sprintln("found asicd at port", client.Port))
+			server.logger.Debug(fmt.Sprintln("found asicd at port", client.Port))
 			server.asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
 			server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory, err = ipcutils.CreateIPCHandles(server.asicdClient.Address)
 			if err != nil {
-				server.logger.Info(fmt.Sprintln("Failed to connect to Asicd, retrying until connection is successful"))
+				server.logger.Err(fmt.Sprintln("Failed to connect to Asicd, retrying until connection is successful"))
 				count := 0
 				ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
 				for _ = range ticker.C {
@@ -185,7 +184,7 @@ func (server *ARPServer) connectToClients(paramsFile string) {
 					}
 					count++
 					if (count % 10) == 0 {
-						server.logger.Info("Still can't connect to Asicd, retrying..")
+						server.logger.Err("Still can't connect to Asicd, retrying..")
 					}
 				}
 
@@ -197,19 +196,19 @@ func (server *ARPServer) connectToClients(paramsFile string) {
 }
 
 func (server *ARPServer) sigHandler(sigChan <-chan os.Signal) {
-	server.logger.Info("Inside sigHandler....")
+	server.logger.Debug("Inside sigHandler....")
 	signal := <-sigChan
 	switch signal {
 	case syscall.SIGHUP:
-		server.logger.Info("Received SIGHUP signal")
+		server.logger.Debug("Received SIGHUP signal")
 		server.printArpEntries()
-		server.logger.Info("Closing DB handler")
+		server.logger.Debug("Closing DB handler")
 		if server.dbHdl != nil {
 			server.dbHdl.Close()
 		}
 		os.Exit(0)
 	default:
-		server.logger.Info(fmt.Sprintln("Unhandled signal : ", signal))
+		server.logger.Err(fmt.Sprintln("Unhandled signal : ", signal))
 	}
 }
 
@@ -222,25 +221,24 @@ func (server *ARPServer) InitServer(paramDir string) {
 	}
 	fileName = fileName + "clients.json"
 
-	server.logger.Info("Starting Arp Server")
-	server.connectToClients(fileName)
-	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
+	server.logger.Debug("Starting Arp Server")
+	server.connectToServers(fileName)
+	server.logger.Debug("Listen for ASICd updates")
+	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
 	server.buildArpInfra()
 
-	if paramDir[len(paramDir)-1] != '/' {
-		paramDir = paramDir + "/"
-	}
-	dbName := paramDir + server.usrConfDbName
-
-	err := server.initiateDB(dbName)
+	err := server.initiateDB()
 	if err != nil {
-		server.logger.Info(fmt.Sprintln("DB Initialization failure...", err))
+		server.logger.Err(fmt.Sprintln("DB Initialization failure...", err))
 	} else {
-		server.logger.Info("ArpCache DB has been initiated successfully...")
+		server.logger.Debug("ArpCache DB has been initiated successfully...")
 		server.updateArpCacheFromDB()
 		server.refreshArpDB()
+	}
+
+	if server.dbHdl != nil {
+		server.getArpGlobalConfig()
 	}
 
 	sigChan := make(chan os.Signal, 1)
@@ -254,7 +252,7 @@ func (server *ARPServer) InitServer(paramDir string) {
 }
 
 func (server *ARPServer) StartServer(paramDir string) {
-	server.logger.Info(fmt.Sprintln("Inside Start Server...", paramDir))
+	server.logger.Debug(fmt.Sprintln("Inside Start Server...", paramDir))
 	server.InitServer(paramDir)
 	server.InitDone <- true
 	for {

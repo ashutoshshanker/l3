@@ -29,12 +29,11 @@ func (m RIBDServicesHandler) CreatePolicyStmt(cfg *ribd.PolicyStmt) (val bool, e
 func (m RIBDServicesHandler) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmt) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyStatementCreate:CreatePolicyStatement"))
 	newPolicyStmt := policy.PolicyStmtConfig{Name: cfg.Name, MatchConditions: cfg.MatchConditions}
+	newPolicyStmt.Actions = make([]string, 0)
+	newPolicyStmt.Actions = append(newPolicyStmt.Actions,cfg.Action)
 	newPolicyStmt.Conditions = make([]string, 0)
 	for i := 0; i < len(cfg.Conditions); i++ {
 		newPolicyStmt.Conditions = append(newPolicyStmt.Conditions, cfg.Conditions[i])
-	}
-	for i := 0; i < len(cfg.Actions); i++ {
-		newPolicyStmt.Actions = append(newPolicyStmt.Actions, cfg.Actions[i])
 	}
 	err = PolicyEngineDB.CreatePolicyStatement(newPolicyStmt)
 	return err
@@ -97,7 +96,7 @@ func (m RIBDServicesHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount r
 			nextNode = &tempNode[validCount]
 			nextNode.Name = prefixNode.Name
 			nextNode.Conditions = prefixNode.Conditions
-			nextNode.Actions = prefixNode.Actions
+			nextNode.Action = prefixNode.Actions[0]
 			if prefixNode.PolicyList != nil {
 				nextNode.PolicyList = make([]string, 0)
 			}
@@ -128,11 +127,11 @@ func (m RIBDServicesHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinition) 
 }
 func (m RIBDServicesHandler) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefinition) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyDefinitionCreate:CreatePolicyDefinition"))
-	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Precedence), MatchType: cfg.MatchType}
+	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Priority), MatchType: cfg.MatchType}
 	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence, 0)
 	var policyDefinitionStatement policy.PolicyDefinitionStmtPrecedence
 	for i := 0; i < len(cfg.StatementList); i++ {
-		policyDefinitionStatement.Precedence = int(cfg.StatementList[i].Precedence)
+		policyDefinitionStatement.Precedence = int(cfg.StatementList[i].Priority)
 		policyDefinitionStatement.Statement = cfg.StatementList[i].Statement
 		newPolicy.PolicyDefinitionStatements = append(newPolicy.PolicyDefinitionStatements, policyDefinitionStatement)
 	}
@@ -198,7 +197,6 @@ func (m RIBDServicesHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rc
 			nextNode = &tempNode[validCount]
 			nextNode.Name = prefixNode.Name
 			extensions := prefixNode.Extensions.(PolicyExtensions)
-			nextNode.HitCounter = int32(extensions.hitCounter)
 			nextNode.IpPrefixList = make([]string, 0)
 			for k := 0; k < len(extensions.routeList); k++ {
 				nextNode.IpPrefixList = append(nextNode.IpPrefixList, extensions.routeList[k])

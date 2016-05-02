@@ -21,20 +21,19 @@ func main() {
 	}
 
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(path, "vxland", "VXLAN")
+	logger, err := logging.NewLogger("vxland", "VXLAN", true)
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
-	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
-
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("vxland", path)
 
 	// create a new vxlan server
 	server := vxlan.NewVXLANServer(logger, path)
 	handler := rpc.NewVXLANDServiceHandler(server, logger)
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("vxland", path)
+
 	// blocking call
 	handler.StartThriftServer()
 }

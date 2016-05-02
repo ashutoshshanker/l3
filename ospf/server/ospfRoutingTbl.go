@@ -196,10 +196,13 @@ func (server *OSPFServer) UpdateRoutingTblForRouter(areaIdKey AreaIdKey, vKey Ve
 	rEnt.Type2Cost = 0 //TODO
 	rEnt.LSOrigin = gEnt.LsaKey
 	rEnt.NumOfPaths = tVertex.NumOfPaths
-	if rEnt.NumOfPaths == 0 {
-		server.logger.Info("==============Hello2===========")
-	}
 	rEnt.NextHops = make(map[NextHop]bool, tVertex.NumOfPaths)
+	if rootVKey == vKey {
+		//rEnt.AdvRtr = vKey.AdvRtr
+		tempAreaRoutingTbl.RoutingTblMap[rKey] = rEnt
+		server.TempAreaRoutingTbl[areaIdKey] = tempAreaRoutingTbl
+		return
+	}
 	for i := 0; i < tVertex.NumOfPaths; i++ {
 		pathlen := len(tVertex.Paths[i])
 		if tVertex.Paths[i][0] != rootVKey {
@@ -243,6 +246,90 @@ func (server *OSPFServer) UpdateRoutingTblForRouter(areaIdKey AreaIdKey, vKey Ve
 	server.TempAreaRoutingTbl[areaIdKey] = tempAreaRoutingTbl
 }
 
+func (server *OSPFServer) UpdateRoutingTblWithStub(areaId uint32, vKey VertexKey, tVertex TreeVertex, parent TreeVertex, parentKey VertexKey, rootVKey VertexKey) {
+	areaIdKey := AreaIdKey{
+		AreaId: areaId,
+	}
+
+	server.logger.Info(fmt.Sprintln("Fetching Routing Table for Router Vertex", parentKey))
+
+	if parentKey == rootVKey {
+		server.logger.Info("Parent Key is same as root Key")
+	}
+	pEnt, exist := server.AreaGraph[parentKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("Entry doesn't exist in Area Graph for:", parentKey))
+		return
+	}
+	lsDbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	lsDbEnt, exist := server.AreaLsdb[lsDbKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("No LS Database found for areaId:", areaId))
+		return
+	}
+	lsaEnt, exist := lsDbEnt.RouterLsaMap[pEnt.LsaKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("No LS Database Entry found for lsaKey:", pEnt.LsaKey))
+		return
+	}
+	var destType DestType
+	if lsaEnt.BitB == true &&
+		lsaEnt.BitE == true {
+		destType = ASAreaBdrRouter
+	} else if lsaEnt.BitB == true {
+		destType = AreaBdrRouter
+	} else if lsaEnt.BitE == true {
+		destType = ASBdrRouter
+	} else {
+		destType = InternalRouter
+	}
+	pKey := RoutingTblEntryKey{
+		DestType: destType,
+		AddrMask: 0, //TODO
+		DestId:   parentKey.ID,
+	}
+
+	tempAreaRoutingTbl := server.TempAreaRoutingTbl[areaIdKey]
+	pREnt, exist := tempAreaRoutingTbl.RoutingTblMap[pKey]
+	if !exist {
+		server.logger.Info(fmt.Sprintln("Routing Tbl doesnot exist for:", pKey))
+		return
+	}
+
+	sEnt, exist := server.AreaStubs[vKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("Entry doesn't exist in Area Stubs for:", vKey))
+		return
+	}
+
+	rKey := RoutingTblEntryKey{
+		DestType: Network,
+		AddrMask: sEnt.LinkData,
+		DestId:   vKey.ID,
+	}
+	rEnt, exist := tempAreaRoutingTbl.RoutingTblMap[rKey]
+	if exist {
+		server.logger.Info(fmt.Sprintln("Routing Tbl entry for Stub already exist for:", rKey))
+		return
+	}
+	rEnt.OptCapabilities = pREnt.OptCapabilities //TODO
+	rEnt.PathType = IntraArea                    //TODO
+	rEnt.Cost = tVertex.Distance
+	rEnt.Type2Cost = 0 //TODO
+	rEnt.LSOrigin = sEnt.LsaKey
+	rEnt.NumOfPaths = tVertex.NumOfPaths
+	rEnt.NextHops = make(map[NextHop]bool, tVertex.NumOfPaths)
+	for key, _ := range pREnt.NextHops {
+		rEnt.NextHops[key] = true
+	}
+	//rEnt.AdvRtr = vKey.AdvRtr
+	tempAreaRoutingTbl.RoutingTblMap[rKey] = rEnt
+	server.TempAreaRoutingTbl[areaIdKey] = tempAreaRoutingTbl
+}
+
+/*
 func (server *OSPFServer) UpdateRoutingTblForSNetwork(areaIdKey AreaIdKey, vKey VertexKey, tVertex TreeVertex, rootVKey VertexKey) {
 	server.logger.Info(fmt.Sprintln("Updating Routing Table for Stub Network Vertex", vKey, tVertex))
 
@@ -311,6 +398,7 @@ func (server *OSPFServer) UpdateRoutingTblForSNetwork(areaIdKey AreaIdKey, vKey 
 	tempAreaRoutingTbl.RoutingTblMap[rKey] = rEnt
 	server.TempAreaRoutingTbl[areaIdKey] = tempAreaRoutingTbl
 }
+*/
 
 func (server *OSPFServer) UpdateRoutingTblForTNetwork(areaIdKey AreaIdKey, vKey VertexKey, tVertex TreeVertex, rootVKey VertexKey) {
 	server.logger.Info(fmt.Sprintln("Updating Routing Table for Transit Network Vertex", vKey, tVertex))
@@ -350,9 +438,6 @@ func (server *OSPFServer) UpdateRoutingTblForTNetwork(areaIdKey AreaIdKey, vKey 
 	rEnt.Type2Cost = 0 //TODO
 	rEnt.LSOrigin = gEnt.LsaKey
 	rEnt.NumOfPaths = tVertex.NumOfPaths
-	if rEnt.NumOfPaths == 0 {
-		server.logger.Info("==============Hello3===========")
-	}
 	rEnt.NextHops = make(map[NextHop]bool, tVertex.NumOfPaths)
 	for i := 0; i < tVertex.NumOfPaths; i++ {
 		pathlen := len(tVertex.Paths[i])
@@ -444,7 +529,7 @@ func (server *OSPFServer) DeleteRoute(rKey RoutingTblEntryKey) {
 		ret, err := server.ribdClient.ClientHdl.DeleteIPv4Route(&cfg)
 		//destNetIp, networkMask, routeType, nextHopIp)
 		if err != nil {
-			server.logger.Err(fmt.Sprintln("Error Installing Route:", err))
+			server.logger.Err(fmt.Sprintln("Error Deleting Route:", err))
 		}
 		server.logger.Info(fmt.Sprintln("Return Value for RIB DeleteV4Route call: ", ret))
 	}
@@ -452,6 +537,10 @@ func (server *OSPFServer) DeleteRoute(rKey RoutingTblEntryKey) {
 
 func (server *OSPFServer) UpdateRoute(rKey RoutingTblEntryKey) {
 	server.logger.Info(fmt.Sprintln("Updating route for rKey:", rKey))
+	// Delete Old Route
+	server.DeleteRoute(rKey)
+	// Install New Route
+	server.InstallRoute(rKey)
 }
 
 func (server *OSPFServer) InstallRoute(rKey RoutingTblEntryKey) {

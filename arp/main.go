@@ -19,16 +19,11 @@ func main() {
 	}
 
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(fileName, "arpd", "ARP")
+	logger, err := logging.NewLogger("arpd", "ARP", true)
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
-	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
-
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("arpd", fileName)
 
 	logger.Info(fmt.Sprintln("Starting ARP server..."))
 	arpServer := server.NewARPServer(logger)
@@ -36,6 +31,9 @@ func main() {
 	go arpServer.StartServer(*paramsDir)
 
 	<-arpServer.InitDone
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("arpd", fileName)
 
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewARPHandler(arpServer, logger)

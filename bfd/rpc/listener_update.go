@@ -12,16 +12,6 @@ func (h *BFDHandler) UpdateBfdGlobal(origConf *bfdd.BfdGlobal, newConf *bfdd.Bfd
 	return true, nil
 }
 
-func (h *BFDHandler) UpdateBfdInterface(origConf *bfdd.BfdInterface, newConf *bfdd.BfdInterface, attrset []bool) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Original interface config attrs:", origConf))
-	if newConf == nil {
-		err := errors.New("Invalid Interface Configuration")
-		return false, err
-	}
-	h.logger.Info(fmt.Sprintln("Updated interface config attrs:", newConf))
-	return h.SendBfdIntfConfig(newConf), nil
-}
-
 func (h *BFDHandler) UpdateBfdSession(origConf *bfdd.BfdSession, newConf *bfdd.BfdSession, attrset []bool) (bool, error) {
 	if newConf == nil {
 		err := errors.New("Invalid Session Configuration")
@@ -29,4 +19,13 @@ func (h *BFDHandler) UpdateBfdSession(origConf *bfdd.BfdSession, newConf *bfdd.B
 	}
 	h.logger.Info(fmt.Sprintln("Update session config attrs:", newConf))
 	return true, nil
+}
+
+func (h *BFDHandler) UpdateBfdSessionParam(origConf *bfdd.BfdSessionParam, newConf *bfdd.BfdSessionParam, attrset []bool) (bool, error) {
+	if newConf == nil {
+		err := errors.New("Invalid Session Param Configuration")
+		return false, err
+	}
+	h.logger.Info(fmt.Sprintln("Update session Param config attrs:", newConf))
+	return h.SendBfdSessionParamConfig(newConf), nil
 }
