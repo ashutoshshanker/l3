@@ -4,8 +4,7 @@
 Brief Introduction about the module
 
 ### Architecture
-Pictorial Representation of module architecture. Flow diagram
-
+![alt text](https://github.com/SnapRoute/l3/blob/master/arp/docs/ARP.png "Architecture")
 ### Interfaces
 Exposed Interfaces
 

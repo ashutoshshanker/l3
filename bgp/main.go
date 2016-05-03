@@ -58,7 +58,7 @@ func main() {
 		ovsdbManager := &ovsMgr.BGPOvsdbHandler{}
 		quit := make(chan bool)
 		rMgr := ovsMgr.NewOvsRouteMgr(ovsLogger, ovsdbManager)
-		pMgr := ovsMgr.NewOvsPolicyMgr()
+		pMgr := ovsMgr.NewOvsPolicyMgr(ovsdbManager)
 		iMgr := ovsMgr.NewOvsIntfMgr()
 		bMgr := ovsMgr.NewOvsBfdMgr()
 

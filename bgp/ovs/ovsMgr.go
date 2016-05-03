@@ -1,6 +1,7 @@
 package ovsMgr
 
 import (
+	"sync"
 	"utils/logging"
 )
 
@@ -11,14 +12,17 @@ type OvsIntfMgr struct {
 type OvsRouteMgr struct {
 	plugin string
 	logger *logging.LogFile
-	dbHdl  *BGPOvsdbHandler
+	dbmgr  *BGPOvsdbHandler
 }
 
 type OvsPolicyMgr struct {
-	plugin    string
-	ospf      bool
-	static    bool
-	connected bool
+	plugin string
+	dbmgr  *BGPOvsdbHandler
+
+	ospf             chan bool
+	static           chan bool
+	connected        chan bool
+	redistributeLock sync.RWMutex
 }
 
 type OvsBfdMgr struct {
