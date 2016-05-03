@@ -13,7 +13,7 @@ This module implement Virtual Router Redundancy Protocol RFC 5798
                                      |         
                                      |
                                      V
-	                     +---------------+
+                             +---------------+
                   +--------->|               |<-------------+
                   |          |  Initialize   |              |
                   |   +------|               |----------+   |
