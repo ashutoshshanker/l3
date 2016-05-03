@@ -701,7 +701,8 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(entry RouteInfoRecord, routeLis
 /*	obj.NextHopIp = entry.nextHopIp.String()
 	nextHopIfTypeStr, _ := m.GetNextHopIfTypeStr(ribdInt.Int(entry.nextHopIfType))
 	obj.OutgoingIntfType = nextHopIfTypeStr
-	obj.OutgoingInterface = strconv.Itoa(int(entry.nextHopIfIndex))*/
+	obj.OutgoingInterface = strconv.Itoa(int(entry.nextHopIfIndex))
+	obj.Protocol = ReverseRouteProtoTypeMapDB[int(entry.protocol)]*/
 	obj.NextHopList = make([] *ribd.NextHopInfo,0)
 	routeInfoList := routeList.routeInfoProtocolMap[routeList.selectedRouteProtocol]
 	logger.Info(fmt.Sprintln("len of routeInfoList - ", len(routeInfoList), "selected route protocol = ", routeList.selectedRouteProtocol))
@@ -712,6 +713,7 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(entry RouteInfoRecord, routeLis
 	    nextHopIfTypeStr, _ := m.GetNextHopIfTypeStr(ribdInt.Int(entry.nextHopIfType))
 	    nextHopInfo[i].OutgoingIntfType = nextHopIfTypeStr
 	    nextHopInfo[i].OutgoingInterface = strconv.Itoa(int(routeInfoList[sel].nextHopIfIndex))
+        nextHopInfo[i].Protocol = ReverseRouteProtoTypeMapDB[int(routeInfoList[sel].protocol)]
 		obj.NextHopList = append(obj.NextHopList,&nextHopInfo[i])
 		i++
 	}
