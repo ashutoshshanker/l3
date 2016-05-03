@@ -14,7 +14,7 @@ For instance, the policy engine filter may result in redistributing certain (rou
 4. Responsible for calling ASICd thrift APIs to program the routes in the FIB.
 
 ### Architecture
-![alt text](https://github.com/SnapRoute/l3/blob/master/rib/docs/RIB_Daemon Architecture.png "Architecture")
+![alt text](https://github.com/SnapRoute/l3/blob/master/rib/docs/RIB_Daemon_Architecture.png "Architecture")
 
 ### Interfaces
 Exposed Interfaces
