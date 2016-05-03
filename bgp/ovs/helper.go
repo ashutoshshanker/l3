@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	ovsdb "github.com/socketplane/libovsdb"
+	"l3/bgp/utils"
 	"net"
 	"strings"
 )
@@ -323,8 +324,10 @@ func (ovsHdl *BGPOvsdbHandler) findAndRemovePolicy(new, old map[interface{}]inte
 
 func (ovsHdl *BGPOvsdbHandler) handleRedistribute(old, new *map[interface{}]interface{}) {
 	if old == nil && new != nil { // first time rule add
+		utils.Logger.Info("New Redistribute policy getting configured")
 		ovsHdl.updatePolicy(*new, true /*meaning add or update*/)
 	} else if old != nil && new == nil {
+		utils.Logger.Info("Removing existing policy/policies")
 		ovsHdl.updatePolicy(*old, false /*meaning remove all policies*/)
 	} else {
 		// old is also present and new too
@@ -361,7 +364,6 @@ func (ovsHdl *BGPOvsdbHandler) handleRedistribute(old, new *map[interface{}]inte
 }
 
 func (ovsHdl *BGPOvsdbHandler) checkBgpRouterCfgUpd(uuid UUID, table ovsdb.TableUpdate) {
-	ovsHdl.logger.Info("Check for updates")
 	for key, value := range table.Rows {
 		//ovsHdl.logger.Info(fmt.Sprintln("new value:", value.New))
 		//ovsHdl.logger.Info(fmt.Sprintln("old value:", value.Old))

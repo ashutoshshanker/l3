@@ -14,7 +14,7 @@ import (
 func NewOvsRouteMgr(logger *logging.LogFile, db *BGPOvsdbHandler) *OvsRouteMgr {
 	mgr := &OvsRouteMgr{
 		plugin: "ovsdb",
-		dbHdl:  db,
+		dbmgr:  db,
 		logger: logger,
 	}
 
@@ -37,7 +37,7 @@ func (mgr *OvsRouteMgr) Start() {
  */
 func (mgr *OvsRouteMgr) insertRoute(cfg *config.RouteConfig) {
 
-	vrfs, ok := mgr.dbHdl.cache["VRF"]
+	vrfs, ok := mgr.dbmgr.cache["VRF"]
 	if !ok {
 		mgr.logger.Err("No vrf entry")
 		return
@@ -82,7 +82,7 @@ func (mgr *OvsRouteMgr) insertRoute(cfg *config.RouteConfig) {
 	}
 	operations := []libovsdb.Operation{nextHopOp, routeOp}
 
-	mgr.dbHdl.Transact(operations)
+	mgr.dbmgr.Transact(operations)
 }
 
 func (mgr *OvsRouteMgr) CreateRoute(cfg *config.RouteConfig) {
@@ -96,7 +96,7 @@ func (mgr *OvsRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
 
 func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error) {
 	// @TODO: jgheewala this is hack just for the demo fix this properly
-	routeEntries, exists := mgr.dbHdl.cache["Route"]
+	routeEntries, exists := mgr.dbmgr.cache["Route"]
 	if !exists {
 		return nil, errors.New("No entries in Route table")
 	}
