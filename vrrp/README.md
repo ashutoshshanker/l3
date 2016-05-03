@@ -1,13 +1,35 @@
 # Virtual Router Redundancy Protocol
 
 ### Introduction
-Brief Introduction about the module
+This module implement Virtual Router Redundancy Protocol RFC 5798
 
 ### Architecture
-Pictorial Representation of module architecture. Flow diagram
+
+                             +---------------+
+                             |               |
+                             |  User Config  |
+                             |               |
+                             +---------------+
+                                     |         
+                                     |
+                                     V
+                             +---------------+
+                  +--------->|               |<-------------+
+                  |          |  Initialize   |              |
+                  |   +------|               |----------+   |
+                  |   |      +---------------+          |   |
+                  |   |                                 |   |
+                  |   V                                 V   |
+          +---------------+                       +---------------+
+          |               |---------------------->|               |
+          |    Master     |                       |    Backup     |
+          |               |<----------------------|               |
+          +---------------+                       +---------------+
 
 ### Interfaces
-Exposed Interfaces
+ - Create/Delete Virtual Router
+ - Change timers for VRRP packet, for e.g: Advertisement Timer
 
 ### Configuration
-Location of configuration and expected entries in configuration file
+ - VRRP configuration is based of https://tools.ietf.org/html/rfc5798#section-5.2
+ - Unless specified each instance of Virtual Router will use the default values specified in the RFC

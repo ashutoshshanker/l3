@@ -94,7 +94,8 @@ type BfdSession struct {
 	paramConfigChanged          bool
 	stateChanged                bool
 	isClientActive              bool
-	SwitchingToConfiguredTimers bool
+	remoteParamChanged          bool
+	switchingToConfiguredTimers bool
 	server                      *BFDServer
 }
 
@@ -198,10 +199,10 @@ func (server *BFDServer) SigHandler(dbHdl redis.Conn) {
 			switch signal {
 			case syscall.SIGHUP:
 				server.SendAdminDownToAllNeighbors()
-				time.Sleep(250 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 				server.logger.Info("Sent admin_down to all neighbors")
 				server.SendDeleteToAllSessions()
-				time.Sleep(250 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 				server.logger.Info("Stopped all sessions")
 				dbHdl.Close()
 				server.logger.Info("Exting!!!")
