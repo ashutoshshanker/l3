@@ -67,34 +67,35 @@ type BfdSessionMgmt struct {
 }
 
 type BfdSession struct {
-	state               SessionState
-	rxInterval          int32
-	sessionTimer        *time.Timer
-	txInterval          int32
-	txTimer             *time.Timer
-	TxTimeoutCh         chan int32
-	txJitter            int32
-	SessionTimeoutCh    chan int32
-	bfdPacket           *BfdControlPacket
-	bfdPacketBuf        []byte
-	ReceivedPacketCh    chan *BfdControlPacket
-	SessionStopClientCh chan bool
-	pollSequence        bool
-	pollSequenceFinal   bool
-	authEnabled         bool
-	authType            AuthenticationType
-	authSeqNum          uint32
-	authKeyId           uint32
-	authData            string
-	txConn              net.Conn
-	sendPcapHandle      *pcap.Handle
-	recvPcapHandle      *pcap.Handle
-	useDedicatedMac     bool
-	intfConfigChanged   bool
-	paramConfigChanged  bool
-	stateChanged        bool
-	isClientActive      bool
-	server              *BFDServer
+	state                       SessionState
+	rxInterval                  int32
+	sessionTimer                *time.Timer
+	txInterval                  int32
+	txTimer                     *time.Timer
+	TxTimeoutCh                 chan int32
+	txJitter                    int32
+	SessionTimeoutCh            chan int32
+	bfdPacket                   *BfdControlPacket
+	bfdPacketBuf                []byte
+	ReceivedPacketCh            chan *BfdControlPacket
+	SessionStopClientCh         chan bool
+	pollSequence                bool
+	pollSequenceFinal           bool
+	authEnabled                 bool
+	authType                    AuthenticationType
+	authSeqNum                  uint32
+	authKeyId                   uint32
+	authData                    string
+	txConn                      net.Conn
+	sendPcapHandle              *pcap.Handle
+	recvPcapHandle              *pcap.Handle
+	useDedicatedMac             bool
+	intfConfigChanged           bool
+	paramConfigChanged          bool
+	stateChanged                bool
+	isClientActive              bool
+	SwitchingToConfiguredTimers bool
+	server                      *BFDServer
 }
 
 type BfdSessionParam struct {
@@ -196,7 +197,12 @@ func (server *BFDServer) SigHandler(dbHdl redis.Conn) {
 		case signal := <-sigChan:
 			switch signal {
 			case syscall.SIGHUP:
+				server.SendAdminDownToAllNeighbors()
+				time.Sleep(250 * time.Millisecond)
+				server.logger.Info("Sent admin_down to all neighbors")
 				server.SendDeleteToAllSessions()
+				time.Sleep(250 * time.Millisecond)
+				server.logger.Info("Stopped all sessions")
 				dbHdl.Close()
 				server.logger.Info("Exting!!!")
 				os.Exit(0)
@@ -301,7 +307,6 @@ func (server *BFDServer) PublishSessionNotifications() {
 	for {
 		select {
 		case event := <-server.notificationCh:
-			server.logger.Info(fmt.Sprintln("Received call to notify session state", event))
 			_, err := server.bfddPubSocket.Send(event, nanomsg.DontWait)
 			if err == syscall.EAGAIN {
 				server.logger.Err(fmt.Sprintln("Failed to publish event"))
