@@ -909,7 +909,7 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 		switch event {
 		case REMOTE_DOWN:
 			session.MoveToDownState()
-			session.state.RemoteDiscriminator = 0
+			//session.state.RemoteDiscriminator = 0
 		case TIMEOUT:
 			session.MoveToDownState()
 		case ADMIN_DOWN:
@@ -927,6 +927,7 @@ func (session *BfdSession) LocalAdminDown() error {
 	session.state.RemoteDiscriminator = 0
 	session.stateChanged = true
 	session.SendBfdNotification()
+	session.txTimer.Reset(0)
 	session.txInterval = STARTUP_TX_INTERVAL / 1000
 	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
 	session.sessionTimer.Stop()
@@ -1004,11 +1005,15 @@ func (session *BfdSession) SendPeriodicControlPackets() {
 		session.bfdPacketBuf, err = session.bfdPacket.CreateBfdControlPacket()
 		if err != nil {
 			session.server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", session.state.SessionId))
+			session.server.FailedSessionClientCh <- session.state.SessionId
+			return
 		}
 	}
 	_, err = session.txConn.Write(session.bfdPacketBuf)
 	if err != nil {
 		session.server.logger.Info(fmt.Sprintln("failed to send control packet for session ", session.state.SessionId))
+		session.server.FailedSessionClientCh <- session.state.SessionId
+		return
 	} else {
 		session.state.NumTxPackets++
 	}
@@ -1018,6 +1023,8 @@ func (session *BfdSession) SendPeriodicControlPackets() {
 		session.bfdPacketBuf, err = session.bfdPacket.CreateBfdControlPacket()
 		if err != nil {
 			session.server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", session.state.SessionId))
+			session.server.FailedSessionClientCh <- session.state.SessionId
+			return
 		}
 		packetUpdated = false
 	}
