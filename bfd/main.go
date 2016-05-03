@@ -26,9 +26,6 @@ func main() {
 	}
 	logger.Info("Started the logger successfully.")
 
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("bfdd", fileName)
-
 	dbHdl, err := redis.Dial("tcp", ":6379")
 	if err != nil {
 		logger.Err("Failed to dial out to Redis server")
@@ -46,6 +43,9 @@ func main() {
 
 	<-bfdServer.ServerStartedCh
 	logger.Info(fmt.Sprintln("BFD Server started"))
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("bfdd", fileName)
 
 	logger.Info(fmt.Sprintln("Starting Config listener..."))
 	confIface := rpc.NewBFDHandler(logger, bfdServer)

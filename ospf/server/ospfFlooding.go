@@ -89,6 +89,19 @@ func (server *OSPFServer) SendSelfOrigLSA(areaId uint32, intfKey IntfConfKey) []
 					total_len += pktLen
 
 				}
+			case Summary3LSA, Summary4LSA:
+				entry, _ := server.getSummaryLsaFromLsdb(areaId, key)
+				LsaEnc = encodeSummaryLsa(entry, key)
+				checksumOffset := uint16(14)
+				checkSum := computeFletcherChecksum(LsaEnc[2:], checksumOffset)
+				binary.BigEndian.PutUint16(LsaEnc[16:18], checkSum)
+				pktLen = len(LsaEnc)
+				binary.BigEndian.PutUint16(LsaEnc[18:20], uint16(pktLen))
+				lsaid := convertUint32ToIPv4(key.LSId)
+				server.logger.Info(fmt.Sprintln("Flood: summary  LSA = ", lsaid))
+				ospfLsaPkt.lsa = append(ospfLsaPkt.lsa, LsaEnc...)
+				ospfLsaPkt.no_lsas++
+				total_len += pktLen
 
 			} // end of case
 		}
@@ -345,7 +358,6 @@ func (server *OSPFServer) encodeSummaryLsa(areaid uint32, lsakey LsaKey) []byte 
 }
 
 func (server *OSPFServer) floodSummaryLsa(pkt []byte, areaid uint32) {
-	server.logger.Info(fmt.Sprintln("SUMMARY: Received for flood ", pkt))
 	dstMac := net.HardwareAddr{0x01, 0x00, 0x5e, 0x00, 0x00, 0x05}
 	dstIp := net.IP{224, 0, 0, 5}
 	for key, _ := range server.IntfConfMap {

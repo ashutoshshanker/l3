@@ -81,7 +81,7 @@ func (server *OSPFServer) processRibdNotification(ribrxBuf []byte) {
 			server.logger.Err("ASBR: Err in processing routes from RIB")
 		}
 		server.logger.Info(fmt.Sprintln("ASBR: Receive  route, dest:", route.RouteInfo.Ipaddr, "netmask:", route.RouteInfo.Mask, "nexthop:", route.RouteInfo.NextHopIp))
-		server.ProcessRibdRoutes(route, msg.MsgType)
+		server.ProcessRibdRoutes(route.RouteInfo, msg.MsgType)
 	}
 
 }
@@ -105,11 +105,12 @@ func (server *OSPFServer) getRibdRoutes() {
 			return
 		}
 		server.logger.Info(fmt.Sprintln("ASBR: len(getBulkInfo.RouteList)  = ", len(getBulkInfo.RouteList), " num objects returned = ", getBulkInfo.Count))
-		/*
-			for  range getBulkInfo.RouteList {
-				server.logger.Info(fmt.Sprintln("Receive  route, dest:", route.RouteInfo.Ipaddr, "netmask:", route.RouteInfo.Mask, "nexthop:", route.RouteInfo.NextHopIp))
-				server.ProcessRibdRoutes(route, ribdCommonDefs.NOTIFY_ROUTE_CREATED)
-			}  */
+
+		for _, route := range getBulkInfo.RouteList {
+
+			server.logger.Info(fmt.Sprintln("Receive  route, dest:", route.DestNetIp, "netmask:", route.Mask, "nexthop:", route.NextHopIp))
+			server.ProcessRibdRoutes(*route, ribdCommonDefs.NOTIFY_ROUTE_CREATED)
+		}
 		if getBulkInfo.More == false {
 			server.logger.Info("more returned as false, so no more get bulks")
 			return
@@ -122,11 +123,11 @@ func (server *OSPFServer) getRibdRoutes() {
 /*@fn ProcessRibdRoutes
 Send notif to LSDB to generate/delete AS external LSA
 */
-func (server *OSPFServer) ProcessRibdRoutes(route ribdCommonDefs.RoutelistInfo, msgType uint16) {
+func (server *OSPFServer) ProcessRibdRoutes(route ribdInt.Routes, msgType uint16) {
 	server.logger.Info("ASBR: Process Ribd routes. msg ")
-	ipaddr := convertAreaOrRouterIdUint32(route.RouteInfo.Ipaddr)
-	mask := convertAreaOrRouterIdUint32(route.RouteInfo.Mask)
-	metric := uint32(route.RouteInfo.Metric)
+	ipaddr := convertAreaOrRouterIdUint32(route.Ipaddr)
+	mask := convertAreaOrRouterIdUint32(route.Mask)
+	metric := uint32(route.Metric)
 	isDel := false
 	if msgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
 		isDel = true
@@ -139,7 +140,7 @@ func (server *OSPFServer) ProcessRibdRoutes(route ribdCommonDefs.RoutelistInfo, 
 	}
 	ignore := server.verifyOspfRoute(ipaddr, mask)
 	if !ignore {
-		server.logger.Info(fmt.Sprintln("ASBR: Generate As external for ", route.RouteInfo.Ipaddr, route.RouteInfo.Mask))
+		server.logger.Info(fmt.Sprintln("ASBR: Generate As external for ", route.Ipaddr, route.Mask))
 		/* send message to LSDB to generate AS ext LSA */
 		server.ExternalRouteNotif <- routemdata
 	}

@@ -10,10 +10,13 @@ import (
 	bgppolicy "l3/bgp/policy"
 	bgprib "l3/bgp/rib"
 	"net"
+	"os"
+	"os/signal"
 	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"utils/logging"
 	utilspolicy "utils/policy"
 	"utils/policy/policyCommonDefs"
@@ -84,6 +87,24 @@ type BGPServer struct {
 	policyMgr config.PolicyMgrIntf
 	routeMgr  config.RouteMgrIntf
 	bfdMgr    config.BfdMgrIntf
+}
+
+func (svr *BGPServer) SignalHandler(signalChannel <-chan os.Signal) {
+	signal := <-signalChannel
+	switch signal {
+	case syscall.SIGHUP:
+
+	default:
+		svr.logger.Info(fmt.Sprintln("Unhandled Signal:", signal))
+	}
+}
+
+func (svr *BGPServer) OSSignalHandler() {
+	signalChannel := make(chan os.Signal, 1)
+	signalList := []os.Signal{syscall.SIGHUP}
+	signal.Notify(signalChannel, signalList...)
+	go svr.SignalHandler(signalChannel)
+
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,

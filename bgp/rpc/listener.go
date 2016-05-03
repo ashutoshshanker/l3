@@ -158,6 +158,7 @@ func (h *BGPHandler) convertModelToBGPNeighbor(obj models.BGPNeighbor) (neighbor
 			HoldTime:                uint32(obj.HoldTime),
 			KeepaliveTime:           uint32(obj.KeepaliveTime),
 			BfdEnable:               obj.BfdEnable,
+			BfdSessionParam:         obj.BfdSessionParam,
 			AddPathsRx:              obj.AddPathsRx,
 			AddPathsMaxTx:           uint8(obj.AddPathsMaxTx),
 			MaxPrefixes:             uint32(obj.MaxPrefixes),
@@ -370,6 +371,11 @@ func (h *BGPHandler) convertStrIPToNetIP(ip string) net.IP {
 }
 
 func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
+	created := h.server.VerifyBgpGlobalConfig()
+	if created {
+		h.logger.Warning("Bgp ASN is already configured")
+		return false, errors.New("BGP ASN already configured")
+	}
 	ip := h.convertStrIPToNetIP(bgpGlobal.RouterId)
 	var err error = nil
 	if ip == nil {
@@ -527,6 +533,7 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf c
 			HoldTime:                uint32(bgpNeighbor.HoldTime),
 			KeepaliveTime:           uint32(bgpNeighbor.KeepaliveTime),
 			BfdEnable:               bgpNeighbor.BfdEnable,
+			BfdSessionParam:         bgpNeighbor.BfdSessionParam,
 			AddPathsRx:              bgpNeighbor.AddPathsRx,
 			AddPathsMaxTx:           uint8(bgpNeighbor.AddPathsMaxTx),
 			MaxPrefixes:             uint32(bgpNeighbor.MaxPrefixes),

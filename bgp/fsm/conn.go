@@ -68,6 +68,7 @@ func (o *OutTCPConn) Connect(seconds uint32, addr string, connCh chan net.Conn, 
 		"Connect called... calling DialTimeout with", seconds, "second timeout", "OutTCPCOnn id", o.id))
 	conn, err := net.DialTimeout("tcp", addr, time.Duration(seconds)*time.Second)
 	if err != nil {
+		o.logger.Err(fmt.Sprintln("dialing to remote peer failed, ERROR:", err))
 		errCh <- err
 	} else {
 		packetConn := ipv4.NewConn(conn)

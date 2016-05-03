@@ -144,7 +144,7 @@ func (server *OSPFServer) processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetad
 	decodeOspfHelloData(data, ospfHelloData)
 
 	//  Todo: Sec 10.5 RFC2328 Need to add check for Virtual links
-	if ent.IfType != config.PointToPoint {
+	if ent.IfType != config.NumberedP2P || ent.IfType != config.UnnumberedP2P {
 		if bytesEqual(ent.IfNetmask, ospfHelloData.netmask) == false {
 			server.logger.Info(fmt.Sprintln("HELLO: Netmask mismatch. Int mask", ent.IfNetmask, " Hello mask ", ospfHelloData.netmask, " ip ", ipHdrMd.srcIP))
 			err := errors.New("Netmask mismatch")
