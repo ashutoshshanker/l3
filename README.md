@@ -10,6 +10,6 @@ Currently it has following protocols and infrastructure modules:
  - Border Gateway Protocol
  - [Dynamic Host Configuration Protocol Relay] (https://github.com/SnapRoute/l3/tree/master/dhcp_relay "Dhcp Relay Agent README")
  - [Open Shortest Path First] (https://github.com/SnapRoute/l3/tree/master/ospf "OSPF README")
- - Routing Information Base
+ - [Routing Information Base] (https://github.com/SnapRoute/l3/tree/master/rib "RIB Daemon README")
  - Tunneling Protocols
  - [Virtual Router Redundancy Protocol](https://github.com/SnapRoute/l3/tree/master/vrrp "VRRP's README")
