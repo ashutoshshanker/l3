@@ -48,14 +48,13 @@ func (server *BFDServer) StartSessionHandler() error {
 func (server *BFDServer) DispatchReceivedBfdPacket(ipAddr string, bfdPacket *BfdControlPacket) error {
 	var session *BfdSession
 	sessionId := int32(bfdPacket.YourDiscriminator)
-	if sessionId == 0 {
+	session, exist := server.bfdGlobal.Sessions[sessionId]
+	if !exist {
 		for _, session = range server.bfdGlobal.Sessions {
 			if session.state.IpAddr == ipAddr {
 				break
 			}
 		}
-	} else {
-		session = server.bfdGlobal.Sessions[sessionId]
 	}
 	if session != nil {
 		session.ReceivedPacketCh <- bfdPacket
@@ -908,8 +907,8 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 	case STATE_UP:
 		switch event {
 		case REMOTE_DOWN:
+			session.ResetRemoteSessionParams()
 			session.MoveToDownState()
-			//session.state.RemoteDiscriminator = 0
 		case TIMEOUT:
 			session.MoveToDownState()
 		case ADMIN_DOWN:
@@ -922,9 +921,15 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 	return err
 }
 
+func (session *BfdSession) ResetRemoteSessionParams() error {
+	session.state.RemoteDiscriminator = 0
+	session.state.RemoteSessionState = STATE_DOWN
+	session.state.RemoteMinRxInterval = int32(0)
+	return nil
+}
+
 func (session *BfdSession) LocalAdminDown() error {
 	session.state.SessionState = STATE_ADMIN_DOWN
-	session.state.RemoteDiscriminator = 0
 	session.stateChanged = true
 	session.SendBfdNotification()
 	session.txTimer.Reset(0)
@@ -936,7 +941,6 @@ func (session *BfdSession) LocalAdminDown() error {
 
 func (session *BfdSession) RemoteAdminDown() error {
 	session.state.RemoteSessionState = STATE_ADMIN_DOWN
-	session.state.RemoteDiscriminator = 0
 	session.state.LocalDiagType = DIAG_NEIGHBOR_SIGNAL_DOWN
 	session.SendBfdNotification()
 	session.txInterval = STARTUP_TX_INTERVAL / 1000
