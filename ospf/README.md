@@ -5,8 +5,7 @@ This module implements Open Shortest Path First.v2
 RFC 2328 
 
 ### Architecture
-https://snaproute.atlassian.net/wiki/display/SD/OSPF+Architecture
-
+![alt text](https://github.com/SnapRoute/l3/blob/master/ospf/docs/ospf_architecture.png "Architecture")
 ### Modules
 OSPF has below components
 1) Interface FSM - 

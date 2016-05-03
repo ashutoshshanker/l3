@@ -69,7 +69,7 @@ type ospfLSAHeader struct {
 	ls_len          uint16
 }
 
-func newOspfDatabaseDescriptionData() *ospfDatabaseDescriptionData {
+func NewOspfDatabaseDescriptionData() *ospfDatabaseDescriptionData {
 	return &ospfDatabaseDescriptionData{}
 }
 
@@ -299,9 +299,9 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 
 }
 
-func (server *OSPFServer) processRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadata,
+func (server *OSPFServer) ProcessRxDbdPkt(data []byte, ospfHdrMd *OspfHdrMetadata,
 	ipHdrMd *IpHdrMetadata, key IntfConfKey, srcMAC net.HardwareAddr) error {
-	ospfdbd_data := newOspfDatabaseDescriptionData()
+	ospfdbd_data := NewOspfDatabaseDescriptionData()
 	ospfdbd_data.lsa_headers = []ospfLSAHeader{}
 	//routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
 	pktlen := ospfHdrMd.pktlen
