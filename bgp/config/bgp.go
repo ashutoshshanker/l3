@@ -65,6 +65,7 @@ type BaseConfig struct {
 	HoldTime                uint32
 	KeepaliveTime           uint32
 	BfdEnable               bool
+	BfdSessionParam         string
 	AddPathsRx              bool
 	AddPathsMaxTx           uint8
 	MaxPrefixes             uint32

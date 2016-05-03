@@ -11,7 +11,7 @@ import (
 	"l3/bgp/server"
 	"l3/bgp/utils"
 	"utils/dbutils"
-	_ "utils/keepalive"
+	"utils/keepalive"
 	"utils/logging"
 )
 
@@ -111,6 +111,9 @@ func main() {
 		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr, pMgr,
 			rMgr, bMgr)
 		go bgpServer.StartServer()
+
+		// Start keepalive routine
+		go keepalive.InitKeepAlive("bgpd", fileName)
 
 		logger.Info(fmt.Sprintln("Starting config listener..."))
 		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, dbUtil, fileName)

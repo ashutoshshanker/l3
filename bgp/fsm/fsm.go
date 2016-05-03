@@ -883,10 +883,19 @@ func NewFSM(fsmManager *FSMManager, id uint8, neighborConf *base.NeighborConf) *
 	return &fsm
 }
 
-func (fsm *FSM) StartFSM(state BaseStateIface) {
+func (fsm *FSM) Init(state BaseStateIface) {
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id,
-		"Starting the state machine in", state.state(), "state"))
+		"Set state machine to", state.state(), "state"))
 	fsm.State = state
+}
+
+func (fsm *FSM) StartFSM() {
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "Start"))
+	if fsm.State == nil {
+		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id,
+			"Start state is not set... starting the state machine in IDLE state"))
+		fsm.State = NewIdleState(fsm)
+	}
 	fsm.State.enter()
 
 	for {
