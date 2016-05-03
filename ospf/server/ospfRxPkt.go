@@ -80,7 +80,7 @@ func (server *OSPFServer) processOspfHeader(ospfPkt []byte, key IntfConfKey, md 
 		return err
 	}
 
-	if ent.IfType != config.PointToPoint {
+	if ent.IfType != config.NumberedP2P || ent.IfType != config.UnnumberedP2P {
 		if bytesEqual(ent.IfAreaId, ospfHdr.areaId) == false &&
 			isInSubnet(net.IP(ent.IfAreaId), net.IP(ospfHdr.areaId), net.IPMask(ent.IfNetmask)) == false {
 			err := errors.New("Dropped because of Src IP is not in subnet or Area ID not matching")

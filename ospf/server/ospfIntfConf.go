@@ -97,6 +97,18 @@ type IntfConf struct {
 
 func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfProperty, ifType int) {
 	var intfType config.IfType
+	switch ifType {
+	case numberedP2P:
+		intfType = config.NumberedP2P
+		server.logger.Info("Creating point2point")
+	case unnumberedP2P:
+		intfType = config.UnnumberedP2P
+		 server.logger.Info("Creating point2point")
+	default:
+		 intfType = config.Broadcast
+		server.logger.Info("Creating broadcast")
+	}
+	/*
 	if ifType == numberedP2P ||
 		ifType == unnumberedP2P {
 		intfType = config.PointToPoint
@@ -104,7 +116,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 	} else {
 		intfType = config.Broadcast
 		server.logger.Info("Creating broadcast")
-	}
+	} */
 	ent, exist := server.IntfConfMap[key]
 	if !exist {
 		areaId := convertAreaOrRouterId("0.0.0.0")
@@ -371,7 +383,7 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
 		return
 	}
 	if intfConfKey.IPAddr == "0.0.0.0" &&
-		ifConf.IfType == config.PointToPoint {
+		ifConf.IfType == config.NumberedP2P || ifConf.IfType == config.UnnumberedP2P {
 		flag := false
 		for key, _ := range server.IntfConfMap {
 			if key.IPAddr != "0.0.0.0" {
@@ -427,7 +439,7 @@ func (server *OSPFServer) StartSendRecvPkts(intfConfKey IntfConfKey) {
 	ent.IfEvents = ent.IfEvents + 1
 	if ent.IfType == config.Broadcast {
 		ent.IfFSMState = config.Waiting
-	} else if ent.IfType == config.PointToPoint {
+	} else if ent.IfType == config.NumberedP2P || ent.IfType == config.UnnumberedP2P {
 		ent.IfFSMState = config.P2P
 	}
 	server.IntfConfMap[intfConfKey] = ent

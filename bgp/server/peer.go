@@ -46,7 +46,8 @@ func (p *Peer) UpdateNeighborConf(nConf config.NeighborConfig, bgp *config.Bgp) 
 }
 
 func (p *Peer) Init() {
-	if p.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
+	if p.NeighborConf.RunningConf.BfdEnable &&
+		p.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
 		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n",
 			p.NeighborConf.Neighbor.NeighborAddress))
 		return
@@ -84,7 +85,8 @@ func (p *Peer) getIfIdx() int32 {
 }
 
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
-	if p.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
+	if p.NeighborConf.RunningConf.BfdEnable &&
+		p.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
 		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n",
 			p.NeighborConf.Neighbor.NeighborAddress))
 		(*conn).Close()
@@ -166,10 +168,11 @@ func (p *Peer) clearRibOut() {
 
 func (p *Peer) ProcessBfd() {
 	ipAddr := p.NeighborConf.Neighbor.NeighborAddress.String()
+	sessionParam := p.NeighborConf.RunningConf.BfdSessionParam
 	if p.NeighborConf.RunningConf.BfdEnable {
 		p.logger.Info(fmt.Sprintln("Bfd enabled on :",
 			p.NeighborConf.Neighbor.NeighborAddress))
-		ret, err := p.Server.bfdMgr.CreateBfdSession(ipAddr)
+		ret, err := p.Server.bfdMgr.CreateBfdSession(ipAddr, sessionParam)
 		if !ret {
 			p.logger.Info(fmt.Sprintln("BfdSessionConfig FAILED, ret:",
 				ret, "err:", err))
