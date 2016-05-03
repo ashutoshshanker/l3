@@ -12,4 +12,4 @@ Currently it has following protocols and infrastructure modules:
  - Open Shortest Path First
  - Routing Information Base
  - Tunneling Protocols
- - Virtual Router Redundancy Protocol
+ - [Virtual Router Redundancy Protocol](https://github.com/SnapRoute/l3/tree/master/vrrp "VRRP's README")
