@@ -193,8 +193,12 @@ func (mgr *FSMManager) fsmClose(id uint8) {
 
 func (mgr *FSMManager) fsmEstablished(id uint8, conn *net.Conn) {
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d connection established", mgr.pConf.NeighborAddress.String(), id))
-	mgr.activeFSM = id
-	mgr.fsmConnCh <- PeerFSMConn{mgr.neighborConf.Neighbor.NeighborAddress.String(), true, conn}
+	if _, ok := mgr.fsms[id]; ok {
+		mgr.activeFSM = id
+		mgr.fsmConnCh <- PeerFSMConn{mgr.neighborConf.Neighbor.NeighborAddress.String(), true, conn}
+	} else {
+		mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d not found in fsms dict %v", mgr.pConf.NeighborAddress.String(), id, mgr.fsms))
+	}
 	//mgr.Peer.PeerConnEstablished(conn)
 }
 
