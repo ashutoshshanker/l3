@@ -5,14 +5,14 @@ This module implement Virtual Router Redundancy Protocol RFC 5798
 
 ### Architecture
 
-	                     +---------------+
-			     |               |
-			     |  User Config  |
-			     |               |
-			     +---------------+
-			            |         
-				    |
-				    V
+                             +---------------+
+                             |               |
+                             |  User Config  |
+                             |               |
+                             +---------------+
+                                     |         
+                                     |
+                                     V
 	                     +---------------+
                   +--------->|               |<-------------+
                   |          |  Initialize   |              |
