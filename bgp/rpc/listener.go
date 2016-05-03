@@ -370,6 +370,11 @@ func (h *BGPHandler) convertStrIPToNetIP(ip string) net.IP {
 }
 
 func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
+	created := h.server.VerifyBgpGlobalConfig()
+	if created {
+		h.logger.Warning("Bgp ASN is already configured")
+		return false, errors.New("BGP ASN already configured")
+	}
 	ip := h.convertStrIPToNetIP(bgpGlobal.RouterId)
 	var err error = nil
 	if ip == nil {

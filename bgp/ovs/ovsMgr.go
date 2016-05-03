@@ -15,7 +15,10 @@ type OvsRouteMgr struct {
 }
 
 type OvsPolicyMgr struct {
-	plugin string
+	plugin    string
+	Ospf      bool
+	Static    bool
+	Connected bool
 }
 
 type OvsBfdMgr struct {

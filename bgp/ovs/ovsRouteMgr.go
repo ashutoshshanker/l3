@@ -22,7 +22,6 @@ func NewOvsRouteMgr(logger *logging.LogFile, db *BGPOvsdbHandler) *OvsRouteMgr {
 }
 
 func (mgr *OvsRouteMgr) Start() {
-
 }
 
 /*  This is global next hop not bgp nexthop table
@@ -105,13 +104,10 @@ func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, erro
 		mgr.logger.Info(fmt.Sprintln(value))
 	}
 	reachInfo := &config.NextHopInfo{
-		Ipaddr: ipAddr, //info.Ipaddr,
-		Mask:   "255.255.0.0",
-		Metric: 20, //int32(info.Metric),
-		//NextHopIp:      info.NextHopIp,
+		Ipaddr:      ipAddr,
+		Mask:        "255.255.0.0",
+		Metric:      20,
 		IsReachable: true,
-		//NextHopIfType:  int32(info.NextHopIfType),
-		//NextHopIfIndex: int32(info.NextHopIfIndex),
 	}
 
 	return reachInfo, nil

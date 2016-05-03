@@ -252,7 +252,12 @@ func (ovsHdl *BGPOvsdbHandler) CreateBgpGlobalConfig(rtrInfo *BGPOvsRouterInfo) 
 		EBGPMaxPaths:     32,
 		IBGPMaxPaths:     32,
 	}
-	ovsHdl.rpcHdl.CreateBGPGlobal(bgpGlobal)
+	_, err := ovsHdl.rpcHdl.CreateBGPGlobal(bgpGlobal)
+	if err != nil {
+		if err.Error() == "BGP ASN already configured" {
+			return nil
+		}
+	}
 	return bgpGlobal
 }
 
@@ -272,8 +277,51 @@ func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) err
 	return nil
 }
 
+func (ovsHdl *BGPOvsdbHandler) handleRedistribute(info map[interface{}]interface{}) {
+	for key, _ := range info {
+		switch key {
+		case "connected":
+			ovsHdl.logger.Info("redistribute connected path")
+		case "static":
+			ovsHdl.logger.Info("redistribute static path")
+		case "ospf":
+			ovsHdl.logger.Info("redistribute ospf path")
+
+		}
+	}
+}
+
+func (ovsHdl *BGPOvsdbHandler) checkBgpRouterCfgUpd(uuid UUID, table ovsdb.TableUpdate) {
+	ovsHdl.logger.Info("Check for updates")
+	for key, value := range table.Rows {
+		ovsHdl.logger.Info(fmt.Sprintln("new value:", value.New))
+		ovsHdl.logger.Info(fmt.Sprintln("old value:", value.Old))
+		ovsHdl.logger.Info(fmt.Sprintln("uuid:", uuid, "key:", key))
+		// sanity check for router uuid
+		if sameUUID(uuid, key) {
+			var oredistribute map[interface{}]interface{}
+			var nredistribute map[interface{}]interface{}
+
+			if value.Old.Fields["redistribute"] != nil {
+				nredistribute = value.New.Fields["redistribute"].(ovsdb.OvsMap).GoMap
+			}
+			if value.Old.Fields["redistribute"] != nil {
+				oredistribute = value.Old.Fields["redistribute"].(ovsdb.OvsMap).GoMap
+			}
+			if len(nredistribute) >= 1 && len(oredistribute) < 1 {
+				ovsHdl.logger.Info("!!!!!update for redistribute!!!!!")
+				ovsHdl.logger.Info(fmt.Sprintln(nredistribute))
+				ovsHdl.handleRedistribute(nredistribute)
+			}
+		} else {
+			ovsHdl.logger.Info("Key is mismatch")
+		}
+	}
+}
+
 func (ovsHdl *BGPOvsdbHandler) HandleBGPRouteUpd(table ovsdb.TableUpdate) error {
 	var err error
+
 	if ovsHdl.routerInfo == nil {
 		ovsHdl.routerInfo, err = ovsHdl.GetBGPRouterAsn(table)
 		if err != nil {
@@ -289,6 +337,11 @@ func (ovsHdl *BGPOvsdbHandler) HandleBGPRouteUpd(table ovsdb.TableUpdate) error 
 		return nil
 	}
 	bgpGlobal := ovsHdl.CreateBgpGlobalConfig(ovsHdl.routerInfo)
-	ovsHdl.logger.Info(fmt.Sprintln(bgpGlobal))
+	if bgpGlobal != nil {
+		ovsHdl.logger.Info(fmt.Sprintln(bgpGlobal))
+		return nil
+	}
+	// else check for update
+	ovsHdl.checkBgpRouterCfgUpd(ovsHdl.routerInfo.uuid, table)
 	return nil
 }

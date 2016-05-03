@@ -69,7 +69,7 @@ func main() {
 		logger.Info(fmt.Sprintln("Starting config listener..."))
 		confIface := rpc.NewBGPHandler(bgpServer, bgpPolicyEng, logger, nil, /*dbUtil*/
 			fileName)
-		err := ovsMgr.NewBGPOvsdbHandler(ovsLogger, confIface, ovsdbManager)
+		err := ovsMgr.NewBGPOvsdbHandler(ovsLogger, confIface, ovsdbManager, rMgr, pMgr)
 		if err != nil {
 			logger.Info(fmt.Sprintln("Starting OVDB client failed ERROR:", err))
 			return

@@ -4,6 +4,7 @@ import (
 	ovsdb "github.com/socketplane/libovsdb"
 
 	"fmt"
+	"l3/bgp/config"
 	"l3/bgp/rpc"
 	"reflect"
 	"utils/logging"
@@ -47,6 +48,8 @@ type BGPOvsdbHandler struct {
 	bgpCachedOvsdb map[UUID]BGPFlexSwitch
 	routerInfo     *BGPOvsRouterInfo
 	rpcHdl         *rpc.BGPHandler
+	routeMgr       config.RouteMgrIntf
+	policyMgr      config.PolicyMgrIntf
 }
 
 func NewBGPOvsdbNotifier(ch chan *ovsdb.TableUpdates) *BGPOvsdbNotifier {
@@ -55,11 +58,10 @@ func NewBGPOvsdbNotifier(ch chan *ovsdb.TableUpdates) *BGPOvsdbNotifier {
 	}
 }
 
-func NewBGPOvsdbHandler(logger *logging.LogFile, handler *rpc.BGPHandler, mgr *BGPOvsdbHandler) error {
-	//ovs, err := ovsdb.Connect(OVSDB_HANDLER_HOST_IP, OVSDB_HANDLER_HOST_PORT)
+func NewBGPOvsdbHandler(logger *logging.LogFile, handler *rpc.BGPHandler, mgr *BGPOvsdbHandler,
+	rMgr config.RouteMgrIntf, pMgr config.PolicyMgrIntf) error {
 	ovs, err := ovsdb.Connect("", OVSDB_HANDLER_HOST_PORT)
 	if err != nil {
-		//return nil, err
 		return err
 	}
 	ovsUpdateCh := make(chan *ovsdb.TableUpdates)
@@ -72,17 +74,8 @@ func NewBGPOvsdbHandler(logger *logging.LogFile, handler *rpc.BGPHandler, mgr *B
 	mgr.cache = make(map[string]map[string]ovsdb.Row)
 	mgr.bgpCachedOvsdb = make(map[UUID]BGPFlexSwitch, OVSDB_FS_INITIAL_SIZE)
 	mgr.rpcHdl = handler
-	/*
-		return &BGPOvsdbHandler{
-			logger:         logger,
-			bgpovs:         ovs,
-			ovsUpdateCh:    ovsUpdateCh,
-			operCh:         make(chan *BGPOvsOperations, OVSDB_HANDLER_OPERATIONS_SIZE),
-			cache:          make(map[string]map[string]ovsdb.Row),
-			bgpCachedOvsdb: make(map[UUID]BGPFlexSwitch, OVSDB_FS_INITIAL_SIZE),
-			rpcHdl:         handler,
-		}, nil
-	*/
+	mgr.routeMgr = rMgr
+	mgr.policyMgr = pMgr
 	return nil
 }
 
@@ -162,8 +155,6 @@ func (ovsHdl *BGPOvsdbHandler) Transact(operations []ovsdb.Operation) error {
 	return nil
 }
 
-var bgp_done = false
-
 /*  BGP OVS DB handle update information
  */
 func (ovsHdl *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
@@ -178,17 +169,12 @@ func (ovsHdl *BGPOvsdbHandler) UpdateInfo(updates ovsdb.TableUpdates) {
 	}
 	table, ok = updates.Updates[OVSDB_BGP_NEIGHBOR_TABLE]
 	if ok {
-		if bgp_done == true {
-			return
-		}
 		err := ovsHdl.HandleBGPNeighborUpd(table)
 		if err != nil {
 			ovsHdl.logger.Err(fmt.Sprintln(err))
 			return
 		}
-		ovsHdl.logger.Info("BGP Neighbor send out")
-		bgp_done = true
-		//ovsHdl.logger.Info(fmt.Sprintln(ovsHdl.routerInfo))
+		ovsHdl.logger.Info("BGP Neighbor configuration done by GO ovs db handler")
 	}
 }
 
