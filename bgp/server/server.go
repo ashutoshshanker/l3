@@ -1162,6 +1162,7 @@ func (server *BGPServer) StartServer() {
 	server.IntfMgr.Start()
 	server.routeMgr.Start()
 	server.bfdMgr.Start()
+	server.policyMgr.Start()
 }
 
 func (s *BGPServer) GetBGPGlobalState() config.GlobalState {

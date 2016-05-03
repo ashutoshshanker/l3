@@ -21,8 +21,11 @@ type RouteMgrIntf interface {
 /*  Interface for handling policy related operations
  */
 type PolicyMgrIntf interface {
+	Start()
 	AddPolicy()
 	RemovePolicy()
+	AddRedistributePolicy(string)
+	RemoveRedistributePolicy(string)
 }
 
 /*  Interface for handling bfd state notifications

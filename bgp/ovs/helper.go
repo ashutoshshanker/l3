@@ -277,16 +277,85 @@ func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) err
 	return nil
 }
 
-func (ovsHdl *BGPOvsdbHandler) handleRedistribute(info map[interface{}]interface{}) {
+func (ovsHdl *BGPOvsdbHandler) updatePolicy(info map[interface{}]interface{}, update bool) {
+	var rules []string
 	for key, _ := range info {
 		switch key {
 		case "connected":
-			ovsHdl.logger.Info("redistribute connected path")
+			rules = append(rules, "connected")
 		case "static":
-			ovsHdl.logger.Info("redistribute static path")
+			rules = append(rules, "static")
 		case "ospf":
-			ovsHdl.logger.Info("redistribute ospf path")
+			rules = append(rules, "ospf")
+		}
+	}
+	if update {
+		for idx := range rules {
+			ovsHdl.policyMgr.AddRedistributePolicy(rules[idx])
+		}
+	} else {
+		for idx := range rules {
+			ovsHdl.policyMgr.RemoveRedistributePolicy(rules[idx])
+		}
+	}
+}
 
+func (ovsHdl *BGPOvsdbHandler) findAndRemovePolicy(new, old map[interface{}]interface{}) {
+	var rules []string
+	for key, _ := range old {
+		_, ok := new[key]
+		if ok {
+			continue // rule is present in both new and old
+		}
+		switch key {
+		case "connected":
+			rules = append(rules, "connected")
+		case "static":
+			rules = append(rules, "static")
+		case "ospf":
+			rules = append(rules, "ospf")
+		}
+	}
+	for idx := range rules {
+		ovsHdl.policyMgr.RemoveRedistributePolicy(rules[idx])
+	}
+}
+
+func (ovsHdl *BGPOvsdbHandler) handleRedistribute(old, new *map[interface{}]interface{}) {
+	if old == nil && new != nil { // first time rule add
+		ovsHdl.updatePolicy(*new, true /*meaning add or update*/)
+	} else if old != nil && new == nil {
+		ovsHdl.updatePolicy(*old, false /*meaning remove all policies*/)
+	} else {
+		// old is also present and new too
+
+		/*
+		 * Case 1) if len of new is greater than len of old then we can send out add
+		 *	   policy, for e.g:
+		 *	   router bgp 500
+		 *		bgp router-id 10.1.10.1
+		 *		redistribute connected
+		 *	   The above config is already present.. And user wants to add more
+		 *	   router bgp 500
+		 *		redistribute static
+		 *         In this case old ---> map[connected: [uuid]]
+		 *			new ---> map[connected: [uuid], static[uuid]]
+		 * Case 2) if len of new is less than len of old then we can send out take a diff
+		 *	   and remove only the one policy, for e.g:
+		 *	   router bgp 500
+		 *		bgp router-id 10.1.10.1
+		 *		redistribute connected
+		 *		redistribute static
+		 *	   The above config is already present.. And user removes static from
+		 *	   router bgp 500
+		 *		no redistribute static
+		 *         In this case new ---> map[connected: [uuid]]
+		 *			old ---> map[connected: [uuid], static[uuid]]
+		 */
+		if len(*new) > len(*old) {
+			ovsHdl.updatePolicy(*new, true)
+		} else {
+			ovsHdl.findAndRemovePolicy(*new, *old)
 		}
 	}
 }
@@ -294,24 +363,30 @@ func (ovsHdl *BGPOvsdbHandler) handleRedistribute(info map[interface{}]interface
 func (ovsHdl *BGPOvsdbHandler) checkBgpRouterCfgUpd(uuid UUID, table ovsdb.TableUpdate) {
 	ovsHdl.logger.Info("Check for updates")
 	for key, value := range table.Rows {
-		ovsHdl.logger.Info(fmt.Sprintln("new value:", value.New))
-		ovsHdl.logger.Info(fmt.Sprintln("old value:", value.Old))
-		ovsHdl.logger.Info(fmt.Sprintln("uuid:", uuid, "key:", key))
+		//ovsHdl.logger.Info(fmt.Sprintln("new value:", value.New))
+		//ovsHdl.logger.Info(fmt.Sprintln("old value:", value.Old))
+		//ovsHdl.logger.Info(fmt.Sprintln("uuid:", uuid, "key:", key))
 		// sanity check for router uuid
 		if sameUUID(uuid, key) {
-			var oredistribute map[interface{}]interface{}
-			var nredistribute map[interface{}]interface{}
+			var old map[interface{}]interface{}
+			var new map[interface{}]interface{}
 
 			if value.Old.Fields["redistribute"] != nil {
-				nredistribute = value.New.Fields["redistribute"].(ovsdb.OvsMap).GoMap
+				new = value.New.Fields["redistribute"].(ovsdb.OvsMap).GoMap
 			}
 			if value.Old.Fields["redistribute"] != nil {
-				oredistribute = value.Old.Fields["redistribute"].(ovsdb.OvsMap).GoMap
+				old = value.Old.Fields["redistribute"].(ovsdb.OvsMap).GoMap
 			}
-			if len(nredistribute) >= 1 && len(oredistribute) < 1 {
-				ovsHdl.logger.Info("!!!!!update for redistribute!!!!!")
-				ovsHdl.logger.Info(fmt.Sprintln(nredistribute))
-				ovsHdl.handleRedistribute(nredistribute)
+
+			if len(old) >= 1 && len(new) >= 1 {
+				// means old value had policy and its updated to new
+				ovsHdl.handleRedistribute(&old, &new)
+			} else if len(new) >= 1 && len(old) < 1 {
+				// means first time policy is getting configured
+				ovsHdl.handleRedistribute(nil, &new)
+			} else if len(old) >= 1 && len(new) < 1 {
+				// means delete of all policies
+				ovsHdl.handleRedistribute(&old, nil)
 			}
 		} else {
 			ovsHdl.logger.Info("Key is mismatch")

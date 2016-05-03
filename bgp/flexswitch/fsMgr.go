@@ -44,25 +44,6 @@ type FSBfdMgr struct {
 	bfdSubSocket *nanomsg.SubSocket
 }
 
-/*  Init policy manager with specific needs
- */
-func NewFSPolicyMgr(logger *logging.Writer, fileName string) *FSPolicyMgr {
-	mgr := &FSPolicyMgr{
-		plugin: "ovsdb",
-		logger: logger,
-	}
-
-	return mgr
-}
-
-func (mgr *FSPolicyMgr) AddPolicy() {
-
-}
-
-func (mgr *FSPolicyMgr) RemovePolicy() {
-
-}
-
 func (mgr *FSIntfMgr) PortStateChange() {
 
 }

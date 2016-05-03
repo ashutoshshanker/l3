@@ -16,9 +16,9 @@ type OvsRouteMgr struct {
 
 type OvsPolicyMgr struct {
 	plugin    string
-	Ospf      bool
-	Static    bool
-	Connected bool
+	ospf      bool
+	static    bool
+	connected bool
 }
 
 type OvsBfdMgr struct {
