@@ -68,15 +68,15 @@ func (server *BFDServer) StartBfdSesionServerQueuer() error {
 	for {
 		select {
 		case packet := <-server.BfdPacketRecvCh:
-			ip := packet.IpAddr
-			len := packet.Len
+			ipAddr := packet.IpAddr
+			length := packet.Len
 			buf := packet.PacketBuf
-			if len >= DEFAULT_CONTROL_PACKET_LEN {
-				bfdPacket, err := DecodeBfdControlPacket(buf[0:len])
+			if length >= DEFAULT_CONTROL_PACKET_LEN {
+				bfdPacket, err := DecodeBfdControlPacket(buf[0:length])
 				if err != nil {
 					server.logger.Info(fmt.Sprintln("Failed to decode packet - ", err))
 				} else {
-					err = server.DispatchReceivedBfdPacket(ip, bfdPacket)
+					err = server.DispatchReceivedBfdPacket(ipAddr, bfdPacket)
 					if err != nil {
 						server.logger.Info(fmt.Sprintln("Failed to dispatch received packet"))
 					}
@@ -102,14 +102,14 @@ func (server *BFDServer) StartBfdSesionServer() error {
 	buf := make([]byte, 1024)
 	server.logger.Info(fmt.Sprintln("Started BFD session server on ", destAddr))
 	for {
-		len, uda, err := ServerConn.ReadFromUDP(buf)
+		length, udpAddr, err := ServerConn.ReadFromUDP(buf)
 		if err != nil {
 			server.logger.Info(fmt.Sprintln("Failed to read from ", ServerAddr))
 		} else {
 			packet := RecvedBfdPacket{
-				IpAddr:    uda.IP.String(),
-				Len:       int32(len),
-				PacketBuf: buf[0:len],
+				IpAddr:    udpAddr.IP.String(),
+				Len:       int32(length),
+				PacketBuf: buf[0:length],
 			}
 			server.BfdPacketRecvCh <- packet
 		}
@@ -613,12 +613,14 @@ func (session *BfdSession) CanProcessBfdControlPacket(bfdPacket *BfdControlPacke
 		canProcess = false
 		session.server.logger.Info(fmt.Sprintln("Can't process remote discriminator ", bfdPacket.MyDiscriminator))
 	}
-	if bfdPacket.YourDiscriminator == 0 {
-		if session.state.SessionState == STATE_UP {
-			canProcess = false
-			session.server.logger.Info(fmt.Sprintln("Can't process packet with my discriminator ", bfdPacket.YourDiscriminator, " in up state"))
+	/*
+		if bfdPacket.YourDiscriminator == 0 {
+			if session.state.SessionState == STATE_UP {
+				canProcess = false
+				session.server.logger.Info(fmt.Sprintln("Can't process packet with my discriminator ", bfdPacket.YourDiscriminator, " in up state"))
+			}
 		}
-	}
+	*/
 	/*
 		if bfdPacket.YourDiscriminator == 0 {
 			canProcess = false
@@ -717,7 +719,7 @@ func (session *BfdSession) ProcessBfdPacket(bfdPacket *BfdControlPacket) error {
 		event = REMOTE_INIT
 	case STATE_UP:
 		event = REMOTE_UP
-		if session.state.SessionState == STATE_UP {
+		if session.state.SessionState == STATE_UP && !session.SwitchingToConfiguredTimers {
 			session.txInterval = session.state.DesiredMinTxInterval / 1000
 		}
 	case STATE_ADMIN_DOWN:
@@ -739,9 +741,15 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 	session.bfdPacket.DetectMult = uint8(session.state.DetectionMultiplier)
 	session.bfdPacket.MyDiscriminator = session.state.LocalDiscriminator
 	session.bfdPacket.YourDiscriminator = session.state.RemoteDiscriminator
-	session.bfdPacket.RequiredMinRxInterval = time.Duration(session.state.RequiredMinRxInterval)
 	if session.state.SessionState == STATE_UP && session.state.RemoteSessionState == STATE_UP {
-		session.bfdPacket.DesiredMinTxInterval = time.Duration(session.state.DesiredMinTxInterval)
+		if session.bfdPacket.DesiredMinTxInterval == time.Duration(STARTUP_TX_INTERVAL) ||
+			session.bfdPacket.RequiredMinRxInterval == time.Duration(STARTUP_RX_INTERVAL) {
+			session.bfdPacket.DesiredMinTxInterval = time.Duration(session.state.DesiredMinTxInterval)
+			session.bfdPacket.RequiredMinRxInterval = time.Duration(session.state.RequiredMinRxInterval)
+			session.SwitchingToConfiguredTimers = true
+			session.InitiatePollSequence()
+		}
+
 		wasDemand := session.bfdPacket.Demand
 		session.bfdPacket.Demand = session.state.DemandMode
 		isDemand := session.bfdPacket.Demand
@@ -755,9 +763,11 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 		}
 	} else {
 		session.bfdPacket.DesiredMinTxInterval = time.Duration(STARTUP_TX_INTERVAL)
+		session.bfdPacket.RequiredMinRxInterval = time.Duration(STARTUP_RX_INTERVAL)
 	}
 	session.bfdPacket.Poll = session.pollSequence
 	session.bfdPacket.Final = session.pollSequenceFinal
+	session.pollSequence = false
 	session.pollSequenceFinal = false
 	if session.authEnabled {
 		session.bfdPacket.AuthPresent = true
@@ -897,7 +907,10 @@ func (session *BfdSession) EventHandler(event BfdSessionEvent) error {
 		}
 	case STATE_UP:
 		switch event {
-		case REMOTE_DOWN, TIMEOUT:
+		case REMOTE_DOWN:
+			session.MoveToDownState()
+			session.state.RemoteDiscriminator = 0
+		case TIMEOUT:
 			session.MoveToDownState()
 		case ADMIN_DOWN:
 			session.LocalAdminDown()
@@ -933,7 +946,6 @@ func (session *BfdSession) RemoteAdminDown() error {
 
 func (session *BfdSession) MoveToDownState() error {
 	session.state.SessionState = STATE_DOWN
-	session.state.RemoteDiscriminator = 0
 	session.useDedicatedMac = true
 	session.stateChanged = true
 	if session.authType == BFD_AUTH_TYPE_KEYED_MD5 || session.authType == BFD_AUTH_TYPE_KEYED_SHA1 {
@@ -1079,6 +1091,8 @@ func (session *BfdSession) RemoteChangedDemandMode(bfdPacket *BfdControlPacket) 
 func (session *BfdSession) InitiatePollSequence() error {
 	session.server.logger.Info(fmt.Sprintln("Starting poll sequence for session ", session.state.SessionId))
 	session.pollSequence = true
+	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
+	session.sessionTimer.Reset(time.Duration(session.rxInterval) * time.Millisecond)
 	return nil
 }
 
@@ -1087,10 +1101,12 @@ func (session *BfdSession) ProcessPollSequence(bfdPacket *BfdControlPacket) erro
 		if bfdPacket.Poll {
 			session.server.logger.Info(fmt.Sprintln("Received packet with poll bit for session ", session.state.SessionId))
 			session.pollSequenceFinal = true
+			session.txTimer.Reset(0)
 		}
 		if bfdPacket.Final {
 			session.server.logger.Info(fmt.Sprintln("Received packet with final bit for session ", session.state.SessionId))
 			session.pollSequence = false
+			session.SwitchingToConfiguredTimers = false
 		}
 	}
 	return nil
