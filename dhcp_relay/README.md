@@ -6,20 +6,20 @@ This module implements Dynamic Host Configuration Protocol Relay Agent.
 ### Architecture
 
 
-				Client
-				  |
+                               Client
                                   |
-				  |
+                                  |
+                                  |
                                   V
                           +---------------+
                           |               |
-                          |  Relay Agent  |
-                          |               |
-                          +---------------+
-                         /                \
-                        /                  \
-                       /                    \
-                    Server                Server
+             +----------->|  Relay Agent  |<----------+
+             |            |               |           |
+             |            +---------------+           |
+             |           /                 \          |
+             |          /                   \         |
+             |         /                     \        |
+             +----- Server                 Server-----+
 
 ### Interfaces
  Dhcp Relay has following state:
