@@ -148,7 +148,7 @@ var count int
 var ConnectedRoutes []*ribdInt.Routes
 var logger *logging.Writer
 var AsicdSub *nanomsg.SubSocket
-var routeServiceHandler *RIBDServer
+var RouteServiceHandler *RIBDServer
 var IntfIdNameMap map[int32]IntfEntry
 var PolicyEngineDB *policy.PolicyEngineDB
 var PARAMSDIR string
@@ -306,7 +306,7 @@ func getIntfInfo() {
 }
 func (ribdServiceHandler *RIBDServer) AcceptConfigActions() {
 	logger.Println("AcceptConfigActions: Setting AcceptConfig to true")
-	routeServiceHandler.AcceptConfig = true
+	RouteServiceHandler.AcceptConfig = true
 	getIntfInfo()
 	getConnectedRoutes()
 	ribdServiceHandler.UpdateRoutesFromDB()
@@ -430,6 +430,7 @@ func NewRIBDServicesHandler(dbHdl redis.Conn, loggerC *logging.Writer) *RIBDServ
 	ribdServicesHandler := &RIBDServer{}
 	ribdServicesHandler.Logger = loggerC
 	logger = loggerC
+	localRouteEventsDB = make([]RouteEventInfo, 0)
 	RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
 	TrackReachabilityMap = make(map[string][]string)
 	RouteProtocolTypeMapDB = make(map[string]int)
@@ -462,29 +463,27 @@ func NewRIBDServicesHandler(dbHdl redis.Conn, loggerC *logging.Writer) *RIBDServ
 	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.ServerUpCh = make(chan bool)
 	ribdServicesHandler.DbHdl = dbHdl
-	routeServiceHandler = ribdServicesHandler
+	RouteServiceHandler = ribdServicesHandler
 	//ribdServicesHandler.RouteInstallCh = make(chan RouteParams)
+	BuildRouteProtocolTypeMapDB()
+	BuildProtocolAdminDistanceMapDB()
+	BuildPublisherMap()
+	PolicyEngineDB = ribdServicesHandler.InitializePolicyDB()
 	return ribdServicesHandler
 }
 func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 	fmt.Println("StartServer")
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
-	PARAMSDIR = paramsDir
-	localRouteEventsDB = make([]RouteEventInfo, 0)
 	configFile := paramsDir + "/clients.json"
 	logger.Info(fmt.Sprintln("configfile = ", configFile))
-	fmt.Println("After using logger")
-	BuildRouteProtocolTypeMapDB()
-	BuildProtocolAdminDistanceMapDB()
-	BuildPublisherMap()
+	PARAMSDIR = paramsDir
 	//RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	//CreateRoutes("RouteSetup.json")
-	PolicyEngineDB = ribdServiceHandler.InitializePolicyDB()
 	ribdServiceHandler.UpdatePolicyObjectsFromDB() //(paramsDir)
 	ribdServiceHandler.ConnectToClients(configFile)
 	logger.Println("Starting the server loop")
 	for {
-		if !routeServiceHandler.AcceptConfig {
+		if !RouteServiceHandler.AcceptConfig {
 			logger.Println("Not ready to accept config")
 			continue
 		}
