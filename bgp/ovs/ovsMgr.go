@@ -16,12 +16,16 @@ type OvsRouteMgr struct {
 }
 
 type OvsPolicyMgr struct {
-	plugin string
-	dbmgr  *BGPOvsdbHandler
-
-	ospf             chan bool
-	static           chan bool
-	connected        chan bool
+	plugin    string
+	dbmgr     *BGPOvsdbHandler
+	ospf      chan bool
+	static    chan bool
+	connected chan bool
+	/*
+		ospf             bool
+		static           bool
+		connected        bool
+	*/
 	redistributeLock sync.RWMutex
 }
 

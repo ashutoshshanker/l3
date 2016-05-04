@@ -26,11 +26,3 @@ func (mgr *FSPolicyMgr) AddPolicy() {
 func (mgr *FSPolicyMgr) RemovePolicy() {
 
 }
-
-func (mgr *FSPolicyMgr) AddRedistributePolicy(info string) {
-
-}
-
-func (mgr *FSPolicyMgr) RemoveRedistributePolicy(info string) {
-
-}

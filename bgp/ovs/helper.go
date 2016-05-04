@@ -278,31 +278,40 @@ func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) err
 	return nil
 }
 
-func (ovsHdl *BGPOvsdbHandler) updatePolicy(info map[interface{}]interface{}, update bool) {
-	var rules []string
+func (ovsHdl *BGPOvsdbHandler) updatePolicy(info map[interface{}]interface{}, update bool,
+	pMgr *OvsPolicyMgr) {
 	for key, _ := range info {
 		switch key {
 		case "connected":
-			rules = append(rules, "connected")
+			pMgr.connected <- update
 		case "static":
-			rules = append(rules, "static")
+			pMgr.static <- update
 		case "ospf":
-			rules = append(rules, "ospf")
-		}
-	}
-	if update {
-		for idx := range rules {
-			ovsHdl.policyMgr.AddRedistributePolicy(rules[idx])
-		}
-	} else {
-		for idx := range rules {
-			ovsHdl.policyMgr.RemoveRedistributePolicy(rules[idx])
+			pMgr.ospf <- update
 		}
 	}
 }
 
-func (ovsHdl *BGPOvsdbHandler) findAndRemovePolicy(new, old map[interface{}]interface{}) {
-	var rules []string
+func (ovsHdl *BGPOvsdbHandler) findAndAddPolicy(new, old map[interface{}]interface{},
+	pMgr *OvsPolicyMgr) {
+	for key, _ := range new {
+		_, ok := old[key]
+		if ok {
+			continue // rule is present in both new and old.. no need to update
+		}
+		switch key {
+		case "connected":
+			pMgr.connected <- true
+		case "static":
+			pMgr.static <- true
+		case "ospf":
+			pMgr.ospf <- true
+		}
+	}
+}
+
+func (ovsHdl *BGPOvsdbHandler) findAndRemovePolicy(new, old map[interface{}]interface{},
+	pMgr *OvsPolicyMgr) {
 	for key, _ := range old {
 		_, ok := new[key]
 		if ok {
@@ -310,25 +319,23 @@ func (ovsHdl *BGPOvsdbHandler) findAndRemovePolicy(new, old map[interface{}]inte
 		}
 		switch key {
 		case "connected":
-			rules = append(rules, "connected")
+			pMgr.connected <- false
 		case "static":
-			rules = append(rules, "static")
+			pMgr.static <- false
 		case "ospf":
-			rules = append(rules, "ospf")
+			pMgr.ospf <- false
 		}
-	}
-	for idx := range rules {
-		ovsHdl.policyMgr.RemoveRedistributePolicy(rules[idx])
 	}
 }
 
 func (ovsHdl *BGPOvsdbHandler) handleRedistribute(old, new *map[interface{}]interface{}) {
+	pMgr := ovsHdl.policyMgr.(*OvsPolicyMgr)
 	if old == nil && new != nil { // first time rule add
 		utils.Logger.Info("New Redistribute policy getting configured")
-		ovsHdl.updatePolicy(*new, true /*meaning add or update*/)
+		ovsHdl.updatePolicy(*new, true /*meaning add or update*/, pMgr)
 	} else if old != nil && new == nil {
 		utils.Logger.Info("Removing existing policy/policies")
-		ovsHdl.updatePolicy(*old, false /*meaning remove all policies*/)
+		ovsHdl.updatePolicy(*old, false /*meaning remove all policies*/, pMgr)
 	} else {
 		// old is also present and new too
 
@@ -343,6 +350,8 @@ func (ovsHdl *BGPOvsdbHandler) handleRedistribute(old, new *map[interface{}]inte
 		 *		redistribute static
 		 *         In this case old ---> map[connected: [uuid]]
 		 *			new ---> map[connected: [uuid], static[uuid]]
+		 *	   Iterate through all keys in new & only send those which are not present in
+		 *         old
 		 * Case 2) if len of new is less than len of old then we can send out take a diff
 		 *	   and remove only the one policy, for e.g:
 		 *	   router bgp 500
@@ -354,11 +363,13 @@ func (ovsHdl *BGPOvsdbHandler) handleRedistribute(old, new *map[interface{}]inte
 		 *		no redistribute static
 		 *         In this case new ---> map[connected: [uuid]]
 		 *			old ---> map[connected: [uuid], static[uuid]]
+		 *	   Iterate through all keys in old & only send those which are not present in
+		 *         new
 		 */
 		if len(*new) > len(*old) {
-			ovsHdl.updatePolicy(*new, true)
+			ovsHdl.findAndAddPolicy(*new, *old, pMgr)
 		} else {
-			ovsHdl.findAndRemovePolicy(*new, *old)
+			ovsHdl.findAndRemovePolicy(*new, *old, pMgr)
 		}
 	}
 }
