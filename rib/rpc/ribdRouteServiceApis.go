@@ -15,6 +15,7 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
     err = m.server.RouteConfigValidationCheck(cfg,"add")
 	if err != nil {
 		logger.Err(fmt.Sprintln("validation check failed with error ", err))
+		return false,err
 	}
 	m.server.RouteCreateConfCh <- cfg
 	return true, nil
@@ -38,6 +39,7 @@ func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err
     err = m.server.RouteConfigValidationCheck(cfg,"del")
 	if err != nil {
 		logger.Err(fmt.Sprintln("validation check failed with error ", err))
+		return false,err
 	}
 	m.server.RouteDeleteConfCh <- cfg
 	return true, nil
@@ -52,6 +54,7 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
     err = m.server.RouteConfigValidationCheck(newconfig,"update")
 	if err != nil {
 		logger.Err(fmt.Sprintln("validation check failed with error ", err))
+		return false,err
 	}
 	objTyp := reflect.TypeOf(*origconfig)
 	for i := 0; i < objTyp.NumField(); i++ {

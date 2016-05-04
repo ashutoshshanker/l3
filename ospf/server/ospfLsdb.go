@@ -429,9 +429,35 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 	return
 }
 
+func (server *OSPFServer) constructStubLinkP2P(ent IntfConf, likType config.IfType) LinkDetail {
+	var linkDetail LinkDetail
+	/*RFC 2328   Assuming that the neighboring router's IP
+	  address is known, set the Link ID of the Type 3
+	  link to the neighbor's IP address, the Link Data
+	  to the mask 0xffffffff (indicating a host
+	  route), and the cost to the interface's
+	  configured output cost.[15]
+
+	*/
+
+	var nbrIp uint32
+	nbrIp = 0
+	for key, _ := range ent.NeighborMap {
+		nbrIp = convertAreaOrRouterIdUint32(string(key.IPAddr))
+		break
+	}
+
+	linkDetail.LinkId = uint32(nbrIp)
+	linkDetail.LinkData = 0xffffffff
+	linkDetail.LinkType = StubLink
+	linkDetail.NumOfTOS = 0
+	linkDetail.LinkMetric = 10
+	return linkDetail
+}
+
 func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 	var linkDetails []LinkDetail = nil
-	for _, ent := range server.IntfConfMap {
+	for key, ent := range server.IntfConfMap {
 		AreaId := convertIPv4ToUint32(ent.IfAreaId)
 		if areaId != AreaId {
 			continue
@@ -440,7 +466,8 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 			continue
 		}
 		var linkDetail LinkDetail
-		if ent.IfType == config.Broadcast {
+		switch ent.IfType {
+		case config.Broadcast:
 			if len(ent.NeighborMap) == 0 { // Stub Network
 				server.logger.Info("Stub Network")
 				ipAddr := convertAreaOrRouterIdUint32(ent.IfIpAddr.String())
@@ -467,8 +494,59 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 				server.logger.Info(fmt.Sprintln("LinkDetail: linkid ", ent.IfDRIp,
 					" linkdata ", ent.IfIpAddr))
 			}
-		} else if ent.IfType == config.PointToPoint {
-			// linkDetial.LinkId = NBRs Router ID
+		case config.NumberedP2P:
+			/*
+						 In addition, as long as the state of the interface
+				                    is "Point-to-Point" (and regardless of the
+				                    neighboring router state), a Type 3 link (stub
+				                    network) should be added.
+
+			*/
+			stub_link := server.constructStubLinkP2P(ent, config.NumberedP2P)
+			linkDetails = append(linkDetails, stub_link)
+			/* The Link ID should be
+			   set to the Router ID of the neighboring router. For
+			   numbered point-to-point networks, the Link Data
+			   should specify the IP interface address. For
+			   unnumbered point-to-point networks, the Link Data
+			   field should specify the interface's MIB-II [Ref8]
+			   ifIndex value. The cost should be set to the output
+			   cost of the point-to-point interface.
+			*/
+			if len(ent.NeighborMap) == 0 {
+				server.logger.Info(fmt.Sprintln("LSDB: No neighbor detected for P2P link ", ent.IfIpAddr))
+				continue
+			}
+			if nbrData, exist := ospfIntfToNbrMap[key]; exist {
+				if len(nbrData.nbrList) != 0 {
+					nbr := server.NeighborConfigMap[nbrData.nbrList[0]]
+					linkDetail.LinkId = nbr.OspfNbrRtrId
+				}
+
+			}
+			linkDetail.LinkData = convertAreaOrRouterIdUint32(ent.IfIpAddr.String())
+			linkDetail.LinkType = P2PLink
+			linkDetail.NumOfTOS = 0
+			linkDetail.LinkMetric = 10
+
+		case config.UnnumberedP2P:
+			stub_link := server.constructStubLinkP2P(ent, config.UnnumberedP2P)
+			linkDetails = append(linkDetails, stub_link)
+			if len(ent.NeighborMap) == 0 {
+				server.logger.Info(fmt.Sprintln("LSDB: No neighbor detected for P2P link ", ent.IfIpAddr))
+				continue
+			}
+			if nbrData, exist := ospfIntfToNbrMap[key]; exist {
+				if len(nbrData.nbrList) != 0 {
+					nbr := server.NeighborConfigMap[nbrData.nbrList[0]]
+					linkDetail.LinkId = nbr.OspfNbrRtrId
+				}
+
+			}
+			linkDetail.LinkData = uint32(key.IntfIdx)
+			linkDetail.LinkType = P2PLink
+			linkDetail.NumOfTOS = 0
+			linkDetail.LinkMetric = 10
 		}
 		linkDetails = append(linkDetails, linkDetail)
 	}
@@ -575,7 +653,7 @@ func (server *OSPFServer) generateASExternalLsa(route RouteMdata) LsaKey {
 		}
 		ent.BitE = BitE
 		ent.FwdAddr = convertAreaOrRouterIdUint32("0.0.0.0")
-		ent.Metric = route.metric // TODO - need to be revisited
+		ent.Metric = route.metric
 		ent.Netmask = route.mask
 		ent.ExtRouteTag = 0
 

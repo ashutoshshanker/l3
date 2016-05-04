@@ -36,6 +36,7 @@ func main() {
 		logger.Println("routeServer nil")
 		return
 	}
+	go routeServer.StartDBServer()
 	go routeServer.StartPolicyServer()
 	go routeServer.NotificationServer()
 	go routeServer.StartNetlinkServer()
