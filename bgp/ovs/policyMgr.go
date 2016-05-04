@@ -83,6 +83,27 @@ func (mgr *OvsPolicyMgr) sendConnectedRoutes(add bool) {
 					value.Fields["prefix"]))
 				continue
 			}
+			portId, ok := nh.Fields["ports"].(libovsdb.UUID)
+			if !ok {
+				utils.Logger.Err(fmt.Sprintln("No port information for",
+					value.Fields["prefix"]))
+				continue
+			}
+			utils.Logger.Info(fmt.Sprintln("PortID information is", portId.GoUuid))
+			ports, exists := mgr.dbmgr.cache["Port"]
+			if len(ports) < 1 {
+				utils.Logger.Err(fmt.Sprintln("No entry for", portId.GoUuid,
+					"in Port Table"))
+				continue
+			}
+			port, exists := ports[portId.GoUuid]
+			if !exists {
+				utils.Logger.Err(fmt.Sprintln("No entry for", portId.GoUuid,
+					"in Port Table"))
+				continue
+			}
+			ip := port.Fields["ip4_address"]
+			utils.Logger.Info("Ip address for the port is " + ip.(string))
 		}
 	}
 }
