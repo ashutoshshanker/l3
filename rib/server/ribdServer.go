@@ -2,12 +2,13 @@ package server
 
 import (
 	"arpd"
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
-	"database/sql"
+	//	"database/sql"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/garyburd/redigo/redis"
 	"github.com/op/go-nanomsg"
 	"io/ioutil"
 	"l3/rib/ribdCommonDefs"
@@ -18,10 +19,10 @@ import (
 	"time"
 	"utils/commonDefs"
 	"utils/ipcutils"
+	"utils/logging"
 	"utils/patriciaDB"
 	"utils/policy"
 	"utils/policy/policyCommonDefs"
-	"utils/logging"
 )
 
 type UpdateRouteInfo struct {
@@ -30,18 +31,18 @@ type UpdateRouteInfo struct {
 	Attrset   []bool
 }
 type TrackReachabilityInfo struct {
-	IpAddr string
-	Protocol string 
-	Op string
+	IpAddr   string
+	Protocol string
+	Op       string
 }
 type NextHopInfoKey struct {
 	nextHopIp string
 }
 type NextHopInfo struct {
-	refCount     int     //number of routes using this as a next hop
+	refCount int //number of routes using this as a next hop
 }
 type RIBDServer struct {
-    Logger                       *logging.Writer
+	Logger                       *logging.Writer
 	PolicyEngineDB               *policy.PolicyEngineDB
 	TrackReachabilityCh          chan TrackReachabilityInfo
 	RouteCreateConfCh            chan *ribd.IPv4Route
@@ -69,7 +70,7 @@ type RIBDServer struct {
 	PolicyDefinitionUpdateConfCh chan *ribd.PolicyDefinition
 	AcceptConfig                 bool
 	ServerUpCh                   chan bool
-	DbHdl                        *sql.DB
+	DbHdl                        redis.Conn
 	//RouteInstallCh                 chan RouteParams
 }
 
@@ -147,9 +148,9 @@ var count int
 var ConnectedRoutes []*ribdInt.Routes
 var logger *logging.Writer
 var AsicdSub *nanomsg.SubSocket
-var routeServiceHandler *RIBDServer
+var RouteServiceHandler *RIBDServer
 var IntfIdNameMap map[int32]IntfEntry
-var	PolicyEngineDB  *policy.PolicyEngineDB
+var PolicyEngineDB *policy.PolicyEngineDB
 var PARAMSDIR string
 
 func (ribdServiceHandler *RIBDServer) ProcessL3IntfDownEvent(ipAddr string) {
@@ -283,7 +284,7 @@ func getPortInfo() {
 		logger.Info(fmt.Sprintln("len(bulkInfo.PortStateList)  = %d, num objects returned = %d\n", len(bulkInfo.PortStateList), bulkInfo.Count))
 		for i := 0; i < int(bulkInfo.Count); i++ {
 			portNum := bulkInfo.PortStateList[i].PortNum
-			ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(portNum), commonDefs.IfTypePort)
+			ifId := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(portNum), commonDefs.IfTypePort)
 			logger.Info(fmt.Sprintln("portNum = ", portNum, "ifId = ", ifId))
 			if IntfIdNameMap == nil {
 				IntfIdNameMap = make(map[int32]IntfEntry)
@@ -303,13 +304,13 @@ func getIntfInfo() {
 	getVlanInfo()
 	getLogicalIntfInfo()
 }
-func (ribdServiceHandler *RIBDServer)  AcceptConfigActions() {
+func (ribdServiceHandler *RIBDServer) AcceptConfigActions() {
 	logger.Println("AcceptConfigActions: Setting AcceptConfig to true")
-	routeServiceHandler.AcceptConfig = true
+	RouteServiceHandler.AcceptConfig = true
 	getIntfInfo()
 	getConnectedRoutes()
 	ribdServiceHandler.UpdateRoutesFromDB()
-	go ribdServiceHandler.SetupEventHandler(AsicdSub, asicdConstDefs.PUB_SOCKET_ADDR, SUB_ASICD)
+	go ribdServiceHandler.SetupEventHandler(AsicdSub, asicdCommonDefs.PUB_SOCKET_ADDR, SUB_ASICD)
 	ribdServiceHandler.ServerUpCh <- true
 }
 func (ribdServiceHandler *RIBDServer) connectToClient(client ClientJson) {
@@ -423,12 +424,13 @@ func (ribdServiceHandler *RIBDServer) InitializePolicyDB() *policy.PolicyEngineD
 	ribdServiceHandler.PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
 	return ribdServiceHandler.PolicyEngineDB
 }
-func NewRIBDServicesHandler(dbHdl *sql.DB, loggerC *logging.Writer) *RIBDServer {
+func NewRIBDServicesHandler(dbHdl redis.Conn, loggerC *logging.Writer) *RIBDServer {
 	fmt.Println("NewRIBDServicesHandler")
 	RouteInfoMap = patriciaDB.NewTrie()
 	ribdServicesHandler := &RIBDServer{}
 	ribdServicesHandler.Logger = loggerC
 	logger = loggerC
+	localRouteEventsDB = make([]RouteEventInfo, 0)
 	RedistributeRouteMap = make(map[string][]RedistributeRouteInfo)
 	TrackReachabilityMap = make(map[string][]string)
 	RouteProtocolTypeMapDB = make(map[string]int)
@@ -436,17 +438,17 @@ func NewRIBDServicesHandler(dbHdl *sql.DB, loggerC *logging.Writer) *RIBDServer 
 	ProtocolAdminDistanceMapDB = make(map[string]RouteDistanceConfig)
 	PublisherInfoMap = make(map[string]PublisherMapInfo)
 	ribdServicesHandler.NextHopInfoMap = make(map[NextHopInfoKey]NextHopInfo)
-	ribdServicesHandler.TrackReachabilityCh = make(chan TrackReachabilityInfo,1000)
-	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route,5000)
+	ribdServicesHandler.TrackReachabilityCh = make(chan TrackReachabilityInfo, 1000)
+	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route, 5000)
 	ribdServicesHandler.RouteDeleteConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteUpdateConfCh = make(chan UpdateRouteInfo)
-	ribdServicesHandler.NetlinkAddRouteCh = make(chan RouteInfoRecord,5000)
-	ribdServicesHandler.NetlinkDelRouteCh = make(chan RouteInfoRecord,100)
-	ribdServicesHandler.AsicdAddRouteCh = make(chan RouteInfoRecord,5000)
-	ribdServicesHandler.AsicdDelRouteCh = make(chan RouteInfoRecord,1000)
-	ribdServicesHandler.ArpdResolveRouteCh = make(chan RouteInfoRecord,5000)
-	ribdServicesHandler.ArpdRemoveRouteCh = make(chan RouteInfoRecord,1000)
-	ribdServicesHandler.NotificationChannel = make(chan NotificationMsg,5000)
+	ribdServicesHandler.NetlinkAddRouteCh = make(chan RouteInfoRecord, 5000)
+	ribdServicesHandler.NetlinkDelRouteCh = make(chan RouteInfoRecord, 100)
+	ribdServicesHandler.AsicdAddRouteCh = make(chan RouteInfoRecord, 5000)
+	ribdServicesHandler.AsicdDelRouteCh = make(chan RouteInfoRecord, 1000)
+	ribdServicesHandler.ArpdResolveRouteCh = make(chan RouteInfoRecord, 5000)
+	ribdServicesHandler.ArpdRemoveRouteCh = make(chan RouteInfoRecord, 1000)
+	ribdServicesHandler.NotificationChannel = make(chan NotificationMsg, 5000)
 	ribdServicesHandler.PolicyConditionCreateConfCh = make(chan *ribd.PolicyCondition)
 	ribdServicesHandler.PolicyConditionDeleteConfCh = make(chan *ribd.PolicyCondition)
 	ribdServicesHandler.PolicyConditionUpdateConfCh = make(chan *ribd.PolicyCondition)
@@ -461,29 +463,27 @@ func NewRIBDServicesHandler(dbHdl *sql.DB, loggerC *logging.Writer) *RIBDServer 
 	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.ServerUpCh = make(chan bool)
 	ribdServicesHandler.DbHdl = dbHdl
-	routeServiceHandler = ribdServicesHandler
+	RouteServiceHandler = ribdServicesHandler
 	//ribdServicesHandler.RouteInstallCh = make(chan RouteParams)
+	BuildRouteProtocolTypeMapDB()
+	BuildProtocolAdminDistanceMapDB()
+	BuildPublisherMap()
+	PolicyEngineDB = ribdServicesHandler.InitializePolicyDB()
 	return ribdServicesHandler
 }
 func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 	fmt.Println("StartServer")
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
-	PARAMSDIR = paramsDir
-	localRouteEventsDB = make([]RouteEventInfo, 0)
 	configFile := paramsDir + "/clients.json"
 	logger.Info(fmt.Sprintln("configfile = ", configFile))
-	fmt.Println("After using logger")
-	BuildRouteProtocolTypeMapDB()
-	BuildProtocolAdminDistanceMapDB()
-	BuildPublisherMap()
+	PARAMSDIR = paramsDir
 	//RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	//CreateRoutes("RouteSetup.json")
-	PolicyEngineDB = ribdServiceHandler.InitializePolicyDB()
 	ribdServiceHandler.UpdatePolicyObjectsFromDB() //(paramsDir)
 	ribdServiceHandler.ConnectToClients(configFile)
 	logger.Println("Starting the server loop")
 	for {
-		if !routeServiceHandler.AcceptConfig {
+		if !RouteServiceHandler.AcceptConfig {
 			logger.Println("Not ready to accept config")
 			continue
 		}
@@ -526,7 +526,7 @@ func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 			ribdServiceHandler.ProcessPolicyDefinitionConfigDelete(policyDeleteConf)
 		case info := <-ribdServiceHandler.TrackReachabilityCh:
 			logger.Info("received message on TrackReachabilityCh channel")
-			ribdServiceHandler.TrackReachabilityStatus(info.IpAddr,info.Protocol,info.Op)
+			ribdServiceHandler.TrackReachabilityStatus(info.IpAddr, info.Protocol, info.Op)
 		}
 	}
 }

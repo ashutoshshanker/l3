@@ -16,23 +16,6 @@ func (h *BFDHandler) SendBfdGlobalConfig(bfdGlobalConfig *bfdd.BfdGlobal) bool {
 	return true
 }
 
-func (h *BFDHandler) SendBfdIntfConfig(bfdIntfConfig *bfdd.BfdInterface) bool {
-	ifConf := server.IntfConfig{
-		InterfaceId:               bfdIntfConfig.IfIndex,
-		LocalMultiplier:           bfdIntfConfig.LocalMultiplier,
-		DesiredMinTxInterval:      bfdIntfConfig.DesiredMinTxInterval,
-		RequiredMinRxInterval:     bfdIntfConfig.RequiredMinRxInterval,
-		RequiredMinEchoRxInterval: bfdIntfConfig.RequiredMinEchoRxInterval,
-		DemandEnabled:             bfdIntfConfig.DemandEnabled,
-		AuthenticationEnabled:     bfdIntfConfig.AuthenticationEnabled,
-		AuthenticationType:        h.server.ConvertBfdAuthTypeStrToVal(bfdIntfConfig.AuthType),
-		AuthenticationKeyId:       bfdIntfConfig.AuthKeyId,
-		AuthenticationData:        bfdIntfConfig.AuthData,
-	}
-	h.server.IntfConfigCh <- ifConf
-	return true
-}
-
 func (h *BFDHandler) SendBfdSessionConfig(bfdSessionConfig *bfdd.BfdSession) bool {
 	sessionConf := server.SessionConfig{
 		DestIp:    bfdSessionConfig.IpAddr,
@@ -70,15 +53,6 @@ func (h *BFDHandler) CreateBfdGlobal(bfdGlobalConf *bfdd.BfdGlobal) (bool, error
 	}
 	h.logger.Info(fmt.Sprintln("Create global config attrs:", bfdGlobalConf))
 	return h.SendBfdGlobalConfig(bfdGlobalConf), nil
-}
-
-func (h *BFDHandler) CreateBfdInterface(bfdIntfConf *bfdd.BfdInterface) (bool, error) {
-	if bfdIntfConf == nil {
-		err := errors.New("Invalid Interface Configuration")
-		return false, err
-	}
-	h.logger.Info(fmt.Sprintln("Create interface config attrs:", bfdIntfConf))
-	return h.SendBfdIntfConfig(bfdIntfConf), nil
 }
 
 func (h *BFDHandler) CreateBfdSession(bfdSessionConf *bfdd.BfdSession) (bool, error) {

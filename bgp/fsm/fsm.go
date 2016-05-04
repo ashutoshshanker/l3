@@ -158,7 +158,8 @@ func NewIdleState(fsm *FSM) *IdleState {
 }
 
 func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
-	if st.fsm.neighborConf.Neighbor.State.BfdNeighborState == "down" {
+	if st.fsm.neighborConf.RunningConf.BfdEnable &&
+		st.fsm.neighborConf.Neighbor.State.BfdNeighborState == "down" {
 		st.logger.Info(fmt.Sprintln("Bfd is down for neighbor: ", st.fsm.pConf.NeighborAddress,
 			" do not process event: ", BGPEventTypeToStr[event]))
 		return
@@ -580,7 +581,7 @@ func (st *OpenConfirmState) processEvent(event BGPFSMEvent, data interface{}) {
 	case BGPEventBGPOpen: // Collision Detection... needs work
 
 	case BGPEventHeaderErr, BGPEventOpenMsgErr:
-		bgpMsgErr := data.(packet.BGPMessageError)
+		bgpMsgErr := data.(*packet.BGPMessageError)
 		st.fsm.SendNotificationMessage(bgpMsgErr.TypeCode, bgpMsgErr.SubTypeCode, bgpMsgErr.Data)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
@@ -715,7 +716,7 @@ func (st *EstablishedState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ProcessUpdateMessage(bgpMsg)
 
 	case BGPEventUpdateMsgErr:
-		bgpMsgErr := data.(packet.BGPMessageError)
+		bgpMsgErr := data.(*packet.BGPMessageError)
 		st.fsm.SendNotificationMessage(bgpMsgErr.TypeCode, bgpMsgErr.SubTypeCode, bgpMsgErr.Data)
 		st.fsm.StopConnectRetryTimer()
 		st.fsm.ClearPeerConn()
@@ -882,10 +883,19 @@ func NewFSM(fsmManager *FSMManager, id uint8, neighborConf *base.NeighborConf) *
 	return &fsm
 }
 
-func (fsm *FSM) StartFSM(state BaseStateIface) {
+func (fsm *FSM) Init(state BaseStateIface) {
 	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id,
-		"Starting the state machine in", state.state(), "state"))
+		"Set state machine to", state.state(), "state"))
 	fsm.State = state
+}
+
+func (fsm *FSM) StartFSM() {
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id, "Start"))
+	if fsm.State == nil {
+		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM:", fsm.id,
+			"Start state is not set... starting the state machine in IDLE state"))
+		fsm.State = NewIdleState(fsm)
+	}
 	fsm.State.enter()
 
 	for {
@@ -1179,17 +1189,21 @@ func (fsm *FSM) ProcessUpdateMessage(pkt *packet.BGPMessage) {
 }
 
 func (fsm *FSM) sendUpdateMessage(bgpMsg *packet.BGPMessage) {
+	updateMsgs := packet.ConstructMaxSizedUpdatePackets(bgpMsg)
 	atomic.AddUint32(&fsm.neighborConf.Neighbor.State.Queues.Output, ^uint32(0))
-	packet, _ := bgpMsg.Encode()
-	num, err := (*fsm.peerConn.conn).Write(packet)
-	if err != nil {
+
+	for idx, _ := range updateMsgs {
+		packet, _ := updateMsgs[idx].Encode()
+		num, err := (*fsm.peerConn.conn).Write(packet)
+		if err != nil {
+			fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
+				"Conn.Write failed to send Update message with error:", err))
+			return
+		}
+		fsm.neighborConf.Neighbor.State.Messages.Sent.Update++
 		fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
-			"Conn.Write failed to send Update message with error:", err))
-		return
+			"Conn.Write succeeded. sent Update message of", num, "bytes"))
 	}
-	fsm.neighborConf.Neighbor.State.Messages.Sent.Update++
-	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id,
-		"Conn.Write succeeded. sent Update message of", num, "bytes"))
 	fsm.StartKeepAliveTimer()
 }
 

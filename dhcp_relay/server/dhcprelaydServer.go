@@ -2,7 +2,7 @@
 package relayServer
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"dhcprelayd"
 	"encoding/json"
@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 	"utils/ipcutils"
@@ -217,7 +218,7 @@ func DhcpRelayAgentUpdateIntfIpAddr(ifIndexList []int32) {
 				ifIndexList[i]))
 			continue
 		}
-		logicalId := int32(asicdConstDefs.GetIntfIdFromIfIndex(obj.IfIndex))
+		logicalId := int32(asicdCommonDefs.GetIntfIdFromIfIndex(obj.IfIndex))
 		dhcprelayLogicalIntf2IfIndex[logicalId] = obj.IfIndex
 		gblEntry := dhcprelayGblInfo[ifIndexList[i]]
 		ip, ipnet, err := net.ParseCIDR(obj.IpAddr)
@@ -232,7 +233,6 @@ func DhcpRelayAgentUpdateIntfIpAddr(ifIndexList []int32) {
 			" Ip address:", gblEntry.IpAddr,
 			" netmask:", gblEntry.Netmask))
 	}
-	dhcprelayDbHdl.Close()
 }
 
 func DhcpRelayAgentInitVlanInfo(VlanName string, VlanId int32) {
@@ -265,6 +265,24 @@ func DhcpRelayGetClient(logger *logging.Writer, fileName string,
 		}
 	}
 	return nil, errors.New("couldn't find dhcprelay port info")
+}
+
+func DhcpRelayGlobalInit(enable bool) {
+	if enable {
+		if dhcprelayRefCountMutex == nil {
+			dhcprelayRefCountMutex = &sync.RWMutex{}
+			dhcprelayEnabledIntfRefCount = 0
+		}
+		dhcprelayEnable = enable
+		if dhcprelayClientConn != nil {
+			logger.Info("DRA: no need to create pcap as its already created")
+			return
+		} else {
+			DhcpRelayAgentCreateClientServerConn()
+		}
+	} else {
+		dhcprelayEnable = enable
+	}
 }
 
 func StartServer(log *logging.Writer, handler *DhcpRelayServiceHandler, params string) error {

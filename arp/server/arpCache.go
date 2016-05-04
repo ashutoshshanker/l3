@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"fmt"
 	"time"
 	"utils/commonDefs"
@@ -58,12 +58,12 @@ func (server *ARPServer) processArpEntryCntUpdateMsg(cnt int) {
 	}
 }
 
-func (server *ARPServer) processArpEntryMacMoveMsg(msg asicdConstDefs.IPv4NbrMacMoveNotifyMsg) {
+func (server *ARPServer) processArpEntryMacMoveMsg(msg asicdCommonDefs.IPv4NbrMacMoveNotifyMsg) {
 	if entry, ok := server.arpCache[msg.IpAddr]; ok {
 		entry.PortNum = int(msg.IfIndex)
 		server.arpCache[msg.IpAddr] = entry
 	} else {
-		server.logger.Info(fmt.Sprintf("Mac move message received. Neighbor IP does not exist in arp cache - %x", msg.IpAddr))
+		server.logger.Debug(fmt.Sprintf("Mac move message received. Neighbor IP does not exist in arp cache - %x", msg.IpAddr))
 	}
 }
 
@@ -76,7 +76,7 @@ func (server *ARPServer)processArpEntryCreateMsg(msg CreateArpEntryMsg) {
 func (server *ARPServer) processArpEntryDeleteMsg(msg DeleteArpEntryMsg) {
 	for key, ent := range server.arpCache {
 		if msg.PortNum == ent.PortNum {
-			server.logger.Info(fmt.Sprintln("1 Calling Asicd Delete Ip:", key))
+			server.logger.Debug(fmt.Sprintln("1 Calling Asicd Delete Ip:", key))
 			rv, err := server.asicdClient.ClientHdl.DeleteIPv4Neighbor(key,
 				"00:00:00:00:00:00", 0, 0)
 			if rv < 0 || err != nil {
@@ -93,21 +93,21 @@ func (server *ARPServer) processArpEntryDeleteMsg(msg DeleteArpEntryMsg) {
 func (server *ARPServer) processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
 	portEnt, _ := server.portPropMap[msg.PortNum]
 	l3IfIdx := portEnt.L3IfIdx
-	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(l3IfIdx))
-	ifId := asicdConstDefs.GetIntfIdFromIfIndex(int32(l3IfIdx))
+	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(int32(l3IfIdx))
+	ifId := asicdCommonDefs.GetIntfIdFromIfIndex(int32(l3IfIdx))
 	var vlanId int
 	if l3IfIdx == -1 {
-		vlanId = asicdConstDefs.SYS_RSVD_VLAN
+		vlanId = asicdCommonDefs.SYS_RSVD_VLAN
 	} else {
 		_, exist := server.l3IntfPropMap[l3IfIdx]
 		if !exist {
-			server.logger.Info(fmt.Sprintln("Port", msg.PortNum, "doesnot belong to L3 Interface"))
+			server.logger.Err(fmt.Sprintln("Port", msg.PortNum, "doesnot belong to L3 Interface"))
 			return
 		}
 		if ifType == commonDefs.IfTypeVlan {
 			vlanId = ifId
 		} else {
-			vlanId = asicdConstDefs.SYS_RSVD_VLAN
+			vlanId = asicdCommonDefs.SYS_RSVD_VLAN
 		}
 	}
 	arpEnt, exist := server.arpCache[msg.IpAddr]
@@ -138,7 +138,7 @@ func (server *ARPServer) processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
 		}
 		if arpEnt.MacAddr != "incomplete" &&
 			msg.MacAddr != "incomplete" {
-			server.logger.Info(fmt.Sprintln("2 Calling Asicd Update Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:", vlanId, "IfIndex:", ifIdx))
+			server.logger.Debug(fmt.Sprintln("2 Calling Asicd Update Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:", vlanId, "IfIndex:", ifIdx))
 			rv, err := server.asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.IpAddr,
 				msg.MacAddr, int32(vlanId), ifIdx)
 			if rv < 0 || err != nil {
@@ -148,7 +148,7 @@ func (server *ARPServer) processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
 		} else if arpEnt.MacAddr == "incomplete" &&
 			msg.MacAddr != "incomplete" {
 			if arpEnt.Type == false {
-				server.logger.Info(fmt.Sprintln("3 Calling Asicd Create Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:", vlanId, "IfIndex:", ifIdx))
+				server.logger.Debug(fmt.Sprintln("3 Calling Asicd Create Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:", vlanId, "IfIndex:", ifIdx))
 				rv, err := server.asicdClient.ClientHdl.CreateIPv4Neighbor(msg.IpAddr,
 					msg.MacAddr, int32(vlanId), ifIdx)
 				if rv < 0 || err != nil {
@@ -157,7 +157,7 @@ func (server *ARPServer) processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
 				}
 			} else if arpEnt.Type == true {
 				// Since RIB would already created the neighbor entry
-				server.logger.Info(fmt.Sprintln("2.1 Calling Asicd Update Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:", vlanId, "IfIndex:", ifIdx))
+				server.logger.Debug(fmt.Sprintln("2.1 Calling Asicd Update Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:", vlanId, "IfIndex:", ifIdx))
 				rv, err := server.asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.IpAddr,
 					msg.MacAddr, int32(vlanId), ifIdx)
 				if rv < 0 || err != nil {
@@ -189,7 +189,7 @@ func (server *ARPServer) processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
 			ifIdx = int32(portEnt.LagIfIdx)
 		}
 		if msg.MacAddr != "incomplete" {
-			server.logger.Info(fmt.Sprintln("4 Calling Asicd Create Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:", vlanId, "IfIndex:", ifIdx))
+			server.logger.Debug(fmt.Sprintln("4 Calling Asicd Create Ip:", msg.IpAddr, "mac:", msg.MacAddr, "vlanId:", vlanId, "IfIndex:", ifIdx))
 			rv, err := server.asicdClient.ClientHdl.CreateIPv4Neighbor(msg.IpAddr,
 				msg.MacAddr, int32(vlanId), ifIdx)
 			if rv < 0 || err != nil {
@@ -231,7 +231,7 @@ func (server *ARPServer) processArpCounterUpdateMsg() {
 		if arpEnt.Counter <= server.minCnt {
 			server.deleteArpEntryInDB(ip)
 			delete(server.arpCache, ip)
-			server.logger.Info(fmt.Sprintln("5 Calling Asicd Delete Ip:", ip))
+			server.logger.Debug(fmt.Sprintln("5 Calling Asicd Delete Ip:", ip))
 			rv, err := server.asicdClient.ClientHdl.DeleteIPv4Neighbor(ip,
 				"00:00:00:00:00:00", 0, 0)
 			if rv < 0 || err != nil {
@@ -266,17 +266,17 @@ func (server *ARPServer) processArpCounterUpdateMsg() {
 
 func (server *ARPServer) refreshArpEntry(ipAddr string, port int) {
 	// TimeoutCounter set to retryCnt
-	server.logger.Info(fmt.Sprintln("Refreshing Arp entry for IP:", ipAddr, "on port:", port))
+	server.logger.Debug(fmt.Sprintln("Refreshing Arp entry for IP:", ipAddr, "on port:", port))
 	server.sendArpReq(ipAddr, port)
 }
 
 func (server *ARPServer) retryForArpEntry(ipAddr string, port int) {
-	server.logger.Info(fmt.Sprintln("Retry Arp entry for IP:", ipAddr, "on port:", port))
+	server.logger.Debug(fmt.Sprintln("Retry Arp entry for IP:", ipAddr, "on port:", port))
 	server.sendArpReq(ipAddr, port)
 }
 
 func (server *ARPServer) processArpSliceRefreshMsg() {
-	server.logger.Info("Refresh Arp Slice used for Getbulk")
+	server.logger.Debug("Refresh Arp Slice used for Getbulk")
 	server.arpSlice = server.arpSlice[:0]
 	server.arpSlice = nil
 	server.arpSlice = make([]string, 0)
@@ -291,7 +291,7 @@ func (server *ARPServer) refreshArpSlice() {
 		server.arpSliceRefreshStartCh <- true
 		msg := <-server.arpSliceRefreshDoneCh
 		if msg == true {
-			server.logger.Info("ARP Entry refresh done")
+			server.logger.Debug("ARP Entry refresh done")
 		} else {
 			server.logger.Err("ARP Entry refresh not done")
 		}
@@ -309,10 +309,10 @@ func (server *ARPServer) arpCacheTimeout() {
 		count++
 		if server.dumpArpTable == true &&
 			(count%60) == 0 {
-			server.logger.Info("===============Message from ARP Timeout Thread==============")
+			server.logger.Debug("===============Message from ARP Timeout Thread==============")
 			server.printArpEntries()
-			server.logger.Info("========================================================")
-			server.logger.Info(fmt.Sprintln("Arp Slice: ", server.arpSlice))
+			server.logger.Debug("========================================================")
+			server.logger.Debug(fmt.Sprintln("Arp Slice: ", server.arpSlice))
 		}
 		server.arpCounterUpdateCh <- true
 	}

@@ -102,8 +102,9 @@ func (server *OSPFServer) processASBdrRtrStatus(isASBR bool) {
 	if isASBR {
 		server.logger.Info(fmt.Sprintln("GLOBAL: Router is ASBR. Listen to RIBD updates."))
 		//get ribd routes
-		//server.getRibdRoutes()
-		//server.startRibdUpdates()
+		//server.testASExternal()
+		server.getRibdRoutes()
+		server.startRibdUpdates()
 	}
 }
 func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {

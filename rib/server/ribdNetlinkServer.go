@@ -2,12 +2,13 @@
 package server
 
 import (
-	"net"
-	"asicd/asicdConstDefs"
-	"github.com/vishvananda/netlink"
+	"asicd/asicdCommonDefs"
 	"fmt"
+	"github.com/vishvananda/netlink"
 	"l3/rib/ribdCommonDefs"
+	"net"
 )
+
 func delLinuxRoute(route RouteInfoRecord) {
 	logger.Info("delLinuxRoute")
 	if route.protocol == ribdCommonDefs.CONNECTED {
@@ -21,7 +22,7 @@ func delLinuxRoute(route RouteInfoRecord) {
 		IP:   maskedIP, //route.destNetIp,
 		Mask: mask,     //net.CIDRMask(prefixLen, 32),//net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
 	}
-	ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
+	ifId := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
 	logger.Info(fmt.Sprintln("IfId = ", ifId))
 	intfEntry, ok := IntfIdNameMap[ifId]
 	if !ok {
@@ -36,7 +37,7 @@ func delLinuxRoute(route RouteInfoRecord) {
 		return
 	}
 
-	lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst, Gw:route.nextHopIp}
+	lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst, Gw: route.nextHopIp}
 	err = netlink.RouteDel(&lxroute)
 	if err != nil {
 		logger.Err(fmt.Sprintln("Route delete call failed with error ", err))
@@ -57,7 +58,7 @@ func addLinuxRoute(route RouteInfoRecord) {
 		IP:   maskedIP, //route.destNetIp,
 		Mask: mask,     //net.CIDRMask(prefixLen, 32),//net.IPv4Mask(route.networkMask[0], route.networkMask[1], route.networkMask[2], route.networkMask[3]),
 	}
-	ifId := asicdConstDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
+	ifId := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(route.nextHopIfIndex), int(route.nextHopIfType))
 	logger.Info(fmt.Sprintln("IfId = ", ifId))
 	intfEntry, ok := IntfIdNameMap[ifId]
 	if !ok {
@@ -72,16 +73,16 @@ func addLinuxRoute(route RouteInfoRecord) {
 		return
 	}
 
-	logger.Info(fmt.Sprintln("adding linux route for dst.ip= ", dst.IP.String(), " mask: ", dst.Mask.String(), "Gw: ", route.nextHopIp, " maskedIP: ",maskedIP))
+	logger.Info(fmt.Sprintln("adding linux route for dst.ip= ", dst.IP.String(), " mask: ", dst.Mask.String(), "Gw: ", route.nextHopIp, " maskedIP: ", maskedIP))
 	lxroute := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst, Gw: route.nextHopIp}
-    routeList,err := netlink.RouteListFiltered(netlink.FAMILY_V4, &netlink.Route{Dst:dst},netlink.RT_FILTER_DST)	
-	logger.Info(fmt.Sprintln("After RouteListFiltered call  err :", err ," len(routeList) :", len(routeList)))
-    if routeList != nil && len(routeList) > 0{
-        logger.Info(fmt.Sprintln("Appending to existing route"))
+	routeList, err := netlink.RouteListFiltered(netlink.FAMILY_V4, &netlink.Route{Dst: dst}, netlink.RT_FILTER_DST)
+	logger.Info(fmt.Sprintln("After RouteListFiltered call  err :", err, " len(routeList) :", len(routeList)))
+	if routeList != nil && len(routeList) > 0 {
+		logger.Info(fmt.Sprintln("Appending to existing route"))
 		err = netlink.RouteAppend(&lxroute)
 	} else {
 		logger.Info(fmt.Sprintln("Adding new route"))
-	    err = netlink.RouteAdd(&lxroute)
+		err = netlink.RouteAdd(&lxroute)
 	}
 	if err != nil {
 		logger.Err(fmt.Sprintln("Route add call failed with error ", err))
@@ -93,11 +94,11 @@ func (ribdServiceHandler *RIBDServer) StartNetlinkServer() {
 	for {
 		select {
 		case route := <-ribdServiceHandler.NetlinkAddRouteCh:
-		     logger.Info(" received message on NetlinkAddRouteCh")
-		     addLinuxRoute(route)
+			logger.Info(" received message on NetlinkAddRouteCh")
+			addLinuxRoute(route)
 		case route := <-ribdServiceHandler.NetlinkDelRouteCh:
-		     logger.Info(" received message on NetlinkDelRouteCh")
-		     delLinuxRoute(route)
+			logger.Info(" received message on NetlinkDelRouteCh")
+			delLinuxRoute(route)
 		}
 	}
 }

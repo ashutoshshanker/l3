@@ -14,15 +14,6 @@ func (h *BFDHandler) GetBfdGlobalState(bfd string) (*bfdd.BfdGlobalState, error)
 	return bfdGlobalStateResponse, nil
 }
 
-func (h *BFDHandler) GetBfdInterfaceState(ifIndex int32) (*bfdd.BfdInterfaceState, error) {
-	h.logger.Info(fmt.Sprintln("Get Interface attrs for IfIndex ", ifIndex))
-	bfdInterfaceStateResponse := bfdd.NewBfdInterfaceState()
-	intfState := h.server.GetBfdIntfState(ifIndex)
-	bfdInterfaceState := h.convertIntfStateToThrift(*intfState)
-	bfdInterfaceStateResponse = bfdInterfaceState
-	return bfdInterfaceStateResponse, nil
-}
-
 func (h *BFDHandler) GetBfdSessionState(ipAddr string) (*bfdd.BfdSessionState, error) {
 	h.logger.Info(fmt.Sprintln("Get Session attrs for neighbor ", ipAddr))
 	bfdSessionStateResponse := bfdd.NewBfdSessionState()
