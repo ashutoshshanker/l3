@@ -196,7 +196,7 @@ func (server *OSPFServer) processOspfData(data []byte, ethHdrMd *EthHdrMetadata,
 		err = server.processRxHelloPkt(data, ospfHdrMd, ipHdrMd, ethHdrMd, key)
 	case DBDescriptionType:
 		if exist {
-			err = server.processRxDbdPkt(data, ospfHdrMd, ipHdrMd, key, ethHdrMd.srcMAC)
+			err = server.ProcessRxDbdPkt(data, ospfHdrMd, ipHdrMd, key, ethHdrMd.srcMAC)
 		}
 	case LSRequestType:
 		if exist {
