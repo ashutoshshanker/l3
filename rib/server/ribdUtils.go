@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"github.com/op/go-nanomsg"
 	"l3/rib/ribdCommonDefs"
-	"models"
 	"net"
+	"models"
 	"ribd"
 	"ribdInt"
 	"sort"
@@ -201,10 +201,10 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
 	return nil
 }
 func arpResolveCalled(key NextHopInfoKey) bool {
-	if routeServiceHandler.NextHopInfoMap == nil {
+	if RouteServiceHandler.NextHopInfoMap == nil {
 		return false
 	}
-	info, ok := routeServiceHandler.NextHopInfoMap[key]
+	info, ok := RouteServiceHandler.NextHopInfoMap[key]
 	if !ok || info.refCount == 0 {
 		logger.Info(fmt.Sprintln("Arp resolve not called for ", key.nextHopIp))
 		return false
@@ -219,12 +219,12 @@ func updateNextHopMap(key NextHopInfoKey, op int) (count int) {
 		opStr = "decrementing"
 	}
 	logger.Info(fmt.Sprintln(opStr, " nextHop Map for ", key.nextHopIp))
-	if routeServiceHandler.NextHopInfoMap == nil {
+	if RouteServiceHandler.NextHopInfoMap == nil {
 		return -1
 	}
-	info, ok := routeServiceHandler.NextHopInfoMap[key]
+	info, ok := RouteServiceHandler.NextHopInfoMap[key]
 	if !ok {
-		routeServiceHandler.NextHopInfoMap[key] = NextHopInfo{1}
+		RouteServiceHandler.NextHopInfoMap[key] = NextHopInfo{1}
 		count = 1
 	} else {
 		if op == add {
@@ -232,7 +232,7 @@ func updateNextHopMap(key NextHopInfoKey, op int) (count int) {
 		} else if op == del {
 			info.refCount--
 		}
-		routeServiceHandler.NextHopInfoMap[key] = info
+		RouteServiceHandler.NextHopInfoMap[key] = info
 		count = info.refCount
 	}
 	logger.Info(fmt.Sprintln("Updated refcount = ", count))
@@ -564,7 +564,7 @@ func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes
 	}
 	eventInfo = eventInfo + evtStr + " for route " + route.Ipaddr + " " + route.Mask + " type" + ReverseRouteProtoTypeMapDB[int(route.Prototype)]
 	logger.Info(fmt.Sprintln("Adding ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " to notification channel"))
-	routeServiceHandler.NotificationChannel <- NotificationMsg{PUB, buf, eventInfo}
+	RouteServiceHandler.NotificationChannel <- NotificationMsg{PUB, buf, eventInfo}
 }
 func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteReachabilityStatusInfo) {
 	logger.Info(fmt.Sprintln("RouteReachabilityStatusNotificationSend for protocol ", targetProtocol))
@@ -594,7 +594,7 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 		eventInfo = eventInfo + " NextHop IP: " + info.nextHopIntf.NextHopIp + " IfType/Index: " + strconv.Itoa(int(info.nextHopIntf.NextHopIfType)) + "/" + strconv.Itoa(int(info.nextHopIntf.NextHopIfIndex))
 	}
 	logger.Info(fmt.Sprintln("Adding  NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE with status ", info.status, " for network ", info.destNet, " to notification channel"))
-	routeServiceHandler.NotificationChannel <- NotificationMsg{PUB, buf, eventInfo}
+	RouteServiceHandler.NotificationChannel <- NotificationMsg{PUB, buf, eventInfo}
 }
 func RouteReachabilityStatusUpdate(targetProtocol string, info RouteReachabilityStatusInfo) {
 	logger.Info(fmt.Sprintln("RouteReachabilityStatusUpdate targetProtocol ", targetProtocol))
@@ -693,28 +693,28 @@ func getNetworkPrefix(destNetIp net.IP, networkMask net.IP) (destNet patriciaDB.
 	return destNet, err
 }
 func (m RIBDServer) WriteIPv4RouteStateEntryToDB(entry RouteInfoRecord, routeList RouteInfoRecordList) error {
-	logger.Info(fmt.Sprintln("WriteIPv4RouteStateEntryToDB"))
+    logger.Info(fmt.Sprintln("WriteIPv4RouteStateEntryToDB"))
 	m.DelIPv4RouteStateEntryFromDB(entry)
 	var dbObj models.IPv4RouteState
 	obj := ribd.NewIPv4RouteState()
 	obj.DestinationNw = entry.networkAddr
-	/*	obj.NextHopIp = entry.nextHopIp.String()
-		nextHopIfTypeStr, _ := m.GetNextHopIfTypeStr(ribdInt.Int(entry.nextHopIfType))
-		obj.OutgoingIntfType = nextHopIfTypeStr
-		obj.OutgoingInterface = strconv.Itoa(int(entry.nextHopIfIndex))
-		obj.Protocol = ReverseRouteProtoTypeMapDB[int(entry.protocol)]*/
-	obj.NextHopList = make([]*ribd.NextHopInfo, 0)
+/*	obj.NextHopIp = entry.nextHopIp.String()
+	nextHopIfTypeStr, _ := m.GetNextHopIfTypeStr(ribdInt.Int(entry.nextHopIfType))
+	obj.OutgoingIntfType = nextHopIfTypeStr
+	obj.OutgoingInterface = strconv.Itoa(int(entry.nextHopIfIndex))
+	obj.Protocol = ReverseRouteProtoTypeMapDB[int(entry.protocol)]*/
+	obj.NextHopList = make([] *ribd.NextHopInfo,0)
 	routeInfoList := routeList.routeInfoProtocolMap[routeList.selectedRouteProtocol]
 	logger.Info(fmt.Sprintln("len of routeInfoList - ", len(routeInfoList), "selected route protocol = ", routeList.selectedRouteProtocol))
-	nextHopInfo := make([]ribd.NextHopInfo, len(routeInfoList))
+	nextHopInfo := make([]ribd.NextHopInfo,len(routeInfoList))
 	i := 0
 	for sel := 0; sel < len(routeInfoList); sel++ {
 		nextHopInfo[i].NextHopIp = routeInfoList[sel].nextHopIp.String()
-		nextHopIfTypeStr, _ := m.GetNextHopIfTypeStr(ribdInt.Int(entry.nextHopIfType))
-		nextHopInfo[i].OutgoingIntfType = nextHopIfTypeStr
-		nextHopInfo[i].OutgoingInterface = strconv.Itoa(int(routeInfoList[sel].nextHopIfIndex))
-		nextHopInfo[i].Protocol = ReverseRouteProtoTypeMapDB[int(routeInfoList[sel].protocol)]
-		obj.NextHopList = append(obj.NextHopList, &nextHopInfo[i])
+	    nextHopIfTypeStr, _ := m.GetNextHopIfTypeStr(ribdInt.Int(entry.nextHopIfType))
+	    nextHopInfo[i].OutgoingIntfType = nextHopIfTypeStr
+	    nextHopInfo[i].OutgoingInterface = strconv.Itoa(int(routeInfoList[sel].nextHopIfIndex))
+        nextHopInfo[i].Protocol = ReverseRouteProtoTypeMapDB[int(routeInfoList[sel].protocol)]
+		obj.NextHopList = append(obj.NextHopList,&nextHopInfo[i])
 		i++
 	}
 	obj.RouteCreatedTime = entry.routeCreatedTime
@@ -757,7 +757,7 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(entry RouteInfoRecord, routeLis
 }
 
 func (m RIBDServer) DelIPv4RouteStateEntryFromDB(entry RouteInfoRecord) error {
-	logger.Info(fmt.Sprintln("DelIPv4RouteStateEntryFromDB"))
+    logger.Info(fmt.Sprintln("DelIPv4RouteStateEntryFromDB"))
 	var dbObj models.IPv4RouteState
 	obj := ribd.NewIPv4RouteState()
 	obj.DestinationNw = entry.networkAddr
