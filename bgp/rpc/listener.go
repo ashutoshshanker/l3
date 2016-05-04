@@ -164,6 +164,7 @@ func (h *BGPHandler) convertModelToBGPNeighbor(obj models.BGPNeighbor) (neighbor
 			HoldTime:                uint32(obj.HoldTime),
 			KeepaliveTime:           uint32(obj.KeepaliveTime),
 			BfdEnable:               obj.BfdEnable,
+			BfdSessionParam:         obj.BfdSessionParam,
 			AddPathsRx:              obj.AddPathsRx,
 			AddPathsMaxTx:           uint8(obj.AddPathsMaxTx),
 			MaxPrefixes:             uint32(obj.MaxPrefixes),
@@ -428,6 +429,7 @@ func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int,
 	bgpGlobalStateBulk.EndIdx = bgpd.Int(0)
 	bgpGlobalStateBulk.Count = bgpd.Int(1)
 	bgpGlobalStateBulk.More = false
+	bgpGlobalStateBulk.BGPGlobalStateList = make([]*bgpd.BGPGlobalState, 1)
 	bgpGlobalStateBulk.BGPGlobalStateList[0], _ = h.GetBGPGlobalState("bgp")
 
 	return bgpGlobalStateBulk, nil
@@ -537,6 +539,7 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf c
 			HoldTime:                uint32(bgpNeighbor.HoldTime),
 			KeepaliveTime:           uint32(bgpNeighbor.KeepaliveTime),
 			BfdEnable:               bgpNeighbor.BfdEnable,
+			BfdSessionParam:         bgpNeighbor.BfdSessionParam,
 			AddPathsRx:              bgpNeighbor.AddPathsRx,
 			AddPathsMaxTx:           uint8(bgpNeighbor.AddPathsMaxTx),
 			MaxPrefixes:             uint32(bgpNeighbor.MaxPrefixes),

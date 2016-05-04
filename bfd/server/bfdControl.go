@@ -120,7 +120,7 @@ const (
 	SRC_PORT_LAG                          = 49153
 	STARTUP_TX_INTERVAL                   = 2000000
 	STARTUP_RX_INTERVAL                   = 2000000
-	TX_JITTER                             = 25 //Timer will be running at 0 to 25% less than TX_INTERVAL
+	TX_JITTER                             = 15 //Timer will be running at 0 to 15% less than TX_INTERVAL
 	//DEDICATED_MAC                         = net.HardwareAddr{0x01, 0x00, 0x5E, 0x90, 0x00, 0x01}
 )
 
