@@ -1,7 +1,7 @@
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"container/list"
 	"encoding/json"
@@ -293,7 +293,7 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Ospf Server"))
 	server.ConnectToClients(paramFile)
 	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
+	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
 
 	server.BuildPortPropertyMap()

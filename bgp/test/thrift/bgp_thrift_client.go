@@ -4,6 +4,7 @@ package main
 import (
 	"bgpd"
 	"fmt"
+
 	"git.apache.org/thrift.git/lib/go/thrift"
 )
 
@@ -27,10 +28,10 @@ func main() {
 		fmt.Println("Failed to open the socket, error:", err)
 	}
 
-	client := bgpd.NewBGPServerClientFactory(clientTransport, protocolFactory)
+	client := bgpd.NewBGPDServicesClientFactory(clientTransport, protocolFactory)
 
 	globalConfigArgs := bgpd.NewBGPGlobal()
-	globalConfigArgs.AS = 5000
+	globalConfigArgs.ASNum = 5000
 	globalConfigArgs.RouterId = "localhost"
 	fmt.Println("calling CreateBgpGlobal with attr:", globalConfigArgs)
 	ret, err := client.CreateBGPGlobal(globalConfigArgs)

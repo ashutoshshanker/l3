@@ -9,7 +9,6 @@ func (server *BFDServer) GetBfdGlobalState() *GlobalState {
 	ent := server.bfdGlobal
 
 	result.Enable = ent.Enabled
-	result.NumInterfaces = ent.NumInterfaces
 	result.NumSessions = ent.NumSessions
 	result.NumUpSessions = ent.NumUpSessions
 	result.NumDownSessions = ent.NumDownSessions

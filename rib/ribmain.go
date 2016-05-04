@@ -1,9 +1,9 @@
 package main
 
 import (
-	"database/sql"
 	"flag"
 	"fmt"
+	"github.com/garyburd/redigo/redis"
 	"l3/rib/rpc"
 	"l3/rib/server"
 	"utils/keepalive"
@@ -20,25 +20,15 @@ func main() {
 	}
 
 	fmt.Println("Start logger")
-	logger, err := logging.NewLogger(fileName, "ribd", "RIB")
+	logger, err := logging.NewLogger("ribd", "RIB", true)
 	if err != nil {
 		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
-	go logger.ListenForLoggingNotifications()
 	logger.Info("Started the logger successfully.")
 
-	// Start keepalive routine
-	go keepalive.InitKeepAlive("ribd", fileName)
-
-	dbName := fileName + "UsrConfDb.db"
-	fmt.Println("RIBd opening Config DB: ", dbName)
-	dbHdl, err := sql.Open("sqlite3", dbName)
+	dbHdl, err := redis.Dial("tcp", ":6379")
 	if err != nil {
-		fmt.Println("Failed to open connection to DB. ", err, " Exiting!!")
-		return
-	}
-	if err = dbHdl.Ping(); err != nil {
-		fmt.Println(fmt.Sprintln("Failed to keep DB connection alive"))
+		logger.Err("Failed to dial out to Redis server")
 		return
 	}
 	routeServer := server.NewRIBDServicesHandler(dbHdl, logger)
@@ -52,12 +42,16 @@ func main() {
 	go routeServer.StartArpdServer()
 	go routeServer.StartServer(*paramsDir)
 	up := <-routeServer.ServerUpCh
-	dbHdl.Close()
+	//dbHdl.Close()
 	logger.Info(fmt.Sprintln("RIBD server is up: ", up))
 	if !up {
 		logger.Err(fmt.Sprintln("Exiting!!"))
 		return
 	}
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("ribd", fileName)
+
 	ribdServicesHandler := rpc.NewRIBdHandler(logger, routeServer)
 	rpc.NewRIBdRPCServer(logger, ribdServicesHandler, fileName)
 }
