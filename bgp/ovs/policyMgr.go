@@ -68,21 +68,21 @@ func (mgr *OvsPolicyMgr) sendConnectedRoutes(add bool) {
 					value.Fields["prefix"]))
 				continue
 			}
-			utils.Logger.Info(fmt.Sprintln("nh:", nhId))
+			utils.Logger.Info("nh uuid: " + nhId.GoUuid)
 			nhs, exists := mgr.dbmgr.cache["Nexthop"]
+			if len(nhs) < 1 {
+				utils.Logger.Err(fmt.Sprintln("No next hop configured for",
+					value.Fields["prefix"]))
+				continue
+			}
+			utils.Logger.Info(fmt.Sprintln("nhs:", nhs))
+			nh, exists := nhs[nhId.GoUuid]
+			utils.Logger.Info(fmt.Sprintln("nh:", nh))
 			if !exists {
 				utils.Logger.Err(fmt.Sprintln("No next hop configured for",
 					value.Fields["prefix"]))
 				continue
 			}
-
-			nh, exists := nhs[string(mgr.dbmgr.getObjUUID(nhId))]
-			if !exists {
-				utils.Logger.Err(fmt.Sprintln("No next hop configured for",
-					value.Fields["prefix"]))
-				continue
-			}
-			utils.Logger.Info(fmt.Sprintln("NextHop is", nh))
 		}
 	}
 }
