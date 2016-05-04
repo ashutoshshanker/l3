@@ -34,38 +34,6 @@ func (mgr *OvsPolicyMgr) Start() {
 	go mgr.handleRedistribute()
 }
 
-func (mgr *OvsPolicyMgr) AddRedistributePolicy(info string) {
-	mgr.redistributeLock.Lock()
-	switch info {
-	case "connected":
-		utils.Logger.Info("ADD connected route")
-		mgr.connected <- true
-	case "static":
-		utils.Logger.Info("ADD static route")
-		mgr.static <- true
-	case "ospf":
-		utils.Logger.Info("ADD ospf route")
-		mgr.ospf <- true
-	}
-	mgr.redistributeLock.Unlock()
-}
-
-func (mgr *OvsPolicyMgr) RemoveRedistributePolicy(info string) {
-	mgr.redistributeLock.Lock()
-	switch info {
-	case "connected":
-		utils.Logger.Info("REMOVE connected route")
-		mgr.connected <- false
-	case "static":
-		utils.Logger.Info("REMOVE static route")
-		mgr.static <- false
-	case "ospf":
-		utils.Logger.Info("REMOVE ospf route")
-		mgr.ospf <- false
-	}
-	mgr.redistributeLock.Unlock()
-}
-
 func (mgr *OvsPolicyMgr) handleRedistribute() {
 	for {
 		routeEntries, exists :=

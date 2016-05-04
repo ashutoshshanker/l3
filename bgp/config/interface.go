@@ -24,8 +24,6 @@ type PolicyMgrIntf interface {
 	Start()
 	AddPolicy()
 	RemovePolicy()
-	AddRedistributePolicy(string)
-	RemoveRedistributePolicy(string)
 }
 
 /*  Interface for handling bfd state notifications
