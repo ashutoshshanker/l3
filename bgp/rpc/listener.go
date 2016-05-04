@@ -416,6 +416,7 @@ func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int,
 	bgpGlobalStateBulk.EndIdx = bgpd.Int(0)
 	bgpGlobalStateBulk.Count = bgpd.Int(1)
 	bgpGlobalStateBulk.More = false
+	bgpGlobalStateBulk.BGPGlobalStateList = make([]*bgpd.BGPGlobalState, 1)
 	bgpGlobalStateBulk.BGPGlobalStateList[0], _ = h.GetBGPGlobalState("bgp")
 
 	return bgpGlobalStateBulk, nil
