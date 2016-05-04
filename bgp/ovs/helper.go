@@ -208,32 +208,6 @@ func (ovsHdl *BGPOvsdbHandler) CreateBgpNeighborInfo(addrs []net.IP, uuids []UUI
 						newAdverInt))
 				}
 				// CreateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor)
-				/*
-					type BGPNeighbor struct {
-						ConfigObj
-						PeerAS                  uint32
-						LocalAS                 uint32
-						AuthPassword            string
-						Description             string
-						NeighborAddress         string
-						IfIndex                 int32
-						RouteReflectorClusterId uint32
-						RouteReflectorClient    bool
-						MultiHopEnable          bool
-						MultiHopTTL             uint8
-						ConnectRetryTime        uint32
-						HoldTime                uint32
-						KeepaliveTime           uint32
-						AddPathsRx              bool
-						AddPathsMaxTx           uint8
-						PeerGroup               string
-						BfdEnable               bool
-						MaxPrefixes             uint32
-						MaxPrefixesThresholdPct uint8
-						MaxPrefixesDisconnect   bool
-						MaxPrefixesRestartTimer uint8
-					}
-				*/
 				ovsHdl.logger.Info(fmt.Sprintln("OVS Neighbor config for thrift is",
 					neighborCfg))
 				ovsHdl.rpcHdl.CreateBGPNeighbor(neighborCfg)
@@ -376,9 +350,6 @@ func (ovsHdl *BGPOvsdbHandler) handleRedistribute(old, new *map[interface{}]inte
 
 func (ovsHdl *BGPOvsdbHandler) checkBgpRouterCfgUpd(uuid UUID, table ovsdb.TableUpdate) {
 	for key, value := range table.Rows {
-		//ovsHdl.logger.Info(fmt.Sprintln("new value:", value.New))
-		//ovsHdl.logger.Info(fmt.Sprintln("old value:", value.Old))
-		//ovsHdl.logger.Info(fmt.Sprintln("uuid:", uuid, "key:", key))
 		// sanity check for router uuid
 		if sameUUID(uuid, key) {
 			var old map[interface{}]interface{}

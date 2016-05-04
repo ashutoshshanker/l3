@@ -31,6 +31,9 @@ func (mgr *OvsPolicyMgr) RemovePolicy() {
 }
 
 func (mgr *OvsPolicyMgr) Start() {
+	mgr.ospf = make(chan bool)
+	mgr.static = make(chan bool)
+	mgr.connected = make(chan bool)
 	go mgr.handleRedistribute()
 }
 
@@ -41,12 +44,13 @@ func (mgr *OvsPolicyMgr) handleRedistribute() {
 		if !exists {
 			continue
 		}
-		mgr.redistributeLock.RLock()
 		select {
 		case conn := <-mgr.connected:
 			if conn {
 				utils.Logger.Info(fmt.Sprintln("Send Connected Route Entries:",
 					routeEntries))
+			} else {
+				utils.Logger.Info("Remove connected Routes")
 			}
 		case static := <-mgr.static:
 			if static {
@@ -59,6 +63,5 @@ func (mgr *OvsPolicyMgr) handleRedistribute() {
 					routeEntries))
 			}
 		}
-		mgr.redistributeLock.RUnlock()
 	}
 }
