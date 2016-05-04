@@ -1215,6 +1215,7 @@ func (server *BGPServer) StartServer() {
 			server.NeighborMutex.Unlock()
 			delete(server.PeerMap, remPeer)
 			peer.Cleanup()
+			peer.ProcessBfd(false)
 			server.ProcessRemoveNeighbor(remPeer, peer)
 
 		case groupUpdate := <-server.AddPeerGroupCh:
