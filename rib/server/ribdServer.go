@@ -68,6 +68,8 @@ type RIBDServer struct {
 	PolicyDefinitionCreateConfCh chan *ribd.PolicyDefinition
 	PolicyDefinitionDeleteConfCh chan *ribd.PolicyDefinition
 	PolicyDefinitionUpdateConfCh chan *ribd.PolicyDefinition
+	DBRouteAddCh                 chan RouteDBInfo
+	DBRouteDelCh                 chan RouteDBInfo
 	AcceptConfig                 bool
 	ServerUpCh                   chan bool
 	DbHdl                        redis.Conn
@@ -461,6 +463,8 @@ func NewRIBDServicesHandler(dbHdl redis.Conn, loggerC *logging.Writer) *RIBDServ
 	ribdServicesHandler.PolicyDefinitionCreateConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.PolicyDefinitionDeleteConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan *ribd.PolicyDefinition)
+	ribdServicesHandler.DBRouteAddCh = make(chan RouteDBInfo)
+	ribdServicesHandler.DBRouteDelCh = make(chan RouteDBInfo)
 	ribdServicesHandler.ServerUpCh = make(chan bool)
 	ribdServicesHandler.DbHdl = dbHdl
 	RouteServiceHandler = ribdServicesHandler
@@ -472,19 +476,22 @@ func NewRIBDServicesHandler(dbHdl redis.Conn, loggerC *logging.Writer) *RIBDServ
 	return ribdServicesHandler
 }
 func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
-	fmt.Println("StartServer")
 	DummyRouteInfoRecord.protocol = PROTOCOL_NONE
 	configFile := paramsDir + "/clients.json"
-	logger.Info(fmt.Sprintln("configfile = ", configFile))
+	logger.Debug(fmt.Sprintln("configfile = ", configFile))
 	PARAMSDIR = paramsDir
 	//RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	//CreateRoutes("RouteSetup.json")
 	ribdServiceHandler.UpdatePolicyObjectsFromDB() //(paramsDir)
 	ribdServiceHandler.ConnectToClients(configFile)
-	logger.Println("Starting the server loop")
+	logger.Debug("Starting the server loop")
+	count := 0
 	for {
 		if !RouteServiceHandler.AcceptConfig {
-			logger.Println("Not ready to accept config")
+			if count % 1000 == 0 {
+			    logger.Debug("RIBD not ready to accept config")
+			}
+			count++
 			continue
 		}
 		select {
