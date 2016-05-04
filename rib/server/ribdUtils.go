@@ -486,7 +486,7 @@ func addRoutePolicyState(route ribdInt.Routes, policy string, policyStmt string)
 	    routeInfoRecordList.policyList[policy] = policyStmtList*/
 	routeInfoRecordList.policyList = append(routeInfoRecordList.policyList, policy)
 	RouteInfoMap.Set(destNet, routeInfoRecordList)
-	routeServiceHandler.WriteIPv4RouteStateEntryToDB(routeInfoRecordList.routeInfoProtocolMap[routeInfoRecordList.selectedRouteProtocol][0],routeInfoRecordList)
+	RouteServiceHandler.DBRouteAddCh <- RouteDBInfo{routeInfoRecordList.routeInfoProtocolMap[routeInfoRecordList.selectedRouteProtocol][0],routeInfoRecordList}
 	return
 }
 func deleteRoutePolicyState(ipPrefix patriciaDB.Prefix, policyName string) {
