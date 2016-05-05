@@ -17,6 +17,7 @@ type RouteMgrIntf interface {
 	CreateRoute(*RouteConfig)
 	DeleteRoute(*RouteConfig)
     ApplyPolicy(protocol string,policy string,action string,conditions []*ConditionInfo)
+	GetRoutes() ([]*RouteInfo, []*RouteInfo)
 }
 
 /*  Interface for handling policy related operations
