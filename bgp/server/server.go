@@ -942,6 +942,7 @@ func (server *BGPServer) listenChannelUpdates() {
 			server.NeighborMutex.Unlock()
 			delete(server.PeerMap, remPeer)
 			peer.Cleanup()
+			peer.ProcessBfd(false)
 			server.ProcessRemoveNeighbor(remPeer, peer)
 
 		case groupUpdate := <-server.AddPeerGroupCh:
@@ -1152,7 +1153,6 @@ func (server *BGPServer) StartServer() {
 	server.routesCh = make(chan *config.RouteCh)
 	
 	go server.listenForPeers(server.acceptCh)
-	go server.listenChannelUpdates()
 
 	server.logger.Info("Start all managers and initialize API Layer")
 	api.Init(server.bfdCh, server.intfCh, server.routesCh)
@@ -1160,6 +1160,17 @@ func (server *BGPServer) StartServer() {
 	server.routeMgr.Start()
 	server.bfdMgr.Start()
 	server.SetupRedistribution(gConf)
+
+	/*  ALERT: StartServer is a go routine and hence do not have any other go routine where
+	 *	   you are making calls to other client. FlexSwitch uses thrift for rpc and hence
+	 *	   on return it will not know which go routine initiated the thrift call.
+	 */
+	// Get routes from the route manager
+	add, remove := server.routeMgr.GetRoutes()
+	if add != nil && remove != nil {
+		server.ProcessConnectedRoutes(add, remove)
+	}
+	server.listenChannelUpdates()
 }
 
 func (s *BGPServer) GetBGPGlobalState() config.GlobalState {

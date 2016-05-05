@@ -3,9 +3,9 @@ package server
 
 import (
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	"models"
 	"ribd"
+	"utils/dbutils"
 )
 
 func (ribdServiceHandler *RIBDServer) UpdateRoutesFromDB() (err error) {
@@ -13,7 +13,7 @@ func (ribdServiceHandler *RIBDServer) UpdateRoutesFromDB() (err error) {
 	dbHdl := ribdServiceHandler.DbHdl
 	if dbHdl != nil {
 		var dbObjCfg models.IPv4Route
-		objList, err := dbObjCfg.GetAllObjFromDb(dbHdl)
+		objList, err := dbHdl.GetAllObjFromDb(dbObjCfg)
 		if err == nil {
 		    logger.Info(fmt.Sprintln("Number of routes from DB: ", len((objList))))
 			for idx := 0; idx < len(objList); idx++ {
@@ -32,15 +32,15 @@ func (ribdServiceHandler *RIBDServer) UpdateRoutesFromDB() (err error) {
 	return err
 }
 
-func (ribdServiceHandler *RIBDServer) UpdateRoutePolicyConditionsFromDB(ddbHdl redis.Conn) (err error) {
+func (ribdServiceHandler *RIBDServer) UpdateRoutePolicyConditionsFromDB(ddbHdl *dbutils.DBUtil) (err error) {
 	logger.Info(fmt.Sprintln("UpdateRoutePolicyConditionsFromDB"))
 	return err
 }
-func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyConditionsFromDB(dbHdl redis.Conn) (err error) {
-	logger.Info(fmt.Sprintln("UpdatePolicyConditionsFromDB"))
+func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyConditionsFromDB(dbHdl *dbutils.DBUtil) (err error) {
+	logger.Info(fmt.Sprintln("UpdateGlobalPolicyConditionsFromDB"))
 	if dbHdl != nil {
 		var dbObjCfg models.PolicyCondition
-		objList, err := dbObjCfg.GetAllObjFromDb(dbHdl)
+		objList, err := dbHdl.GetAllObjFromDb(dbObjCfg)
 		if err == nil {
 			for idx := 0; idx < len(objList); idx++ {
 				obj := ribd.NewPolicyCondition()
@@ -58,15 +58,15 @@ func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyConditionsFromDB(dbHdl r
 	}
 	return err
 }
-func (ribdServiceHandler *RIBDServer) UpdateRoutePolicyStmtsFromDB(dbHdl redis.Conn) (err error) {
+func (ribdServiceHandler *RIBDServer) UpdateRoutePolicyStmtsFromDB(dbHdl *dbutils.DBUtil) (err error) {
 	logger.Info(fmt.Sprintln("UpdateRoutePolicyStmtsFromDB"))
 	return err
 }
-func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyStmtsFromDB(dbHdl redis.Conn) (err error) {
+func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyStmtsFromDB(dbHdl *dbutils.DBUtil) (err error) {
 	logger.Info(fmt.Sprintln("UpdateGlobalPolicyStmtsFromDB"))
 	if dbHdl != nil {
 		var dbObjCfg models.PolicyStmt
-		objList, err := dbObjCfg.GetAllObjFromDb(dbHdl)
+		objList, err := dbHdl.GetAllObjFromDb(dbObjCfg)
 		if err == nil {
 			for idx := 0; idx < len(objList); idx++ {
 				obj := ribd.NewPolicyStmt()
@@ -84,15 +84,15 @@ func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyStmtsFromDB(dbHdl redis.
 	}
 	return err
 }
-func (ribdServiceHandler *RIBDServer) UpdateRoutePolicyFromDB(ddbHdl redis.Conn) (err error) {
+func (ribdServiceHandler *RIBDServer) UpdateRoutePolicyFromDB(ddbHdl *dbutils.DBUtil) (err error) {
 	logger.Info(fmt.Sprintln("UpdateRoutePolicyFromDB"))
 	return err
 }
-func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyFromDB(dbHdl redis.Conn) (err error) {
+func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyFromDB(dbHdl *dbutils.DBUtil) (err error) {
 	logger.Info(fmt.Sprintln("UpdateGlobalPolicyFromDB"))
 	if dbHdl != nil {
 		var dbObjCfg models.PolicyDefinition
-		objList, err := dbObjCfg.GetAllObjFromDb(dbHdl)
+		objList, err := dbHdl.GetAllObjFromDb(dbObjCfg)
 		if err == nil {
 			for idx := 0; idx < len(objList); idx++ {
 				obj := ribd.NewPolicyDefinition()
