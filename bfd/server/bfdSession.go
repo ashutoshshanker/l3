@@ -960,6 +960,7 @@ func (session *BfdSession) RemoteAdminDown() error {
 	session.state.LocalDiagType = DIAG_NEIGHBOR_SIGNAL_DOWN
 	session.SendBfdNotification()
 	session.txInterval = STARTUP_TX_INTERVAL / 1000
+	session.txTimer.Reset(0)
 	session.rxInterval = (STARTUP_RX_INTERVAL * session.state.DetectionMultiplier) / 1000
 	session.sessionTimer.Stop()
 	return nil
