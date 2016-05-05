@@ -323,6 +323,7 @@ func (ribdServiceHandler *RIBDServer) AcceptConfigActions() {
 	getConnectedRoutes()
 	ribdServiceHandler.UpdateRoutesFromDB()
 	go ribdServiceHandler.SetupEventHandler(AsicdSub, asicdCommonDefs.PUB_SOCKET_ADDR, SUB_ASICD)
+	logger.Info("All set to signal start the RIBd server")
 	ribdServiceHandler.ServerUpCh <- true
 }
 func (ribdServiceHandler *RIBDServer) connectToClient(client ClientJson) {
@@ -505,6 +506,7 @@ func NewRIBDServicesHandler(dbHdl redis.Conn, loggerC *logging.Writer) *RIBDServ
 	BuildProtocolAdminDistanceMapDB()
 	BuildPublisherMap()
 	PolicyEngineDB = ribdServicesHandler.InitializePolicyDB()
+	GlobalPolicyEngineDB = ribdServicesHandler.InitializeGlobalPolicyDB()
 	return ribdServicesHandler
 }
 func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
@@ -512,10 +514,6 @@ func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 	configFile := paramsDir + "/clients.json"
 	logger.Debug(fmt.Sprintln("configfile = ", configFile))
 	PARAMSDIR = paramsDir
-	//RIBD_BGPD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
-	//CreateRoutes("RouteSetup.json")
-	PolicyEngineDB = ribdServiceHandler.InitializePolicyDB()
-	GlobalPolicyEngineDB = ribdServiceHandler.InitializeGlobalPolicyDB()
 	ribdServiceHandler.UpdatePolicyObjectsFromDB() //(paramsDir)
 	ribdServiceHandler.ConnectToClients(configFile)
 	logger.Debug("Starting the server loop")
