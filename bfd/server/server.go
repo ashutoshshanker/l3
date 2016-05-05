@@ -79,6 +79,7 @@ type BfdSession struct {
 	bfdPacketBuf                []byte
 	ReceivedPacketCh            chan *BfdControlPacket
 	SessionStopClientCh         chan bool
+	SessionStopServerCh         chan bool
 	pollSequence                bool
 	pollSequenceFinal           bool
 	authEnabled                 bool
@@ -95,7 +96,9 @@ type BfdSession struct {
 	stateChanged                bool
 	isClientActive              bool
 	remoteParamChanged          bool
+	movedToDownState            bool
 	switchingToConfiguredTimers bool
+	remoteDownRecvCount         int32
 	server                      *BFDServer
 }
 
@@ -198,9 +201,9 @@ func (server *BFDServer) SigHandler(dbHdl redis.Conn) {
 		case signal := <-sigChan:
 			switch signal {
 			case syscall.SIGHUP:
-				server.SendAdminDownToAllNeighbors()
-				time.Sleep(500 * time.Millisecond)
-				server.logger.Info("Sent admin_down to all neighbors")
+				//server.SendAdminDownToAllNeighbors()
+				//time.Sleep(500 * time.Millisecond)
+				//server.logger.Info("Sent admin_down to all neighbors")
 				server.SendDeleteToAllSessions()
 				time.Sleep(500 * time.Millisecond)
 				server.logger.Info("Stopped all sessions")
