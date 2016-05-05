@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	"github.com/garyburd/redigo/redis"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
@@ -17,6 +16,7 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+	"utils/dbutils"
 	"utils/ipcutils"
 	"utils/logging"
 )
@@ -189,7 +189,7 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	return bfdServer
 }
 
-func (server *BFDServer) SigHandler(dbHdl redis.Conn) {
+func (server *BFDServer) SigHandler(dbHdl *dbutils.DBUtil) {
 	sigChan := make(chan os.Signal, 1)
 	signalList := []os.Signal{syscall.SIGHUP}
 	signal.Notify(sigChan, signalList...)
@@ -205,7 +205,7 @@ func (server *BFDServer) SigHandler(dbHdl redis.Conn) {
 				server.SendDeleteToAllSessions()
 				time.Sleep(500 * time.Millisecond)
 				server.logger.Info("Stopped all sessions")
-				dbHdl.Close()
+				dbHdl.Disconnect()
 				server.logger.Info("Exting!!!")
 				os.Exit(0)
 			default:
@@ -327,7 +327,7 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.createDefaultSessionParam()
 }
 
-func (server *BFDServer) StartServer(paramFile string, dbHdl redis.Conn) {
+func (server *BFDServer) StartServer(paramFile string, dbHdl *dbutils.DBUtil) {
 	// Initialize BFD server from params file
 	server.InitServer(paramFile)
 	// Start subcriber for ASICd events
