@@ -6,6 +6,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"models"
 	"strconv"
+	"utils/dbutils"
 )
 
 type arpDbEntry struct {
@@ -15,7 +16,8 @@ type arpDbEntry struct {
 
 func (server *ARPServer) initiateDB() error {
 	var err error
-	server.dbHdl, err = redis.Dial("tcp", ":6379")
+	server.dbHdl = dbutils.NewDBUtil(server.logger)
+	err = server.dbHdl.Connect()
 	if err != nil {
 		server.logger.Err("Failed to create the DB handle")
 		return err

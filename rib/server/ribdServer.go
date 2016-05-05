@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	"github.com/garyburd/redigo/redis"
 	"github.com/op/go-nanomsg"
 	"io/ioutil"
 	"l3/rib/ribdCommonDefs"
@@ -18,6 +17,7 @@ import (
 	"strconv"
 	"time"
 	"utils/commonDefs"
+	"utils/dbutils"
 	"utils/ipcutils"
 	"utils/logging"
 	"utils/patriciaDB"
@@ -70,7 +70,7 @@ type RIBDServer struct {
 	PolicyDefinitionUpdateConfCh chan *ribd.PolicyDefinition
 	AcceptConfig                 bool
 	ServerUpCh                   chan bool
-	DbHdl                        redis.Conn
+	DbHdl                        *dbutils.DBUtil
 	//RouteInstallCh                 chan RouteParams
 }
 
@@ -424,7 +424,7 @@ func (ribdServiceHandler *RIBDServer) InitializePolicyDB() *policy.PolicyEngineD
 	ribdServiceHandler.PolicyEngineDB.SetGetPolicyEntityMapIndexFunc(getPolicyRouteMapIndex)
 	return ribdServiceHandler.PolicyEngineDB
 }
-func NewRIBDServicesHandler(dbHdl redis.Conn, loggerC *logging.Writer) *RIBDServer {
+func NewRIBDServicesHandler(dbHdl *dbutils.DBUtil, loggerC *logging.Writer) *RIBDServer {
 	fmt.Println("NewRIBDServicesHandler")
 	RouteInfoMap = patriciaDB.NewTrie()
 	ribdServicesHandler := &RIBDServer{}
@@ -484,7 +484,10 @@ func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 	logger.Println("Starting the server loop")
 	for {
 		if !RouteServiceHandler.AcceptConfig {
-			logger.Println("Not ready to accept config")
+			if count%1000 == 0 {
+				logger.Debug("RIBD not ready to accept config")
+			}
+			count++
 			continue
 		}
 		select {
