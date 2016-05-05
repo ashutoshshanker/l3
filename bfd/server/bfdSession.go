@@ -779,10 +779,8 @@ func (session *BfdSession) UpdateBfdSessionControlPacket() error {
 	}
 	session.bfdPacket.Poll = session.pollSequence
 	session.pollSequence = false
-	if !session.bfdPacket.Poll {
-		session.bfdPacket.Final = session.pollSequenceFinal
-		session.pollSequenceFinal = false
-	}
+	session.bfdPacket.Final = session.pollSequenceFinal
+	session.pollSequenceFinal = false
 	if session.authEnabled {
 		session.bfdPacket.AuthPresent = true
 		session.bfdPacket.AuthHeader.Type = session.authType
