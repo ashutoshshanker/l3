@@ -79,6 +79,5 @@ func (server *BFDServer) updateIPIntfConfMap(ifConf IntfConfig) {
 		intf.conf.AuthenticationType = ifConf.AuthenticationType
 		intf.conf.AuthenticationKeyId = ifConf.AuthenticationKeyId
 		intf.conf.AuthenticationData = ifConf.AuthenticationData
-		server.UpdateBfdSessionsOnInterface(intf.conf.InterfaceId)
 	}
 }
