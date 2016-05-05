@@ -65,20 +65,21 @@ func (ribdServiceHandler *RIBDServer) UpdateRoutePolicyStmtsFromDB(dbHdl *dbutil
 func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyStmtsFromDB(dbHdl *dbutils.DBUtil) (err error) {
 	logger.Info(fmt.Sprintln("UpdateGlobalPolicyStmtsFromDB"))
 	if dbHdl != nil {
-		var dbObjCfg models.PolicyAction
+		var dbObjCfg models.PolicyStmt
 		objList, err := dbHdl.GetAllObjFromDb(dbObjCfg)
 		if err == nil {
 			for idx := 0; idx < len(objList); idx++ {
-				obj := ribd.NewPolicyAction()
-				dbObj := objList[idx].(models.PolicyAction)
-				models.ConvertribdPolicyActionObjToThrift(&dbObj, obj)
-				rv, _ := ribdServiceHandler.ProcessPolicyActionConfigCreate(obj)
-				if rv == false {
-					logger.Err("PolicyAction create failed during init")
-				}
+				obj := ribd.NewPolicyStmt()
+				dbObj := objList[idx].(models.PolicyStmt)
+				models.ConvertribdPolicyStmtObjToThrift(&dbObj, obj)
+				ribdServiceHandler.PolicyStmtCreateConfCh <- obj
+				/*err = ribdServiceHandler.ProcessPolicyStmtConfigCreate(obj,GlobalPolicyEngineDB)
+				if err != nil {
+					logger.Err("PolicStmt create failed during init")
+				}*/
 			}
 		} else {
-			logger.Err("DB Query failed during PolicyAction query: RIBd init")
+			logger.Err("DB Query failed during PolicyStmt query: RIBd init")
 		}
 	}
 	return err
