@@ -584,6 +584,7 @@ func (session *BfdSession) StartSessionServer() error {
 			session.state.NumRxPackets++
 			session.ProcessBfdPacket(bfdPacket)
 		case <-session.SessionStopServerCh:
+			session.server.logger.Info(fmt.Sprintln("Exiting session server ", session.state.SessionId))
 			return nil
 		}
 	}
@@ -1063,6 +1064,7 @@ func (session *BfdSession) HandleSessionTimeout() {
 
 func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 	var err error
+	server.logger.Info(fmt.Sprintln("Starting session client for ", session.state.SessionId))
 	destAddr := session.state.IpAddr + ":" + strconv.Itoa(DEST_PORT)
 	ServerAddr, err := net.ResolveUDPAddr("udp", destAddr)
 	if err != nil {
@@ -1091,6 +1093,7 @@ func (session *BfdSession) StartSessionClient(server *BFDServer) error {
 	for {
 		select {
 		case <-session.SessionStopClientCh:
+			server.logger.Info(fmt.Sprintln("Exiting session client ", session.state.SessionId))
 			return nil
 		}
 	}
