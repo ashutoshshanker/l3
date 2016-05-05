@@ -3,14 +3,15 @@ package relayServer
 import (
 	"dhcprelayd"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	"models"
+	"utils/dbutils"
 )
 
 func DhcpRelayAgentInitDB() error {
-	logger.Info("DRA: initializing SQL DB")
+	logger.Info("DRA: initializing DB")
 	var err error
-	dhcprelayDbHdl, err = redis.Dial("tcp", DHCP_REDDIS_DB_PORT)
+	dhcprelayDbHdl = dbutils.NewDBUtil(logger)
+	err = dhcprelayDbHdl.Connect()
 	if err != nil {
 		logger.Err(fmt.Sprintln("DRA: Failed to create db handle", err))
 		return err
@@ -69,5 +70,5 @@ func DhcpRelayAgentReadDB() {
 		// For all ifIndex recovered from DB.. get ip address from asicd
 		go DhcpRelayAgentUpdateIntfIpAddr(readIfIndex)
 	}
-	dhcprelayDbHdl.Close()
+	dhcprelayDbHdl.Disconnect()
 }
