@@ -29,13 +29,17 @@ type AdminDistanceSlice []ribd.RouteDistanceState
 type RedistributeRouteInfo struct {
 	route ribdInt.Routes
 }
-
+type RedistributionPolicyInfo struct {
+	policy      string
+	policyStmt  string
+}
 type PublisherMapInfo struct {
 	pub_ipc    string
 	pub_socket *nanomsg.PubSocket
 }
 
 var RedistributeRouteMap map[string][]RedistributeRouteInfo
+var RedistributionPolicyMap map[string]RedistributionPolicyInfo
 var TrackReachabilityMap map[string][]string //map[ipAddr][]protocols
 var RouteProtocolTypeMapDB map[string]int
 var ReverseRouteProtoTypeMapDB map[int]string
@@ -43,6 +47,7 @@ var ProtocolAdminDistanceMapDB map[string]RouteDistanceConfig
 var ProtocolAdminDistanceSlice AdminDistanceSlice
 var PublisherInfoMap map[string]PublisherMapInfo
 var RIBD_PUB *nanomsg.PubSocket
+var RIBD_POLICY_PUB *nanomsg.PubSocket
 
 func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 	logger.Info(fmt.Sprintln("Setting up %s", pub_str, "publisher"))
@@ -66,6 +71,7 @@ func InitPublisher(pub_str string) (pub *nanomsg.PubSocket) {
 
 func BuildPublisherMap() {
 	RIBD_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_ADDR)
+	RIBD_POLICY_PUB = InitPublisher(ribdCommonDefs.PUB_SOCKET_POLICY_ADDR)
 	for k, _ := range RouteProtocolTypeMapDB {
 		logger.Info(fmt.Sprintln("Building publisher map for protocol ", k))
 		if k == "CONNECTED" || k == "STATIC" {
@@ -257,6 +263,7 @@ func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entit
 		return entity, err
 	}
 	entity.DestNetIp = destNetIp
+	logger.Info(fmt.Sprintln("buildPolicyEntityFromRoute: destNetIp:", entity.DestNetIp))
 	entity.NextHopIp = route.NextHopIp
 	entity.RouteProtocol = ReverseRouteProtoTypeMapDB[int(route.Prototype)]
 	if routeInfo.createType != Invalid {
@@ -266,6 +273,18 @@ func buildPolicyEntityFromRoute(route ribdInt.Routes, params interface{}) (entit
 		entity.DeletePath = true
 	}
 	return entity, err
+}
+func BuildRouteParamsFromRouteInoRecord(routeInfoRecord RouteInfoRecord) RouteParams {
+	var params RouteParams
+	params.routeType = ribd.Int(routeInfoRecord.protocol)
+	params.destNetIp = routeInfoRecord.destNetIp.String()
+	params.sliceIdx = ribd.Int(routeInfoRecord.sliceIdx)
+	params.networkMask = routeInfoRecord.networkMask.String()
+	params.metric = routeInfoRecord.metric
+	params.nextHopIp = routeInfoRecord.nextHopIp.String()
+	params.nextHopIfType = ribd.Int(routeInfoRecord.nextHopIfType)
+	params.nextHopIfIndex = routeInfoRecord.nextHopIfIndex
+    return params
 }
 func findRouteWithNextHop(routeInfoList []RouteInfoRecord, nextHopIP string) (found bool, routeInfoRecord RouteInfoRecord, index int) {
 	logger.Println("findRouteWithNextHop")
@@ -302,7 +321,7 @@ func isSameRoute(selectedRoute ribdInt.Routes, route ribdInt.Routes) (same bool)
 func getNetowrkPrefixFromStrings(ipAddr string, mask string) (prefix patriciaDB.Prefix, err error) {
 	destNetIpAddr, err := getIP(ipAddr)
 	if err != nil {
-		logger.Println("destNetIpAddr invalid")
+		logger.Info(fmt.Sprintln("destNetIpAddr ", ipAddr, " invalid"))
 		return prefix, err
 	}
 	networkMaskAddr, err := getIP(mask)
@@ -333,6 +352,7 @@ func getNetworkPrefixFromCIDR(ipAddr string) (ipPrefix patriciaDB.Prefix, err er
 func getPolicyRouteMapIndex(entity policy.PolicyEngineFilterEntityParams, policy string) (policyRouteIndex policy.PolicyEntityMapIndex) {
 	logger.Println("getPolicyRouteMapIndex")
 	policyRouteIndex = PolicyRouteIndex{destNetIP: entity.DestNetIp, policy: policy}
+	logger.Info(fmt.Sprintln("Returning policyRouteIndex as : ", policyRouteIndex))
 	return policyRouteIndex
 }
 func addPolicyRouteMap(route ribdInt.Routes, policyName string) {
@@ -466,6 +486,7 @@ func addRoutePolicyState(route ribdInt.Routes, policy string, policyStmt string)
 	    routeInfoRecordList.policyList[policy] = policyStmtList*/
 	routeInfoRecordList.policyList = append(routeInfoRecordList.policyList, policy)
 	RouteInfoMap.Set(destNet, routeInfoRecordList)
+	//RouteServiceHandler.DBRouteAddCh <- RouteDBInfo{routeInfoRecordList.routeInfoProtocolMap[routeInfoRecordList.selectedRouteProtocol][0],routeInfoRecordList}
 	return
 }
 func deleteRoutePolicyState(ipPrefix patriciaDB.Prefix, policyName string) {
@@ -541,7 +562,7 @@ func UpdateRedistributeTargetMap(evt int, protocol string, route ribdInt.Routes)
 		}
 	}
 }
-func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes, evt int) {
+func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes, evt int, targetProtocol string) {
 	logger.Println("RedistributionNotificationSend")
 	msgBuf := ribdCommonDefs.RoutelistInfo{RouteInfo: route}
 	msgbufbytes, err := json.Marshal(msgBuf)
@@ -561,7 +582,7 @@ func RedistributionNotificationSend(PUB *nanomsg.PubSocket, route ribdInt.Routes
 	if route.NetworkStatement == true {
 		eventInfo = " Advertise Network Statement "
 	}
-	eventInfo = eventInfo + evtStr + " for route " + route.Ipaddr + " " + route.Mask + " type" + ReverseRouteProtoTypeMapDB[int(route.Prototype)]
+	eventInfo = eventInfo + evtStr + " for route " + route.Ipaddr + " " + route.Mask + " type " + ReverseRouteProtoTypeMapDB[int(route.Prototype)] + " to " + targetProtocol
 	logger.Info(fmt.Sprintln("Adding ", evtStr, " for route ", route.Ipaddr, " ", route.Mask, " to notification channel"))
 	RouteServiceHandler.NotificationChannel <- NotificationMsg{PUB, buf, eventInfo}
 }

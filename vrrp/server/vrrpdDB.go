@@ -2,17 +2,18 @@ package vrrpServer
 
 import (
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	"models"
+	"utils/dbutils"
 	"vrrpd"
 )
 
 const ()
 
 func (svr *VrrpServer) VrrpInitDB() error {
-	svr.logger.Info("Initializing SQL DB")
+	svr.logger.Info("Initializing DB")
 	var err error
-	svr.vrrpDbHdl, err = redis.Dial("tcp", VRRP_REDDIS_DB_PORT)
+	svr.vrrpDbHdl = dbutils.NewDBUtil(svr.logger)
+	err = svr.vrrpDbHdl.Connect()
 	if err != nil {
 		svr.logger.Err(fmt.Sprintln("Failed to Create DB Handle", err))
 		return err
@@ -24,7 +25,7 @@ func (svr *VrrpServer) VrrpInitDB() error {
 
 func (svr *VrrpServer) VrrpCloseDB() {
 	svr.logger.Info("Closed vrrp db")
-	svr.vrrpDbHdl.Close()
+	svr.vrrpDbHdl.Disconnect()
 }
 
 func (svr *VrrpServer) VrrpReadDB() error {

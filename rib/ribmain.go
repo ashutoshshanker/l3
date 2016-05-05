@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	"l3/rib/rpc"
 	"l3/rib/server"
+	"utils/dbutils"
 	"utils/keepalive"
 	"utils/logging"
 )
@@ -26,7 +26,8 @@ func main() {
 	}
 	logger.Info("Started the logger successfully.")
 
-	dbHdl, err := redis.Dial("tcp", ":6379")
+	dbHdl := dbutils.NewDBUtil(logger)
+	err = dbHdl.Connect()
 	if err != nil {
 		logger.Err("Failed to dial out to Redis server")
 		return
@@ -37,6 +38,7 @@ func main() {
 		return
 	}
 	go routeServer.StartDBServer()
+	go routeServer.StartPolicyServer()
 	go routeServer.NotificationServer()
 	go routeServer.StartNetlinkServer()
 	go routeServer.StartAsicdServer()

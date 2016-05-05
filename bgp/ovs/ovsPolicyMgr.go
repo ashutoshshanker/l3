@@ -10,10 +10,6 @@ func NewOvsPolicyMgr() *OvsPolicyMgr {
 	return mgr
 }
 
-func (mgr *OvsPolicyMgr) AddPolicy() {
-
-}
-
-func (mgr *OvsPolicyMgr) RemovePolicy() {
+func (mgr *OvsPolicyMgr) Start() {
 
 }
