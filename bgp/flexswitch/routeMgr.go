@@ -47,6 +47,9 @@ func (mgr *FSRouteMgr) Start() {
 	mgr.ribSubBGPSocket, _ = mgr.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go mgr.listenForRIBUpdates(mgr.ribSubSocket)
 	go mgr.listenForRIBUpdates(mgr.ribSubBGPSocket)
+	/**
+	  @jgheewala:FIX this code!!
+	**/
 	mgr.processRoutesFromRIB()
 }
 

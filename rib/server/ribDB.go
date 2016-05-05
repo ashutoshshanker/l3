@@ -15,6 +15,7 @@ func (ribdServiceHandler *RIBDServer) UpdateRoutesFromDB() (err error) {
 		var dbObjCfg models.IPv4Route
 		objList, err := dbObjCfg.GetAllObjFromDb(dbHdl)
 		if err == nil {
+		    logger.Info(fmt.Sprintln("Number of routes from DB: ", len((objList))))
 			for idx := 0; idx < len(objList); idx++ {
 				obj := ribd.NewIPv4Route()
 				dbObj := objList[idx].(models.IPv4Route)
