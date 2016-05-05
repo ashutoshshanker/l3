@@ -12,7 +12,6 @@ import (
 	"l3/bfd/bfddCommonDefs"
 	"math/rand"
 	"net"
-	"runtime"
 	"strconv"
 	"time"
 	"utils/commonDefs"
@@ -46,17 +45,17 @@ func (server *BFDServer) StartSessionHandler() error {
 }
 
 func (server *BFDServer) DispatchReceivedBfdPacket(ipAddr string, bfdPacket *BfdControlPacket) error {
-	var session *BfdSession
 	sessionId := int32(bfdPacket.YourDiscriminator)
 	session, exist := server.bfdGlobal.Sessions[sessionId]
 	if !exist {
 		for _, session = range server.bfdGlobal.Sessions {
 			if session.state.IpAddr == ipAddr {
+				exist = true
 				break
 			}
 		}
 	}
-	if session != nil {
+	if exist && session != nil {
 		session.ReceivedPacketCh <- bfdPacket
 	} else {
 		/*
@@ -149,7 +148,7 @@ func (server *BFDServer) StartBfdSessionRxTx() error {
 				}
 				session.isClientActive = true
 			} else {
-				server.logger.Info(fmt.Sprintf("Bfd session could not be initiated for ", createdSessionId))
+				server.logger.Info(fmt.Sprintln("Bfd session could not be initiated for ", createdSessionId))
 			}
 		case failedClientSessionId := <-server.FailedSessionClientCh:
 			session := server.bfdGlobal.Sessions[failedClientSessionId]
@@ -168,9 +167,6 @@ func (server *BFDServer) StartSessionRetryHandler() error {
 	for t := range retryTimer.C {
 		_ = t
 		for i := 0; i < len(server.bfdGlobal.InactiveSessionsIdSlice); i++ {
-			if i%10 == 0 {
-				runtime.Gosched()
-			}
 			sessionId := server.bfdGlobal.InactiveSessionsIdSlice[i]
 			session := server.bfdGlobal.Sessions[sessionId]
 			if session != nil {
@@ -1043,6 +1039,9 @@ func (session *BfdSession) SendPeriodicControlPackets() {
 			session.server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", session.state.SessionId))
 		}
 		packetUpdated = false
+	}
+	if session.state.SessionState == STATE_UP || session.state.RemoteSessionState == STATE_UP {
+		session.txInterval = session.state.DesiredMinTxInterval / 1000
 	}
 	txTimer := session.ApplyTxJitter()
 	session.txTimer.Reset(time.Duration(txTimer) * time.Millisecond)
