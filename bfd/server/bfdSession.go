@@ -60,6 +60,7 @@ func (server *BFDServer) DispatchReceivedBfdPacket(ipAddr string, bfdPacket *Bfd
 		session.ReceivedPacketCh <- bfdPacket
 	} else {
 		/*
+			// Create a session as discovered. This can be enabled for active mode of bfd.
 			server.logger.Info(fmt.Sprintln("No session found for ", ipAddr, " creating a session"))
 			sessionMgmt := BfdSessionMgmt{
 				DestIp:   ipAddr,
@@ -136,12 +137,12 @@ func (server *BFDServer) StartBfdSessionRxTx() error {
 				session.SessionStopServerCh = make(chan bool)
 				session.ReceivedPacketCh = make(chan *BfdControlPacket, 10)
 				if session.state.PerLinkSession {
-					//server.logger.Info(fmt.Sprintln("Starting PerLink server for session ", createdSessionId))
+					server.logger.Info(fmt.Sprintln("Starting PerLink server for session ", createdSessionId))
 					go session.StartPerLinkSessionServer(server)
 					server.logger.Info(fmt.Sprintln("Starting PerLink client for session ", createdSessionId))
 					go session.StartPerLinkSessionClient(server)
 				} else {
-					//server.logger.Info(fmt.Sprintln("Starting server for session ", createdSessionId))
+					server.logger.Info(fmt.Sprintln("Starting server for session ", createdSessionId))
 					go session.StartSessionServer()
 					server.logger.Info(fmt.Sprintln("Starting client for session ", createdSessionId))
 					go session.StartSessionClient(server)
@@ -1026,15 +1027,11 @@ func (session *BfdSession) SendPeriodicControlPackets() {
 		session.bfdPacketBuf, err = session.bfdPacket.CreateBfdControlPacket()
 		if err != nil {
 			session.server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", session.state.SessionId))
-			session.server.FailedSessionClientCh <- session.state.SessionId
-			return
 		}
 	}
 	_, err = session.txConn.Write(session.bfdPacketBuf)
 	if err != nil {
 		session.server.logger.Info(fmt.Sprintln("failed to send control packet for session ", session.state.SessionId))
-		session.server.FailedSessionClientCh <- session.state.SessionId
-		return
 	} else {
 		session.state.NumTxPackets++
 	}
@@ -1044,8 +1041,6 @@ func (session *BfdSession) SendPeriodicControlPackets() {
 		session.bfdPacketBuf, err = session.bfdPacket.CreateBfdControlPacket()
 		if err != nil {
 			session.server.logger.Info(fmt.Sprintln("Failed to create control packet for session ", session.state.SessionId))
-			session.server.FailedSessionClientCh <- session.state.SessionId
-			return
 		}
 		packetUpdated = false
 	}
