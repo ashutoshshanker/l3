@@ -67,36 +67,37 @@ type BfdSessionMgmt struct {
 }
 
 type BfdSession struct {
-	state                       SessionState
-	rxInterval                  int32
-	sessionTimer                *time.Timer
-	txInterval                  int32
-	txTimer                     *time.Timer
-	TxTimeoutCh                 chan int32
-	txJitter                    int32
-	SessionTimeoutCh            chan int32
-	bfdPacket                   *BfdControlPacket
-	bfdPacketBuf                []byte
-	ReceivedPacketCh            chan *BfdControlPacket
-	SessionStopClientCh         chan bool
-	pollSequence                bool
-	pollSequenceFinal           bool
-	authEnabled                 bool
-	authType                    AuthenticationType
-	authSeqNum                  uint32
-	authKeyId                   uint32
-	authData                    string
-	txConn                      net.Conn
-	sendPcapHandle              *pcap.Handle
-	recvPcapHandle              *pcap.Handle
-	useDedicatedMac             bool
-	intfConfigChanged           bool
-	paramConfigChanged          bool
-	stateChanged                bool
-	isClientActive              bool
-	remoteParamChanged          bool
-	switchingToConfiguredTimers bool
-	server                      *BFDServer
+	state               SessionState
+	rxInterval          int32
+	sessionTimer        *time.Timer
+	txInterval          int32
+	txTimer             *time.Timer
+	TxTimeoutCh         chan int32
+	txJitter            int32
+	SessionTimeoutCh    chan int32
+	bfdPacket           *BfdControlPacket
+	bfdPacketBuf        []byte
+	ReceivedPacketCh    chan *BfdControlPacket
+	SessionStopClientCh chan bool
+	SessionStopServerCh chan bool
+	pollSequence        bool
+	pollSequenceFinal   bool
+	pollChanged         bool
+	authEnabled         bool
+	authType            AuthenticationType
+	authSeqNum          uint32
+	authKeyId           uint32
+	authData            string
+	txConn              net.Conn
+	sendPcapHandle      *pcap.Handle
+	recvPcapHandle      *pcap.Handle
+	useDedicatedMac     bool
+	paramChanged        bool
+	remoteParamChanged  bool
+	stateChanged        bool
+	isClientActive      bool
+	movedToDownState    bool
+	server              *BFDServer
 }
 
 type BfdSessionParam struct {

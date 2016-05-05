@@ -166,10 +166,10 @@ func (p *Peer) clearRibOut() {
 	}
 }
 
-func (p *Peer) ProcessBfd() {
+func (p *Peer) ProcessBfd(add bool) {
 	ipAddr := p.NeighborConf.Neighbor.NeighborAddress.String()
 	sessionParam := p.NeighborConf.RunningConf.BfdSessionParam
-	if p.NeighborConf.RunningConf.BfdEnable {
+	if add && p.NeighborConf.RunningConf.BfdEnable {
 		p.logger.Info(fmt.Sprintln("Bfd enabled on :",
 			p.NeighborConf.Neighbor.NeighborAddress))
 		ret, err := p.Server.bfdMgr.CreateBfdSession(ipAddr, sessionParam)
@@ -207,7 +207,7 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 	}
 	p.NeighborConf.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
 	p.clearRibOut()
-	p.ProcessBfd()
+	p.ProcessBfd(true)
 	//p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
 }
 
