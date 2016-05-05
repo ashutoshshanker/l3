@@ -231,17 +231,47 @@ func (p *PeerConn) readPartialPkt(length int) ([]byte, error) {
 	return buf, err
 }
 
+func (p *PeerConn) DecodeMessage(header *packet.BGPHeader, buf []byte) (*packet.BGPMessage, *packet.BGPMessageError,
+	bool) {
+	var msgErr *packet.BGPMessageError
+	msg := packet.NewBGPMessage()
+	err := msg.Decode(header, buf, p.peerAttrs)
+	//bgpPktInfo := packet.NewBGPPktInfo(msg, nil)
+	msgOk := true
+	if header.Type == packet.BGPMsgTypeNotification {
+		msgOk = false
+	}
+
+	if err != nil {
+		p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
+			"BGP packet body decode failed, err:", err))
+		//bgpPktInfo = packet.NewBGPPktInfo(msg, err.(*packet.BGPMessageError))
+		bgpErr := err.(packet.BGPMessageError)
+		msgErr = &bgpErr
+		msgOk = false
+	} else if header.Type == packet.BGPMsgTypeOpen {
+		p.peerAttrs.ASSize = packet.GetASSize(msg.Body.(*packet.BGPOpen))
+		p.peerAttrs.AddPathFamily = packet.GetAddPathFamily(msg.Body.(*packet.BGPOpen))
+		addPathsTxFarEnd := packet.IsAddPathsTxEnabledForIPv4(p.peerAttrs.AddPathFamily)
+		p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress,
+			"Far end can send add paths"))
+		if addPathsTxFarEnd && p.fsm.pConf.AddPathsRx {
+			p.peerAttrs.AddPathsRxActual = true
+			p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress,
+				"negotiated to recieve add paths from far end"))
+		}
+	}
+
+	return msg, msgErr, msgOk
+}
+
 func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool) {
 	p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id, "conn:ReadPkt called"))
 	var t time.Time
-	var msg *packet.BGPMessage
-	var msgErr *packet.BGPMessageError
 	var header *packet.BGPHeader
 	for {
 		select {
 		case <-p.readCh:
-			msg = nil
-			msgErr = nil
 			header = nil
 			(*p.conn).SetReadDeadline(time.Now().Add(time.Duration(3) * time.Second))
 			buf, err := p.readPartialPkt(int(packet.BGPMsgHeaderLen))
@@ -264,7 +294,8 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool)
 				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
 					"BGP packet header decode failed"))
 				//bgpPktInfo := packet.NewBGPPktInfo(nil, err.(*packet.BGPMessageError))
-				p.fsm.pktRxCh <- packet.NewBGPPktInfo(nil, err.(*packet.BGPMessageError))
+				bgpErr := err.(packet.BGPMessageError)
+				p.fsm.pktRxCh <- packet.NewBGPPktInfo(nil, &bgpErr)
 				doneCh <- false
 				continue
 			}
@@ -291,32 +322,7 @@ func (p *PeerConn) ReadPkt(doneCh chan bool, stopCh chan bool, exitCh chan bool)
 					p.fsm.id, buf))
 			}
 
-			msg = packet.NewBGPMessage()
-			err = msg.Decode(header, buf, p.peerAttrs)
-			//bgpPktInfo := packet.NewBGPPktInfo(msg, nil)
-			msgOk := true
-			if header.Type == packet.BGPMsgTypeNotification {
-				msgOk = false
-			}
-
-			if err != nil {
-				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress, "FSM", p.fsm.id,
-					"BGP packet body decode failed, err:", err))
-				//bgpPktInfo = packet.NewBGPPktInfo(msg, err.(*packet.BGPMessageError))
-				msgErr = err.(*packet.BGPMessageError)
-				msgOk = false
-			} else if header.Type == packet.BGPMsgTypeOpen {
-				p.peerAttrs.ASSize = packet.GetASSize(msg.Body.(*packet.BGPOpen))
-				p.peerAttrs.AddPathFamily = packet.GetAddPathFamily(msg.Body.(*packet.BGPOpen))
-				addPathsTxFarEnd := packet.IsAddPathsTxEnabledForIPv4(p.peerAttrs.AddPathFamily)
-				p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress,
-					"Far end can send add paths"))
-				if addPathsTxFarEnd && p.fsm.pConf.AddPathsRx {
-					p.peerAttrs.AddPathsRxActual = true
-					p.logger.Info(fmt.Sprintln("Neighbor:", p.fsm.pConf.NeighborAddress,
-						"negotiated to recieve add paths from far end"))
-				}
-			}
+			msg, msgErr, msgOk := p.DecodeMessage(header, buf)
 			p.fsm.pktRxCh <- packet.NewBGPPktInfo(msg, msgErr)
 			doneCh <- msgOk
 

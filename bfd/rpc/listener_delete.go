@@ -24,13 +24,6 @@ func (h *BFDHandler) DeleteBfdGlobal(bfdGlobalConf *bfdd.BfdGlobal) (bool, error
 	return true, nil
 }
 
-func (h *BFDHandler) DeleteBfdInterface(bfdIfConf *bfdd.BfdInterface) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Delete interface config attrs:", bfdIfConf))
-	ifIndex := bfdIfConf.IfIndex
-	h.server.IntfConfigDeleteCh <- ifIndex
-	return true, nil
-}
-
 func (h *BFDHandler) DeleteBfdSession(bfdSessionConf *bfdd.BfdSession) (bool, error) {
 	if bfdSessionConf == nil {
 		err := errors.New("Invalid Session Configuration")

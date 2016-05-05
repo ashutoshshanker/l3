@@ -87,7 +87,9 @@ func StartServer(logger *logging.Writer, handler *BGPHandler, filePath string) {
 func connectToClient(logger *logging.Writer, clientTransport thrift.TTransport) error {
 	return clientTransport.Open()
 }
-func StartAsicdClient(logger *logging.Writer, filePath string, asicdClient chan *asicdServices.ASICDServicesClient) {
+
+func StartAsicdClient(logger *logging.Writer, filePath string,
+	asicdClient chan *asicdServices.ASICDServicesClient) {
 	fileName := filePath + ClientsFileName
 	clientJson, err := getClient(logger, fileName, "asicd")
 	if err != nil || clientJson == nil {
@@ -95,13 +97,17 @@ func StartAsicdClient(logger *logging.Writer, filePath string, asicdClient chan 
 		return
 	}
 
-	clientTransport, protocolFactory, err := ipcutils.CreateIPCHandles("localhost:" + strconv.Itoa(clientJson.Port))
+	clientTransport, protocolFactory, err := ipcutils.CreateIPCHandles("localhost:" +
+		strconv.Itoa(clientJson.Port))
 	if err != nil {
-		logger.Info(fmt.Sprintf("Failed to connect to ASICd, retrying until connection is successful"))
+		logger.Info(fmt.Sprintf("Failed to connect to ASICd, ",
+			"retrying until connection is successful"))
 		count := 0
 		ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
 		for _ = range ticker.C {
-			clientTransport, protocolFactory, err = ipcutils.CreateIPCHandles("localhost:" + strconv.Itoa(clientJson.Port))
+			clientTransport, protocolFactory, err =
+				ipcutils.CreateIPCHandles("localhost:" +
+					strconv.Itoa(clientJson.Port))
 			if err == nil {
 				ticker.Stop()
 				break

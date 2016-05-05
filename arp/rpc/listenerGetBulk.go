@@ -2,7 +2,7 @@ package rpc
 
 import (
 	"arpd"
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"errors"
 	"fmt"
 	"l3/arp/server"
@@ -13,7 +13,7 @@ func (h *ARPHandler) convertArpEntryToThrift(arpState server.ArpState) *arpd.Arp
 	arpEnt := arpd.NewArpEntryState()
 	arpEnt.IpAddr = arpState.IpAddr
 	arpEnt.MacAddr = arpState.MacAddr
-	if arpState.VlanId == asicdConstDefs.SYS_RSVD_VLAN {
+	if arpState.VlanId == asicdCommonDefs.SYS_RSVD_VLAN {
 		arpEnt.Vlan = "Internal Vlan"
 	} else {
 		arpEnt.Vlan = strconv.Itoa((arpState.VlanId))

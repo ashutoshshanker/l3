@@ -201,13 +201,11 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 	last_exchange := true
 	if exists {
 		nbrConf := server.NeighborConfigMap[nbrKey]
-		//intConf := server.IntfConfMap[nbrConf.intfConfKey]
 		switch nbrConf.OspfNbrState {
 		case config.NbrAttempt:
 			/* reject packet */
 			return
 		case config.NbrInit, config.NbrExchangeStart:
-			//intfKey := nbrConf.intfConfKey
 			server.processNeighborExstart(nbrKey, nbrConf, nbrDbPkt)
 
 		case config.NbrExchange:
@@ -239,13 +237,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 						dbd_mdata, last_exchange = server.ConstructAndSendDbdPacket(nbrKey, false, false, true,
 							nbrDbPkt.options, nbrDbPkt.dd_sequence_number+1, true, false)
 						OspfNeighborLastDbd[nbrKey] = dbd_mdata
-					} /*else {
-						// send old packet
-						server.logger.Info(fmt.Sprintln("DBD: (master/exchange) Duplicated dbd. Resend . dbd_seq , nbr_seq_num ",
-							nbrDbPkt.dd_sequence_number, nbrConf.ospfNbrSeqNum))
-						data := newDbdMsg(nbrKey.OspfNbrRtrId, OspfNeighborLastDbd[nbrKey])
-						server.ospfNbrDBDSendCh <- data
-					}*/
+					}
 
 					// Genrate request list
 					server.generateRequestList(nbrKey, nbrConf, nbrDbPkt)
@@ -295,7 +287,6 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 					nbrConf.ospfNbrLsaReqIndex = server.BuildAndSendLSAReq(nbrKey, nbrConf)
 					server.logger.Info(fmt.Sprintln("DBD: Loading , nbr ", nbrKey.IPAddr))
 					server.updateNeighborMdata(nbrConf.intfConfKey, nbrKey)
-					//	server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
 				}
 			}
 
@@ -327,9 +318,7 @@ func (server *OSPFServer) processDBDEvent(nbrKey NeighborConfKey, nbrDbPkt ospfD
 			server.logger.Info(fmt.Sprintln("DBD: Loading . Nbr ", nbrKey.IPAddr))
 			isDiscard := server.exchangePacketDiscardCheck(nbrConf, nbrDbPkt)
 			isDuplicate := server.verifyDuplicatePacket(nbrConf, nbrDbPkt)
-			/*if isDuplicate {
-				return
-			} */
+
 			if isDiscard {
 				server.logger.Info(fmt.Sprintln("NBRDBD:Loading  Discard packet. nbr", nbrKey.IPAddr,
 					" nbr state ", nbrConf.OspfNbrState))
@@ -406,7 +395,7 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 
 		select {
 		case nbrData := <-(server.neighborHelloEventCh):
-			server.logger.Info(fmt.Sprintln("NBREVENT: Received hellopkt event for nbrId ", nbrData.RouterId, " two_way", nbrData.TwoWayStatus))
+			//server.logger.Info(fmt.Sprintln("NBREVENT: Received hellopkt event for nbrId ", nbrData.RouterId, " two_way", nbrData.TwoWayStatus))
 			var nbrConf OspfNeighborEntry
 			var send_dbd bool
 			var seq_update bool
@@ -415,7 +404,7 @@ func (server *OSPFServer) ProcessNbrStateMachine() {
 				IPAddr:  config.IpAddress(nbrData.NeighborIP.String()),
 				IntfIdx: nbrData.IntfConfKey.IntfIdx,
 			}
-			server.logger.Info(fmt.Sprintln("NBREVET: Nbr key ", nbrData.NeighborIP.String(), nbrData.IntfConfKey.IntfIdx))
+			//server.logger.Info(fmt.Sprintln("NBREVET: Nbr key ", nbrData.NeighborIP.String(), nbrData.IntfConfKey.IntfIdx))
 			//Check if neighbor exists
 			_, exists := server.NeighborConfigMap[nbrKey]
 			send_dbd = false
@@ -614,8 +603,6 @@ func (server *OSPFServer) ProcessTxNbrPkt() {
 					server.SendOspfPkt(nbrConf.intfConfKey, data)
 				}
 				/* This ensures Flood packet is sent only after last DBD.  */
-
-				//if nbrConf.OspfNbrState == config.NbrLoading || nbrConf.OspfNbrState == config.NbrFull {
 				if nbrConf.isMaster && !dbd_mdata.ospfNbrDBDData.ibit && !dbd_mdata.ospfNbrDBDData.mbit {
 					server.CreateNetworkLSACh <- ospfIntfToNbrMap[nbrConf.intfConfKey]
 				}
@@ -656,7 +643,6 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 		return
 	}
 	intf, _ := server.IntfConfMap[nbrConf.intfConfKey]
-	//nbrMdata, exists := ospfIntfToNbrMap[nbrConf.intfConfKey]
 
 	areaId := convertIPv4ToUint32(intf.IfAreaId)
 	lsdbKey := LsdbKey{
@@ -704,16 +690,24 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 		db_summary.valid = true
 		/* add entry to the db summary list  */
 		db_list = append(db_list, db_summary)
-		//lsid := convertUint32ToIPv4(networkKey.LSId)
-		//server.logger.Info(fmt.Sprintln("negotiation: db_list append network lsid  ", lsid))
-		//}
+
 	} // end of for
 
 	/*   attach summary list */
 
-	summary_list := server.generateDbsummaryLsaList(areaId)
-	if summary_list != nil {
-		db_list = append(db_list, summary_list...)
+	summary3_list := server.generateDbsummary3LsaList(areaId)
+	if summary3_list != nil {
+		db_list = append(db_list, summary3_list...)
+	}
+
+	summary4_list := server.generateDbsummary4LsaList(areaId)
+	if summary4_list != nil {
+		db_list = append(db_list, summary4_list...)
+	}
+
+	asExternal_list := server.generateDbasExternalList(areaId)
+	if asExternal_list != nil {
+		db_list = append(db_list, asExternal_list...)
 	}
 
 	for lsa := range db_list {
@@ -725,10 +719,49 @@ func (server *OSPFServer) generateDbSummaryList(nbrConfKey NeighborConfKey) {
 	nbrConf.db_summary_list_mutex.Unlock()
 }
 
+/*@fn generateDbasExternalList
+This function generates As external list if the router is ASBR
+*/
+func (server *OSPFServer) generateDbasExternalList(self_areaId uint32) []*ospfNeighborDBSummary {
+	if !server.ospfGlobalConf.AreaBdrRtrStatus {
+		return nil // dont add self gen LSA if I am not ASBR
+	}
+	db_list := []*ospfNeighborDBSummary{}
+	lsdbKey := LsdbKey{
+		AreaId: self_areaId,
+	}
+
+	area_lsa, exist := server.AreaLsdb[lsdbKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("negotiation: As external LSA doesnt exist"))
+		return nil
+	}
+	as_lsdb := area_lsa.ASExternalLsaMap
+
+	for lsaKey, _ := range as_lsdb {
+		// check if lsa instance is marked true
+		db_as := newospfNeighborDBSummary()
+		drlsa, ret := server.getASExternalLsaFromLsdb(self_areaId, lsaKey)
+		if ret == LsdbEntryNotFound {
+			continue
+		}
+		db_as.lsa_headers = getLsaHeaderFromLsa(drlsa.LsaMd.LSAge, drlsa.LsaMd.Options,
+			ASExternalLSA, lsaKey.LSId, lsaKey.AdvRouter,
+			uint32(drlsa.LsaMd.LSSequenceNum), drlsa.LsaMd.LSChecksum,
+			drlsa.LsaMd.LSLen)
+		db_as.valid = true
+		/* add entry to the db summary list  */
+		db_list = append(db_list, db_as)
+		lsid := convertUint32ToIPv4(lsaKey.LSId)
+		server.logger.Info(fmt.Sprintln("negotiation: db_list AS ext append router lsid  ", lsid))
+	}
+	return db_list
+}
+
 /* @fn generateDbsummaryLsaList
 This function will attach summary LSAs if the router is ABR
 */
-func (server *OSPFServer) generateDbsummaryLsaList(self_areaId uint32) []*ospfNeighborDBSummary {
+func (server *OSPFServer) generateDbsummary3LsaList(self_areaId uint32) []*ospfNeighborDBSummary {
 	db_list := []*ospfNeighborDBSummary{}
 
 	lsdbKey := LsdbKey{
@@ -737,7 +770,7 @@ func (server *OSPFServer) generateDbsummaryLsaList(self_areaId uint32) []*ospfNe
 
 	area_lsa, exist := server.AreaLsdb[lsdbKey]
 	if !exist {
-		server.logger.Err(fmt.Sprintln("negotiation: Summary LSA doesnt exist"))
+		server.logger.Err(fmt.Sprintln("negotiation: Summary LSA 3 doesnt exist"))
 		return nil
 	}
 	summary_lsdb := area_lsa.Summary3LsaMap
@@ -762,7 +795,49 @@ func (server *OSPFServer) generateDbsummaryLsaList(self_areaId uint32) []*ospfNe
 		/* add entry to the db summary list  */
 		db_list = append(db_list, db_summary)
 		lsid := convertUint32ToIPv4(lsaKey.LSId)
-		server.logger.Info(fmt.Sprintln("negotiation: db_list summary append router lsid  ", lsid))
+		server.logger.Info(fmt.Sprintln("negotiation: db_list summary 3 append router lsid  ", lsid))
+	}
+	return db_list
+}
+
+/* @fn generateDbsummaryLsaList
+This function will attach summary LSAs if the router is ABR
+*/
+func (server *OSPFServer) generateDbsummary4LsaList(self_areaId uint32) []*ospfNeighborDBSummary {
+	db_list := []*ospfNeighborDBSummary{}
+
+	lsdbKey := LsdbKey{
+		AreaId: self_areaId,
+	}
+
+	area_lsa, exist := server.AreaLsdb[lsdbKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("negotiation: Summary LSA 4 doesnt exist"))
+		return nil
+	}
+	summary_lsdb := area_lsa.Summary4LsaMap
+	selfOrigLsaEnt, _ := server.AreaSelfOrigLsa[lsdbKey]
+
+	for lsaKey, _ := range summary_lsdb {
+		_, exist := selfOrigLsaEnt[lsaKey]
+		if exist && !server.ospfGlobalConf.isABR {
+			continue // dont add self gen LSA if I am not ABR
+		}
+		// check if lsa instance is marked true
+		db_summary := newospfNeighborDBSummary()
+		drlsa, ret := server.getSummaryLsaFromLsdb(self_areaId, lsaKey)
+		if ret == LsdbEntryNotFound {
+			continue
+		}
+		db_summary.lsa_headers = getLsaHeaderFromLsa(drlsa.LsaMd.LSAge, drlsa.LsaMd.Options,
+			Summary4LSA, lsaKey.LSId, lsaKey.AdvRouter,
+			uint32(drlsa.LsaMd.LSSequenceNum), drlsa.LsaMd.LSChecksum,
+			drlsa.LsaMd.LSLen)
+		db_summary.valid = true
+		/* add entry to the db summary list  */
+		db_list = append(db_list, db_summary)
+		lsid := convertUint32ToIPv4(lsaKey.LSId)
+		server.logger.Info(fmt.Sprintln("negotiation: db_list summary 4 append router lsid  ", lsid))
 
 		/*  TODO - check if we want to add Summary4 LSA */
 	}

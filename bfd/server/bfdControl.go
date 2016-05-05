@@ -109,8 +109,8 @@ type BfdControlPacket struct {
 const (
 	DEFAULT_BFD_VERSION                   = 1
 	DEFAULT_DETECT_MULTI                  = 3
-	DEFAULT_DESIRED_MIN_TX_INTERVAL       = 1000000
-	DEFAULT_REQUIRED_MIN_RX_INTERVAL      = 1000000
+	DEFAULT_DESIRED_MIN_TX_INTERVAL       = 250000
+	DEFAULT_REQUIRED_MIN_RX_INTERVAL      = 250000
 	DEFAULT_REQUIRED_MIN_ECHO_RX_INTERVAL = 0
 	DEFAULT_CONTROL_PACKET_LEN            = 24
 	MAX_NUM_SESSIONS                      = 1024
@@ -120,7 +120,7 @@ const (
 	SRC_PORT_LAG                          = 49153
 	STARTUP_TX_INTERVAL                   = 2000000
 	STARTUP_RX_INTERVAL                   = 2000000
-	TX_JITTER                             = 25 //Timer will be running at 0 to 25% less than TX_INTERVAL
+	TX_JITTER                             = 15 //Timer will be running at 0 to 15% less than TX_INTERVAL
 	//DEDICATED_MAC                         = net.HardwareAddr{0x01, 0x00, 0x5E, 0x90, 0x00, 0x01}
 )
 

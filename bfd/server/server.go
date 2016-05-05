@@ -2,10 +2,10 @@ package server
 
 import (
 	"asicdServices"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
+	"github.com/garyburd/redigo/redis"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-	"utils/dbutils"
 	"utils/ipcutils"
 	"utils/logging"
 )
@@ -99,7 +98,6 @@ type BfdSession struct {
 	remoteParamChanged          bool
 	movedToDownState            bool
 	switchingToConfiguredTimers bool
-	remoteDownRecvCount         int32
 	server                      *BFDServer
 }
 
@@ -131,11 +129,10 @@ type RecvedBfdPacket struct {
 
 type BFDServer struct {
 	logger                *logging.Writer
+	ServerStartedCh       chan bool
 	ribdClient            RibdClient
 	asicdClient           AsicdClient
 	GlobalConfigCh        chan GlobalConfig
-	IntfConfigCh          chan IntfConfig
-	IntfConfigDeleteCh    chan int32
 	asicdSubSocket        *nanomsg.SubSocket
 	asicdSubSocketCh      chan []byte
 	asicdSubSocketErrCh   chan error
@@ -154,7 +151,6 @@ type BFDServer struct {
 	bfddPubSocket         *nanomsg.PubSocket
 	lagPropertyMap        map[int32]LagProperty
 	notificationCh        chan []byte
-	ServerUpCh            chan bool
 	FailedSessionClientCh chan int32
 	BfdPacketRecvCh       chan RecvedBfdPacket
 	SessionParamConfigCh  chan SessionParamConfig
@@ -165,9 +161,8 @@ type BFDServer struct {
 func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer := &BFDServer{}
 	bfdServer.logger = logger
+	bfdServer.ServerStartedCh = make(chan bool)
 	bfdServer.GlobalConfigCh = make(chan GlobalConfig)
-	bfdServer.IntfConfigCh = make(chan IntfConfig)
-	bfdServer.IntfConfigDeleteCh = make(chan int32)
 	bfdServer.asicdSubSocketCh = make(chan []byte)
 	bfdServer.asicdSubSocketErrCh = make(chan error)
 	bfdServer.ribdSubSocketCh = make(chan []byte)
@@ -177,7 +172,6 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer.lagPropertyMap = make(map[int32]LagProperty)
 	bfdServer.SessionConfigCh = make(chan SessionConfig)
 	bfdServer.notificationCh = make(chan []byte)
-	bfdServer.ServerUpCh = make(chan bool)
 	bfdServer.SessionParamConfigCh = make(chan SessionParamConfig)
 	bfdServer.SessionParamDeleteCh = make(chan string)
 	bfdServer.bfdGlobal.Enabled = false
@@ -206,9 +200,9 @@ func (server *BFDServer) SigHandler(dbHdl redis.Conn) {
 		case signal := <-sigChan:
 			switch signal {
 			case syscall.SIGHUP:
-				//server.SendAdminDownToAllNeighbors()
-				//time.Sleep(500 * time.Millisecond)
-				//server.logger.Info("Sent admin_down to all neighbors")
+				server.SendAdminDownToAllNeighbors()
+				time.Sleep(500 * time.Millisecond)
+				server.logger.Info("Sent admin_down to all neighbors")
 				server.SendDeleteToAllSessions()
 				time.Sleep(500 * time.Millisecond)
 				server.logger.Info("Stopped all sessions")
@@ -316,129 +310,12 @@ func (server *BFDServer) PublishSessionNotifications() {
 	for {
 		select {
 		case event := <-server.notificationCh:
-			server.logger.Info(fmt.Sprintln("Received call to notify session state", event))
 			_, err := server.bfddPubSocket.Send(event, nanomsg.DontWait)
 			if err == syscall.EAGAIN {
 				server.logger.Err(fmt.Sprintln("Failed to publish event"))
 			}
 		}
 	}
-}
-
-func (server *BFDServer) ReadGlobalConfigFromDB(dbHdl *sql.DB) error {
-	server.logger.Info("Reading BfdGlobal")
-	dbCmd := "SELECT * FROM BfdGlobal"
-	rows, err := dbHdl.Query(dbCmd)
-	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdGlobal: ", err))
-		return err
-	}
-
-	for rows.Next() {
-		var rtrBfd string
-		var enable string
-		err = rows.Scan(&rtrBfd, &enable)
-		if err != nil {
-			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdGlobal: ", err))
-			return err
-		}
-		server.logger.Info(fmt.Sprintln("BfdGlobal - Enable: ", enable))
-		if enable == "false" {
-			gConf := GlobalConfig{
-				Enable: dbutils.ConvertStringToBool(enable),
-			}
-			server.GlobalConfigCh <- gConf
-		}
-	}
-	return nil
-}
-
-func (server *BFDServer) ReadIntfConfigFromDB(dbHdl *sql.DB) error {
-	server.logger.Info("Reading BfdInterface")
-	dbCmd := "SELECT * FROM BfdInterface"
-	rows, err := dbHdl.Query(dbCmd)
-	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdInterface: ", err))
-		return err
-	}
-
-	for rows.Next() {
-		var interfaceId int32
-		var localMultiplier int32
-		var desiredMinTxInterval int32
-		var requiredMinRxInterval int32
-		var requiredMinEchoRxInterval int32
-		var demandEnabled string
-		var authenticationEnabled string
-		var authenticationType string
-		var authenticationKeyId int32
-		var authenticationData string
-		err = rows.Scan(&interfaceId, &localMultiplier, &desiredMinTxInterval, &requiredMinRxInterval, &requiredMinEchoRxInterval, &demandEnabled, &authenticationEnabled, &authenticationType, &authenticationKeyId, &authenticationData)
-		if err != nil {
-			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdInterface: ", err))
-			return err
-		}
-		ifConf := IntfConfig{
-			InterfaceId:               interfaceId,
-			LocalMultiplier:           localMultiplier,
-			DesiredMinTxInterval:      desiredMinTxInterval,
-			RequiredMinRxInterval:     requiredMinRxInterval,
-			RequiredMinEchoRxInterval: requiredMinEchoRxInterval,
-			DemandEnabled:             dbutils.ConvertStringToBool(demandEnabled),
-			AuthenticationEnabled:     dbutils.ConvertStringToBool(authenticationEnabled),
-			AuthenticationType:        server.ConvertBfdAuthTypeStrToVal(authenticationType),
-			AuthenticationKeyId:       authenticationKeyId,
-			AuthenticationData:        authenticationData,
-		}
-		server.logger.Info(fmt.Sprintln("BfdInterface - ", ifConf))
-		server.IntfConfigCh <- ifConf
-	}
-	return nil
-}
-
-func (server *BFDServer) ReadSessionConfigFromDB(dbHdl *sql.DB) error {
-	server.logger.Info("Reading BfdSession")
-	dbCmd := "SELECT * FROM BfdSession"
-	rows, err := dbHdl.Query(dbCmd)
-	if err != nil {
-		server.logger.Err(fmt.Sprintln("Unable to query DB - BfdSession: ", err))
-		return err
-	}
-
-	for rows.Next() {
-		var dstIp string
-		var paramName string
-		var intfName string
-		var perLink string
-		var owner string
-		err = rows.Scan(&dstIp, &paramName, &intfName, &perLink, &owner)
-		if err != nil {
-			server.logger.Info(fmt.Sprintln("Unable to scan entries from DB - BfdSession: ", err))
-			return err
-		}
-		sessionConf := SessionConfig{
-			DestIp:    dstIp,
-			ParamName: paramName,
-			Interface: intfName,
-			PerLink:   dbutils.ConvertStringToBool(perLink),
-			Protocol:  bfddCommonDefs.USER,
-			Operation: bfddCommonDefs.CREATE,
-		}
-		server.logger.Info(fmt.Sprintln("BfdSession : ", sessionConf))
-		server.SessionConfigCh <- sessionConf
-	}
-	return nil
-}
-
-func (server *BFDServer) ReadConfigFromDB(dbHdl *sql.DB, done chan bool) error {
-	// BfdGlobalConfig
-	server.ReadGlobalConfigFromDB(dbHdl)
-	// BfdIntfConfig
-	server.ReadIntfConfigFromDB(dbHdl)
-	// BfdSessionConfig
-	server.ReadSessionConfigFromDB(dbHdl)
-	done <- true
-	return nil
 }
 
 func (server *BFDServer) InitServer(paramFile string) {
@@ -448,41 +325,12 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.BuildPortPropertyMap()
 	server.BuildLagPropertyMap()
 	server.BuildIPv4InterfacesMap()
+	server.createDefaultSessionParam()
 }
 
-func (server *BFDServer) SigHandler() {
-	server.logger.Info(fmt.Sprintln("Starting SigHandler"))
-	sigChan := make(chan os.Signal, 1)
-	signalList := []os.Signal{syscall.SIGHUP}
-	signal.Notify(sigChan, signalList...)
-
-	for {
-		select {
-		case signal := <-sigChan:
-			switch signal {
-			case syscall.SIGHUP:
-				server.logger.Info("Received SIGHUP signal")
-				//server.SendAdminDownToAllNeighbors()
-				//time.Sleep(500 * time.Millisecond)
-				server.SendDeleteToAllSessions()
-				time.Sleep(500 * time.Millisecond)
-				server.logger.Info("Exiting!!!")
-				os.Exit(0)
-			default:
-				server.logger.Info(fmt.Sprintln("Unhandled signal : ", signal))
-			}
-		}
-	}
-}
-
-func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
-	// Start signal handler first
-	go server.SigHandler()
+func (server *BFDServer) StartServer(paramFile string, dbHdl redis.Conn) {
 	// Initialize BFD server from params file
 	server.InitServer(paramFile)
-	// Read BFD configurations already present in DB
-	dbReadCh := make(chan bool)
-	go server.ReadConfigFromDB(dbHdl, dbReadCh)
 	// Start subcriber for ASICd events
 	go server.CreateASICdSubscriber()
 	// Start subcriber for RIBd events
@@ -492,23 +340,14 @@ func (server *BFDServer) StartServer(paramFile string, dbHdl *sql.DB) {
 	// Initialize and run notification publisher
 	go server.PublishSessionNotifications()
 
+	server.ServerStartedCh <- true
+
 	// Now, wait on below channels to process
 	for {
 		select {
-		case dbRead := <-dbReadCh:
-			if dbRead == true {
-				// Server is up. Let rpc handler get started now.
-				server.ServerUpCh <- true
-			}
 		case gConf := <-server.GlobalConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Global Configuration", gConf))
 			server.processGlobalConfig(gConf)
-		case ifConf := <-server.IntfConfigCh:
-			server.logger.Info(fmt.Sprintln("Received call for performing Intf Configuration", ifConf))
-			server.processIntfConfig(ifConf)
-		case ifIndex := <-server.IntfConfigDeleteCh:
-			server.logger.Info(fmt.Sprintln("Received call for performing Intf delete", ifIndex))
-			server.processIntfConfigDelete(ifIndex)
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:
