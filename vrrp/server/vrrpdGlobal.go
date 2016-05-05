@@ -3,13 +3,13 @@ package vrrpServer
 import (
 	"asicdServices"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	"github.com/garyburd/redigo/redis"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"net"
 	"sync"
 	"time"
+	"utils/dbutils"
 	"utils/logging"
 	"vrrpd"
 )
@@ -135,7 +135,7 @@ type VrrpTxChannelInfo struct {
 
 type VrrpServer struct {
 	logger                        *logging.Writer
-	vrrpDbHdl                     redis.Conn
+	vrrpDbHdl                     *dbutils.DBUtil
 	paramsDir                     string
 	asicdClient                   VrrpAsicdClient
 	asicdSubSocket                *nanomsg.SubSocket
