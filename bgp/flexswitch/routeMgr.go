@@ -47,7 +47,6 @@ func (mgr *FSRouteMgr) Start() {
 	mgr.ribSubBGPSocket, _ = mgr.setupSubSocket(ribdCommonDefs.PUB_SOCKET_BGPD_ADDR)
 	go mgr.listenForRIBUpdates(mgr.ribSubSocket)
 	go mgr.listenForRIBUpdates(mgr.ribSubBGPSocket)
-	mgr.processRoutesFromRIB()
 }
 
 func (mgr *FSRouteMgr) setupSubSocket(address string) (*nanomsg.SubSocket, error) {
@@ -146,40 +145,6 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 	}
 }
 
-func (mgr *FSRouteMgr) processRoutesFromRIB() {
-	var currMarker ribdInt.Int
-	var count ribdInt.Int
-	count = 100
-	for {
-		mgr.logger.Info(fmt.Sprintln("Getting ", count,
-			"objects from currMarker", currMarker))
-		getBulkInfo, err := mgr.ribdClient.GetBulkRoutesForProtocol("BGP",
-			currMarker, count)
-		if err != nil {
-			mgr.logger.Info(fmt.Sprintln("GetBulkRoutesForProtocol with err ", err))
-			return
-		}
-		if getBulkInfo.Count == 0 {
-			mgr.logger.Info("0 objects returned from GetBulkRoutesForProtocol")
-			return
-		}
-		mgr.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ",
-			len(getBulkInfo.RouteList), " num objects returned = ",
-			getBulkInfo.Count))
-		routes := make([]*config.RouteInfo, 0, len(getBulkInfo.RouteList))
-		for idx, _ := range getBulkInfo.RouteList {
-			route := mgr.populateConfigRoute(getBulkInfo.RouteList[idx])
-			routes = append(routes, route)
-		}
-		api.SendRouteNotification(routes, make([]*config.RouteInfo, 0))
-		if getBulkInfo.More == false {
-			mgr.logger.Info("more returned as false, so no more get bulks")
-			return
-		}
-		currMarker = ribdInt.Int(getBulkInfo.EndIdx)
-	}
-}
-
 func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error) {
 	info, err := mgr.ribdClient.GetRouteReachabilityInfo(ipAddr)
 	if err != nil {
@@ -226,4 +191,42 @@ func (mgr *FSRouteMgr) CreateRoute(cfg *config.RouteConfig) {
 func (mgr *FSRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
 	mgr.ribdClient.OnewayDeleteIPv4Route(mgr.createRibdIPv4RouteCfg(cfg,
 		false /*delete*/))
+}
+
+func (mgr *FSRouteMgr) GetRoutes() ([]*config.RouteInfo, []*config.RouteInfo) {
+	var currMarker ribdInt.Int
+	var count ribdInt.Int
+	routes := make([]*config.RouteInfo, 0)
+	count = 100
+	for {
+		mgr.logger.Info(fmt.Sprintln("Getting ", count,
+			"objects from currMarker", currMarker))
+		getBulkInfo, err := mgr.ribdClient.GetBulkRoutesForProtocol("BGP",
+			currMarker, count)
+		if err != nil {
+			mgr.logger.Info(fmt.Sprintln("GetBulkRoutesForProtocol with err ", err))
+			break
+		}
+		if getBulkInfo.Count == 0 {
+			mgr.logger.Info("0 objects returned from GetBulkRoutesForProtocol")
+			break
+		}
+		mgr.logger.Info(fmt.Sprintln("len(getBulkInfo.RouteList)  = ",
+			len(getBulkInfo.RouteList), " num objects returned = ",
+			getBulkInfo.Count))
+		for idx, _ := range getBulkInfo.RouteList {
+			route := mgr.populateConfigRoute(getBulkInfo.RouteList[idx])
+			routes = append(routes, route)
+		}
+		if getBulkInfo.More == false {
+			mgr.logger.Info("more returned as false, so no more get bulks")
+			break
+		}
+		currMarker = ribdInt.Int(getBulkInfo.EndIdx)
+	}
+	if len(routes) == 0 {
+		return nil, nil
+	}
+
+	return routes, (make([]*config.RouteInfo, 0))
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	"github.com/garyburd/redigo/redis"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
@@ -17,6 +16,7 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+	"utils/dbutils"
 	"utils/ipcutils"
 	"utils/logging"
 )
@@ -67,39 +67,37 @@ type BfdSessionMgmt struct {
 }
 
 type BfdSession struct {
-	state                       SessionState
-	rxInterval                  int32
-	sessionTimer                *time.Timer
-	txInterval                  int32
-	txTimer                     *time.Timer
-	TxTimeoutCh                 chan int32
-	txJitter                    int32
-	SessionTimeoutCh            chan int32
-	bfdPacket                   *BfdControlPacket
-	bfdPacketBuf                []byte
-	ReceivedPacketCh            chan *BfdControlPacket
-	SessionStopClientCh         chan bool
-	SessionStopServerCh         chan bool
-	pollSequence                bool
-	pollSequenceFinal           bool
-	authEnabled                 bool
-	authType                    AuthenticationType
-	authSeqNum                  uint32
-	authKeyId                   uint32
-	authData                    string
-	txConn                      net.Conn
-	sendPcapHandle              *pcap.Handle
-	recvPcapHandle              *pcap.Handle
-	useDedicatedMac             bool
-	intfConfigChanged           bool
-	paramConfigChanged          bool
-	stateChanged                bool
-	isClientActive              bool
-	remoteParamChanged          bool
-	movedToDownState            bool
-	switchingToConfiguredTimers bool
-	remoteDownRecvCount         int32
-	server                      *BFDServer
+	state               SessionState
+	rxInterval          int32
+	sessionTimer        *time.Timer
+	txInterval          int32
+	txTimer             *time.Timer
+	TxTimeoutCh         chan int32
+	txJitter            int32
+	SessionTimeoutCh    chan int32
+	bfdPacket           *BfdControlPacket
+	bfdPacketBuf        []byte
+	ReceivedPacketCh    chan *BfdControlPacket
+	SessionStopClientCh chan bool
+	SessionStopServerCh chan bool
+	pollSequence        bool
+	pollSequenceFinal   bool
+	pollChanged         bool
+	authEnabled         bool
+	authType            AuthenticationType
+	authSeqNum          uint32
+	authKeyId           uint32
+	authData            string
+	txConn              net.Conn
+	sendPcapHandle      *pcap.Handle
+	recvPcapHandle      *pcap.Handle
+	useDedicatedMac     bool
+	paramChanged        bool
+	remoteParamChanged  bool
+	stateChanged        bool
+	isClientActive      bool
+	movedToDownState    bool
+	server              *BFDServer
 }
 
 type BfdSessionParam struct {
@@ -191,7 +189,7 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	return bfdServer
 }
 
-func (server *BFDServer) SigHandler(dbHdl redis.Conn) {
+func (server *BFDServer) SigHandler(dbHdl *dbutils.DBUtil) {
 	sigChan := make(chan os.Signal, 1)
 	signalList := []os.Signal{syscall.SIGHUP}
 	signal.Notify(sigChan, signalList...)
@@ -201,13 +199,13 @@ func (server *BFDServer) SigHandler(dbHdl redis.Conn) {
 		case signal := <-sigChan:
 			switch signal {
 			case syscall.SIGHUP:
-				//server.SendAdminDownToAllNeighbors()
-				//time.Sleep(500 * time.Millisecond)
-				//server.logger.Info("Sent admin_down to all neighbors")
+				server.SendAdminDownToAllNeighbors()
+				time.Sleep(500 * time.Millisecond)
+				server.logger.Info("Sent admin_down to all neighbors")
 				server.SendDeleteToAllSessions()
 				time.Sleep(500 * time.Millisecond)
 				server.logger.Info("Stopped all sessions")
-				dbHdl.Close()
+				dbHdl.Disconnect()
 				server.logger.Info("Exting!!!")
 				os.Exit(0)
 			default:
@@ -329,7 +327,7 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.createDefaultSessionParam()
 }
 
-func (server *BFDServer) StartServer(paramFile string, dbHdl redis.Conn) {
+func (server *BFDServer) StartServer(paramFile string, dbHdl *dbutils.DBUtil) {
 	// Initialize BFD server from params file
 	server.InitServer(paramFile)
 	// Start subcriber for ASICd events
