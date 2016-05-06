@@ -4,9 +4,10 @@ package config
 import (
 	"net"
 )
+
 type SourcePolicyMap struct {
-	Sources    string
-	Policy     string
+	Sources string
+	Policy  string
 }
 type GlobalConfig struct {
 	AS                  uint32
@@ -104,6 +105,7 @@ type NeighborState struct {
 	HoldTime                uint32
 	KeepaliveTime           uint32
 	BfdNeighborState        string
+	UseBfdState             bool
 	PeerGroup               string
 	AddPathsRx              bool
 	AddPathsMaxTx           uint8
@@ -216,11 +218,10 @@ type Bgp struct {
 }
 
 type ConditionInfo struct {
-	ConditionType string
-	Protocol  string
-	IpPrefix  string
+	ConditionType   string
+	Protocol        string
+	IpPrefix        string
 	MasklengthRange string
-	
 }
 type RouteConfig struct {
 	Cost              int32
