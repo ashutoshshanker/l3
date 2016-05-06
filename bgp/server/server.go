@@ -104,7 +104,6 @@ func (svr *BGPServer) OSSignalHandler() {
 	signalList := []os.Signal{syscall.SIGHUP}
 	signal.Notify(signalChannel, signalList...)
 	go svr.SignalHandler(signalChannel)
-
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
@@ -952,6 +951,7 @@ func (server *BGPServer) listenChannelUpdates() {
 				server.addPeerToList(peer)
 				server.NeighborMutex.Unlock()
 			}
+			peer.ProcessBfd(true)
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:
