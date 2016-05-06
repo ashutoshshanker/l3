@@ -29,6 +29,7 @@ struct Routes {
 	16: string DestNetIp
 	17: bool NetworkStatement
 	18: string RouteOrigin
+	19: int Weight
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -75,6 +76,7 @@ struct IPv4Route {
 	6 : string OutgoingInterface
 	7 : string Protocol
 	8 : string CreateTime
+	9 : i32    Weight
 }
 struct ConditionInfo {
 	1 : string ConditionType
