@@ -12,9 +12,9 @@ import (
 	"net"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
-	"strings"
 	"utils/logging"
 	utilspolicy "utils/policy"
 	"utils/policy/policyCommonDefs"
@@ -81,9 +81,9 @@ type BGPServer struct {
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 	AddPathCount   int
 	// all managers
-	IntfMgr   config.IntfStateMgrIntf
-	routeMgr  config.RouteMgrIntf
-	bfdMgr    config.BfdMgrIntf
+	IntfMgr  config.IntfStateMgrIntf
+	routeMgr config.RouteMgrIntf
+	bfdMgr   config.BfdMgrIntf
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
@@ -760,21 +760,21 @@ func (server *BGPServer) SetupRedistribution(gConf config.GlobalConfig) {
 		server.logger.Info("No redistribution policies configured")
 		return
 	}
-	conditions := make([]*config.ConditionInfo,0)
-	for i := 0;i<len(gConf.Redistribution);i++ {
-		server.logger.Info(fmt.Sprintln("Sources: ",gConf.Redistribution[i].Sources))
-	    sources := make([]string,0)
-		sources = strings.Split(gConf.Redistribution[i].Sources,",")
+	conditions := make([]*config.ConditionInfo, 0)
+	for i := 0; i < len(gConf.Redistribution); i++ {
+		server.logger.Info(fmt.Sprintln("Sources: ", gConf.Redistribution[i].Sources))
+		sources := make([]string, 0)
+		sources = strings.Split(gConf.Redistribution[i].Sources, ",")
 		server.logger.Info(fmt.Sprintf("Setting up %s as redistribution policy for source(s): ", gConf.Redistribution[i].Policy))
-		for j :=0;j<len(sources);j++ {
-			server.logger.Info(fmt.Sprintf("%s ",sources[j]))
-			if sources[j]=="" {
+		for j := 0; j < len(sources); j++ {
+			server.logger.Info(fmt.Sprintf("%s ", sources[j]))
+			if sources[j] == "" {
 				continue
 			}
-			conditions = append(conditions,&config.ConditionInfo{ConditionType:"MatchProtocol",Protocol:sources[j]})
+			conditions = append(conditions, &config.ConditionInfo{ConditionType: "MatchProtocol", Protocol: sources[j]})
 		}
 		server.logger.Info(fmt.Sprintln(""))
-		server.routeMgr.ApplyPolicy("BGP",gConf.Redistribution[i].Policy,"Redistribution",conditions)
+		server.routeMgr.ApplyPolicy("BGP", gConf.Redistribution[i].Policy, "Redistribution", conditions)
 	}
 }
 func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
@@ -927,6 +927,7 @@ func (server *BGPServer) listenChannelUpdates() {
 				server.addPeerToList(peer)
 				server.NeighborMutex.Unlock()
 			}
+			peer.ProcessBfd(true)
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:
@@ -1151,7 +1152,7 @@ func (server *BGPServer) StartServer() {
 	server.intfCh = make(chan config.IntfStateInfo)
 	// Channel for handling route notifications
 	server.routesCh = make(chan *config.RouteCh)
-	
+
 	go server.listenForPeers(server.acceptCh)
 
 	server.logger.Info("Start all managers and initialize API Layer")
