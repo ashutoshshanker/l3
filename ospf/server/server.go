@@ -46,17 +46,17 @@ type LsdbSliceEnt struct {
 }
 
 type OSPFServer struct {
-	logger          *logging.Writer
-	ribdClient      RibdClient
-	asicdClient     AsicdClient
-	portPropertyMap map[int32]PortProperty
-	vlanPropertyMap map[uint16]VlanProperty
-	//IPIntfPropertyMap  map[string]IPIntfProperty
+	logger             *logging.Writer
+	ribdClient         RibdClient
+	asicdClient        AsicdClient
+	portPropertyMap    map[int32]PortProperty
+	vlanPropertyMap    map[uint16]VlanProperty
 	ipPropertyMap      map[uint32]IpProperty
 	ospfGlobalConf     GlobalConf
 	GlobalConfigCh     chan config.GlobalConf
 	AreaConfigCh       chan config.AreaConf
 	IntfConfigCh       chan config.InterfaceConf
+	ConfigRetCh        chan error
 	AreaLsdb           map[LsdbKey]LSDatabase
 	LsdbSlice          []LsdbSliceEnt
 	LsdbStateTimer     *time.Timer
@@ -140,6 +140,7 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.GlobalConfigCh = make(chan config.GlobalConf)
 	ospfServer.AreaConfigCh = make(chan config.AreaConf)
 	ospfServer.IntfConfigCh = make(chan config.InterfaceConf)
+	ospfServer.ConfigRetCh = make(chan error)
 	ospfServer.portPropertyMap = make(map[int32]PortProperty)
 	ospfServer.vlanPropertyMap = make(map[uint16]VlanProperty)
 	ospfServer.ipPropertyMap = make(map[uint32]IpProperty)
@@ -222,8 +223,6 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 	}
 
 	for _, client := range clientsList {
-		//server.logger.Info("#### Client name is ")
-		//server.logger.Info(client.Name)
 		if client.Name == "asicd" {
 			server.logger.Info(fmt.Sprintln("found asicd at port", client.Port))
 			server.asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
@@ -248,13 +247,6 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 			server.logger.Info("Ospfd is connected to Asicd")
 			server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
 			server.asicdClient.IsConnected = true
-			/*
-				if server.asicdClient.Transport != nil && server.asicdClient.PtrProtocolFactory != nil {
-					server.logger.Info("connecting to asicd")
-					server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
-					server.asicdClient.IsConnected = true
-				}
-			*/
 		} else if client.Name == "ribd" {
 			server.logger.Info(fmt.Sprintln("found ribd at port", client.Port))
 			server.ribdClient.Address = "localhost:" + strconv.Itoa(client.Port)
@@ -278,13 +270,6 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 			server.logger.Info("Ospfd is connected to Ribd")
 			server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
 			server.ribdClient.IsConnected = true
-			/*
-				if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {
-					server.logger.Info("connecting to ribd")
-					server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
-					server.ribdClient.IsConnected = true
-				}
-			*/
 		}
 	}
 }
@@ -296,7 +281,7 @@ func (server *OSPFServer) InitServer(paramFile string) {
 	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
 
-	server.BuildPortPropertyMap()
+	server.BuildOspfInfra()
 	server.initOspfGlobalConfDefault()
 	server.logger.Info(fmt.Sprintln("GlobalConf:", server.ospfGlobalConf))
 	server.initAreaConfDefault()
@@ -321,7 +306,11 @@ func (server *OSPFServer) StartServer(paramFile string) {
 	for {
 		select {
 		case gConf := <-server.GlobalConfigCh:
-			server.processGlobalConfig(gConf)
+			err := server.processGlobalConfig(gConf)
+			if err == nil {
+				//Handle Global Configuration
+			}
+			server.ConfigRetCh <- err
 		case areaConf := <-server.AreaConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Area Configuration", areaConf))
 			server.processAreaConfig(areaConf)
