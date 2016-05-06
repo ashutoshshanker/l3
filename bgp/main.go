@@ -49,10 +49,8 @@ func main() {
 		return
 	}
 
-	// starting bgp policy engine...
-	logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
-	bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger)
-	go bgpPolicyEng.StartPolicyEngine()
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("bgpd", fileName)
 
 	// @FIXME: Plugin name should come for json readfile...
 	//plugin := OVSDB_PLUGIN
@@ -66,7 +64,12 @@ func main() {
 		iMgr := ovsMgr.NewOvsIntfMgr()
 		bMgr := ovsMgr.NewOvsBfdMgr()
 
-		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr, pMgr,
+	    // starting bgp policy engine...
+	    logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
+	    bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger,pMgr)
+	    go bgpPolicyEng.StartPolicyEngine()
+
+		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr,
 			rMgr, bMgr)
 		go bgpServer.StartServer()
 
@@ -103,10 +106,17 @@ func main() {
 			return
 		}
 		pMgr := FSMgr.NewFSPolicyMgr(logger, fileName)
+		if err != nil {
+			return
+		}
+	    // starting bgp policy engine...
+	    logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
+	    bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger,pMgr)
+	    go bgpPolicyEng.StartPolicyEngine()
 
 		logger.Info(fmt.Sprintln("Starting BGP Server..."))
 
-		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr, pMgr,
+		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr,
 			rMgr, bMgr)
 		go bgpServer.StartServer()
 

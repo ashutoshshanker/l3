@@ -18,8 +18,8 @@ func (ribdServiceHandler *RIBDServer) NotificationServer() {
 	for {
 		notificationMsg := <-ribdServiceHandler.NotificationChannel
 		logger.Info(fmt.Sprintln("Event received with eventInfo: ", notificationMsg.eventInfo))
-		routeEventInfo := RouteEventInfo{timeStamp: time.Now().String(), eventInfo: notificationMsg.eventInfo}
-		localRouteEventsDB = append(localRouteEventsDB, routeEventInfo)
+		eventInfo := RouteEventInfo{timeStamp: time.Now().String(), eventInfo: notificationMsg.eventInfo}
+		localRouteEventsDB = append(localRouteEventsDB, eventInfo)
 		notificationMsg.pub_socket.Send(notificationMsg.msg, nanomsg.DontWait)
 	}
 }

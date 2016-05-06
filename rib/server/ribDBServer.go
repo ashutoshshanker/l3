@@ -17,7 +17,7 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(dbInfo RouteDBInfo) error {
     logger.Info(fmt.Sprintln("WriteIPv4RouteStateEntryToDB"))
 	entry := dbInfo.entry
 	routeList := dbInfo.routeList
-//	m.DelIPv4RouteStateEntryFromDB(dbInfo)
+	m.DelIPv4RouteStateEntryFromDB(dbInfo)
 	var dbObj models.IPv4RouteState
 	obj := ribd.NewIPv4RouteState()
 	obj.DestinationNw = entry.networkAddr

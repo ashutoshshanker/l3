@@ -38,6 +38,7 @@ func main() {
 		return
 	}
 	go routeServer.StartDBServer()
+	go routeServer.StartPolicyServer()
 	go routeServer.NotificationServer()
 	go routeServer.StartNetlinkServer()
 	go routeServer.StartAsicdServer()

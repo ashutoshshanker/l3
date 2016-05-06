@@ -54,7 +54,7 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
 	err = m.server.RouteConfigValidationCheck(newconfig, "update")
 	if err != nil {
 		logger.Err(fmt.Sprintln("validation check failed with error ", err))
-		return false, err
+		return false,err
 	}
 	objTyp := reflect.TypeOf(*origconfig)
 	for i := 0; i < objTyp.NumField(); i++ {
