@@ -12,6 +12,7 @@ import (
 	"net"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"utils/logging"
@@ -755,7 +756,6 @@ func (server *BGPServer) UpdatePeerGroupInPeers(groupName string, peerGroup *con
 		peer.Init()
 	}
 }
-
 func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.AS = gConf.AS
 	server.BgpConfig.Global.Config.RouterId = gConf.RouterId
@@ -905,6 +905,7 @@ func (server *BGPServer) listenChannelUpdates() {
 				server.addPeerToList(peer)
 				server.NeighborMutex.Unlock()
 			}
+			peer.ProcessBfd(true)
 			peer.Init()
 
 		case remPeer := <-server.RemPeerCh:
