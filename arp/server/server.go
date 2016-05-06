@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	"github.com/garyburd/redigo/redis"
 	nanomsg "github.com/op/go-nanomsg"
 	"io/ioutil"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+	"utils/dbutils"
 	"utils/ipcutils"
 	"utils/logging"
 	//"github.com/google/gopacket/pcap"
@@ -68,7 +68,7 @@ type ARPServer struct {
 	asicdSubSocket          *nanomsg.SubSocket
 	asicdSubSocketCh        chan []byte
 	asicdSubSocketErrCh     chan error
-	dbHdl                   redis.Conn
+	dbHdl                   *dbutils.DBUtil
 	snapshotLen             int32
 	pcapTimeout             time.Duration
 	promiscuous             bool
@@ -204,7 +204,7 @@ func (server *ARPServer) sigHandler(sigChan <-chan os.Signal) {
 		server.printArpEntries()
 		server.logger.Debug("Closing DB handler")
 		if server.dbHdl != nil {
-			server.dbHdl.Close()
+			server.dbHdl.Disconnect()
 		}
 		os.Exit(0)
 	default:

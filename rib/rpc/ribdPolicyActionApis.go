@@ -3,32 +3,32 @@ package rpc
 
 import (
 	"fmt"
-	"ribd"
+	"ribdInt"
 )
 
-func (m RIBDServicesHandler) CreatePolicyAction(cfg *ribd.PolicyAction) (val bool, err error) {
+func (m RIBDServicesHandler) CreatePolicyAction(cfg *ribdInt.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	m.server.PolicyActionCreateConfCh <- cfg
 	return true, err
 }
 
-func (m RIBDServicesHandler) DeletePolicyAction(cfg *ribd.PolicyAction) (val bool, err error) {
+func (m RIBDServicesHandler) DeletePolicyAction(cfg *ribdInt.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
 	m.server.PolicyActionDeleteConfCh <- cfg
 	return true, err
 }
 
-func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribd.PolicyAction, newconfig *ribd.PolicyAction, attrset []bool) (val bool, err error) {
+func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribdInt.PolicyAction, newconfig *ribdInt.PolicyAction, attrset []bool) (val bool, err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyAction"))
 	return true, err
 }
-func (m RIBDServicesHandler) GetPolicyActionState(name string) (*ribd.PolicyActionState, error) {
+/*func (m RIBDServicesHandler) GetPolicyActionState(name string) (*ribdInt.PolicyActionState, error) {
 	logger.Info("Get state for Policy Action")
 	retState := ribd.NewPolicyActionState()
 	return retState, nil
 }
-func (m RIBDServicesHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribd.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServicesHandler) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribdInt.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyActionState"))
 	policyActions,err = m.server.GetBulkPolicyActionState(fromIndex,rcount)
 	return policyActions, err
-}
+}*/

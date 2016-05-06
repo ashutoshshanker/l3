@@ -1,5 +1,6 @@
 #Ignore auto-generated thrift files
 arp/rpc/arpd.thrift
+dhcp/rpc/dhcpd.thrift
 bfd/rpc/bfdd.thrift
 bgp/rpc/bgpd.thrift
 dhcp_relay/server/dhcprelayd.thrift
