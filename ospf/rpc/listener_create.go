@@ -10,7 +10,7 @@ import (
 	//    "net"
 )
 
-func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) bool {
+func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) error {
 	gConf := config.GlobalConf{
 		RouterId:                 config.RouterId(ospfGlobalConf.RouterId),
 		AdminStat:                config.Status(ospfGlobalConf.AdminStat),
@@ -27,7 +27,8 @@ func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) bool {
 		StubRouterAdvertisement:  config.AdvertiseAction(ospfGlobalConf.StubRouterAdvertisement),
 	}
 	h.server.GlobalConfigCh <- gConf
-	return true
+	retMsg := <-h.server.ConfigRetCh
+	return retMsg
 }
 
 func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) bool {
@@ -74,7 +75,11 @@ func (h *OSPFHandler) CreateOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) (bool, 
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Create global config attrs:", ospfGlobalConf))
-	return h.SendOspfGlobal(ospfGlobalConf), nil
+	err := h.SendOspfGlobal(ospfGlobalConf)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (h *OSPFHandler) CreateOspfAreaEntry(ospfAreaConf *ospfd.OspfAreaEntry) (bool, error) {

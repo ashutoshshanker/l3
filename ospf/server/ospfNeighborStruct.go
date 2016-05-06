@@ -144,8 +144,8 @@ func (server *OSPFServer) InitNeighborStateMachine() {
 	ospfNeighborDBSummary_list = make(map[NeighborConfKey][]*ospfNeighborDBSummary)
 	ospfNeighborRetx_list = make(map[NeighborConfKey][]*ospfNeighborRetx)
 
-	go server.refreshNeighborSlice()
 	server.neighborSliceRefCh = time.NewTicker(server.RefreshDuration)
+	go server.refreshNeighborSlice()
 	server.neighborSliceStartCh <- true
 	server.logger.Info("NBRINIT: Neighbor FSM init done..")
 }
