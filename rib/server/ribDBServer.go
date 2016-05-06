@@ -32,11 +32,13 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(dbInfo RouteDBInfo) error {
 	nextHopInfo := make([]ribd.NextHopInfo,len(routeInfoList))
 	i := 0
 	for sel := 0; sel < len(routeInfoList); sel++ {
+		logger.Info(fmt.Sprintln("weight = ",routeInfoList[sel].weight))
 		nextHopInfo[i].NextHopIp = routeInfoList[sel].nextHopIp.String()
 	    nextHopIfTypeStr, _ := m.GetNextHopIfTypeStr(ribdInt.Int(entry.nextHopIfType))
 	    nextHopInfo[i].OutgoingIntfType = nextHopIfTypeStr
 	    nextHopInfo[i].OutgoingInterface = strconv.Itoa(int(routeInfoList[sel].nextHopIfIndex))
         nextHopInfo[i].Protocol = ReverseRouteProtoTypeMapDB[int(routeInfoList[sel].protocol)]
+	   nextHopInfo[i].Weight = int32(routeInfoList[sel].weight)
 		obj.NextHopList = append(obj.NextHopList,&nextHopInfo[i])
 		i++
 	}

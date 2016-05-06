@@ -3,13 +3,14 @@ package server
 
 import (
 	"asicdInt"
+	"fmt"
 )
 
 func addAsicdRoute(routeInfoRecord RouteInfoRecord) {
-	logger.Info("addAsicdRoute")
+	logger.Info(fmt.Sprintln("addAsicdRoute, weight = ", routeInfoRecord.weight + 1))
 	asicdclnt.ClientHdl.OnewayCreateIPv4Route([]*asicdInt.IPv4Route{
 		&asicdInt.IPv4Route{
-			routeInfoRecord.destNetIp.String(),
+			routeInfoRecord.destNetIp.String(), 
 			routeInfoRecord.networkMask.String(),
 			routeInfoRecord.resolvedNextHopIpIntf.NextHopIp,
 			int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType),
