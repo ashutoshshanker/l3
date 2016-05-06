@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -83,10 +84,9 @@ type BGPServer struct {
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 	AddPathCount   int
 	// all managers
-	IntfMgr   config.IntfStateMgrIntf
-	policyMgr config.PolicyMgrIntf
-	routeMgr  config.RouteMgrIntf
-	bfdMgr    config.BfdMgrIntf
+	IntfMgr  config.IntfStateMgrIntf
+	routeMgr config.RouteMgrIntf
+	bfdMgr   config.BfdMgrIntf
 }
 
 func (svr *BGPServer) SignalHandler(signalChannel <-chan os.Signal) {
@@ -108,7 +108,7 @@ func (svr *BGPServer) OSSignalHandler() {
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
-	iMgr config.IntfStateMgrIntf, pMgr config.PolicyMgrIntf, rMgr config.RouteMgrIntf,
+	iMgr config.IntfStateMgrIntf, rMgr config.RouteMgrIntf,
 	bMgr config.BfdMgrIntf) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
@@ -133,7 +133,6 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.Neighbors = make([]*Peer, 0)
 	bgpServer.IntfMgr = iMgr
 	bgpServer.routeMgr = rMgr
-	bgpServer.policyMgr = pMgr
 	bgpServer.bfdMgr = bMgr
 	bgpServer.AdjRib = bgprib.NewAdjRib(logger, rMgr, &bgpServer.BgpConfig.Global.Config)
 	bgpServer.IfacePeerMap = make(map[int32][]string)
@@ -776,7 +775,29 @@ func (server *BGPServer) UpdatePeerGroupInPeers(groupName string, peerGroup *con
 		peer.Init()
 	}
 }
-
+func (server *BGPServer) SetupRedistribution(gConf config.GlobalConfig) {
+	server.logger.Info("SetUpRedistribution")
+	if gConf.Redistribution == nil || len(gConf.Redistribution) == 0 {
+		server.logger.Info("No redistribution policies configured")
+		return
+	}
+	conditions := make([]*config.ConditionInfo, 0)
+	for i := 0; i < len(gConf.Redistribution); i++ {
+		server.logger.Info(fmt.Sprintln("Sources: ", gConf.Redistribution[i].Sources))
+		sources := make([]string, 0)
+		sources = strings.Split(gConf.Redistribution[i].Sources, ",")
+		server.logger.Info(fmt.Sprintf("Setting up %s as redistribution policy for source(s): ", gConf.Redistribution[i].Policy))
+		for j := 0; j < len(sources); j++ {
+			server.logger.Info(fmt.Sprintf("%s ", sources[j]))
+			if sources[j] == "" {
+				continue
+			}
+			conditions = append(conditions, &config.ConditionInfo{ConditionType: "MatchProtocol", Protocol: sources[j]})
+		}
+		server.logger.Info(fmt.Sprintln(""))
+		server.routeMgr.ApplyPolicy("BGP", gConf.Redistribution[i].Policy, "Redistribution", conditions)
+	}
+}
 func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.AS = gConf.AS
 	server.BgpConfig.Global.Config.RouterId = gConf.RouterId
@@ -875,6 +896,7 @@ func (server *BGPServer) listenChannelUpdates() {
 			for _, peer := range server.PeerMap {
 				peer.Init()
 			}
+			server.SetupRedistribution(gConf)
 
 		case peerUpdate := <-server.AddPeerCh:
 			server.logger.Info("message received on AddPeerCh")
@@ -945,6 +967,7 @@ func (server *BGPServer) listenChannelUpdates() {
 			server.NeighborMutex.Unlock()
 			delete(server.PeerMap, remPeer)
 			peer.Cleanup()
+			peer.ProcessBfd(false)
 			server.ProcessRemoveNeighbor(remPeer, peer)
 
 		case groupUpdate := <-server.AddPeerGroupCh:
@@ -1155,14 +1178,26 @@ func (server *BGPServer) StartServer() {
 	server.routesCh = make(chan *config.RouteCh)
 
 	go server.listenForPeers(server.acceptCh)
-	go server.listenChannelUpdates()
 
 	server.logger.Info("Start all managers and initialize API Layer")
 	api.Init(server.bfdCh, server.intfCh, server.routesCh)
 	server.IntfMgr.Start()
 	server.routeMgr.Start()
 	server.bfdMgr.Start()
-	server.policyMgr.Start()
+	//@TODO: jgheewala moved to BGP Policy Engine
+	//server.policyMgr.Start()
+	server.SetupRedistribution(gConf)
+
+	/*  ALERT: StartServer is a go routine and hence do not have any other go routine where
+	 *	   you are making calls to other client. FlexSwitch uses thrift for rpc and hence
+	 *	   on return it will not know which go routine initiated the thrift call.
+	 */
+	// Get routes from the route manager
+	add, remove := server.routeMgr.GetRoutes()
+	if add != nil && remove != nil {
+		server.ProcessConnectedRoutes(add, remove)
+	}
+	server.listenChannelUpdates()
 }
 
 func (s *BGPServer) GetBGPGlobalState() config.GlobalState {

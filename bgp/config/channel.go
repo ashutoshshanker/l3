@@ -15,6 +15,15 @@ const (
 	BFD_STATE_INVALID    Operation = 4
 	INTF_STATE_DOWN      Operation = 5
 	INTF_STATE_UP        Operation = 6
+	NOTIFY_POLICY_CONDITION_CREATED         Operation = 7
+	NOTIFY_POLICY_CONDITION_DELETED         Operation = 8
+	NOTIFY_POLICY_CONDITION_UPDATED         Operation = 9
+	NOTIFY_POLICY_STMT_CREATED              Operation = 10
+	NOTIFY_POLICY_STMT_DELETED              Operation = 11
+	NOTIFY_POLICY_STMT_UPDATED              Operation = 12
+	NOTIFY_POLICY_DEFINITION_CREATED        Operation = 13
+	NOTIFY_POLICY_DEFINITION_DELETED        Operation = 14
+	NOTIFY_POLICY_DEFINITION_UPDATED        Operation = 15
 )
 
 type BfdInfo struct {

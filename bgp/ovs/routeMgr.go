@@ -113,3 +113,10 @@ func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, erro
 	return reachInfo, nil
 	//return nil, errors.New("No entry found")
 }
+
+func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policy string, action string, conditions []*config.ConditionInfo) {
+	return
+}
+func (mgr *OvsRouteMgr) GetRoutes() ([]*config.RouteInfo, []*config.RouteInfo) {
+	return nil, nil
+}

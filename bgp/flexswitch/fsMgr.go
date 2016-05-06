@@ -33,6 +33,7 @@ type FSIntfMgr struct {
 type FSPolicyMgr struct {
 	plugin string
 	logger *logging.Writer
+	policySubSocket *nanomsg.SubSocket
 }
 
 /*  BFD manager will handle all the communication with bfd daemon
