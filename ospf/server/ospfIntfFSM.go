@@ -17,7 +17,7 @@ func (server *OSPFServer) StartOspfIntfFSM(key IntfConfKey) {
 	server.logger.Info("Sending msg for router LSA generation")
 	server.IntfStateChangeCh <- msg
 
-	if ent.IfType == config.PointToPoint {
+	if ent.IfType == config.NumberedP2P || ent.IfType == config.UnnumberedP2P {
 		server.StartOspfP2PIntfFSM(key)
 	} else if ent.IfType == config.Broadcast {
 		server.StartOspfBroadcastIntfFSM(key)

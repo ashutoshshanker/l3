@@ -107,7 +107,7 @@ func (server *OSPFServer) processASBdrRtrStatus(isASBR bool) {
 		server.startRibdUpdates()
 	}
 }
-func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {
+func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) error {
 	var localIntfStateMap = make(map[IntfConfKey]config.Status)
 	for key, ent := range server.IntfConfMap {
 		localIntfStateMap[key] = ent.IfAdminStat
@@ -143,4 +143,6 @@ func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) {
 			server.StartSendRecvPkts(key)
 		}
 	}
+
+	return nil
 }

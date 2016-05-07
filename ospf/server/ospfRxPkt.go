@@ -80,7 +80,7 @@ func (server *OSPFServer) processOspfHeader(ospfPkt []byte, key IntfConfKey, md 
 		return err
 	}
 
-	if ent.IfType != config.PointToPoint {
+	if ent.IfType != config.NumberedP2P || ent.IfType != config.UnnumberedP2P {
 		if bytesEqual(ent.IfAreaId, ospfHdr.areaId) == false &&
 			isInSubnet(net.IP(ent.IfAreaId), net.IP(ospfHdr.areaId), net.IPMask(ent.IfNetmask)) == false {
 			err := errors.New("Dropped because of Src IP is not in subnet or Area ID not matching")
@@ -196,7 +196,7 @@ func (server *OSPFServer) processOspfData(data []byte, ethHdrMd *EthHdrMetadata,
 		err = server.processRxHelloPkt(data, ospfHdrMd, ipHdrMd, ethHdrMd, key)
 	case DBDescriptionType:
 		if exist {
-			err = server.processRxDbdPkt(data, ospfHdrMd, ipHdrMd, key, ethHdrMd.srcMAC)
+			err = server.ProcessRxDbdPkt(data, ospfHdrMd, ipHdrMd, key, ethHdrMd.srcMAC)
 		}
 	case LSRequestType:
 		if exist {

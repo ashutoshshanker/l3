@@ -45,8 +45,21 @@ func (p *Peer) UpdateNeighborConf(nConf config.NeighborConfig, bgp *config.Bgp) 
 	p.NeighborConf.UpdateNeighborConf(nConf, bgp)
 }
 
+func (p *Peer) IsBfdStateUp() bool {
+	up := true
+	if p.NeighborConf.Neighbor.State.UseBfdState {
+		if p.NeighborConf.RunningConf.BfdEnable &&
+			p.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
+			p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n",
+				p.NeighborConf.Neighbor.NeighborAddress))
+			up = false
+		}
+	}
+	return up
+}
+
 func (p *Peer) Init() {
-	if p.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
+	if up := p.IsBfdStateUp(); !up {
 		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n",
 			p.NeighborConf.Neighbor.NeighborAddress))
 		return
@@ -84,7 +97,7 @@ func (p *Peer) getIfIdx() int32 {
 }
 
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
-	if p.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
+	if up := p.IsBfdStateUp(); !up {
 		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n",
 			p.NeighborConf.Neighbor.NeighborAddress))
 		(*conn).Close()
@@ -164,10 +177,10 @@ func (p *Peer) clearRibOut() {
 	}
 }
 
-func (p *Peer) ProcessBfd() {
+func (p *Peer) ProcessBfd(add bool) {
 	ipAddr := p.NeighborConf.Neighbor.NeighborAddress.String()
 	sessionParam := p.NeighborConf.RunningConf.BfdSessionParam
-	if p.NeighborConf.RunningConf.BfdEnable {
+	if add && p.NeighborConf.RunningConf.BfdEnable {
 		p.logger.Info(fmt.Sprintln("Bfd enabled on :",
 			p.NeighborConf.Neighbor.NeighborAddress))
 		ret, err := p.Server.bfdMgr.CreateBfdSession(ipAddr, sessionParam)
@@ -205,7 +218,7 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 	}
 	p.NeighborConf.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
 	p.clearRibOut()
-	p.ProcessBfd()
+	p.NeighborConf.Neighbor.State.UseBfdState = true
 	//p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
 }
 
