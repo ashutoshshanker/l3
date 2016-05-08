@@ -7,6 +7,7 @@ import (
 	"time"
 	//"l3/ospf/rpc"
 	//    "l3/rib/ribdCommonDefs"
+	"errors"
 	"github.com/google/gopacket/pcap"
 	"net"
 )
@@ -374,7 +375,7 @@ func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 	}
 }
 
-func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
+func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) error {
 	intfConfKey := IntfConfKey{
 		IPAddr:  ifConf.IfIpAddress,
 		IntfIdx: config.InterfaceIndexOrZero(ifConf.AddressLessIf),
@@ -382,7 +383,8 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
 	ent, exist := server.IntfConfMap[intfConfKey]
 	if !exist {
 		server.logger.Err("No such L3 interface exists")
-		return
+		err := errors.New("No such L3 interface exists")
+		return err
 	}
 	if intfConfKey.IPAddr == "0.0.0.0" &&
 		ifConf.IfType == config.NumberedP2P || ifConf.IfType == config.UnnumberedP2P {
@@ -397,7 +399,8 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
 		if flag == false {
 			server.logger.Err("Invalid Configuration")
 			server.logger.Err("Unnumbered PointToPoint Interface cannot be configured without having any other IP interface")
-			return
+			err := errors.New("Invalid Configuration")
+			return err
 		}
 	}
 
@@ -414,6 +417,7 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
 		server.ospfGlobalConf.AdminStat == config.Enabled {
 		server.StartSendRecvPkts(intfConfKey)
 	}
+	return nil
 }
 
 func (server *OSPFServer) StopSendRecvPkts(intfConfKey IntfConfKey) {
