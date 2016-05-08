@@ -7,11 +7,21 @@ import (
 	"l3/bgp/config"
 	_ "net"
 	"utils/logging"
+	"utils/patriciaDB"
+	"utils/policy"
+	"utils/policy/policyCommonDefs"
 )
+
+func (mgr *OvsRouteMgr) initializePolicy() {
+	mgr.PolicyEngineDB = policy.NewPolicyEngineDB(mgr.logger)
+	mgr.redistributeFunc = mgr.SendRoute
+	mgr.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute,
+		mgr.redistributeFunc)
+}
 
 /*  Constructor for route manager
  */
-func NewOvsRouteMgr(logger *logging.LogFile, db *BGPOvsdbHandler) *OvsRouteMgr {
+func NewOvsRouteMgr(logger *logging.Writer, db *BGPOvsdbHandler) *OvsRouteMgr {
 	mgr := &OvsRouteMgr{
 		plugin: "ovsdb",
 		dbmgr:  db,
@@ -22,6 +32,7 @@ func NewOvsRouteMgr(logger *logging.LogFile, db *BGPOvsdbHandler) *OvsRouteMgr {
 }
 
 func (mgr *OvsRouteMgr) Start() {
+	mgr.initializePolicy()
 }
 
 /*  This is global next hop not bgp nexthop table
@@ -114,9 +125,37 @@ func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, erro
 	//return nil, errors.New("No entry found")
 }
 
-func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policy string, action string, conditions []*config.ConditionInfo) {
+func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policyName string, action string,
+	conditions []*config.ConditionInfo) {
+
+	policyDB := mgr.PolicyEngineDB.PolicyDB
+	//policyConditionsDB := mgr.PolicyEngineDB.PolicyConditionsDB
+
+	nodeGet := policyDB.Get(patriciaDB.Prefix("RedistConnect_Policy"))
+	if nodeGet == nil {
+		mgr.logger.Err("Policy RedistConnect_Policy not defined")
+		return
+	}
+
+	node := nodeGet.(policy.Policy)
+	conditionNameList := make([]string, 0)
+
+	redistributeActionInfo := policy.RedistributeActionInfo{true, "bgp"}
+	policyAction := policy.PolicyAction{
+		Name:       "Redistribution",
+		ActionType: policyCommonDefs.PolicyActionTypeRouteRedistribute,
+		ActionInfo: redistributeActionInfo,
+	}
+	mgr.PolicyEngineDB.UpdateApplyPolicy(policy.ApplyPolicyInfo{node, policyAction,
+		conditionNameList}, true)
 	return
 }
+
 func (mgr *OvsRouteMgr) GetRoutes() ([]*config.RouteInfo, []*config.RouteInfo) {
 	return nil, nil
+}
+
+func (mgr *OvsRouteMgr) SendRoute(actionInfo interface{}, conditionInfo []interface{},
+	params interface{}) {
+
 }

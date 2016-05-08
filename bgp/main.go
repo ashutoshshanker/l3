@@ -55,15 +55,15 @@ func main() {
 		// create and start ovsdb handler
 		ovsdbManager := &ovsMgr.BGPOvsdbHandler{}
 		quit := make(chan bool)
-		rMgr := ovsMgr.NewOvsRouteMgr(ovsLogger, ovsdbManager)
+		rMgr := ovsMgr.NewOvsRouteMgr(logger, ovsdbManager)
 		pMgr := ovsMgr.NewOvsPolicyMgr(ovsdbManager)
 		iMgr := ovsMgr.NewOvsIntfMgr()
 		bMgr := ovsMgr.NewOvsBfdMgr()
 
-	    // starting bgp policy engine...
-	    logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
-	    bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger,pMgr)
-	    go bgpPolicyEng.StartPolicyEngine()
+		// starting bgp policy engine...
+		logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
+		bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger, pMgr)
+		go bgpPolicyEng.StartPolicyEngine()
 
 		bgpServer := server.NewBGPServer(logger, bgpPolicyEng, iMgr,
 			rMgr, bMgr)
@@ -111,10 +111,10 @@ func main() {
 		if err != nil {
 			return
 		}
-	    // starting bgp policy engine...
-	    logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
-	    bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger,pMgr)
-	    go bgpPolicyEng.StartPolicyEngine()
+		// starting bgp policy engine...
+		logger.Info(fmt.Sprintln("Starting BGP policy engine..."))
+		bgpPolicyEng := bgppolicy.NewBGPPolicyEngine(logger, pMgr)
+		go bgpPolicyEng.StartPolicyEngine()
 
 		logger.Info(fmt.Sprintln("Starting BGP Server..."))
 

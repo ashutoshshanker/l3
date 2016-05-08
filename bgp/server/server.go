@@ -785,13 +785,17 @@ func (server *BGPServer) SetupRedistribution(gConf config.GlobalConfig) {
 		server.logger.Info(fmt.Sprintln("Sources: ", gConf.Redistribution[i].Sources))
 		sources := make([]string, 0)
 		sources = strings.Split(gConf.Redistribution[i].Sources, ",")
-		server.logger.Info(fmt.Sprintf("Setting up %s as redistribution policy for source(s): ", gConf.Redistribution[i].Policy))
+		server.logger.Info(fmt.Sprintf("Setting up %s as redistribution policy for source(s): ",
+			gConf.Redistribution[i].Policy))
 		for j := 0; j < len(sources); j++ {
 			server.logger.Info(fmt.Sprintf("%s ", sources[j]))
 			if sources[j] == "" {
 				continue
 			}
-			conditions = append(conditions, &config.ConditionInfo{ConditionType: "MatchProtocol", Protocol: sources[j]})
+			conditions = append(conditions, &config.ConditionInfo{
+				ConditionType: "MatchProtocol",
+				Protocol:      sources[j],
+			})
 		}
 		server.logger.Info(fmt.Sprintln(""))
 		server.routeMgr.ApplyPolicy("BGP", gConf.Redistribution[i].Policy, "Redistribution", conditions)

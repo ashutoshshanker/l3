@@ -3,6 +3,7 @@ package ovsMgr
 import (
 	"sync"
 	"utils/logging"
+	"utils/policy"
 )
 
 type OvsIntfMgr struct {
@@ -10,9 +11,11 @@ type OvsIntfMgr struct {
 }
 
 type OvsRouteMgr struct {
-	plugin string
-	logger *logging.LogFile
-	dbmgr  *BGPOvsdbHandler
+	plugin           string
+	logger           *logging.Writer
+	dbmgr            *BGPOvsdbHandler
+	PolicyEngineDB   *policy.PolicyEngineDB
+	redistributeFunc policy.Policyfunc
 }
 
 type OvsPolicyMgr struct {

@@ -3,10 +3,10 @@ package server
 
 import (
 	"fmt"
-	bgprib "l3/bgp/rib"
-	"utils/logging"
 	"l3/bgp/api"
 	"l3/bgp/config"
+	bgprib "l3/bgp/rib"
+	"utils/logging"
 	utilspolicy "utils/policy"
 )
 
@@ -50,7 +50,7 @@ func NewBGPPolicyEngine(logger *logging.Writer, pMgr config.PolicyMgrIntf) *BGPP
 		bgpPE.ActionDelCh = make(chan string)
 		bgpPE.StmtDelCh = make(chan string)
 		bgpPE.DefinitionDelCh = make(chan string)
-	    bgpPE.policyMgr = pMgr
+		bgpPE.policyMgr = pMgr
 		PolicyEngine = bgpPE
 	}
 
