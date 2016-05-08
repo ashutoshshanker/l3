@@ -9,6 +9,7 @@ type SourcePolicyMap struct {
 	Sources string
 	Policy  string
 }
+
 type GlobalConfig struct {
 	AS                  uint32
 	RouterId            net.IP
