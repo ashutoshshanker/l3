@@ -53,11 +53,11 @@ func (h *BGPHandler) convertModelToBGPGlobalConfig(obj models.BGPGlobal) (config
 		EBGPAllowMultipleAS: obj.EBGPAllowMultipleAS,
 		IBGPMaxPaths:        obj.IBGPMaxPaths,
 	}
-    if obj.Redistribution != nil {
-		gConf.Redistribution = make([]config.SourcePolicyMap,0)
-		for i := 0;i<len(obj.Redistribution);i++ {
+	if obj.Redistribution != nil {
+		gConf.Redistribution = make([]config.SourcePolicyMap, 0)
+		for i := 0; i < len(obj.Redistribution); i++ {
 			redistribution := config.SourcePolicyMap{obj.Redistribution[i].Sources, obj.Redistribution[i].Policy}
-			gConf.Redistribution = append(gConf.Redistribution,redistribution)
+			gConf.Redistribution = append(gConf.Redistribution, redistribution)
 		}
 	}
 
@@ -377,11 +377,6 @@ func (h *BGPHandler) convertStrIPToNetIP(ip string) net.IP {
 }
 
 func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
-	created := h.server.VerifyBgpGlobalConfig()
-	if created {
-		h.logger.Warning("Bgp ASN is already configured")
-		return false, errors.New("BGP ASN already configured")
-	}
 	ip := h.convertStrIPToNetIP(bgpGlobal.RouterId)
 	var err error = nil
 	if ip == nil {
@@ -399,10 +394,11 @@ func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 		IBGPMaxPaths:        uint32(bgpGlobal.IBGPMaxPaths),
 	}
 	if bgpGlobal.Redistribution != nil {
-		gConf.Redistribution = make([]config.SourcePolicyMap,0)
-		for i := 0;i<len(bgpGlobal.Redistribution);i++ {
-			redistribution := config.SourcePolicyMap{bgpGlobal.Redistribution[i].Sources, bgpGlobal.Redistribution[i].Policy}
-			gConf.Redistribution = append(gConf.Redistribution,redistribution)
+		gConf.Redistribution = make([]config.SourcePolicyMap, 0)
+		for i := 0; i < len(bgpGlobal.Redistribution); i++ {
+			redistribution := config.SourcePolicyMap{bgpGlobal.Redistribution[i].Sources,
+				bgpGlobal.Redistribution[i].Policy}
+			gConf.Redistribution = append(gConf.Redistribution, redistribution)
 		}
 	}
 	h.server.GlobalConfigCh <- gConf

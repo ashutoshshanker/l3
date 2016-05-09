@@ -36,16 +36,26 @@ Configutation Object Name: **ArpConfig**
 
 		bool DeleteArpConfig(1: ArpConfig config);
 
-State Object Name: **ArpEntryState**
+State Object Name: **ArpEntryState**, **ArpLinuxEntryState** 
 
 >  - Get the list of ARP Entries (Object Name: ArpEntryState):
 
-		ArpEntryStateGetInfo **GetBulkArpEntryState**(1: int fromIndex, 2: int count);
+		ArpEntryStateGetInfo GetBulkArpEntryState(1: int fromIndex, 2: int count);
 
 
->  - Get the list of ARP Entry corresponding to given IP Address:
+>  - Get the ARP Entry corresponding to given IP Address:
 
-		ArpEntryState **GetArpEntryState**(1: string IpAddr);
+		ArpEntryState GetArpEntryState(1: string IpAddr);
+
+
+>  - Get the list of linux ARP Entries (Object Name: ArpLinuxEntryState):
+
+		ArpLinuxEntryStateGetInfo GetBulkArpLinuxEntryState(1: int fromIndex, 2: int count);
+
+
+>  - Get the linux ARP Entry corresponding to given IP Address:
+
+		ArpLinuxEntryState GetArpLinuxEntryState(1: string IpAddr);
 
 Actions:
 

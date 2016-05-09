@@ -17,3 +17,14 @@ func (h *ARPHandler) GetArpEntryState(ipAddr string) (*arpd.ArpEntryState, error
 	arpEntryResponse = h.convertArpEntryToThrift(arpEntry)
 	return arpEntryResponse, nil
 }
+
+func (h *ARPHandler) GetArpLinuxEntryState(ipAddr string) (*arpd.ArpLinuxEntryState, error) {
+	h.logger.Info(fmt.Sprintln("Get call for Linux Arp Entry", ipAddr))
+	arpLinuxEntryResponse := arpd.NewArpLinuxEntryState()
+	arpEntry, err := h.server.GetLinuxArpEntry(ipAddr)
+	if err != nil {
+		return nil, err
+	}
+	arpLinuxEntryResponse = h.convertArpLinuxEntryToThrift(arpEntry)
+	return arpLinuxEntryResponse, nil
+}
