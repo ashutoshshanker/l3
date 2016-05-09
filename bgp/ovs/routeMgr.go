@@ -122,14 +122,12 @@ func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, erro
 	}
 
 	return reachInfo, nil
-	//return nil, errors.New("No entry found")
 }
 
 func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policyName string, action string,
 	conditions []*config.ConditionInfo) {
 
 	policyDB := mgr.PolicyEngineDB.PolicyDB
-	//policyConditionsDB := mgr.PolicyEngineDB.PolicyConditionsDB
 
 	nodeGet := policyDB.Get(patriciaDB.Prefix("RedistConnect_Policy"))
 	if nodeGet == nil {

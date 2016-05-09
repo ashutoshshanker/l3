@@ -1188,8 +1188,8 @@ func (server *BGPServer) StartServer() {
 	server.IntfMgr.Start()
 	server.routeMgr.Start()
 	server.bfdMgr.Start()
-	//@TODO: jgheewala moved to BGP Policy Engine
-	//server.policyMgr.Start()
+
+	// Setup Redistribute policy if applied
 	server.SetupRedistribution(gConf)
 
 	/*  ALERT: StartServer is a go routine and hence do not have any other go routine where
