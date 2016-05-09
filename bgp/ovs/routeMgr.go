@@ -12,11 +12,37 @@ import (
 	"utils/policy/policyCommonDefs"
 )
 
+func (mgr *OvsRouteMgr) hackPolicyDB() {
+	cfg := policy.PolicyStmtConfig{
+		Name:            "RedistConnect",
+		MatchConditions: "any",
+	}
+	cfg.Actions = append(cfg.Actions, "permit")
+	err := mgr.PolicyEngineDB.CreatePolicyStatement(cfg)
+	if err != nil {
+		mgr.logger.Err(fmt.Sprintln("Creating Policy, failed, error", err))
+	}
+
+	dcfg := policy.PolicyDefinitionConfig{
+		Name: "RedistConnect_Policy",
+	}
+
+	pstmt := policy.PolicyDefinitionStmtPrecedence{1, cfg.Name}
+	dcfg.PolicyDefinitionStatements = append(dcfg.PolicyDefinitionStatements, pstmt)
+
+	err = mgr.PolicyEngineDB.CreatePolicyDefinition(dcfg)
+	if err != nil {
+		mgr.logger.Err(fmt.Sprintln("Creating definition, failed error", err))
+	}
+}
+
 func (mgr *OvsRouteMgr) initializePolicy() {
 	mgr.PolicyEngineDB = policy.NewPolicyEngineDB(mgr.logger)
 	mgr.redistributeFunc = mgr.SendRoute
 	mgr.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute,
 		mgr.redistributeFunc)
+
+	mgr.hackPolicyDB()
 }
 
 /*  Constructor for route manager
@@ -126,24 +152,27 @@ func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, erro
 
 func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policyName string, action string,
 	conditions []*config.ConditionInfo) {
-
+	mgr.logger.Info(fmt.Sprintln("OVS Route Manager Apply Policy Called:", protocol,
+		policyName, action, conditions))
 	policyDB := mgr.PolicyEngineDB.PolicyDB
 
-	nodeGet := policyDB.Get(patriciaDB.Prefix("RedistConnect_Policy"))
+	nodeGet := policyDB.Get(patriciaDB.Prefix(policyName))
 	if nodeGet == nil {
-		mgr.logger.Err("Policy RedistConnect_Policy not defined")
+		mgr.logger.Err("Policy " + policyName + " not defined")
 		return
 	}
 
 	node := nodeGet.(policy.Policy)
 	conditionNameList := make([]string, 0)
 
-	redistributeActionInfo := policy.RedistributeActionInfo{true, "bgp"}
+	redistributeActionInfo := policy.RedistributeActionInfo{true, protocol}
 	policyAction := policy.PolicyAction{
 		Name:       "Redistribution",
 		ActionType: policyCommonDefs.PolicyActionTypeRouteRedistribute,
 		ActionInfo: redistributeActionInfo,
 	}
+	mgr.logger.Info(fmt.Sprintln("OVS Route Manager Apply Policy:", protocol, policyName, action,
+		conditions))
 	mgr.PolicyEngineDB.UpdateApplyPolicy(policy.ApplyPolicyInfo{node, policyAction,
 		conditionNameList}, true)
 	return

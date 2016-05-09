@@ -32,12 +32,11 @@ type BGPOvsOperations struct {
 }
 
 type BGPOvsRouterInfo struct {
-	asn            uint32 // this is bgp asn number
-	uuid           UUID   // this is key
-	routerId       string // This is ip address
-	HoldTime       uint32 // default is 180 seconds
-	KeepaliveTime  uint32 // default is 60 seconds
-	Redistribution []config.SourcePolicyMap
+	asn           uint32 // this is bgp asn number
+	uuid          UUID   // this is key
+	routerId      string // This is ip address
+	HoldTime      uint32 // default is 180 seconds
+	KeepaliveTime uint32 // default is 60 seconds
 }
 
 type BGPOvsdbHandler struct {
@@ -46,7 +45,7 @@ type BGPOvsdbHandler struct {
 	ovsUpdateCh    chan *ovsdb.TableUpdates
 	cache          map[string]map[string]ovsdb.Row
 	operCh         chan *BGPOvsOperations
-	bgpCachedOvsdb map[UUID]BGPFlexSwitch
+	bgpCachedOvsdb map[UUID]*BGPFlexSwitch
 	routerInfo     *BGPOvsRouterInfo
 	rpcHdl         *rpc.BGPHandler
 	routeMgr       config.RouteMgrIntf
@@ -73,7 +72,7 @@ func NewBGPOvsdbHandler(logger *logging.LogFile, handler *rpc.BGPHandler, mgr *B
 	mgr.ovsUpdateCh = ovsUpdateCh
 	mgr.operCh = make(chan *BGPOvsOperations, OVSDB_HANDLER_OPERATIONS_SIZE)
 	mgr.cache = make(map[string]map[string]ovsdb.Row)
-	mgr.bgpCachedOvsdb = make(map[UUID]BGPFlexSwitch, OVSDB_FS_INITIAL_SIZE)
+	mgr.bgpCachedOvsdb = make(map[UUID]*BGPFlexSwitch, OVSDB_FS_INITIAL_SIZE)
 	mgr.rpcHdl = handler
 	mgr.routeMgr = rMgr
 	mgr.policyMgr = pMgr

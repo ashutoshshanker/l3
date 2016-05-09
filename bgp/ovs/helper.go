@@ -23,7 +23,7 @@ type UUID string
 
 type BGPFlexSwitch struct {
 	neighbor bgpd.BGPNeighbor
-	global   bgpd.BGPGlobal
+	global   *bgpd.BGPGlobal
 }
 
 /*  Compare UUID so that we know whether the uuid we got is the same in the table
@@ -88,12 +88,6 @@ func (ovsHdl *BGPOvsdbHandler) GetBGPRouterAsn(table ovsdb.TableUpdate) (*BGPOvs
 	}
 	return nil, errors.New("no entry found in vrf table")
 }
-
-/*
-func (ovsHdl *BGPOvsdbHandler) GetRouteInfo(ipAddr string) {
-
-}
-*/
 
 /*  Lets get router id for the asn
  */
@@ -216,26 +210,6 @@ func (ovsHdl *BGPOvsdbHandler) CreateBgpNeighborInfo(addrs []net.IP, uuids []UUI
 	}
 }
 
-/*  Creating bgp global flexswitch object using BGP_Router information that was
- *  parse/collected from ovsdb update
- */
-func (ovsHdl *BGPOvsdbHandler) CreateBgpGlobalConfig(rtrInfo *BGPOvsRouterInfo) *bgpd.BGPGlobal {
-	bgpGlobal := &bgpd.BGPGlobal{
-		ASNum:            int32(rtrInfo.asn),
-		RouterId:         rtrInfo.routerId,
-		UseMultiplePaths: true,
-		EBGPMaxPaths:     32,
-		IBGPMaxPaths:     32,
-	}
-	_, err := ovsHdl.rpcHdl.CreateBGPGlobal(bgpGlobal)
-	if err != nil {
-		if err.Error() == "BGP ASN already configured" {
-			return nil
-		}
-	}
-	return bgpGlobal
-}
-
 /*  BGP neighbor update in ovsdb... we will update our backend object
  */
 func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) error {
@@ -253,63 +227,45 @@ func (ovsHdl *BGPOvsdbHandler) HandleBGPNeighborUpd(table ovsdb.TableUpdate) err
 }
 
 func (ovsHdl *BGPOvsdbHandler) updatePolicy(info map[interface{}]interface{}, update bool,
-	pMgr *OvsPolicyMgr) {
+	pMgr *OvsPolicyMgr) string {
 	for key, _ := range info {
-		switch key {
-		case "connected":
-			pMgr.connected <- update
-		case "static":
-			pMgr.static <- update
-		case "ospf":
-			pMgr.ospf <- update
-		}
+		return key.(string)
 	}
+	return ""
 }
 
 func (ovsHdl *BGPOvsdbHandler) findAndAddPolicy(new, old map[interface{}]interface{},
-	pMgr *OvsPolicyMgr) {
+	pMgr *OvsPolicyMgr) string {
 	for key, _ := range new {
 		_, ok := old[key]
 		if ok {
 			continue // rule is present in both new and old.. no need to update
 		}
-		switch key {
-		case "connected":
-			pMgr.connected <- true
-		case "static":
-			pMgr.static <- true
-		case "ospf":
-			pMgr.ospf <- true
-		}
+		return key.(string)
 	}
+	return ""
 }
 
 func (ovsHdl *BGPOvsdbHandler) findAndRemovePolicy(new, old map[interface{}]interface{},
-	pMgr *OvsPolicyMgr) {
+	pMgr *OvsPolicyMgr) string {
 	for key, _ := range old {
 		_, ok := new[key]
 		if ok {
 			continue // rule is present in both new and old
 		}
-		switch key {
-		case "connected":
-			pMgr.connected <- false
-		case "static":
-			pMgr.static <- false
-		case "ospf":
-			pMgr.ospf <- false
-		}
+		return key.(string)
 	}
+	return ""
 }
 
-func (ovsHdl *BGPOvsdbHandler) handleRedistribute(old, new *map[interface{}]interface{}) {
+func (ovsHdl *BGPOvsdbHandler) handleRedistribute(old, new *map[interface{}]interface{}) string {
 	pMgr := ovsHdl.policyMgr.(*OvsPolicyMgr)
 	if old == nil && new != nil { // first time rule add
 		utils.Logger.Info("New Redistribute policy getting configured")
-		ovsHdl.updatePolicy(*new, true /*meaning add or update*/, pMgr)
+		return ovsHdl.updatePolicy(*new, true /*meaning add or update*/, pMgr)
 	} else if old != nil && new == nil {
 		utils.Logger.Info("Removing existing policy/policies")
-		ovsHdl.updatePolicy(*old, false /*meaning remove all policies*/, pMgr)
+		return ovsHdl.updatePolicy(*old, false /*meaning remove all policies*/, pMgr)
 	} else {
 		// old is also present and new too
 
@@ -341,14 +297,16 @@ func (ovsHdl *BGPOvsdbHandler) handleRedistribute(old, new *map[interface{}]inte
 		 *         new
 		 */
 		if len(*new) > len(*old) {
-			ovsHdl.findAndAddPolicy(*new, *old, pMgr)
+			return ovsHdl.findAndAddPolicy(*new, *old, pMgr)
 		} else {
-			ovsHdl.findAndRemovePolicy(*new, *old, pMgr)
+			return ovsHdl.findAndRemovePolicy(*new, *old, pMgr)
 		}
 	}
+	return ""
 }
 
 func (ovsHdl *BGPOvsdbHandler) checkBgpRouterCfgUpd(uuid UUID, table ovsdb.TableUpdate) {
+	sourcePolicy := ""
 	for key, value := range table.Rows {
 		// sanity check for router uuid
 		if sameUUID(uuid, key) {
@@ -364,18 +322,67 @@ func (ovsHdl *BGPOvsdbHandler) checkBgpRouterCfgUpd(uuid UUID, table ovsdb.Table
 
 			if len(old) >= 1 && len(new) >= 1 {
 				// means old value had policy and its updated to new
-				ovsHdl.handleRedistribute(&old, &new)
+				sourcePolicy = ovsHdl.handleRedistribute(&old, &new)
 			} else if len(new) >= 1 && len(old) < 1 {
 				// means first time policy is getting configured
-				ovsHdl.handleRedistribute(nil, &new)
+				sourcePolicy = ovsHdl.handleRedistribute(nil, &new)
 			} else if len(old) >= 1 && len(new) < 1 {
 				// means delete of all policies
-				ovsHdl.handleRedistribute(&old, nil)
+				sourcePolicy = ovsHdl.handleRedistribute(&old, nil)
 			}
 		} else {
 			ovsHdl.logger.Info("Key is mismatch")
 		}
 	}
+	if sourcePolicy == "" {
+		return
+	}
+
+	orgbgpFS, _ := ovsHdl.bgpCachedOvsdb[uuid]
+	orgbgpGlobal := orgbgpFS.global
+	newbgpGlobal := &bgpd.BGPGlobal{
+		ASNum:            int32(ovsHdl.routerInfo.asn),
+		RouterId:         ovsHdl.routerInfo.routerId,
+		UseMultiplePaths: true, // need to set this in routerInfo
+		EBGPMaxPaths:     32,   // need to set this in routerInfo
+		IBGPMaxPaths:     32,   // need to set this in routerInfo
+	}
+	redistribution := &bgpd.SourcePolicyList{strings.ToUpper(sourcePolicy),
+		"RedistConnect_Policy"}
+	newbgpGlobal.Redistribution = append(newbgpGlobal.Redistribution, redistribution)
+	ovsHdl.rpcHdl.UpdateBGPGlobal(orgbgpGlobal, newbgpGlobal, make([]bool, 0))
+}
+
+/*  Creating bgp global flexswitch object using BGP_Router information that was
+ *  parse/collected from ovsdb update
+ */
+func (ovsHdl *BGPOvsdbHandler) CreateBgpGlobalConfig(rtrInfo *BGPOvsRouterInfo,
+	table ovsdb.TableUpdate) *bgpd.BGPGlobal {
+	_, exists := ovsHdl.bgpCachedOvsdb[rtrInfo.uuid]
+	if exists {
+		// We need to do update else its create
+		ovsHdl.checkBgpRouterCfgUpd(ovsHdl.routerInfo.uuid, table)
+	} else {
+
+		bgpGlobal := &bgpd.BGPGlobal{
+			ASNum:            int32(rtrInfo.asn),
+			RouterId:         rtrInfo.routerId,
+			UseMultiplePaths: true,
+			EBGPMaxPaths:     32,
+			IBGPMaxPaths:     32,
+		}
+		_, err := ovsHdl.rpcHdl.CreateBGPGlobal(bgpGlobal)
+		if err != nil {
+			if err.Error() == "BGP ASN already configured" {
+				return nil
+			}
+		}
+		bgpFS := &BGPFlexSwitch{}
+		bgpFS.global = bgpGlobal
+		ovsHdl.bgpCachedOvsdb[rtrInfo.uuid] = bgpFS
+		return bgpGlobal
+	}
+	return nil
 }
 
 func (ovsHdl *BGPOvsdbHandler) HandleBGPRouteUpd(table ovsdb.TableUpdate) error {
@@ -395,12 +402,10 @@ func (ovsHdl *BGPOvsdbHandler) HandleBGPRouteUpd(table ovsdb.TableUpdate) error 
 		ovsHdl.logger.Info("Waiting for router id to be configured before starting bgp server")
 		return nil
 	}
-	bgpGlobal := ovsHdl.CreateBgpGlobalConfig(ovsHdl.routerInfo)
+	bgpGlobal := ovsHdl.CreateBgpGlobalConfig(ovsHdl.routerInfo, table)
 	if bgpGlobal != nil {
 		ovsHdl.logger.Info(fmt.Sprintln(bgpGlobal))
 		return nil
 	}
-	// else check for update
-	ovsHdl.checkBgpRouterCfgUpd(ovsHdl.routerInfo.uuid, table)
 	return nil
 }
