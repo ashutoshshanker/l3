@@ -626,6 +626,9 @@ func (h *BGPHandler) GetBGPNeighborState(neighborAddr string,
 	}
 
 	bgpNeighborState := h.server.GetBGPNeighborState(ip.String())
+	if bgpNeighborState == nil {
+		return bgpd.NewBGPNeighborState(), errors.New(fmt.Sprintf("GetBGPNeighborState: Neighbor %s not configured", ip))
+	}
 	bgpNeighborResponse := h.convertToThriftNeighbor(bgpNeighborState)
 	return bgpNeighborResponse, nil
 }
