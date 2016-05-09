@@ -1,5 +1,6 @@
 COMPS=arp\
       rib\
+      dhcp\
 		bgp\
 		ospf\
 		dhcp_relay\
@@ -9,6 +10,7 @@ COMPS=arp\
 
 IPCS=arp\
      rib\
+     dhcp\
 	  bgp\
 	  ospf\
 	  dhcp_relay\

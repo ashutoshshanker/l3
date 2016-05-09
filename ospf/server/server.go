@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"utils/dbutils"
 	"utils/ipcutils"
 	"utils/logging"
 )
@@ -46,17 +47,19 @@ type LsdbSliceEnt struct {
 }
 
 type OSPFServer struct {
-	logger          *logging.Writer
-	ribdClient      RibdClient
-	asicdClient     AsicdClient
-	portPropertyMap map[int32]PortProperty
-	vlanPropertyMap map[uint16]VlanProperty
-	//IPIntfPropertyMap  map[string]IPIntfProperty
+	logger             *logging.Writer
+	ribdClient         RibdClient
+	asicdClient        AsicdClient
+	portPropertyMap    map[int32]PortProperty
+	vlanPropertyMap    map[uint16]VlanProperty
 	ipPropertyMap      map[uint32]IpProperty
 	ospfGlobalConf     GlobalConf
 	GlobalConfigCh     chan config.GlobalConf
 	AreaConfigCh       chan config.AreaConf
 	IntfConfigCh       chan config.InterfaceConf
+	GlobalConfigRetCh  chan error
+	AreaConfigRetCh    chan error
+	IntfConfigRetCh    chan error
 	AreaLsdb           map[LsdbKey]LSDatabase
 	LsdbSlice          []LsdbSliceEnt
 	LsdbStateTimer     *time.Timer
@@ -132,6 +135,8 @@ type OSPFServer struct {
 	AreaGraph      map[VertexKey]Vertex
 	SPFTree        map[VertexKey]TreeVertex
 	AreaStubs      map[VertexKey]StubVertex
+
+	dbHdl *dbutils.DBUtil
 }
 
 func NewOSPFServer(logger *logging.Writer) *OSPFServer {
@@ -140,6 +145,9 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.GlobalConfigCh = make(chan config.GlobalConf)
 	ospfServer.AreaConfigCh = make(chan config.AreaConf)
 	ospfServer.IntfConfigCh = make(chan config.InterfaceConf)
+	ospfServer.GlobalConfigRetCh = make(chan error)
+	ospfServer.AreaConfigRetCh = make(chan error)
+	ospfServer.IntfConfigRetCh = make(chan error)
 	ospfServer.portPropertyMap = make(map[int32]PortProperty)
 	ospfServer.vlanPropertyMap = make(map[uint16]VlanProperty)
 	ospfServer.ipPropertyMap = make(map[uint32]IpProperty)
@@ -222,8 +230,6 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 	}
 
 	for _, client := range clientsList {
-		//server.logger.Info("#### Client name is ")
-		//server.logger.Info(client.Name)
 		if client.Name == "asicd" {
 			server.logger.Info(fmt.Sprintln("found asicd at port", client.Port))
 			server.asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
@@ -248,13 +254,6 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 			server.logger.Info("Ospfd is connected to Asicd")
 			server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
 			server.asicdClient.IsConnected = true
-			/*
-				if server.asicdClient.Transport != nil && server.asicdClient.PtrProtocolFactory != nil {
-					server.logger.Info("connecting to asicd")
-					server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
-					server.asicdClient.IsConnected = true
-				}
-			*/
 		} else if client.Name == "ribd" {
 			server.logger.Info(fmt.Sprintln("found ribd at port", client.Port))
 			server.ribdClient.Address = "localhost:" + strconv.Itoa(client.Port)
@@ -278,41 +277,43 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 			server.logger.Info("Ospfd is connected to Ribd")
 			server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
 			server.ribdClient.IsConnected = true
-			/*
-				if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {
-					server.logger.Info("connecting to ribd")
-					server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
-					server.ribdClient.IsConnected = true
-				}
-			*/
 		}
 	}
 }
 
 func (server *OSPFServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Ospf Server"))
-	server.ConnectToClients(paramFile)
-	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
-	go server.createASICdSubscriber()
-
-	server.BuildPortPropertyMap()
 	server.initOspfGlobalConfDefault()
 	server.logger.Info(fmt.Sprintln("GlobalConf:", server.ospfGlobalConf))
 	server.initAreaConfDefault()
 	server.logger.Info(fmt.Sprintln("AreaConf:", server.AreaConfMap))
 	server.initIntfStateSlice()
+	server.ConnectToClients(paramFile)
+	server.logger.Info("Listen for ASICd updates")
+	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
+	go server.createASICdSubscriber()
+
+	server.BuildOspfInfra()
+	err := server.InitializeDB()
+	if err != nil {
+		server.logger.Err(fmt.Sprintln("DB Initialization faliure err:", err))
+	}
 	/*
 	   server.logger.Info("Listen for RIBd updates")
 	   server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
 	   go createRIBSubscriber()
 	   server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
 	*/
-	err := server.initAsicdForRxMulticastPkt()
+	err = server.initAsicdForRxMulticastPkt()
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to initialize asicd for receiving multicast packets", err))
 	}
+
 	go server.spfCalculation()
+	if server.dbHdl != nil {
+		// Read DB for config objects in case of restarts
+		server.ReadOspfCfgFromDB()
+	}
 
 }
 
@@ -321,13 +322,25 @@ func (server *OSPFServer) StartServer(paramFile string) {
 	for {
 		select {
 		case gConf := <-server.GlobalConfigCh:
-			server.processGlobalConfig(gConf)
+			err := server.processGlobalConfig(gConf)
+			if err == nil {
+				//Handle Global Configuration
+			}
+			server.GlobalConfigRetCh <- err
 		case areaConf := <-server.AreaConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Area Configuration", areaConf))
-			server.processAreaConfig(areaConf)
+			err := server.processAreaConfig(areaConf)
+			if err == nil {
+				//Handle Area Configuration
+			}
+			server.AreaConfigRetCh <- err
 		case ifConf := <-server.IntfConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Intf Configuration", ifConf))
-			server.processIntfConfig(ifConf)
+			err := server.processIntfConfig(ifConf)
+			if err == nil {
+				//Handle Intf Configuration
+			}
+			server.IntfConfigRetCh <- err
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:

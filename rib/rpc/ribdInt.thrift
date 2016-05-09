@@ -29,6 +29,7 @@ struct Routes {
 	16: string DestNetIp
 	17: bool NetworkStatement
 	18: string RouteOrigin
+	19: int Weight
 }
 struct RoutesGetInfo {
 	1: int StartIdx,
@@ -36,6 +37,16 @@ struct RoutesGetInfo {
 	3: int Count,
 	4: bool More,
 	5: list<Routes> RouteList,
+}
+struct PolicyAction {
+	1 : string Name
+	2 : string ActionType
+	3 : i32 SetAdminDistanceValue
+	4 : bool Accept
+	5 : bool Reject
+	6 : string RedistributeAction
+	7 : string RedistributeTargetProtocol
+	8 : string NetworkStatementTargetProtocol
 }
 struct PolicyPrefix {
 	1 : string	IpPrefix,
@@ -65,6 +76,13 @@ struct IPv4Route {
 	6 : string OutgoingInterface
 	7 : string Protocol
 	8 : string CreateTime
+	9 : i32    Weight
+}
+struct ConditionInfo {
+	1 : string ConditionType
+	2 : string Protocol
+	3 : string IpPrefix
+	4 : string MasklengthRange 
 }
 
 service RIBDINTServices 
@@ -78,5 +96,9 @@ service RIBDINTServices
 	//RoutesGetInfo getBulkRoutes(1: int fromIndex, 2: int count);
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	oneway void OnewayCreateBulkIPv4Route(1: list<IPv4Route> config);
-	
+	bool CreatePolicyAction(1: PolicyAction config);
+	bool UpdatePolicyAction(1: PolicyAction origconfig, 2: PolicyAction newconfig, 3: list<bool> attrset);
+	bool DeletePolicyAction(1: PolicyAction config);
+	void ApplyPolicy(1: string source, 2: string policy, 3: string action, 4: list<ConditionInfo>conditions)
+	void UpdateApplyPolicy(1: string source, 2: string policy, 3: string action, 4: list<ConditionInfo>conditions)
 }

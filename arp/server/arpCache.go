@@ -2,7 +2,10 @@ package server
 
 import (
 	"asicd/asicdCommonDefs"
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 	"utils/commonDefs"
 )
@@ -316,4 +319,31 @@ func (server *ARPServer) arpCacheTimeout() {
 		}
 		server.arpCounterUpdateCh <- true
 	}
+}
+
+func GetLinuxArpCache() []ArpLinuxEntry {
+	fp, err := os.Open("/proc/net/arp")
+	if err != nil {
+		return nil
+	}
+
+	defer fp.Close()
+
+	s := bufio.NewScanner(fp)
+	s.Scan() // Skip the field description
+	var arpLinuxEntry = make([]ArpLinuxEntry, 0)
+	for s.Scan() {
+		line := s.Text()
+		fields := strings.Fields(line)
+		arpEnt := ArpLinuxEntry{
+			IpAddr:  fields[f_IPAddr],
+			HWType:  fields[f_HWType],
+			Flags:   fields[f_Flags],
+			MacAddr: fields[f_HWAddr],
+			Mask:    fields[f_HWMask],
+			IfName:  fields[f_IfName],
+		}
+		arpLinuxEntry = append(arpLinuxEntry, arpEnt)
+	}
+	return arpLinuxEntry
 }

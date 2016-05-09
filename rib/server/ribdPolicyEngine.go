@@ -234,7 +234,7 @@ func policyEngineActionUndoNetworkStatemenAdvertiseAction(actionItem interface{}
 		route.NetworkStatement = true
 		publisherInfo, ok := PublisherInfoMap["BGP"]
 		if ok {
-			RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+			RedistributionNotificationSend(publisherInfo.pub_socket, route, evt, networkStatementTargetProtocol)
 		}
 		break
 	default:
@@ -262,7 +262,7 @@ func policyEngineActionUndoRedistribute(actionItem interface{}, conditionsList [
 	publisherInfo, ok := PublisherInfoMap[redistributeActionInfo.RedistributeTargetProtocol]
 	if ok {
 		logger.Info(fmt.Sprintln("ReditributeNotificationSend event called for target protocol - ", redistributeActionInfo.RedistributeTargetProtocol))
-		RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+		RedistributionNotificationSend(publisherInfo.pub_socket, route, evt, redistributeActionInfo.RedistributeTargetProtocol)
 	} else {
 		logger.Info("Unknown target protocol")
 	}
@@ -330,7 +330,7 @@ func policyEngineTraverseAndUpdate() {
 func policyEngineActionAcceptRoute(params interface{}) {
 	routeInfo := params.(RouteParams)
 	logger.Info(fmt.Sprintln("policyEngineActionAcceptRoute for ip ", routeInfo.destNetIp, " and mask ", routeInfo.networkMask))
-	_, err := createV4Route(routeInfo.destNetIp, routeInfo.networkMask, routeInfo.metric, routeInfo.nextHopIp, routeInfo.nextHopIfType, routeInfo.nextHopIfIndex, routeInfo.routeType, routeInfo.createType, ribdCommonDefs.RoutePolicyStateChangetoValid, routeInfo.sliceIdx)
+	_, err := createV4Route(routeInfo.destNetIp, routeInfo.networkMask, routeInfo.metric, routeInfo.weight,routeInfo.nextHopIp, routeInfo.nextHopIfType, routeInfo.nextHopIfIndex, routeInfo.routeType, routeInfo.createType, ribdCommonDefs.RoutePolicyStateChangetoValid, routeInfo.sliceIdx)
 	//_, err := routeServiceHandler.InstallRoute(routeInfo)
 	if err != nil {
 		logger.Info(fmt.Sprintln("creating v4 route failed with err ", err))
@@ -430,7 +430,7 @@ func policyEngineActionNetworkStatementAdvertise(actionInfo interface{}, conditi
 		route.NetworkStatement = true
 		publisherInfo, ok := PublisherInfoMap["BGP"]
 		if ok {
-			RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+			RedistributionNotificationSend(publisherInfo.pub_socket, route, evt, networkStatementAdvertiseTargetProtocol)
 		}
 		break
 	default:
@@ -474,7 +474,7 @@ func policyEngineActionRedistribute(actionInfo interface{}, conditionInfo []inte
 	publisherInfo, ok := PublisherInfoMap[redistributeActionInfo.RedistributeTargetProtocol]
 	if ok {
 		logger.Info(fmt.Sprintln("ReditributeNotificationSend event called for target protocol - ", redistributeActionInfo.RedistributeTargetProtocol))
-		RedistributionNotificationSend(publisherInfo.pub_socket, route, evt)
+		RedistributionNotificationSend(publisherInfo.pub_socket, route, evt, redistributeActionInfo.RedistributeTargetProtocol)
 	} else {
 		logger.Info("Unknown target protocol")
 	}
