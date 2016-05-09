@@ -29,7 +29,7 @@ func (m RIBDServicesHandler) OnewayCreateBulkIPv4Route(cfg []*ribdInt.IPv4Route)
 	//logger.Info(fmt.Sprintln("OnewayCreateIPv4Route - Received create route request for ip", cfg.DestinationNw, " mask ", cfg.NetworkMask, "cfg.OutgoingIntfType: ", cfg.OutgoingIntfType, "cfg.OutgoingInterface: ", cfg.OutgoingInterface))
 	logger.Info(fmt.Sprintln("OnewayCreateBulkIPv4Route for ", len(cfg), " routes"))
 	for i := 0; i < len(cfg); i++ {
-		newCfg := ribd.IPv4Route{cfg[i].DestinationNw, cfg[i].NetworkMask, cfg[i].NextHopIp, cfg[i].Cost, cfg[i].OutgoingIntfType, cfg[i].OutgoingInterface, cfg[i].Protocol}
+		newCfg := ribd.IPv4Route{cfg[i].DestinationNw, cfg[i].NetworkMask, cfg[i].NextHopIp, cfg[i].Cost, cfg[i].OutgoingIntfType, cfg[i].OutgoingInterface, cfg[i].Protocol, cfg[i].Weight}
 		m.CreateIPv4Route(&newCfg)
 	}
 	return err
@@ -54,7 +54,7 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
 	err = m.server.RouteConfigValidationCheck(newconfig, "update")
 	if err != nil {
 		logger.Err(fmt.Sprintln("validation check failed with error ", err))
-		return false, err
+		return false,err
 	}
 	objTyp := reflect.TypeOf(*origconfig)
 	for i := 0; i < objTyp.NumField(); i++ {

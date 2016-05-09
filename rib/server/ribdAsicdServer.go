@@ -3,16 +3,22 @@ package server
 
 import (
 	"asicdInt"
+	"fmt"
 )
 
 func addAsicdRoute(routeInfoRecord RouteInfoRecord) {
-	logger.Info("addAsicdRoute")
+	logger.Info(fmt.Sprintln("addAsicdRoute, weight = ", routeInfoRecord.weight+1))
 	asicdclnt.ClientHdl.OnewayCreateIPv4Route([]*asicdInt.IPv4Route{
 		&asicdInt.IPv4Route{
 			routeInfoRecord.destNetIp.String(),
 			routeInfoRecord.networkMask.String(),
-			routeInfoRecord.resolvedNextHopIpIntf.NextHopIp,
-			int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType),
+			[]*asicdInt.IPv4NextHop{
+				&asicdInt.IPv4NextHop{
+					NextHopIp:     routeInfoRecord.resolvedNextHopIpIntf.NextHopIp,
+					Weight:        int32(routeInfoRecord.weight + 1),
+					NextHopIfType: int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType),
+				},
+			},
 		},
 	})
 }
@@ -22,8 +28,13 @@ func delAsicdRoute(routeInfoRecord RouteInfoRecord) {
 		&asicdInt.IPv4Route{
 			routeInfoRecord.destNetIp.String(),
 			routeInfoRecord.networkMask.String(),
-			routeInfoRecord.resolvedNextHopIpIntf.NextHopIp,
-			int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType),
+			[]*asicdInt.IPv4NextHop{
+				&asicdInt.IPv4NextHop{
+					NextHopIp:     routeInfoRecord.resolvedNextHopIpIntf.NextHopIp,
+					Weight:        int32(routeInfoRecord.weight + 1),
+					NextHopIfType: int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType),
+				},
+			},
 		},
 	})
 }

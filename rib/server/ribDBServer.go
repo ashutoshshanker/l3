@@ -17,7 +17,7 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(dbInfo RouteDBInfo) error {
     logger.Info(fmt.Sprintln("WriteIPv4RouteStateEntryToDB"))
 	entry := dbInfo.entry
 	routeList := dbInfo.routeList
-//	m.DelIPv4RouteStateEntryFromDB(dbInfo)
+	m.DelIPv4RouteStateEntryFromDB(dbInfo)
 	var dbObj models.IPv4RouteState
 	obj := ribd.NewIPv4RouteState()
 	obj.DestinationNw = entry.networkAddr
@@ -32,11 +32,13 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(dbInfo RouteDBInfo) error {
 	nextHopInfo := make([]ribd.NextHopInfo,len(routeInfoList))
 	i := 0
 	for sel := 0; sel < len(routeInfoList); sel++ {
+		logger.Info(fmt.Sprintln("weight = ",routeInfoList[sel].weight))
 		nextHopInfo[i].NextHopIp = routeInfoList[sel].nextHopIp.String()
 	    nextHopIfTypeStr, _ := m.GetNextHopIfTypeStr(ribdInt.Int(entry.nextHopIfType))
 	    nextHopInfo[i].OutgoingIntfType = nextHopIfTypeStr
 	    nextHopInfo[i].OutgoingInterface = strconv.Itoa(int(routeInfoList[sel].nextHopIfIndex))
         nextHopInfo[i].Protocol = ReverseRouteProtoTypeMapDB[int(routeInfoList[sel].protocol)]
+	   nextHopInfo[i].Weight = int32(routeInfoList[sel].weight)
 		obj.NextHopList = append(obj.NextHopList,&nextHopInfo[i])
 		i++
 	}

@@ -112,9 +112,6 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 	decoder := json.NewDecoder(reader)
 	msg := ribdCommonDefs.RibdNotifyMsg{}
 	updateMsg := "Add"
-	if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-		updateMsg = "Remove"
-	}
 
 	for err := decoder.Decode(&msg); err == nil; err = decoder.Decode(&msg) {
 		err = json.Unmarshal(msg.MsgBuf, &routeListInfo)
@@ -122,6 +119,9 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 			mgr.logger.Err(fmt.Sprintf(
 				"Unmarshal RIB route update failed with err %s", err))
 		}
+	    if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
+		    updateMsg = "Remove"
+	    }
 		mgr.logger.Info(fmt.Sprintln(updateMsg, "connected route, dest:",
 			routeListInfo.RouteInfo.Ipaddr, "netmask:",
 			routeListInfo.RouteInfo.Mask, "nexthop:",
@@ -191,6 +191,17 @@ func (mgr *FSRouteMgr) CreateRoute(cfg *config.RouteConfig) {
 func (mgr *FSRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
 	mgr.ribdClient.OnewayDeleteIPv4Route(mgr.createRibdIPv4RouteCfg(cfg,
 		false /*delete*/))
+}
+func (mgr *FSRouteMgr) ApplyPolicy(protocol string,policy string,action string,conditions []*config.ConditionInfo) {
+	temp := make ([]ribdInt.ConditionInfo,len(conditions))
+	ribdConditions := make([]*ribdInt.ConditionInfo,0)
+	j :=0
+	for i := 0;i<len(conditions);i++ {
+		temp[j] = ribdInt.ConditionInfo{conditions[i].ConditionType, conditions[i].Protocol, conditions[i].IpPrefix, conditions[i].MasklengthRange}
+		ribdConditions = append(ribdConditions, &temp[j])
+		j++
+	}
+	mgr.ribdClient.ApplyPolicy(protocol,policy,action,ribdConditions)
 }
 
 func (mgr *FSRouteMgr) GetRoutes() ([]*config.RouteInfo, []*config.RouteInfo) {

@@ -10,7 +10,7 @@ import (
 	//    "net"
 )
 
-func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) bool {
+func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) error {
 	gConf := config.GlobalConf{
 		RouterId:                 config.RouterId(ospfGlobalConf.RouterId),
 		AdminStat:                config.Status(ospfGlobalConf.AdminStat),
@@ -27,10 +27,11 @@ func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) bool {
 		StubRouterAdvertisement:  config.AdvertiseAction(ospfGlobalConf.StubRouterAdvertisement),
 	}
 	h.server.GlobalConfigCh <- gConf
-	return true
+	retMsg := <-h.server.GlobalConfigRetCh
+	return retMsg
 }
 
-func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) bool {
+func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) error {
 	ifConf := config.InterfaceConf{
 		IfIpAddress:           config.IpAddress(ospfIfConf.IfIpAddress),
 		AddressLessIf:         config.InterfaceIndexOrZero(ospfIfConf.AddressLessIf),
@@ -50,10 +51,11 @@ func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) bool {
 	}
 
 	h.server.IntfConfigCh <- ifConf
-	return true
+	retMsg := <-h.server.IntfConfigRetCh
+	return retMsg
 }
 
-func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntry) bool {
+func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntry) error {
 	areaConf := config.AreaConf{
 		AreaId:                              config.AreaId(ospfAreaConf.AreaId),
 		AuthType:                            config.AuthType(ospfAreaConf.AuthType),
@@ -64,8 +66,8 @@ func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntry) bool {
 	}
 
 	h.server.AreaConfigCh <- areaConf
-	return true
-
+	retMsg := <-h.server.AreaConfigRetCh
+	return retMsg
 }
 
 func (h *OSPFHandler) CreateOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) (bool, error) {
@@ -74,7 +76,11 @@ func (h *OSPFHandler) CreateOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) (bool, 
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Create global config attrs:", ospfGlobalConf))
-	return h.SendOspfGlobal(ospfGlobalConf), nil
+	err := h.SendOspfGlobal(ospfGlobalConf)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (h *OSPFHandler) CreateOspfAreaEntry(ospfAreaConf *ospfd.OspfAreaEntry) (bool, error) {
@@ -83,7 +89,11 @@ func (h *OSPFHandler) CreateOspfAreaEntry(ospfAreaConf *ospfd.OspfAreaEntry) (bo
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Create Area config attrs:", ospfAreaConf))
-	return h.SendOspfAreaConf(ospfAreaConf), nil
+	err := h.SendOspfAreaConf(ospfAreaConf)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (h *OSPFHandler) CreateOspfStubAreaEntry(ospfStubAreaConf *ospfd.OspfStubAreaEntry) (bool, error) {
@@ -107,7 +117,11 @@ func (h *OSPFHandler) CreateOspfIfEntry(ospfIfConf *ospfd.OspfIfEntry) (bool, er
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Create interface config attrs:", ospfIfConf))
-	return h.SendOspfIfConf(ospfIfConf), nil
+	err := h.SendOspfIfConf(ospfIfConf)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (h *OSPFHandler) CreateOspfIfMetricEntry(ospfIfMetricConf *ospfd.OspfIfMetricEntry) (bool, error) {

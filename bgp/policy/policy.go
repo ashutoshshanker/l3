@@ -5,6 +5,8 @@ import (
 	"fmt"
 	bgprib "l3/bgp/rib"
 	"utils/logging"
+	"l3/bgp/api"
+	"l3/bgp/config"
 	utilspolicy "utils/policy"
 )
 
@@ -32,9 +34,10 @@ type BGPPolicyEngine struct {
 	ActionDelCh     chan string
 	StmtDelCh       chan string
 	DefinitionDelCh chan string
+	policyMgr       config.PolicyMgrIntf
 }
 
-func NewBGPPolicyEngine(logger *logging.Writer) *BGPPolicyEngine {
+func NewBGPPolicyEngine(logger *logging.Writer, pMgr config.PolicyMgrIntf) *BGPPolicyEngine {
 	if PolicyEngine == nil {
 		bgpPE := &BGPPolicyEngine{}
 		bgpPE.logger = logger
@@ -47,6 +50,7 @@ func NewBGPPolicyEngine(logger *logging.Writer) *BGPPolicyEngine {
 		bgpPE.ActionDelCh = make(chan string)
 		bgpPE.StmtDelCh = make(chan string)
 		bgpPE.DefinitionDelCh = make(chan string)
+	    bgpPE.policyMgr = pMgr
 		PolicyEngine = bgpPE
 	}
 
@@ -55,6 +59,8 @@ func NewBGPPolicyEngine(logger *logging.Writer) *BGPPolicyEngine {
 }
 
 func (eng *BGPPolicyEngine) StartPolicyEngine() {
+	api.InitPolicy(eng.ConditionCfgCh, eng.ConditionDelCh)
+	eng.policyMgr.Start()
 	for {
 		select {
 		case condCfg := <-eng.ConditionCfgCh:
