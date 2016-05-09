@@ -42,3 +42,32 @@ func (h *ARPHandler) GetBulkArpEntryState(fromIdx arpd.Int, count arpd.Int) (*ar
 	arpEntryBulk.ArpEntryStateList = arpEntryResponse
 	return arpEntryBulk, nil
 }
+
+func (h *ARPHandler) convertArpLinuxEntryToThrift(arpLinuxState server.ArpLinuxState) *arpd.ArpLinuxEntryState {
+	arpEnt := arpd.NewArpLinuxEntryState()
+	arpEnt.IpAddr = arpLinuxState.IpAddr
+	arpEnt.HWType = arpLinuxState.HWType
+	arpEnt.MacAddr = arpLinuxState.MacAddr
+	arpEnt.IfName = arpLinuxState.IfName
+	return arpEnt
+}
+
+func (h *ARPHandler) GetBulkArpLinuxEntryState(fromIdx arpd.Int, count arpd.Int) (*arpd.ArpLinuxEntryStateGetInfo, error) {
+	h.logger.Info(fmt.Sprintln("GetBulk call for Linux Arp Entry"))
+	nextIdx, currCount, arpLinuxEntry := h.server.GetBulkLinuxArpEntry(int(fromIdx), int(count))
+	if arpLinuxEntry == nil {
+		err := errors.New("Arp server unable to fetch liunx Arp Entry")
+		return nil, err
+	}
+	arpLinuxEntryResponse := make([]*arpd.ArpLinuxEntryState, len(arpLinuxEntry))
+	for idx, item := range arpLinuxEntry {
+		arpLinuxEntryResponse[idx] = h.convertArpLinuxEntryToThrift(item)
+	}
+	arpLinuxEntryBulk := arpd.NewArpLinuxEntryStateGetInfo()
+	arpLinuxEntryBulk.Count = arpd.Int(currCount)
+	arpLinuxEntryBulk.StartIdx = arpd.Int(fromIdx)
+	arpLinuxEntryBulk.EndIdx = arpd.Int(nextIdx)
+	arpLinuxEntryBulk.More = (nextIdx != 0)
+	arpLinuxEntryBulk.ArpLinuxEntryStateList = arpLinuxEntryResponse
+	return arpLinuxEntryBulk, nil
+}

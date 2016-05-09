@@ -37,6 +37,31 @@ type ArpEntry struct {
 	Type      bool //True : RIB False: RX
 }
 
+type ArpLinuxState struct {
+	IpAddr  string
+	HWType  string
+	MacAddr string
+	IfName  string
+}
+
+type ArpLinuxEntry struct {
+	IpAddr  string
+	HWType  string
+	Flags   string
+	MacAddr string
+	Mask    string
+	IfName  string
+}
+
+const (
+	f_IPAddr int = iota
+	f_HWType
+	f_Flags
+	f_HWAddr
+	f_HWMask
+	f_IfName
+)
+
 type ArpState struct {
 	IpAddr         string
 	MacAddr        string
