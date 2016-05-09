@@ -51,3 +51,38 @@ func (server *ARPServer) GetBulkArpEntry(idx int, cnt int) (int, int, []ArpState
 	server.printArpEntries()
 	return nextIdx, count, result
 }
+
+func (server *ARPServer) GetBulkLinuxArpEntry(idx int, cnt int) (int, int, []ArpLinuxState) {
+	var nextIdx int
+	var count int
+
+	arpCache := GetLinuxArpCache()
+
+	length := len(arpCache)
+	result := make([]ArpLinuxState, cnt)
+	var i int
+	var j int
+	for i, j = 0, idx; i < cnt && j < length; j++ {
+		arpEnt := arpCache[j]
+		result[i].IpAddr = arpEnt.IpAddr
+		if arpEnt.Flags == "0x0" {
+			result[i].MacAddr = "incomplete"
+			result[i].HWType = "N/A"
+		} else {
+			result[i].MacAddr = arpEnt.MacAddr
+			if arpEnt.HWType == "0x1" {
+				result[i].HWType = "ether"
+			} else {
+				result[i].HWType = "non-ether"
+			}
+		}
+		result[i].IfName = arpEnt.IfName
+		i++
+	}
+	if j == length {
+		nextIdx = 0
+	}
+	count = i
+
+	return nextIdx, count, result
+}
