@@ -924,8 +924,6 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex = ribdInt.Int(routeInfoRecord.nextHopIfIndex)
 		nhIntf, resolvedNextHopIntf, res_err := ResolveNextHop(routeInfoRecord.nextHopIp.String())
 		routeInfoRecord.resolvedNextHopIpIntf = resolvedNextHopIntf
-		logger.Info("Adding message to NetlinkAddRouteCh")
-		RouteServiceHandler.NetlinkAddRouteCh <- routeInfoRecord
 		//call asicd to add
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
@@ -1105,8 +1103,6 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 			}
 		}
 	}
-	//delLinuxRoute(routeInfoRecord)
-	RouteServiceHandler.NetlinkDelRouteCh <- routeInfoRecord
 	//update in the event log
 	delStr := "Route Uninstalled in Hardware "
 	if delType == FIBAndRIB {
@@ -1252,9 +1248,6 @@ func createV4Route(destNetIp string,
 			destNetSlice = make([]localDB, 0)
 		}
 		destNetSlice = append(destNetSlice, localDBRecord)
-		//addLinuxRoute(routeInfoRecord)
-		logger.Info("Adding message to NetlinkAddRouteCh")
-		RouteServiceHandler.NetlinkAddRouteCh <- routeInfoRecord
 		//call asicd
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))

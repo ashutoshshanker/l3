@@ -4,18 +4,29 @@ import (
 	"errors"
 	"fmt"
 	"github.com/socketplane/libovsdb"
+	"l3/bgp/api"
 	"l3/bgp/config"
-	_ "net"
+	"l3/bgp/utils"
+	"net"
+	"strings"
 	"utils/logging"
+	"utils/netUtils"
 	"utils/patriciaDB"
 	"utils/policy"
 	"utils/policy/policyCommonDefs"
 )
 
+type PolicyInfo struct {
+	protocol   string
+	policyName string
+	action     string
+	conditions []*config.ConditionInfo
+}
+
 func (mgr *OvsRouteMgr) hackPolicyDB() {
 	cfg := policy.PolicyStmtConfig{
 		Name:            "RedistConnect",
-		MatchConditions: "any",
+		MatchConditions: "all",
 	}
 	cfg.Actions = append(cfg.Actions, "permit")
 	err := mgr.PolicyEngineDB.CreatePolicyStatement(cfg)
@@ -38,9 +49,9 @@ func (mgr *OvsRouteMgr) hackPolicyDB() {
 
 func (mgr *OvsRouteMgr) initializePolicy() {
 	mgr.PolicyEngineDB = policy.NewPolicyEngineDB(mgr.logger)
-	mgr.redistributeFunc = mgr.SendRoute
 	mgr.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute,
-		mgr.redistributeFunc)
+		mgr.SendRoute)
+	mgr.PolicyEngineDB.SetTraverseAndApplyPolicyFunc(mgr.TraverseAndApply)
 
 	mgr.hackPolicyDB()
 }
@@ -55,10 +66,6 @@ func NewOvsRouteMgr(logger *logging.Writer, db *BGPOvsdbHandler) *OvsRouteMgr {
 	}
 
 	return mgr
-}
-
-func (mgr *OvsRouteMgr) Start() {
-	mgr.initializePolicy()
 }
 
 /*  This is global next hop not bgp nexthop table
@@ -150,8 +157,15 @@ func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, erro
 	return reachInfo, nil
 }
 
-func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policyName string, action string,
-	conditions []*config.ConditionInfo) {
+/*  When server call ApplyPolicy it will be pushed on the applypolicy ch and then the channel
+ *  handler will call this api with the information passed on by server...
+ *  In Ovsdb this is needed to avoid deadlock with bgp/server, as ApplyPolicy is a function call
+ */
+func (mgr *OvsRouteMgr) applyPolicy(info PolicyInfo) {
+	protocol := info.protocol
+	policyName := info.policyName
+	action := info.action
+	conditions := info.conditions
 	mgr.logger.Info(fmt.Sprintln("OVS Route Manager Apply Policy Called:", protocol,
 		policyName, action, conditions))
 	policyDB := mgr.PolicyEngineDB.PolicyDB
@@ -175,6 +189,12 @@ func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policyName string, action s
 		conditions))
 	mgr.PolicyEngineDB.UpdateApplyPolicy(policy.ApplyPolicyInfo{node, policyAction,
 		conditionNameList}, true)
+
+}
+
+func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policyName string, action string,
+	conditions []*config.ConditionInfo) {
+	mgr.applyPolicyCh <- PolicyInfo{protocol, policyName, action, conditions}
 	return
 }
 
@@ -184,5 +204,90 @@ func (mgr *OvsRouteMgr) GetRoutes() ([]*config.RouteInfo, []*config.RouteInfo) {
 
 func (mgr *OvsRouteMgr) SendRoute(actionInfo interface{}, conditionInfo []interface{},
 	params interface{}) {
+	mgr.logger.Info(fmt.Sprintln("Send route", params))
 
+	switch params.(type) {
+	case config.RouteInfo:
+		mgr.logger.Info("config. routeinfo type")
+	case *config.RouteInfo:
+		mgr.logger.Info("config pointer routeInfo type")
+	case policy.PolicyEngineFilterEntityParams:
+		mgr.logger.Info("PolicyEngineUndoPolicyForEntity type")
+	}
+	routes := make([]*config.RouteInfo, 0)
+
+	param := params.(policy.PolicyEngineFilterEntityParams)
+	ip, ipnet, _ := net.ParseCIDR(param.DestNetIp)
+	mask := netUtils.GetIPv4Mask(ipnet.Mask)
+	route := &config.RouteInfo{
+		Ipaddr:    ip.String(),
+		Mask:      mask,
+		NextHopIp: param.NextHopIp,
+	}
+
+	routes = append(routes, route)
+
+	for idx, _ := range routes {
+		mgr.logger.Info(fmt.Sprintln("Routes:", routes[idx]))
+	}
+	api.SendRouteNotification(routes, make([]*config.RouteInfo, 0))
+}
+
+/*
+type PolicyEngineFilterEntityParams struct {
+	DestNetIp        string //CIDR format
+	NextHopIp        string
+	RouteProtocol    string
+	CreatePath       bool
+	DeletePath       bool
+	PolicyList       []string
+	PolicyHitCounter int
+}
+type RouteInfo struct {
+	Ipaddr           string
+	Mask             string
+	NextHopIp        string
+	Prototype        int
+	NetworkStatement bool
+	RouteOrigin      string
+}
+*/
+
+func (mgr *OvsRouteMgr) TraverseAndApply(data interface{}, updatefunc policy.PolicyApplyfunc) {
+	mgr.logger.Info("Traverse route")
+
+	// entity is for policyDB, params is for the sendRoute
+	routeEntries, exists :=
+		mgr.dbmgr.cache[ROUTE_TABLE]
+	if !exists {
+		return
+	}
+	for _, value := range routeEntries {
+		entity := policy.PolicyEngineFilterEntityParams{}
+		dstIp, ok := value.Fields["prefix"].(string)
+		if !ok {
+			utils.Logger.Err("No prefix configured")
+			continue
+		}
+		entity.DestNetIp = dstIp
+		entity.RouteProtocol = strings.ToUpper(value.Fields["from"].(string))
+		entity.NextHopIp = "0.0.0.0"
+		mgr.logger.Info(fmt.Sprintln("entity:", entity, "params:", entity))
+		updatefunc(entity, data, entity)
+	}
+}
+
+func (mgr *OvsRouteMgr) Start() {
+	mgr.initializePolicy()
+	mgr.applyPolicyCh = make(chan PolicyInfo)
+	go mgr.channelHandler()
+}
+
+func (mgr *OvsRouteMgr) channelHandler() {
+	for {
+		select {
+		case info := <-mgr.applyPolicyCh:
+			mgr.applyPolicy(info)
+		}
+	}
 }

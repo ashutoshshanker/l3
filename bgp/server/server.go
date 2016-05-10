@@ -41,6 +41,12 @@ type AggUpdate struct {
 	AttrSet []bool
 }
 
+type GlobalUpdate struct {
+	OldGlobal config.GlobalConfig
+	NewGlobal config.GlobalConfig
+	AttrSet   []bool
+}
+
 type PolicyParams struct {
 	CreateType      int
 	DeleteType      int
@@ -56,6 +62,7 @@ type BGPServer struct {
 	bgpPE            *bgppolicy.BGPPolicyEngine
 	BgpConfig        config.Bgp
 	GlobalConfigCh   chan config.GlobalConfig
+	GlobalUpdCh      chan GlobalUpdate
 	AddPeerCh        chan PeerUpdate
 	RemPeerCh        chan string
 	AddPeerGroupCh   chan PeerGroupUpdate
@@ -115,6 +122,7 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.BgpConfig = config.Bgp{}
 	bgpServer.GlobalCfgDone = false
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
+	bgpServer.GlobalUpdCh = make(chan GlobalUpdate)
 	bgpServer.AddPeerCh = make(chan PeerUpdate)
 	bgpServer.RemPeerCh = make(chan string)
 	bgpServer.AddPeerGroupCh = make(chan PeerGroupUpdate)
@@ -880,27 +888,40 @@ func (server *BGPServer) constructBGPGlobalState(gConf *config.GlobalConfig) {
 	server.BgpConfig.Global.State.IBGPMaxPaths = gConf.IBGPMaxPaths
 }
 
+/*  Called During GlobalConfigCh and GlobalUpdCh, is bgp router asn and router id are getting
+ *  changed
+ */
+func (server *BGPServer) reInitBGPGlobal(gConf config.GlobalConfig) {
+	for peerIP, peer := range server.PeerMap {
+		server.logger.Info(fmt.Sprintf("Cleanup peer %s", peerIP))
+		peer.Cleanup()
+	}
+	server.logger.Info(fmt.Sprintf("Giving up CPU so that all peer FSMs",
+		"will get cleaned up"))
+	runtime.Gosched()
+	packet.SetNextHopPathAttrs(server.ConnRoutesPath.PathAttrs, gConf.RouterId)
+	server.RemoveRoutesFromAllNeighbor()
+	server.copyGlobalConf(gConf)
+	server.constructBGPGlobalState(&gConf)
+	for _, peer := range server.PeerMap {
+		peer.Init()
+	}
+	server.SetupRedistribution(gConf)
+}
+
 func (server *BGPServer) listenChannelUpdates() {
 	for {
 		select {
 		case gConf := <-server.GlobalConfigCh:
-			for peerIP, peer := range server.PeerMap {
-				server.logger.Info(fmt.Sprintf("Cleanup peer %s", peerIP))
-				peer.Cleanup()
+			server.reInitBGPGlobal(gConf)
+		case gUpConf := <-server.GlobalUpdCh:
+			server.logger.Info(fmt.Sprintln("Recieved global Update", gUpConf))
+			for elemId, elem := range gUpConf.AttrSet {
+				server.logger.Info(fmt.Sprintln("elemId, eleme", elemId, elem))
+				if !gUpConf.AttrSet[elemId] {
+					continue
+				}
 			}
-			server.logger.Info(fmt.Sprintf("Giving up CPU so that all peer FSMs",
-				"will get cleaned up"))
-			runtime.Gosched()
-
-			packet.SetNextHopPathAttrs(server.ConnRoutesPath.PathAttrs, gConf.RouterId)
-			server.RemoveRoutesFromAllNeighbor()
-			server.copyGlobalConf(gConf)
-			server.constructBGPGlobalState(&gConf)
-			for _, peer := range server.PeerMap {
-				peer.Init()
-			}
-			server.SetupRedistribution(gConf)
-
 		case peerUpdate := <-server.AddPeerCh:
 			server.logger.Info("message received on AddPeerCh")
 			oldPeer := peerUpdate.OldPeer
@@ -1153,6 +1174,7 @@ func (server *BGPServer) listenChannelUpdates() {
 				}
 			}
 		case routeInfo := <-server.routesCh:
+			server.logger.Info("got notification on routes channel")
 			server.ProcessConnectedRoutes(routeInfo.Add, routeInfo.Remove)
 		}
 	}

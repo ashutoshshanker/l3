@@ -39,19 +39,6 @@ func (mgr *OvsPolicyMgr) Start() {
 	go mgr.handleRedistribute()
 }
 
-/*
-func (mgr *FSRouteMgr) populateConfigRoute(route *ribdInt.Routes) *config.RouteInfo {
-	rv := &config.RouteInfo{
-		Ipaddr:           route.Ipaddr,
-		Mask:             route.Mask,
-		NextHopIp:        route.NextHopIp,
-		Prototype:        int(route.Prototype),
-		NetworkStatement: route.NetworkStatement,
-		RouteOrigin:      route.RouteOrigin,
-	}
-	return rv
-}
-*/
 func (mgr *OvsPolicyMgr) sendConnectedRoutes(add bool) {
 	routeEntries, exists :=
 		mgr.dbmgr.cache[ROUTE_TABLE]
