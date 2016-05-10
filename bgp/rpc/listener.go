@@ -56,7 +56,8 @@ func (h *BGPHandler) convertModelToBGPGlobalConfig(obj models.BGPGlobal) (config
 	if obj.Redistribution != nil {
 		gConf.Redistribution = make([]config.SourcePolicyMap, 0)
 		for i := 0; i < len(obj.Redistribution); i++ {
-			redistribution := config.SourcePolicyMap{obj.Redistribution[i].Sources, obj.Redistribution[i].Policy}
+			redistribution := config.SourcePolicyMap{obj.Redistribution[i].Sources,
+				obj.Redistribution[i].Policy}
 			gConf.Redistribution = append(gConf.Redistribution, redistribution)
 		}
 	}

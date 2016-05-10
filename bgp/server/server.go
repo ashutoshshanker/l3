@@ -1153,6 +1153,7 @@ func (server *BGPServer) listenChannelUpdates() {
 				}
 			}
 		case routeInfo := <-server.routesCh:
+			server.logger.Info("got notification on routes channel")
 			server.ProcessConnectedRoutes(routeInfo.Add, routeInfo.Remove)
 		}
 	}

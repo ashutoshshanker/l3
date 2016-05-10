@@ -4,8 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/socketplane/libovsdb"
+	"l3/bgp/api"
 	"l3/bgp/config"
-	_ "net"
+	"l3/bgp/utils"
+	"net"
+	"strings"
 	"utils/logging"
 	"utils/patriciaDB"
 	"utils/policy"
@@ -15,7 +18,7 @@ import (
 func (mgr *OvsRouteMgr) hackPolicyDB() {
 	cfg := policy.PolicyStmtConfig{
 		Name:            "RedistConnect",
-		MatchConditions: "any",
+		MatchConditions: "all",
 	}
 	cfg.Actions = append(cfg.Actions, "permit")
 	err := mgr.PolicyEngineDB.CreatePolicyStatement(cfg)
@@ -41,6 +44,7 @@ func (mgr *OvsRouteMgr) initializePolicy() {
 	mgr.redistributeFunc = mgr.SendRoute
 	mgr.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute,
 		mgr.redistributeFunc)
+	mgr.PolicyEngineDB.SetTraverseAndApplyPolicyFunc(mgr.TraverseAndApply)
 
 	mgr.hackPolicyDB()
 }
@@ -184,5 +188,126 @@ func (mgr *OvsRouteMgr) GetRoutes() ([]*config.RouteInfo, []*config.RouteInfo) {
 
 func (mgr *OvsRouteMgr) SendRoute(actionInfo interface{}, conditionInfo []interface{},
 	params interface{}) {
+	mgr.logger.Info(fmt.Sprintln("Send route", params))
+
+	routes := make([]*config.RouteInfo, 0)
+	routes = append(routes, params.(*config.RouteInfo))
+	mgr.logger.Info(fmt.Sprintln("Routes:", routes))
+	api.SendRouteNotification(routes, make([]*config.RouteInfo, 0))
+}
+
+/*
+type PolicyEngineFilterEntityParams struct {
+	DestNetIp        string //CIDR format
+	NextHopIp        string
+	RouteProtocol    string
+	CreatePath       bool
+	DeletePath       bool
+	PolicyList       []string
+	PolicyHitCounter int
+}
+type RouteInfo struct {
+	Ipaddr           string
+	Mask             string
+	NextHopIp        string
+	Prototype        int
+	NetworkStatement bool
+	RouteOrigin      string
+}
+*/
+
+func uitoa(val uint) string {
+	var buf [32]byte // big enough for int64
+	i := len(buf) - 1
+	for val >= 10 {
+		buf[i] = byte(val%10 + '0')
+		i--
+		val /= 10
+	}
+	buf[i] = byte(val + '0')
+	return string(buf[i:])
+}
+
+func (mgr *OvsRouteMgr) TraverseAndApply(data interface{}, updatefunc policy.PolicyApplyfunc) {
+	mgr.logger.Info("Traverse route")
+
+	// entity is for policyDB, params is for the sendRoute
+	routeEntries, exists :=
+		mgr.dbmgr.cache[ROUTE_TABLE]
+	if !exists {
+		return
+	}
+	for _, value := range routeEntries {
+		entity := policy.PolicyEngineFilterEntityParams{}
+		dstIp, ok := value.Fields["prefix"].(string)
+		if !ok {
+			utils.Logger.Err("No prefix configured")
+			continue
+		}
+		entity.DestNetIp = dstIp
+		entity.RouteProtocol = strings.ToUpper(value.Fields["from"].(string))
+		entity.NextHopIp = "0.0.0.0"
+		ip, ipnet, _ := net.ParseCIDR(dstIp)
+		p4 := ipnet.Mask
+		mask := uitoa(uint(p4[0])) + "." +
+			uitoa(uint(p4[1])) + "." +
+			uitoa(uint(p4[2])) + "." +
+			uitoa(uint(p4[3]))
+		params := &config.RouteInfo{
+			Ipaddr:    ip.String(),
+			Mask:      mask,
+			NextHopIp: entity.NextHopIp,
+		}
+		mgr.logger.Info(fmt.Sprintln("entity:", entity, "params:", params))
+		updatefunc(entity, data, params)
+		/*
+					if value.Fields["from"] == "connected" {
+			utils.Logger.Info(fmt.Sprintln("Key:", key))
+			utils.Logger.Info(fmt.Sprintln("Value:", value))
+			nhId, ok = value.Fields["nexthops"].(libovsdb.UUID)
+			if !ok {
+				utils.Logger.Err(fmt.Sprintln("No next hop configured for",
+					value.Fields["prefix"]))
+				continue
+			}
+			utils.Logger.Info("nh uuid: " + nhId.GoUuid)
+			nhs, exists := mgr.dbmgr.cache["Nexthop"]
+			if len(nhs) < 1 {
+				utils.Logger.Err(fmt.Sprintln("No next hop configured for",
+					value.Fields["prefix"]))
+				continue
+			}
+			utils.Logger.Info(fmt.Sprintln("nhs:", nhs))
+			nh, exists := nhs[nhId.GoUuid]
+			utils.Logger.Info(fmt.Sprintln("nh:", nh))
+			if !exists {
+				utils.Logger.Err(fmt.Sprintln("No next hop configured for",
+					value.Fields["prefix"]))
+				continue
+			}
+			portId, ok := nh.Fields["ports"].(libovsdb.UUID)
+			if !ok {
+				utils.Logger.Err(fmt.Sprintln("No port information for",
+					value.Fields["prefix"]))
+				continue
+			}
+			utils.Logger.Info(fmt.Sprintln("PortID information is", portId.GoUuid))
+			ports, exists := mgr.dbmgr.cache["Port"]
+			if len(ports) < 1 {
+				utils.Logger.Err(fmt.Sprintln("No entry for", portId.GoUuid,
+					"in Port Table"))
+				continue
+			}
+			port, exists := ports[portId.GoUuid]
+			if !exists {
+				utils.Logger.Err(fmt.Sprintln("No entry for", portId.GoUuid,
+					"in Port Table"))
+				continue
+			}
+			ip := port.Fields["ip4_address"]
+			utils.Logger.Info("Ip address for the port is " + ip.(string))
+					}
+		*/
+	}
 
 }
