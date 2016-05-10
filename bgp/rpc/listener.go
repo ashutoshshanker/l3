@@ -377,16 +377,18 @@ func (h *BGPHandler) convertStrIPToNetIP(ip string) net.IP {
 	return netIP
 }
 
-func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
+func (h *BGPHandler) ValidateBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (gConf config.GlobalConfig,
+	err error) {
+
 	ip := h.convertStrIPToNetIP(bgpGlobal.RouterId)
-	var err error = nil
 	if ip == nil {
 		err = errors.New(fmt.Sprintf("BGPGlobal: IP %s is not valid", bgpGlobal.RouterId))
-		h.logger.Info(fmt.Sprintln("SendBGPGlobal: IP", bgpGlobal.RouterId, "is not valid"))
-		return false, err
+		h.logger.Info(fmt.Sprintln("ValidateBGPGlobal: IP",
+			bgpGlobal.RouterId, "is not valid"))
+		return gConf, err
 	}
 
-	gConf := config.GlobalConfig{
+	gConf = config.GlobalConfig{
 		AS:                  uint32(bgpGlobal.ASNum),
 		RouterId:            ip,
 		UseMultiplePaths:    bgpGlobal.UseMultiplePaths,
@@ -401,6 +403,14 @@ func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 				bgpGlobal.Redistribution[i].Policy}
 			gConf.Redistribution = append(gConf.Redistribution, redistribution)
 		}
+	}
+	return gConf, nil
+}
+
+func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
+	gConf, err := h.ValidateBGPGlobal(bgpGlobal)
+	if err != nil {
+		return false, err
 	}
 	h.server.GlobalConfigCh <- gConf
 	return true, err
@@ -437,10 +447,31 @@ func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int,
 	return bgpGlobalStateBulk, nil
 }
 
-func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal,
+func (h *BGPHandler) SendBGPGlobalUpdate(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal,
 	attrSet []bool) (bool, error) {
+
+	oldConfig, err := h.ValidateBGPGlobal(origG)
+	if err != nil {
+		return false, err
+	}
+
+	newConfig, err := h.ValidateBGPGlobal(updatedG)
+	if err != nil {
+		return false, err
+	}
+
+	h.server.GlobalUpdCh <- server.GlobalUpdate{oldConfig, newConfig, attrSet}
+	return true, nil
+}
+
+func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal, attrSet []bool) (bool, error) {
+
 	h.logger.Info(fmt.Sprintln("Update global config attrs:", updatedG, "old config:", origG))
+
 	return h.SendBGPGlobal(updatedG)
+	/* @TODO: once re-start is fixed then add this support.... need to make changes for attrset
+	 */
+	//return h.SendBGPGlobalUpdate(origG, updatedG, attrSet)
 }
 
 func (h *BGPHandler) DeleteBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
@@ -562,6 +593,10 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf c
 
 func (h *BGPHandler) SendBGPNeighbor(oldNeighbor *bgpd.BGPNeighbor,
 	newNeighbor *bgpd.BGPNeighbor, attrSet []bool) (bool, error) {
+	if newNeighbor == nil {
+		return false, errors.New("Neighbor config not specified")
+	}
+
 	created := h.server.VerifyBgpGlobalConfig()
 	if !created {
 		return created,
@@ -727,9 +762,13 @@ func (h *BGPHandler) ValidateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (group c
 	return group, err
 }
 
-func (h *BGPHandler) SendBGPPeerGroup(oldGroup *bgpd.BGPPeerGroup,
-	newGroup *bgpd.BGPPeerGroup, attrSet []bool) (
-	bool, error) {
+func (h *BGPHandler) SendBGPPeerGroup(oldGroup *bgpd.BGPPeerGroup, newGroup *bgpd.BGPPeerGroup,
+	attrSet []bool) (bool, error) {
+
+	if newGroup == nil {
+		return false, errors.New("BGP Peer group not defined")
+	}
+
 	oldGroupConf, err := h.ValidateBGPPeerGroup(oldGroup)
 	if err != nil {
 		return false, err
