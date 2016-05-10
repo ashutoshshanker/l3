@@ -190,9 +190,34 @@ func (mgr *OvsRouteMgr) SendRoute(actionInfo interface{}, conditionInfo []interf
 	params interface{}) {
 	mgr.logger.Info(fmt.Sprintln("Send route", params))
 
+	switch params.(type) {
+	case config.RouteInfo:
+		mgr.logger.Info("config. routeinfo type")
+	case *config.RouteInfo:
+		mgr.logger.Info("config pointer routeInfo type")
+	case policy.PolicyEngineFilterEntityParams:
+		mgr.logger.Info("PolicyEngineUndoPolicyForEntity type")
+	}
 	routes := make([]*config.RouteInfo, 0)
-	routes = append(routes, params.(*config.RouteInfo))
-	mgr.logger.Info(fmt.Sprintln("Routes:", routes))
+
+	param := params.(policy.PolicyEngineFilterEntityParams)
+	ip, ipnet, _ := net.ParseCIDR(param.DestNetIp)
+	p4 := ipnet.Mask
+	mask := uitoa(uint(p4[0])) + "." +
+		uitoa(uint(p4[1])) + "." +
+		uitoa(uint(p4[2])) + "." +
+		uitoa(uint(p4[3]))
+	route := &config.RouteInfo{
+		Ipaddr:    ip.String(),
+		Mask:      mask,
+		NextHopIp: param.NextHopIp,
+	}
+
+	routes = append(routes, route)
+
+	for idx, _ := range routes {
+		mgr.logger.Info(fmt.Sprintln("Routes:", routes[idx]))
+	}
 	api.SendRouteNotification(routes, make([]*config.RouteInfo, 0))
 }
 
@@ -247,66 +272,69 @@ func (mgr *OvsRouteMgr) TraverseAndApply(data interface{}, updatefunc policy.Pol
 		entity.DestNetIp = dstIp
 		entity.RouteProtocol = strings.ToUpper(value.Fields["from"].(string))
 		entity.NextHopIp = "0.0.0.0"
-		ip, ipnet, _ := net.ParseCIDR(dstIp)
-		p4 := ipnet.Mask
-		mask := uitoa(uint(p4[0])) + "." +
-			uitoa(uint(p4[1])) + "." +
-			uitoa(uint(p4[2])) + "." +
-			uitoa(uint(p4[3]))
-		params := &config.RouteInfo{
-			Ipaddr:    ip.String(),
-			Mask:      mask,
-			NextHopIp: entity.NextHopIp,
-		}
-		mgr.logger.Info(fmt.Sprintln("entity:", entity, "params:", params))
-		updatefunc(entity, data, params)
+		mgr.logger.Info(fmt.Sprintln("entity:", entity, "params:", entity))
+		updatefunc(entity, data, entity)
 		/*
-					if value.Fields["from"] == "connected" {
-			utils.Logger.Info(fmt.Sprintln("Key:", key))
-			utils.Logger.Info(fmt.Sprintln("Value:", value))
-			nhId, ok = value.Fields["nexthops"].(libovsdb.UUID)
-			if !ok {
-				utils.Logger.Err(fmt.Sprintln("No next hop configured for",
-					value.Fields["prefix"]))
-				continue
+			ip, ipnet, _ := net.ParseCIDR(dstIp)
+			p4 := ipnet.Mask
+			mask := uitoa(uint(p4[0])) + "." +
+				uitoa(uint(p4[1])) + "." +
+				uitoa(uint(p4[2])) + "." +
+				uitoa(uint(p4[3]))
+			params := config.RouteInfo{
+				Ipaddr:    ip.String(),
+				Mask:      mask,
+				NextHopIp: entity.NextHopIp,
 			}
-			utils.Logger.Info("nh uuid: " + nhId.GoUuid)
-			nhs, exists := mgr.dbmgr.cache["Nexthop"]
-			if len(nhs) < 1 {
-				utils.Logger.Err(fmt.Sprintln("No next hop configured for",
-					value.Fields["prefix"]))
-				continue
-			}
-			utils.Logger.Info(fmt.Sprintln("nhs:", nhs))
-			nh, exists := nhs[nhId.GoUuid]
-			utils.Logger.Info(fmt.Sprintln("nh:", nh))
-			if !exists {
-				utils.Logger.Err(fmt.Sprintln("No next hop configured for",
-					value.Fields["prefix"]))
-				continue
-			}
-			portId, ok := nh.Fields["ports"].(libovsdb.UUID)
-			if !ok {
-				utils.Logger.Err(fmt.Sprintln("No port information for",
-					value.Fields["prefix"]))
-				continue
-			}
-			utils.Logger.Info(fmt.Sprintln("PortID information is", portId.GoUuid))
-			ports, exists := mgr.dbmgr.cache["Port"]
-			if len(ports) < 1 {
-				utils.Logger.Err(fmt.Sprintln("No entry for", portId.GoUuid,
-					"in Port Table"))
-				continue
-			}
-			port, exists := ports[portId.GoUuid]
-			if !exists {
-				utils.Logger.Err(fmt.Sprintln("No entry for", portId.GoUuid,
-					"in Port Table"))
-				continue
-			}
-			ip := port.Fields["ip4_address"]
-			utils.Logger.Info("Ip address for the port is " + ip.(string))
-					}
+			mgr.logger.Info(fmt.Sprintln("entity:", entity, "params:", params))
+			updatefunc(entity, data, params)
+			/*
+						if value.Fields["from"] == "connected" {
+				utils.Logger.Info(fmt.Sprintln("Key:", key))
+				utils.Logger.Info(fmt.Sprintln("Value:", value))
+				nhId, ok = value.Fields["nexthops"].(libovsdb.UUID)
+				if !ok {
+					utils.Logger.Err(fmt.Sprintln("No next hop configured for",
+						value.Fields["prefix"]))
+					continue
+				}
+				utils.Logger.Info("nh uuid: " + nhId.GoUuid)
+				nhs, exists := mgr.dbmgr.cache["Nexthop"]
+				if len(nhs) < 1 {
+					utils.Logger.Err(fmt.Sprintln("No next hop configured for",
+						value.Fields["prefix"]))
+					continue
+				}
+				utils.Logger.Info(fmt.Sprintln("nhs:", nhs))
+				nh, exists := nhs[nhId.GoUuid]
+				utils.Logger.Info(fmt.Sprintln("nh:", nh))
+				if !exists {
+					utils.Logger.Err(fmt.Sprintln("No next hop configured for",
+						value.Fields["prefix"]))
+					continue
+				}
+				portId, ok := nh.Fields["ports"].(libovsdb.UUID)
+				if !ok {
+					utils.Logger.Err(fmt.Sprintln("No port information for",
+						value.Fields["prefix"]))
+					continue
+				}
+				utils.Logger.Info(fmt.Sprintln("PortID information is", portId.GoUuid))
+				ports, exists := mgr.dbmgr.cache["Port"]
+				if len(ports) < 1 {
+					utils.Logger.Err(fmt.Sprintln("No entry for", portId.GoUuid,
+						"in Port Table"))
+					continue
+				}
+				port, exists := ports[portId.GoUuid]
+				if !exists {
+					utils.Logger.Err(fmt.Sprintln("No entry for", portId.GoUuid,
+						"in Port Table"))
+					continue
+				}
+				ip := port.Fields["ip4_address"]
+				utils.Logger.Info("Ip address for the port is " + ip.(string))
+						}
 		*/
 	}
 

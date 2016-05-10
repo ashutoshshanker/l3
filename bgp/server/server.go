@@ -882,6 +882,7 @@ func (server *BGPServer) constructBGPGlobalState(gConf *config.GlobalConfig) {
 
 func (server *BGPServer) listenChannelUpdates() {
 	for {
+		server.logger.Info("#################LISTENER STARTED############")
 		select {
 		case gConf := <-server.GlobalConfigCh:
 			for peerIP, peer := range server.PeerMap {

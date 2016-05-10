@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"l3/bgp/config"
 	"sync"
 )
@@ -57,8 +58,10 @@ func SendIntfNotification(ifIndex int32, ipAddr string, state config.Operation) 
 /*  Send Routes information to server
  */
 func SendRouteNotification(add []*config.RouteInfo, remove []*config.RouteInfo) {
+	fmt.Println("api received send notificiation", add)
 	bgpapi.routeCh <- &config.RouteCh{
 		Add:    add,
 		Remove: remove,
 	}
+	fmt.Println("api send the notification successfully")
 }
