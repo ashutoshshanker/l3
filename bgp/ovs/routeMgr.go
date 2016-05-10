@@ -10,10 +10,18 @@ import (
 	"net"
 	"strings"
 	"utils/logging"
+	"utils/netUtils"
 	"utils/patriciaDB"
 	"utils/policy"
 	"utils/policy/policyCommonDefs"
 )
+
+type PolicyInfo struct {
+	protocol   string
+	policyName string
+	action     string
+	conditions []*config.ConditionInfo
+}
 
 func (mgr *OvsRouteMgr) hackPolicyDB() {
 	cfg := policy.PolicyStmtConfig{
@@ -41,9 +49,8 @@ func (mgr *OvsRouteMgr) hackPolicyDB() {
 
 func (mgr *OvsRouteMgr) initializePolicy() {
 	mgr.PolicyEngineDB = policy.NewPolicyEngineDB(mgr.logger)
-	mgr.redistributeFunc = mgr.SendRoute
 	mgr.PolicyEngineDB.SetActionFunc(policyCommonDefs.PolicyActionTypeRouteRedistribute,
-		mgr.redistributeFunc)
+		mgr.SendRoute)
 	mgr.PolicyEngineDB.SetTraverseAndApplyPolicyFunc(mgr.TraverseAndApply)
 
 	mgr.hackPolicyDB()
@@ -59,10 +66,6 @@ func NewOvsRouteMgr(logger *logging.Writer, db *BGPOvsdbHandler) *OvsRouteMgr {
 	}
 
 	return mgr
-}
-
-func (mgr *OvsRouteMgr) Start() {
-	mgr.initializePolicy()
 }
 
 /*  This is global next hop not bgp nexthop table
@@ -154,8 +157,15 @@ func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, erro
 	return reachInfo, nil
 }
 
-func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policyName string, action string,
-	conditions []*config.ConditionInfo) {
+/*  When server call ApplyPolicy it will be pushed on the applypolicy ch and then the channel
+ *  handler will call this api with the information passed on by server...
+ *  In Ovsdb this is needed to avoid deadlock with bgp/server, as ApplyPolicy is a function call
+ */
+func (mgr *OvsRouteMgr) applyPolicy(info PolicyInfo) {
+	protocol := info.protocol
+	policyName := info.policyName
+	action := info.action
+	conditions := info.conditions
 	mgr.logger.Info(fmt.Sprintln("OVS Route Manager Apply Policy Called:", protocol,
 		policyName, action, conditions))
 	policyDB := mgr.PolicyEngineDB.PolicyDB
@@ -179,6 +189,12 @@ func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policyName string, action s
 		conditions))
 	mgr.PolicyEngineDB.UpdateApplyPolicy(policy.ApplyPolicyInfo{node, policyAction,
 		conditionNameList}, true)
+
+}
+
+func (mgr *OvsRouteMgr) ApplyPolicy(protocol string, policyName string, action string,
+	conditions []*config.ConditionInfo) {
+	mgr.applyPolicyCh <- PolicyInfo{protocol, policyName, action, conditions}
 	return
 }
 
@@ -202,11 +218,7 @@ func (mgr *OvsRouteMgr) SendRoute(actionInfo interface{}, conditionInfo []interf
 
 	param := params.(policy.PolicyEngineFilterEntityParams)
 	ip, ipnet, _ := net.ParseCIDR(param.DestNetIp)
-	p4 := ipnet.Mask
-	mask := uitoa(uint(p4[0])) + "." +
-		uitoa(uint(p4[1])) + "." +
-		uitoa(uint(p4[2])) + "." +
-		uitoa(uint(p4[3]))
+	mask := netUtils.GetIPv4Mask(ipnet.Mask)
 	route := &config.RouteInfo{
 		Ipaddr:    ip.String(),
 		Mask:      mask,
@@ -241,18 +253,6 @@ type RouteInfo struct {
 }
 */
 
-func uitoa(val uint) string {
-	var buf [32]byte // big enough for int64
-	i := len(buf) - 1
-	for val >= 10 {
-		buf[i] = byte(val%10 + '0')
-		i--
-		val /= 10
-	}
-	buf[i] = byte(val + '0')
-	return string(buf[i:])
-}
-
 func (mgr *OvsRouteMgr) TraverseAndApply(data interface{}, updatefunc policy.PolicyApplyfunc) {
 	mgr.logger.Info("Traverse route")
 
@@ -274,68 +274,20 @@ func (mgr *OvsRouteMgr) TraverseAndApply(data interface{}, updatefunc policy.Pol
 		entity.NextHopIp = "0.0.0.0"
 		mgr.logger.Info(fmt.Sprintln("entity:", entity, "params:", entity))
 		updatefunc(entity, data, entity)
-		/*
-			ip, ipnet, _ := net.ParseCIDR(dstIp)
-			p4 := ipnet.Mask
-			mask := uitoa(uint(p4[0])) + "." +
-				uitoa(uint(p4[1])) + "." +
-				uitoa(uint(p4[2])) + "." +
-				uitoa(uint(p4[3]))
-			params := config.RouteInfo{
-				Ipaddr:    ip.String(),
-				Mask:      mask,
-				NextHopIp: entity.NextHopIp,
-			}
-			mgr.logger.Info(fmt.Sprintln("entity:", entity, "params:", params))
-			updatefunc(entity, data, params)
-			/*
-						if value.Fields["from"] == "connected" {
-				utils.Logger.Info(fmt.Sprintln("Key:", key))
-				utils.Logger.Info(fmt.Sprintln("Value:", value))
-				nhId, ok = value.Fields["nexthops"].(libovsdb.UUID)
-				if !ok {
-					utils.Logger.Err(fmt.Sprintln("No next hop configured for",
-						value.Fields["prefix"]))
-					continue
-				}
-				utils.Logger.Info("nh uuid: " + nhId.GoUuid)
-				nhs, exists := mgr.dbmgr.cache["Nexthop"]
-				if len(nhs) < 1 {
-					utils.Logger.Err(fmt.Sprintln("No next hop configured for",
-						value.Fields["prefix"]))
-					continue
-				}
-				utils.Logger.Info(fmt.Sprintln("nhs:", nhs))
-				nh, exists := nhs[nhId.GoUuid]
-				utils.Logger.Info(fmt.Sprintln("nh:", nh))
-				if !exists {
-					utils.Logger.Err(fmt.Sprintln("No next hop configured for",
-						value.Fields["prefix"]))
-					continue
-				}
-				portId, ok := nh.Fields["ports"].(libovsdb.UUID)
-				if !ok {
-					utils.Logger.Err(fmt.Sprintln("No port information for",
-						value.Fields["prefix"]))
-					continue
-				}
-				utils.Logger.Info(fmt.Sprintln("PortID information is", portId.GoUuid))
-				ports, exists := mgr.dbmgr.cache["Port"]
-				if len(ports) < 1 {
-					utils.Logger.Err(fmt.Sprintln("No entry for", portId.GoUuid,
-						"in Port Table"))
-					continue
-				}
-				port, exists := ports[portId.GoUuid]
-				if !exists {
-					utils.Logger.Err(fmt.Sprintln("No entry for", portId.GoUuid,
-						"in Port Table"))
-					continue
-				}
-				ip := port.Fields["ip4_address"]
-				utils.Logger.Info("Ip address for the port is " + ip.(string))
-						}
-		*/
 	}
+}
 
+func (mgr *OvsRouteMgr) Start() {
+	mgr.initializePolicy()
+	mgr.applyPolicyCh = make(chan PolicyInfo)
+	go mgr.channelHandler()
+}
+
+func (mgr *OvsRouteMgr) channelHandler() {
+	for {
+		select {
+		case info := <-mgr.applyPolicyCh:
+			mgr.applyPolicy(info)
+		}
+	}
 }

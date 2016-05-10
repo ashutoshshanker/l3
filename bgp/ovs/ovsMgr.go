@@ -11,24 +11,19 @@ type OvsIntfMgr struct {
 }
 
 type OvsRouteMgr struct {
-	plugin           string
-	logger           *logging.Writer
-	dbmgr            *BGPOvsdbHandler
-	PolicyEngineDB   *policy.PolicyEngineDB
-	redistributeFunc policy.Policyfunc
+	dbmgr          *BGPOvsdbHandler
+	plugin         string
+	logger         *logging.Writer
+	applyPolicyCh  chan PolicyInfo
+	PolicyEngineDB *policy.PolicyEngineDB
 }
 
 type OvsPolicyMgr struct {
-	plugin    string
-	dbmgr     *BGPOvsdbHandler
-	ospf      chan bool
-	static    chan bool
-	connected chan bool
-	/*
-		ospf             bool
-		static           bool
-		connected        bool
-	*/
+	plugin           string
+	dbmgr            *BGPOvsdbHandler
+	ospf             chan bool
+	static           chan bool
+	connected        chan bool
 	redistributeLock sync.RWMutex
 }
 
