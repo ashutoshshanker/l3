@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"utils/logging"
+	"utils/netUtils"
 	utilspolicy "utils/policy"
 	"utils/policy/policyCommonDefs"
 )
@@ -51,6 +52,7 @@ type PolicyParams struct {
 type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
+	listener         *net.TCPListener
 	BgpConfig        config.Bgp
 	GlobalConfigCh   chan config.GlobalConfig
 	AddPeerCh        chan PeerUpdate
@@ -135,19 +137,26 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	return bgpServer
 }
 
-func (server *BGPServer) listenForPeers(acceptCh chan *net.TCPConn) {
+func (server *BGPServer) createListener() (*net.TCPListener, error) {
+	proto := "tcp4"
 	addr := ":" + config.BGPPort
 	server.logger.Info(fmt.Sprintf("Listening for incomig connections on %s\n", addr))
-	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
+	tcpAddr, err := net.ResolveTCPAddr(proto, addr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("ResolveTCPAddr failed with", err))
+		return nil, err
 	}
 
-	listener, err := net.ListenTCP("tcp", tcpAddr)
+	listener, err := net.ListenTCP(proto, tcpAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("ListenTCP failed with", err))
+		return nil, err
 	}
 
+	return listener, nil
+}
+
+func (server *BGPServer) listenForPeers(listener *net.TCPListener, acceptCh chan *net.TCPConn) {
 	for {
 		server.logger.Info(fmt.Sprintln("Waiting for peer connections..."))
 		tcpConn, err := listener.AcceptTCP()
@@ -881,17 +890,19 @@ func (server *BGPServer) listenChannelUpdates() {
 			var ok bool
 			if oldPeer.NeighborAddress != nil {
 				if peer, ok = server.PeerMap[oldPeer.NeighborAddress.String()]; ok {
-					server.logger.Info(fmt.Sprintln("Clean up peer",
-						oldPeer.NeighborAddress.String()))
+					server.logger.Info(fmt.Sprintln("Clean up peer", oldPeer.NeighborAddress.String()))
 					peer.Cleanup()
-					server.ProcessRemoveNeighbor(oldPeer.NeighborAddress.String(),
-						peer)
+					server.ProcessRemoveNeighbor(oldPeer.NeighborAddress.String(), peer)
+					err := netUtils.SetTCPListenerMD5(server.listener, oldPeer.NeighborAddress.String(), "")
+					if err != nil {
+						server.logger.Info(fmt.Sprintln("Failed to add MD5 authentication for old neighbor",
+							newPeer.NeighborAddress.String(), "with error", err))
+					}
 					peer.UpdateNeighborConf(newPeer, &server.BgpConfig)
 
 					runtime.Gosched()
 				} else {
-					server.logger.Info(fmt.Sprintln(
-						"Can't find neighbor with old address",
+					server.logger.Info(fmt.Sprintln("Can't find neighbor with old address",
 						oldPeer.NeighborAddress.String()))
 				}
 			}
@@ -909,19 +920,20 @@ func (server *BGPServer) listenChannelUpdates() {
 				if newPeer.PeerGroup != "" {
 					if group, ok :=
 						server.BgpConfig.PeerGroups[newPeer.PeerGroup]; !ok {
-						server.logger.Info(fmt.Sprintln("Peer group",
-							newPeer.PeerGroup,
-							"not created yet, creating peer",
-							newPeer.NeighborAddress.String(),
-							"without the group"))
+						server.logger.Info(fmt.Sprintln("Peer group", newPeer.PeerGroup,
+							"not created yet, creating peer", newPeer.NeighborAddress.String(), "without the group"))
 					} else {
 						groupConfig = &group.Config
 					}
 				}
-				server.logger.Info(fmt.Sprintln("Add neighbor, ip:",
-					newPeer.NeighborAddress.String()))
-				peer = NewPeer(server, &server.BgpConfig.Global.Config,
-					groupConfig, newPeer)
+				server.logger.Info(fmt.Sprintln("Add neighbor, ip:", newPeer.NeighborAddress.String()))
+				peer = NewPeer(server, &server.BgpConfig.Global.Config, groupConfig, newPeer)
+				err := netUtils.SetTCPListenerMD5(server.listener, newPeer.NeighborAddress.String(),
+					peer.NeighborConf.RunningConf.AuthPassword)
+				if err != nil {
+					server.logger.Info(fmt.Sprintln("Failed to add MD5 authentication for neighbor",
+						newPeer.NeighborAddress.String(), "with error", err))
+				}
 				server.PeerMap[newPeer.NeighborAddress.String()] = peer
 				server.NeighborMutex.Lock()
 				server.addPeerToList(peer)
@@ -1153,7 +1165,8 @@ func (server *BGPServer) StartServer() {
 	// Channel for handling route notifications
 	server.routesCh = make(chan *config.RouteCh)
 
-	go server.listenForPeers(server.acceptCh)
+	server.listener, _ = server.createListener()
+	go server.listenForPeers(server.listener, server.acceptCh)
 
 	server.logger.Info("Start all managers and initialize API Layer")
 	api.Init(server.bfdCh, server.intfCh, server.routesCh)

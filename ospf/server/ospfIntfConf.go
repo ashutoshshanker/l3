@@ -101,10 +101,10 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 	switch ifType {
 	case numberedP2P:
 		intfType = config.NumberedP2P
-		server.logger.Info("Creating point2point")
+		server.logger.Info("Creating numbered point2point")
 	case unnumberedP2P:
 		intfType = config.UnnumberedP2P
-		server.logger.Info("Creating point2point")
+		server.logger.Info("Creating unnumbered point2point")
 	default:
 		intfType = config.Broadcast
 		server.logger.Info("Creating broadcast")
