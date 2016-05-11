@@ -22,6 +22,7 @@ func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribdInt.PolicyAction
 	logger.Info(fmt.Sprintln("UpdatePolicyAction"))
 	return true, err
 }
+
 /*func (m RIBDServicesHandler) GetPolicyActionState(name string) (*ribdInt.PolicyActionState, error) {
 	logger.Info("Get state for Policy Action")
 	retState := ribd.NewPolicyActionState()

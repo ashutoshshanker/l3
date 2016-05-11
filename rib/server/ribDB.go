@@ -15,7 +15,7 @@ func (ribdServiceHandler *RIBDServer) UpdateRoutesFromDB() (err error) {
 		var dbObjCfg models.IPv4Route
 		objList, err := dbHdl.GetAllObjFromDb(dbObjCfg)
 		if err == nil {
-		    logger.Info(fmt.Sprintln("Number of routes from DB: ", len((objList))))
+			logger.Info(fmt.Sprintln("Number of routes from DB: ", len((objList))))
 			for idx := 0; idx < len(objList); idx++ {
 				obj := ribd.NewIPv4Route()
 				dbObj := objList[idx].(models.IPv4Route)
@@ -46,7 +46,7 @@ func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyConditionsFromDB(dbHdl *
 				obj := ribd.NewPolicyCondition()
 				dbObj := objList[idx].(models.PolicyCondition)
 				models.ConvertribdPolicyConditionObjToThrift(&dbObj, obj)
-	             ribdServiceHandler.PolicyConditionCreateConfCh <- obj
+				ribdServiceHandler.PolicyConditionCreateConfCh <- obj
 				/*rv, _ := ribdServiceHandler.ProcessPolicyConditionConfigCreate(obj,GlobalPolicyEngineDB)
 				if rv == false {
 					logger.Err("PolicyCondition create failed during init")
@@ -116,7 +116,7 @@ func (ribdServiceHandler *RIBDServer) UpdatePolicyObjectsFromDB() { //(paramsDir
 	ribdServiceHandler.UpdateGlobalPolicyConditionsFromDB(dbHdl) //paramsDir, dbHdl)
 	ribdServiceHandler.UpdateGlobalPolicyStmtsFromDB(dbHdl)
 	ribdServiceHandler.UpdateGlobalPolicyFromDB(dbHdl)
-    //local route policies
+	//local route policies
 	ribdServiceHandler.UpdateRoutePolicyConditionsFromDB(dbHdl) //paramsDir, dbHdl)
 	ribdServiceHandler.UpdateRoutePolicyStmtsFromDB(dbHdl)
 	ribdServiceHandler.UpdateRoutePolicyFromDB(dbHdl)

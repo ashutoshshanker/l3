@@ -1,11 +1,11 @@
 package rpc
 
 import (
-        "fmt"
-        "arpd"
+	"arpd"
+	"fmt"
 )
 
 func (h *ARPHandler) DeleteArpConfig(conf *arpd.ArpConfig) (bool, error) {
-        h.logger.Info(fmt.Sprintln("Delete Arp config attrs:", conf))
-        return true, nil
+	h.logger.Info(fmt.Sprintln("Delete Arp config attrs:", conf))
+	return true, nil
 }

@@ -158,7 +158,6 @@ func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error
 		Metric:         int32(info.Metric),
 		NextHopIp:      info.NextHopIp,
 		IsReachable:    info.IsReachable,
-		NextHopIfType:  int32(info.NextHopIfType),
 		NextHopIfIndex: int32(info.NextHopIfIndex),
 	}
 	return reachInfo, err
@@ -166,20 +165,18 @@ func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error
 
 func (mgr *FSRouteMgr) createRibdIPv4RouteCfg(cfg *config.RouteConfig,
 	create bool) *ribd.IPv4Route {
-	nextHopIfTypeStr := ""
-	if create {
-		nextHopIfTypeStr, _ = ribdCommonDefs.GetNextHopIfTypeStr(
-			ribdInt.Int(cfg.IntfType))
-	}
 	rCfg := ribd.IPv4Route{
 		Cost:              cfg.Cost,
 		Protocol:          cfg.Protocol,
-		NextHopIp:         cfg.NextHopIp,
 		NetworkMask:       cfg.NetworkMask,
 		DestinationNw:     cfg.DestinationNw,
-		OutgoingIntfType:  nextHopIfTypeStr,
-		OutgoingInterface: cfg.OutgoingInterface,
 	}
+	nextHop := ribd.NextHopInfo { 
+		NextHopIp : cfg.NextHopIp,
+		NextHopIntRef:cfg.OutgoingInterface,
+	}
+	rCfg.NextHop = make([]*ribd.NextHopInfo,0)
+	rCfg.NextHop = append(rCfg.NextHop,&nextHop)
 	return &rCfg
 }
 

@@ -2,20 +2,20 @@
 package server
 
 import (
-	"asicd/asicdCommonDefs"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/op/go-nanomsg"
 	"l3/rib/ribdCommonDefs"
+	"models"
 	"net"
+	"reflect"
 	"ribd"
 	"ribdInt"
 	"sort"
 	"strconv"
 	"strings"
-	"utils/commonDefs"
 	"utils/netUtils"
 	"utils/patriciaDB"
 	"utils/policy"
@@ -30,8 +30,8 @@ type RedistributeRouteInfo struct {
 	route ribdInt.Routes
 }
 type RedistributionPolicyInfo struct {
-	policy      string
-	policyStmt  string
+	policy     string
+	policyStmt string
 }
 type PublisherMapInfo struct {
 	pub_ipc    string
@@ -139,7 +139,98 @@ func BuildProtocolAdminDistanceSlice() {
 	}
 	sort.Sort(ProtocolAdminDistanceSlice)
 }
-
+func (m RIBDServer) ConvertIntfStrToIfIndexStr(intfString string) (ifIndex string, err error) {
+	if val, err := strconv.Atoi(intfString); err == nil {
+		//Verify ifIndex is valid
+		logger.Info(fmt.Sprintln("IfIndex = ", val))
+		_, ok := IntfIdNameMap[int32(val)]
+		if !ok {
+			logger.Err(fmt.Sprintln("Cannot create ip route on a unknown L3 interface"))
+			return ifIndex, errors.New("Cannot create ip route on a unknown L3 interface")
+		}
+		ifIndex = intfString
+	} else {
+		//Verify ifName is valid
+		if _, ok := IfNameToIfIndex[intfString]; !ok {
+			return ifIndex, errors.New("Invalid ifName value")
+		}
+		ifIndex = strconv.Itoa(int(IfNameToIfIndex[intfString]))
+	}
+	return ifIndex, nil
+}
+func (m RIBDServer) RouteConfigValidationCheckForUpdate(cfg *ribd.IPv4Route, attrset []bool) (err error) {
+	logger.Info(fmt.Sprintln("RouteConfigValidationCheckForUpdate"))
+	isCidr := strings.Contains(cfg.DestinationNw, "/")
+	if isCidr { //the given address is in CIDR format
+		ip, ipNet, err := net.ParseCIDR(cfg.DestinationNw)
+		if err != nil {
+			logger.Err(fmt.Sprintln("Invalid Destination IP address"))
+			return errors.New("Invalid Desitnation IP address")
+		}
+		_, err = getNetworkPrefixFromCIDR(cfg.DestinationNw)
+		if err != nil {
+			return errors.New("Invalid destination ip/network Mask")
+		}
+		cfg.DestinationNw = ip.String()
+		ipMask := make(net.IP, 4)
+		copy(ipMask, ipNet.Mask)
+		ipMaskStr := net.IP(ipMask).String()
+		cfg.NetworkMask = ipMaskStr
+		/*
+			In case where user provides CIDR address, the DB cannot verify if the route is present, so check here
+		*/
+		if m.DbHdl != nil {
+			var dbObjCfg models.IPv4Route
+			dbObjCfg.DestinationNw = cfg.DestinationNw
+			dbObjCfg.NetworkMask = cfg.NetworkMask
+			key := "IPv4Route#" + cfg.DestinationNw + "#" + cfg.NetworkMask
+			_, err := m.DbHdl.GetObjectFromDb(dbObjCfg, key)
+			if err == nil {
+				logger.Err("Duplicate entry")
+				return errors.New("Duplicate entry")
+			}
+		}
+	}
+	destNet, err := getNetowrkPrefixFromStrings(cfg.DestinationNw, cfg.NetworkMask)
+	if err != nil {
+		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
+		return errors.New("Invalid destination ip address")
+	}
+	ok := RouteInfoMap.Match(destNet)
+	if !ok {
+		err = errors.New("No route found")
+		return err
+	}
+	if attrset != nil {
+		logger.Info("attr set not nil, set individual attributes")
+		objTyp := reflect.TypeOf(*cfg)
+		for i := 0; i < objTyp.NumField(); i++ {
+			objName := objTyp.Field(i).Name
+			if attrset[i] {
+				logger.Info(fmt.Sprintf("ProcessRouteUpdateConfig (server): changed ", objName))
+				if objName == "NextHop" {
+					if len(cfg.NextHop) == 0 {
+						logger.Err("Must specify next hop")
+						return errors.New("Next hop ip not specified")
+					}
+					_, err = getIP(cfg.NextHop[0].NextHopIp)
+					if err != nil {
+						logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
+						return errors.New("Invalid next hop ip address")
+					}
+					logger.Info(fmt.Sprintln("IntRef before : ", cfg.NextHop[0].NextHopIntRef))
+					cfg.NextHop[0].NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(cfg.NextHop[0].NextHopIntRef)
+					if err != nil {
+						logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", cfg.NextHop[0].NextHopIntRef))
+						return err
+					}
+					logger.Info(fmt.Sprintln("IntRef after : ", cfg.NextHop[0].NextHopIntRef))
+				}
+			}
+		}
+	}
+	return nil
+}
 func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (err error) {
 	logger.Info(fmt.Sprintln("RouteConfigValidationCheck"))
 	if op == "add" {
@@ -149,29 +240,20 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
 			err = errors.New("Invalid route protocol type")
 			return err
 		}
-		var nextHopIfType int
-		var nextHopIf int
-		if cfg.OutgoingIntfType == "VLAN" {
-			nextHopIfType = commonDefs.IfTypeVlan
-		} else if cfg.OutgoingIntfType == "PHY" {
-			nextHopIfType = commonDefs.IfTypePort
-		} else if cfg.OutgoingIntfType == "NULL" {
-			nextHopIfType = commonDefs.IfTypeNull
-		} else if cfg.OutgoingIntfType == "Loopback" {
-			nextHopIfType = commonDefs.IfTypeLoopback
-		}
-		nextHopIf, _ = strconv.Atoi(cfg.OutgoingInterface)
-		ifId := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(nextHopIf, nextHopIfType)
-		logger.Info(fmt.Sprintln("IfId = ", ifId))
-		_, ok = IntfIdNameMap[ifId]
-		if !ok {
-			logger.Err(fmt.Sprintln("Cannot create ip route on a unknown L3 interface"))
-			return errors.New("Cannot create ip route on a unknown L3 interface")
-		}
-		_, err = getIP(cfg.NextHopIp)
-		if err != nil {
-			logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
-			return errors.New("Invalid next hop ip address")
+		logger.Info(fmt.Sprintln("Number of nexthops = ", len(cfg.NextHop)))
+		for i := 0; i < len(cfg.NextHop); i++ {
+			_, err = getIP(cfg.NextHop[0].NextHopIp)
+			if err != nil {
+				logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
+				return errors.New("Invalid next hop ip address")
+			}
+			logger.Info(fmt.Sprintln("IntRef before : ", cfg.NextHop[i].NextHopIntRef))
+			cfg.NextHop[i].NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(cfg.NextHop[i].NextHopIntRef)
+			if err != nil {
+				logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", cfg.NextHop[i].NextHopIntRef))
+				return err
+			}
+			logger.Info(fmt.Sprintln("IntRef after : ", cfg.NextHop[i].NextHopIntRef))
 		}
 	}
 	isCidr := strings.Contains(cfg.DestinationNw, "/")
@@ -190,13 +272,27 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
 		copy(ipMask, ipNet.Mask)
 		ipMaskStr := net.IP(ipMask).String()
 		cfg.NetworkMask = ipMaskStr
+		/*
+			In case where user provides CIDR address, the DB cannot verify if the route is present, so check here
+		*/
+		if m.DbHdl != nil {
+			var dbObjCfg models.IPv4Route
+			dbObjCfg.DestinationNw = cfg.DestinationNw
+			dbObjCfg.NetworkMask = cfg.NetworkMask
+			key := "IPv4Route#" + cfg.DestinationNw + "#" + cfg.NetworkMask
+			_, err := m.DbHdl.GetObjectFromDb(dbObjCfg, key)
+			if err == nil {
+				logger.Err("Duplicate entry")
+				return errors.New("Duplicate entry")
+			}
+		}
 	}
 	destNet, err := getNetowrkPrefixFromStrings(cfg.DestinationNw, cfg.NetworkMask)
 	if err != nil {
 		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
 		return errors.New("Invalid destination ip address")
 	}
-	if op == "del" || op == "update" {
+	if op == "del" {
 		ok := RouteInfoMap.Match(destNet)
 		if !ok {
 			err = errors.New("No route found")
@@ -282,9 +378,45 @@ func BuildRouteParamsFromRouteInoRecord(routeInfoRecord RouteInfoRecord) RoutePa
 	params.networkMask = routeInfoRecord.networkMask.String()
 	params.metric = routeInfoRecord.metric
 	params.nextHopIp = routeInfoRecord.nextHopIp.String()
-	params.nextHopIfType = ribd.Int(routeInfoRecord.nextHopIfType)
 	params.nextHopIfIndex = routeInfoRecord.nextHopIfIndex
-    return params
+	return params
+}
+func BuildRouteParamsFromribdIPv4Route(cfg *ribd.IPv4Route, createType int, deleteType int, sliceIdx int) RouteParams {
+	nextHopIp := cfg.NextHop[0].NextHopIp
+	if cfg.NullRoute == true { //commonDefs.IfTypeNull {
+		logger.Info("null route create request")
+		nextHopIp = "255.255.255.255"
+	}
+	nextHopIntRef, _ := strconv.Atoi(cfg.NextHop[0].NextHopIntRef)
+	params := RouteParams{destNetIp: cfg.DestinationNw,
+		networkMask:    cfg.NetworkMask,
+		nextHopIp:      nextHopIp,
+		nextHopIfIndex: ribd.Int(nextHopIntRef),
+		weight:         ribd.Int(cfg.NextHop[0].Weight),
+		metric:         ribd.Int(cfg.Cost),
+		routeType:      ribd.Int(RouteProtocolTypeMapDB[cfg.Protocol]),
+		sliceIdx:       ribd.Int(sliceIdx),
+		createType:     ribd.Int(createType),
+		deleteType:     ribd.Int(deleteType),
+	}
+	return params
+}
+func BuildPolicyRouteFromribdIPv4Route(cfg *ribd.IPv4Route) (policyRoute ribdInt.Routes) {
+	nextHopIp := cfg.NextHop[0].NextHopIp
+	if cfg.NullRoute == true { //commonDefs.IfTypeNull {
+		logger.Info("null route create request")
+		nextHopIp = "255.255.255.255"
+	}
+	nextHopIntRef, _ := strconv.Atoi(cfg.NextHop[0].NextHopIntRef)
+	policyRoute = ribdInt.Routes{Ipaddr: cfg.DestinationNw,
+		Mask:      cfg.NetworkMask,
+		NextHopIp: nextHopIp,
+		IfIndex:   ribdInt.Int(nextHopIntRef), //cfg.NextHopInfp[0].NextHopIntRef,
+		Weight:    ribdInt.Int(cfg.NextHop[0].Weight),
+		Metric:    ribdInt.Int(cfg.Cost),
+		Prototype: ribdInt.Int(RouteProtocolTypeMapDB[cfg.Protocol]),
+	}
+	return policyRoute
 }
 func findRouteWithNextHop(routeInfoList []RouteInfoRecord, nextHopIP string) (found bool, routeInfoRecord RouteInfoRecord, index int) {
 	logger.Println("findRouteWithNextHop")
@@ -611,7 +743,7 @@ func RouteReachabilityStatusNotificationSend(targetProtocol string, info RouteRe
 	}
 	eventInfo := "Update Route Reachability status " + info.status + " for network " + info.destNet + " for protocol " + targetProtocol
 	if info.status == "Up" {
-		eventInfo = eventInfo + " NextHop IP: " + info.nextHopIntf.NextHopIp + " IfType/Index: " + strconv.Itoa(int(info.nextHopIntf.NextHopIfType)) + "/" + strconv.Itoa(int(info.nextHopIntf.NextHopIfIndex))
+		eventInfo = eventInfo + " NextHop IP: " + info.nextHopIntf.NextHopIp + " Index: " + strconv.Itoa(int(info.nextHopIntf.NextHopIfIndex))
 	}
 	logger.Info(fmt.Sprintln("Adding  NOTIFY_ROUTE_REACHABILITY_STATUS_UPDATE with status ", info.status, " for network ", info.destNet, " to notification channel"))
 	RouteServiceHandler.NotificationChannel <- NotificationMsg{PUB, buf, eventInfo}
