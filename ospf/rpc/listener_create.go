@@ -101,16 +101,6 @@ func (h *OSPFHandler) CreateOspfStubAreaEntry(ospfStubAreaConf *ospfd.OspfStubAr
 	return true, nil
 }
 
-func (h *OSPFHandler) CreateOspfAreaRangeEntry(ospfAreaRangeConf *ospfd.OspfAreaRangeEntry) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create address range config attrs:", ospfAreaRangeConf))
-	return true, nil
-}
-
-func (h *OSPFHandler) CreateOspfHostEntry(ospfHostConf *ospfd.OspfHostEntry) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create host config attrs:", ospfHostConf))
-	return true, nil
-}
-
 func (h *OSPFHandler) CreateOspfIfEntry(ospfIfConf *ospfd.OspfIfEntry) (bool, error) {
 	if ospfIfConf == nil {
 		err := errors.New("Invalid Interface Configuration")
@@ -134,12 +124,3 @@ func (h *OSPFHandler) CreateOspfVirtIfEntry(ospfVirtIfConf *ospfd.OspfVirtIfEntr
 	return true, nil
 }
 
-func (h *OSPFHandler) CreateOspfNbrEntry(ospfNbrConf *ospfd.OspfNbrEntry) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create Neighbor Config attrs:", ospfNbrConf))
-	return true, nil
-}
-
-func (h *OSPFHandler) CreateOspfAreaAggregateEntry(ospfAreaAggregateConf *ospfd.OspfAreaAggregateEntry) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create Area Agggregate Config attrs:", ospfAreaAggregateConf))
-	return true, nil
-}

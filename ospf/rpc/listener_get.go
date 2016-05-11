@@ -39,12 +39,6 @@ func (h *OSPFHandler) GetOspfAreaRangeEntryState(rangeAreaId string, areaRangeNe
 }
 */
 
-func (h *OSPFHandler) GetOspfHostEntryState(hostTOS int32, hostIpAddr string) (*ospfd.OspfHostEntryState, error) {
-	h.logger.Info(fmt.Sprintln("Get Host attrs"))
-	ospfHostResponse := ospfd.NewOspfHostEntryState()
-	return ospfHostResponse, nil
-}
-
 func (h *OSPFHandler) GetOspfIfEntryState(ifIpAddress string, addressLessIf int32) (*ospfd.OspfIfEntryState, error) {
 	h.logger.Info(fmt.Sprintln("Get Interface attrs"))
 	ospfIfResponse := ospfd.NewOspfIfEntryState()
@@ -77,12 +71,6 @@ func (h *OSPFHandler) GetOspfVirtNbrEntryState(virtNbrRtrId string, virtNbrArea 
 	return ospfVirtNbrResponse, nil
 }
 
-func (h *OSPFHandler) GetOspfExtLsdbEntryState(extLsdbType int32, extLsdbLsid string, extLsdbRouterId string) (*ospfd.OspfExtLsdbEntryState, error) {
-	h.logger.Info(fmt.Sprintln("Get External LSA Link State attrs"))
-	ospfExtLsdbResponse := ospfd.NewOspfExtLsdbEntryState()
-	return ospfExtLsdbResponse, nil
-}
-
 /*
 func (h *OSPFHandler) GetOspfAreaAggregateState(areaAggregateAreaId string, areaAggregateLsdbType ospfd.LsaType, areaAggregateNet string, areaAggregateMask string) (*ospfd.OspfAreaAggregateState, error) {
     h.logger.Info(fmt.Sprintln("Get Area Aggregate State attrs"))
@@ -91,26 +79,9 @@ func (h *OSPFHandler) GetOspfAreaAggregateState(areaAggregateAreaId string, area
 }
 */
 
-func (h *OSPFHandler) GetOspfLocalLsdbEntryState(localLsdbAddressLessIf int32, localLsdbType int32, localLsdbIpAddress string, localLsdbRouterId string, localLsdbLsid string) (*ospfd.OspfLocalLsdbEntryState, error) {
-	h.logger.Info(fmt.Sprintln("Get Local Link State for non virtual links attrs"))
-	ospfLocalLsdbResponse := ospfd.NewOspfLocalLsdbEntryState()
-	return ospfLocalLsdbResponse, nil
-}
-
 func (h *OSPFHandler) GetOspfVirtLocalLsdbEntryState(virtLocalLsdbType int32, virtLocalLsdbNeighbor string, virtLocalLsdbLsid string, virtLocalLsdbTransitArea string, virtLocalLsdbRouterId string) (*ospfd.OspfVirtLocalLsdbEntryState, error) {
 	h.logger.Info(fmt.Sprintln("Get Local Link State for virtual links attrs"))
 	ospfVirtLocalLsdbResponse := ospfd.NewOspfVirtLocalLsdbEntryState()
 	return ospfVirtLocalLsdbResponse, nil
 }
 
-func (h *OSPFHandler) GetOspfAsLsdbEntryState(asLsdbType int32, asLsdbRouterId string, asLsdbLsid string) (*ospfd.OspfAsLsdbEntryState, error) {
-	h.logger.Info(fmt.Sprintln("Get Local Link State for AS attrs"))
-	ospfAsLsdbResponse := ospfd.NewOspfAsLsdbEntryState()
-	return ospfAsLsdbResponse, nil
-}
-
-func (h *OSPFHandler) GetOspfAreaLsaCountEntryState(areaLsaCountAreaId string, areaLsaCountLsaType int32) (*ospfd.OspfAreaLsaCountEntryState, error) {
-	h.logger.Info(fmt.Sprintln("Get Area LSA Counter"))
-	ospfAreaLsaCountResponse := ospfd.NewOspfAreaLsaCountEntryState()
-	return ospfAreaLsaCountResponse, nil
-}
