@@ -48,7 +48,7 @@ func main() {
 	// Start keepalive routine
 	go keepalive.InitKeepAlive("bfdd", fileName)
 
-	logger.Info(fmt.Sprintln("Starting Config listener..."))
+	logger.Info("Starting Config listener...")
 	confIface := rpc.NewBFDHandler(logger, bfdServer)
 	// Read BFD configurations already present in DB
 	confIface.ReadConfigFromDB(dbHdl)

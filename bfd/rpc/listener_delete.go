@@ -21,7 +21,8 @@ func (h *BFDHandler) SendBfdSessionDeleteConfig(bfdSessionConfig *bfdd.BfdSessio
 
 func (h *BFDHandler) DeleteBfdGlobal(bfdGlobalConf *bfdd.BfdGlobal) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Delete global config attrs:", bfdGlobalConf))
-	return true, nil
+	err := errors.New("BFD Global config delete not supported")
+	return false, err
 }
 
 func (h *BFDHandler) DeleteBfdSession(bfdSessionConf *bfdd.BfdSession) (bool, error) {
