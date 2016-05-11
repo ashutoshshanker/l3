@@ -2,13 +2,13 @@ package relayServer
 
 import (
 	"dhcprelayd"
-	"github.com/garyburd/redigo/redis"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"golang.org/x/net/ipv4"
 	"net"
 	"sync"
 	"time"
+	"utils/dbutils"
 	"utils/logging"
 )
 
@@ -83,7 +83,7 @@ var (
 	dhcprelayClientConn               *ipv4.PacketConn
 	dhcprelayServerConn               *ipv4.PacketConn
 	logger                            *logging.Writer
-	dhcprelayDbHdl                    redis.Conn
+	dhcprelayDbHdl                    *dbutils.DBUtil
 	paramsDir                         string
 	dhcprelayEnabledIntfRefCount      int
 	dhcprelayRefCountMutex            *sync.RWMutex
