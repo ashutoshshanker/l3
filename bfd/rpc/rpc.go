@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
-	"ribd"
 	"strconv"
-	"time"
 	"utils/logging"
 )
 
@@ -60,48 +58,4 @@ func StartServer(logger *logging.Writer, handler *BFDHandler, fileName string) {
 	}
 	logger.Info(fmt.Sprintln("Started the listener successfully"))
 	return
-}
-
-func createClientIPCHandles(logger *logging.Writer, port string) (thrift.TTransport, thrift.TProtocolFactory, error) {
-	var clientTransport thrift.TTransport
-
-	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
-	transportFactory := thrift.NewTBufferedTransportFactory(8192)
-	clientTransport, err := thrift.NewTSocket("localhost:" + port)
-	if err != nil {
-		logger.Err(fmt.Sprintln("NewTSocket failed with error:", err))
-		return nil, nil, err
-	}
-
-	clientTransport = transportFactory.GetTransport(clientTransport)
-	err = clientTransport.Open()
-	return clientTransport, protocolFactory, err
-}
-
-func connectToClient(logger *logging.Writer, clientTransport thrift.TTransport) error {
-	return clientTransport.Open()
-}
-
-func StartClient(logger *logging.Writer, fileName string, ribdClient chan *ribd.RIBDServicesClient) {
-	clientJson, err := getClient(logger, fileName, "ribd")
-	if err != nil || clientJson == nil {
-		ribdClient <- nil
-		return
-	}
-
-	clientTransport, protocolFactory, err := createClientIPCHandles(logger, strconv.Itoa(clientJson.Port))
-	if err != nil {
-		logger.Info(fmt.Sprintf("Failed to connect to RIBd, retrying until connection is successful"))
-		ticker := time.NewTicker(time.Duration(1000) * time.Millisecond)
-		for _ = range ticker.C {
-			err = connectToClient(logger, clientTransport)
-			if err == nil {
-				ticker.Stop()
-				break
-			}
-		}
-	}
-
-	client := ribd.NewRIBDServicesClientFactory(clientTransport, protocolFactory)
-	ribdClient <- client
 }
