@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"bfdd"
+	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"l3/bfd/server"
 	"models"
@@ -36,7 +37,6 @@ func (h *BFDHandler) ReadGlobalConfigFromDB(dbHdl redis.Conn) error {
 			rv, _ := h.CreateBfdGlobal(obj)
 			if rv == false {
 				h.logger.Err("BfdGlobal create failed")
-				return nil
 			}
 		}
 	}
@@ -58,8 +58,7 @@ func (h *BFDHandler) ReadSessionParamConfigFromDB(dbHdl redis.Conn) error {
 			models.ConvertbfddBfdSessionParamObjToThrift(&dbObject, obj)
 			rv, _ := h.CreateBfdSessionParam(obj)
 			if rv == false {
-				h.logger.Err("BfdSessionParam create failed")
-				return nil
+				h.logger.Err(fmt.Sprintln("BfdSessionParam create failed for ", dbObject.Name))
 			}
 		}
 	}
@@ -81,8 +80,7 @@ func (h *BFDHandler) ReadSessionConfigFromDB(dbHdl redis.Conn) error {
 			models.ConvertbfddBfdSessionObjToThrift(&dbObject, obj)
 			rv, _ := h.CreateBfdSession(obj)
 			if rv == false {
-				h.logger.Err("BfdSession create failed")
-				return nil
+				h.logger.Err(fmt.Sprintln("BfdSession create failed for ", dbObject.IpAddr))
 			}
 		}
 	}
