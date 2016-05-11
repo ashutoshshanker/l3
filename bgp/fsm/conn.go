@@ -9,6 +9,7 @@ import (
 	"net"
 	"time"
 	"utils/logging"
+	"utils/netUtils"
 
 	"golang.org/x/net/ipv4"
 )
@@ -64,9 +65,37 @@ func (o *OutTCPConn) Connect(seconds uint32, addr string, connCh chan net.Conn, 
 		}
 	}
 
+	ip, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		errCh <- err
+		return
+	}
+
 	o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
 		"Connect called... calling DialTimeout with", seconds, "second timeout", "OutTCPCOnn id", o.id))
-	conn, err := net.DialTimeout("tcp", addr, time.Duration(seconds)*time.Second)
+	socket, err := netUtils.ConnectSocket("tcp", addr)
+	if err != nil {
+		errCh <- err
+		return
+	}
+
+	if o.fsm.pConf.AuthPassword != "" {
+		o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+			"Set MD5 option on the socket:", socket, "password:", o.fsm.pConf.AuthPassword))
+		err = netUtils.SetSockoptTCPMD5(socket, ip, o.fsm.pConf.AuthPassword)
+		if err != nil {
+			errCh <- err
+			return
+		}
+	}
+
+	err = netUtils.Connect(socket, "tcp", addr, time.Duration(seconds)*time.Second)
+	if err != nil {
+		errCh <- err
+		return
+	}
+
+	conn, err := netUtils.ConvertFdToConn(socket)
 	if err != nil {
 		errCh <- err
 	} else {
