@@ -248,6 +248,7 @@ func (server *ARPServer) InitServer(paramDir string) {
 	go server.updateArpCache()
 	go server.refreshArpSlice()
 	server.processArpInfra()
+	server.FlushLinuxArpCache()
 	go server.arpCacheTimeout()
 }
 
