@@ -382,7 +382,7 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) error {
 	}
 	ent, exist := server.IntfConfMap[intfConfKey]
 	if !exist {
-		server.logger.Err("No such L3 interface exists")
+		server.logger.Err(fmt.Sprintln("No such L3 interface exists ", intfConfKey.IPAddr, intfConfKey.IntfIdx))
 		err := errors.New("No such L3 interface exists")
 		return err
 	}

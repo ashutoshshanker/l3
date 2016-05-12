@@ -50,18 +50,10 @@ func (server *OSPFServer) readGlobalConfFromDB() {
 func (server *OSPFServer) applyOspfGlobalConf(conf *ospfd.OspfGlobal) error {
 	gConf := config.GlobalConf{
 		RouterId:                 config.RouterId(conf.RouterId),
-		AdminStat:                config.Status(conf.AdminStat),
 		ASBdrRtrStatus:           conf.ASBdrRtrStatus,
 		TOSSupport:               conf.TOSSupport,
-		ExtLsdbLimit:             conf.ExtLsdbLimit,
-		MulticastExtensions:      conf.MulticastExtensions,
-		ExitOverflowInterval:     config.PositiveInteger(conf.ExitOverflowInterval),
-		RFC1583Compatibility:     conf.RFC1583Compatibility,
-		ReferenceBandwidth:       conf.ReferenceBandwidth,
 		RestartSupport:           config.RestartSupport(conf.RestartSupport),
 		RestartInterval:          conf.RestartInterval,
-		RestartStrictLsaChecking: conf.RestartStrictLsaChecking,
-		StubRouterAdvertisement:  config.AdvertiseAction(conf.StubRouterAdvertisement),
 	}
 	err := server.processGlobalConfig(gConf)
 	if err != nil {
@@ -100,7 +92,6 @@ func (server *OSPFServer) applyOspfAreaConf(conf *ospfd.OspfAreaEntry) error {
 		ImportAsExtern:                      config.ImportAsExtern(conf.ImportAsExtern),
 		AreaSummary:                         config.AreaSummary(conf.AreaSummary),
 		AreaNssaTranslatorRole:              config.NssaTranslatorRole(conf.AreaNssaTranslatorRole),
-		AreaNssaTranslatorStabilityInterval: config.PositiveInteger(conf.AreaNssaTranslatorStabilityInterval),
 	}
 	err := server.processAreaConfig(aConf)
 	if err != nil {
@@ -137,7 +128,6 @@ func (server *OSPFServer) applyOspfIntfConf(conf *ospfd.OspfIfEntry) error {
 		AddressLessIf:         config.InterfaceIndexOrZero(conf.AddressLessIf),
 		IfAreaId:              config.AreaId(conf.IfAreaId),
 		IfType:                config.IfType(conf.IfType),
-		IfAdminStat:           config.Status(conf.IfAdminStat),
 		IfRtrPriority:         config.DesignatedRouterPriority(conf.IfRtrPriority),
 		IfTransitDelay:        config.UpToMaxAge(conf.IfTransitDelay),
 		IfRetransInterval:     config.UpToMaxAge(conf.IfRetransInterval),
@@ -145,8 +135,6 @@ func (server *OSPFServer) applyOspfIntfConf(conf *ospfd.OspfIfEntry) error {
 		IfRtrDeadInterval:     config.PositiveInteger(conf.IfRtrDeadInterval),
 		IfPollInterval:        config.PositiveInteger(conf.IfPollInterval),
 		IfAuthKey:             conf.IfAuthKey,
-		IfMulticastForwarding: config.MulticastForwarding(conf.IfMulticastForwarding),
-		IfDemand:              conf.IfDemand,
 		IfAuthType:            config.AuthType(conf.IfAuthType),
 	}
 

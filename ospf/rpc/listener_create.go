@@ -13,18 +13,10 @@ import (
 func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) error {
 	gConf := config.GlobalConf{
 		RouterId:                 config.RouterId(ospfGlobalConf.RouterId),
-		AdminStat:                config.Status(ospfGlobalConf.AdminStat),
 		ASBdrRtrStatus:           ospfGlobalConf.ASBdrRtrStatus,
 		TOSSupport:               ospfGlobalConf.TOSSupport,
-		ExtLsdbLimit:             ospfGlobalConf.ExtLsdbLimit,
-		MulticastExtensions:      ospfGlobalConf.MulticastExtensions,
-		ExitOverflowInterval:     config.PositiveInteger(ospfGlobalConf.ExitOverflowInterval),
-		RFC1583Compatibility:     ospfGlobalConf.RFC1583Compatibility,
-		ReferenceBandwidth:       ospfGlobalConf.ReferenceBandwidth,
 		RestartSupport:           config.RestartSupport(ospfGlobalConf.RestartSupport),
 		RestartInterval:          ospfGlobalConf.RestartInterval,
-		RestartStrictLsaChecking: ospfGlobalConf.RestartStrictLsaChecking,
-		StubRouterAdvertisement:  config.AdvertiseAction(ospfGlobalConf.StubRouterAdvertisement),
 	}
 	h.server.GlobalConfigCh <- gConf
 	retMsg := <-h.server.GlobalConfigRetCh
@@ -37,7 +29,6 @@ func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) error {
 		AddressLessIf:         config.InterfaceIndexOrZero(ospfIfConf.AddressLessIf),
 		IfAreaId:              config.AreaId(ospfIfConf.IfAreaId),
 		IfType:                config.IfType(ospfIfConf.IfType),
-		IfAdminStat:           config.Status(ospfIfConf.IfAdminStat),
 		IfRtrPriority:         config.DesignatedRouterPriority(ospfIfConf.IfRtrPriority),
 		IfTransitDelay:        config.UpToMaxAge(ospfIfConf.IfTransitDelay),
 		IfRetransInterval:     config.UpToMaxAge(ospfIfConf.IfRetransInterval),
@@ -45,8 +36,6 @@ func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) error {
 		IfRtrDeadInterval:     config.PositiveInteger(ospfIfConf.IfRtrDeadInterval),
 		IfPollInterval:        config.PositiveInteger(ospfIfConf.IfPollInterval),
 		IfAuthKey:             ospfIfConf.IfAuthKey,
-		IfMulticastForwarding: config.MulticastForwarding(ospfIfConf.IfMulticastForwarding),
-		IfDemand:              ospfIfConf.IfDemand,
 		IfAuthType:            config.AuthType(ospfIfConf.IfAuthType),
 	}
 
@@ -62,7 +51,6 @@ func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntry) error 
 		ImportAsExtern:                      config.ImportAsExtern(ospfAreaConf.ImportAsExtern),
 		AreaSummary:                         config.AreaSummary(ospfAreaConf.AreaSummary),
 		AreaNssaTranslatorRole:              config.NssaTranslatorRole(ospfAreaConf.AreaNssaTranslatorRole),
-		AreaNssaTranslatorStabilityInterval: config.PositiveInteger(ospfAreaConf.AreaNssaTranslatorStabilityInterval),
 	}
 
 	h.server.AreaConfigCh <- areaConf

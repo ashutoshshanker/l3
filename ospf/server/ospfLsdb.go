@@ -520,6 +520,7 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 			if nbrData, exist := ospfIntfToNbrMap[key]; exist {
 				if len(nbrData.nbrList) != 0 {
 					nbr := server.NeighborConfigMap[nbrData.nbrList[0]]
+					server.logger.Info(fmt.Sprintln("LSDB: Numbered P2P Router LSA with link id ", nbr.OspfNbrRtrId))
 					linkDetail.LinkId = nbr.OspfNbrRtrId
 				}
 
@@ -540,6 +541,7 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 				if len(nbrData.nbrList) != 0 {
 					nbr := server.NeighborConfigMap[nbrData.nbrList[0]]
 					linkDetail.LinkId = nbr.OspfNbrRtrId
+					server.logger.Info(fmt.Sprintln("LSDB: Unnumbered P2P Router LSA with link id ", nbr.OspfNbrRtrId))
 				}
 
 			}
