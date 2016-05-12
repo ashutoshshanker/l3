@@ -40,7 +40,6 @@ func main() {
 	go routeServer.StartDBServer()
 	go routeServer.StartPolicyServer()
 	go routeServer.NotificationServer()
-	go routeServer.StartNetlinkServer()
 	go routeServer.StartAsicdServer()
 	go routeServer.StartArpdServer()
 	go routeServer.StartServer(*paramsDir)
