@@ -56,8 +56,6 @@ type RIBDServer struct {
 	RouteCreateConfCh            chan *ribd.IPv4Route
 	RouteDeleteConfCh            chan *ribd.IPv4Route
 	RouteUpdateConfCh            chan UpdateRouteInfo
-	NetlinkAddRouteCh            chan RouteInfoRecord
-	NetlinkDelRouteCh            chan RouteInfoRecord
 	AsicdAddRouteCh              chan RouteInfoRecord
 	AsicdDelRouteCh              chan RouteInfoRecord
 	ArpdResolveRouteCh           chan RouteInfoRecord
@@ -489,8 +487,6 @@ func NewRIBDServicesHandler(dbHdl *dbutils.DBUtil, loggerC *logging.Writer) *RIB
 	ribdServicesHandler.RouteCreateConfCh = make(chan *ribd.IPv4Route, 5000)
 	ribdServicesHandler.RouteDeleteConfCh = make(chan *ribd.IPv4Route)
 	ribdServicesHandler.RouteUpdateConfCh = make(chan UpdateRouteInfo)
-	ribdServicesHandler.NetlinkAddRouteCh = make(chan RouteInfoRecord, 5000)
-	ribdServicesHandler.NetlinkDelRouteCh = make(chan RouteInfoRecord, 100)
 	ribdServicesHandler.AsicdAddRouteCh = make(chan RouteInfoRecord, 5000)
 	ribdServicesHandler.AsicdDelRouteCh = make(chan RouteInfoRecord, 1000)
 	ribdServicesHandler.ArpdResolveRouteCh = make(chan RouteInfoRecord, 5000)
