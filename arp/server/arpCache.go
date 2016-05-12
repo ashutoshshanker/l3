@@ -94,6 +94,7 @@ func (server *ARPServer) processArpEntryDeleteMsgFromRib(ipAddr string) {
 		}
 	}
 	delete(server.arpCache, ipAddr)
+	server.deleteLinuxArp(ipAddr)
 }
 
 func (server *ARPServer) processDeleteByIPAddr(ipAddr string) {
@@ -121,6 +122,7 @@ func (server *ARPServer) processDeleteByIPAddr(ipAddr string) {
 		}
 	}
 	delete(server.arpCache, ipAddr)
+	server.deleteLinuxArp(ipAddr)
 }
 
 func (server *ARPServer) processDeleteByIfName(ifName string) {
@@ -158,6 +160,7 @@ func (server *ARPServer) processRefreshByIPAddr(ipAddr string) {
 	arpEnt.MacAddr = "incomplete"
 	arpEnt.Counter = server.timeoutCounter
 	server.arpCache[ipAddr] = arpEnt
+	server.deleteLinuxArp(ipAddr)
 }
 
 func (server *ARPServer) processRefreshByIfName(ifName string) {
