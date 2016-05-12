@@ -27,18 +27,6 @@ func (h *OSPFHandler) UpdateOspfStubAreaEntry(origConf *ospfd.OspfStubAreaEntry,
 	return true, nil
 }
 
-func (h *OSPFHandler) UpdateOspfAreaRangeEntry(origConf *ospfd.OspfAreaRangeEntry, newConf *ospfd.OspfAreaRangeEntry, attrset []bool) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Original address range config attrs:", origConf))
-	h.logger.Info(fmt.Sprintln("New address range config attrs:", newConf))
-	return true, nil
-}
-
-func (h *OSPFHandler) UpdateOspfHostEntry(origConf *ospfd.OspfHostEntry, newConf *ospfd.OspfHostEntry, attrset []bool) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Original host config attrs:", origConf))
-	h.logger.Info(fmt.Sprintln("New host config attrs:", newConf))
-	return true, nil
-}
-
 func (h *OSPFHandler) UpdateOspfIfEntry(origConf *ospfd.OspfIfEntry, newConf *ospfd.OspfIfEntry, attrset []bool) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Original interface config attrs:", origConf))
 	h.logger.Info(fmt.Sprintln("New interface config attrs:", newConf))
@@ -57,14 +45,3 @@ func (h *OSPFHandler) UpdateOspfVirtIfEntry(origConf *ospfd.OspfVirtIfEntry, new
 	return true, nil
 }
 
-func (h *OSPFHandler) UpdateOspfNbrEntry(origConf *ospfd.OspfNbrEntry, newConf *ospfd.OspfNbrEntry, attrset []bool) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Original neighbor config attrs:", origConf))
-	h.logger.Info(fmt.Sprintln("New neighbor config attrs:", newConf))
-	return true, nil
-}
-
-func (h *OSPFHandler) UpdateOspfAreaAggregateEntry(origConf *ospfd.OspfAreaAggregateEntry, newConf *ospfd.OspfAreaAggregateEntry, attrset []bool) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Original Area Aggregate config attrs:", origConf))
-	h.logger.Info(fmt.Sprintln("New Area Aggregate config attrs:", newConf))
-	return true, nil
-}

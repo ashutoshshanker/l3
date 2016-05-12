@@ -163,17 +163,15 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 					bfdSession.useDedicatedMac = false
 				}
 				bfdSession.state.NumTxPackets++
-				bfdSession.txTimer.Stop()
 				txTimerMS = time.Duration(bfdSession.state.DesiredMinTxInterval / 1000)
-				bfdSession.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { bfdSession.TxTimeoutCh <- bfdSession.state.SessionId })
+				bfdSession.txTimer.Reset(time.Millisecond * txTimerMS)
 			}
 		case sessionId := <-session.SessionTimeoutCh:
 			bfdSession := bfdServer.bfdGlobal.Sessions[sessionId]
 			bfdSession.state.LocalDiagType = DIAG_TIME_EXPIRED
 			bfdSession.EventHandler(TIMEOUT)
-			bfdSession.sessionTimer.Stop()
 			sessionTimeoutMS = time.Duration(bfdSession.state.RequiredMinRxInterval * bfdSession.state.DetectionMultiplier / 1000)
-			bfdSession.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { bfdSession.SessionTimeoutCh <- bfdSession.state.SessionId })
+			bfdSession.sessionTimer.Reset(time.Millisecond * sessionTimeoutMS)
 		case <-session.SessionStopClientCh:
 			return nil
 		}

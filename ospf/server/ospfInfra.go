@@ -260,6 +260,7 @@ func (server *OSPFServer) UpdateIPv4Infra(msg asicdCommonDefs.IPv4IntfNotifyMsg,
 				}
 			//End
 		*/
+
 		server.createIPIntfConfMap(ipv4IntfMsg, mtu, msg.IfIndex, broadcast)
 		server.updateIpPropertyMap(ipv4IntfMsg, msgType)
 	} else {

@@ -195,6 +195,7 @@ func (server *OSPFServer) processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetad
 		i := OSPF_HELLO_MIN_SIZE + 4
 		k := 0
 		for ; k < int(nbrlen); i, j, k = i+4, j+4, k+4 {
+			server.logger.Info(fmt.Sprintln("HELLO: nbr ", data[j:i], " global_router", server.ospfGlobalConf.RouterId))
 			if bytesEqual(data[j:i], server.ospfGlobalConf.RouterId) == true {
 				TwoWayStatus = true
 				break
@@ -232,18 +233,6 @@ func (server *OSPFServer) processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloD
 	}
 
 	//Todo: Find whether one way or two way
-	/*
-	   TwoWayStatus := false
-
-	   j := uint16(OSPF_HELLO_MIN_SIZE)
-	   i := OSPF_HELLO_MIN_SIZE + 4
-	   for ; j < ospfHdrMd.pktlen; i, j = i+4, j+4 {
-	       if bytesEqual(data[i:j], server.ospfGlobalConf.RouterId) == true {
-	           TwoWayStatus = true
-	           break
-	       }
-	   }
-	*/
 	ent, _ := server.IntfConfMap[key]
 
 	neighborEntry, exist := ent.NeighborMap[neighborKey]
@@ -316,10 +305,11 @@ func (server *OSPFServer) CreateAndSendHelloRecvdMsg(routerId uint32,
 
 	if ifType == config.Broadcast ||
 		ifType == config.Nbma ||
-		ifType == config.PointToMultipoint {
+		ifType == config.PointToMultipoint || 
+		ifType == config.NumberedP2P{
 		msg.NeighborIP = net.IPv4(ipHdrMd.srcIP[0], ipHdrMd.srcIP[1], ipHdrMd.srcIP[2], ipHdrMd.srcIP[3])
 		//copy(msg.NeighborIP, ipHdrMd.srcIP)
-	} else { //Check for Virtual Links and p2p
+	} else { //Check for Virtual Links and unnumbered p2p
 		msg.NeighborIP = net.IPv4(ospfHdrMd.routerId[0], ospfHdrMd.routerId[1], ospfHdrMd.routerId[2], ospfHdrMd.routerId[3])
 		//copy(msg.NeighborIP, ospfHdrMd.routerId)
 	}
