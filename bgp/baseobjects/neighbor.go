@@ -6,8 +6,11 @@ import (
 	"l3/bgp/config"
 	"l3/bgp/packet"
 	"net"
+	"time"
 	"utils/logging"
 )
+
+const IgnoreBfdFaultsDefaultTime uint32 = 300 // seconds
 
 type NeighborConf struct {
 	logger               *logging.Writer
@@ -19,6 +22,7 @@ type NeighborConf struct {
 	ASSize               uint8
 	AfiSafiMap           map[uint32]bool
 	MaxPrefixesThreshold uint32
+	ignoreBfdFaultsTimer *time.Timer
 }
 
 func NewNeighborConf(logger *logging.Writer, globalConf *config.GlobalConfig, peerGroup *config.PeerGroupConfig,
@@ -270,4 +274,37 @@ func (n *NeighborConf) SetPeerAttrs(bgpId net.IP, asSize uint8, holdTime uint32,
 			}
 		}
 	}
+}
+
+func (n *NeighborConf) BfdFaultSet() {
+	n.Neighbor.State.BfdNeighborState = "down"
+	if n.ignoreBfdFaultsTimer != nil {
+		n.ignoreBfdFaultsTimer.Stop()
+	}
+	n.ignoreBfdFaultsTimer = time.AfterFunc(time.Duration(IgnoreBfdFaultsDefaultTime)*time.Second,
+		n.IgnoreBfdFaultsTimerExpired)
+}
+
+func (n *NeighborConf) BfdFaultCleared() {
+	if n.IgnoreBfdFaultsTimerExpired != nil {
+		n.ignoreBfdFaultsTimer.Stop()
+	}
+	n.Neighbor.State.BfdNeighborState = "up"
+}
+
+func (n *NeighborConf) IgnoreBfdFaultsTimerExpired() {
+	n.Neighbor.State.UseBfdState = false
+}
+
+func (n *NeighborConf) PeerConnEstablished() {
+	n.Neighbor.State.UseBfdState = true
+}
+
+func (n *NeighborConf) PeerConnBroken() {
+	n.Neighbor.State.ConnectRetryTime = n.RunningConf.ConnectRetryTime
+	n.Neighbor.State.HoldTime = n.RunningConf.HoldTime
+	n.Neighbor.State.KeepaliveTime = n.RunningConf.KeepaliveTime
+	n.Neighbor.State.AddPathsRx = false
+	n.Neighbor.State.AddPathsMaxTx = 0
+	n.Neighbor.State.TotalPrefixes = 0
 }

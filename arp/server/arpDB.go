@@ -10,8 +10,8 @@ import (
 )
 
 type arpDbEntry struct {
-	IpAddr string
-	Port   int
+	IpAddr  string
+	L3IfIdx int
 }
 
 func (server *ARPServer) initiateDB() error {
@@ -69,13 +69,13 @@ func (server *ARPServer) updateArpCacheFromDB() {
 				server.logger.Err(fmt.Sprintln("Failed to get values corresponding to ARP entry key:", keys[idx]))
 				continue
 			}
-			server.logger.Debug(fmt.Sprintln("Data Retrived From DB IP:", obj.IpAddr, "port:", obj.Port))
+			server.logger.Debug(fmt.Sprintln("Data Retrived From DB IP:", obj.IpAddr, "L3IfIdx:", obj.L3IfIdx))
 			server.logger.Debug(fmt.Sprintln("Adding arp cache entry for ", obj.IpAddr))
 			ent := server.arpCache[obj.IpAddr]
 			ent.MacAddr = "incomplete"
 			ent.Counter = (server.minCnt + server.retryCnt + 1)
 			//ent.Valid = false
-			ent.PortNum = obj.Port
+			ent.L3IfIdx = obj.L3IfIdx
 			server.arpCache[obj.IpAddr] = ent
 		}
 	} else {
@@ -116,16 +116,16 @@ func (server *ARPServer) deleteArpEntryInDB(ipAddr string) {
 	}
 }
 
-func (server *ARPServer) storeArpEntryInDB(ip string, port int) {
+func (server *ARPServer) storeArpEntryInDB(ip string, l3IfIdx int) {
 	if server.dbHdl != nil {
-		key := fmt.Sprintln("ArpCacheEntry#", ip, "#", strconv.Itoa(port))
+		key := fmt.Sprintln("ArpCacheEntry#", ip, "#", strconv.Itoa(l3IfIdx))
 		obj := arpDbEntry{
-			IpAddr: ip,
-			Port:   port,
+			IpAddr:  ip,
+			L3IfIdx: l3IfIdx,
 		}
 		_, err := server.dbHdl.Do("HMSET", redis.Args{}.Add(key).AddFlat(&obj)...)
 		if err != nil {
-			server.logger.Err(fmt.Sprintln("Failed to add entry to db : ", ip, port, err))
+			server.logger.Err(fmt.Sprintln("Failed to add entry to db : ", ip, l3IfIdx, err))
 			return
 		}
 		return

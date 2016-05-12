@@ -1,7 +1,5 @@
 package bfddCommonDefs
 
-import ()
-
 const (
 	PUB_SOCKET_ADDR = "ipc:///tmp/bfdd.ipc"
 )
@@ -15,11 +13,11 @@ type BfdSessionOwner int32
 
 // Owner
 const (
-	DISC              BfdSessionOwner = 1
-	USER              BfdSessionOwner = 2
-	BGP               BfdSessionOwner = 3
-	OSPF              BfdSessionOwner = 4
-	MAX_NUM_PROTOCOLS BfdSessionOwner = 5
+	DISC     BfdSessionOwner = 1
+	USER     BfdSessionOwner = 2
+	BGP      BfdSessionOwner = 3
+	OSPF     BfdSessionOwner = 4
+	MAX_APPS BfdSessionOwner = 5
 )
 
 type BfdSessionOperation int32
