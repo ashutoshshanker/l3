@@ -64,6 +64,17 @@ Actions:
 		bool ExecuteActionArpDeleteByIfName(1: ArpDeleteByIfName config);
 
 
-> - Delete all the ARP entries learnt on given interface name
+> - Delete the ARP entry corresponding to given IPv4 address
 
 		bool ExecuteActionArpDeleteByIPv4Addr(1: ArpDeleteByIPv4Addr config);
+
+Note: We can only delete Arp entries which are not the nexthop for any of the routes.
+
+> - Refresh all the ARP entries learnt on given interface name
+
+		bool ExecuteActionArpRefreshByIfName(1: ArpRefreshByIfName config);
+
+
+> - Refresh the ARP entry corresponding to given IPv4 address
+
+		bool ExecuteActionArpRefreshByIPv4Addr(1: ArpRefreshByIPv4Addr config);
