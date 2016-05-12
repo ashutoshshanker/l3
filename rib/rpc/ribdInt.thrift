@@ -94,7 +94,7 @@ service RIBDINTServices
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	oneway void OnewayCreateBulkIPv4Route(1: list<IPv4Route> config);
 	bool CreatePolicyAction(1: PolicyAction config);
-	bool UpdatePolicyAction(1: PolicyAction origconfig, 2: PolicyAction newconfig, 3: list<bool> attrset);
+	bool UpdatePolicyAction(1: PolicyAction origconfig, 2: PolicyAction newconfig, 3: list<bool> attrset, 4: string op);
 	bool DeletePolicyAction(1: PolicyAction config);
 	void ApplyPolicy(1: string source, 2: string policy, 3: string action, 4: list<ConditionInfo>conditions)
 	void UpdateApplyPolicy(1: string source, 2: string policy, 3: string action, 4: list<ConditionInfo>conditions)

@@ -59,20 +59,20 @@ func (m RIBDServicesHandler) OnewayDeleteIPv4Route(cfg *ribd.IPv4Route) (err err
 	m.DeleteIPv4Route(cfg)
 	return err
 }
-func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
+func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool, op string) (val bool, err error) {
 	logger.Println("UpdateIPv4Route: Received update route request")
 	err = m.server.RouteConfigValidationCheckForUpdate(newconfig, attrset)
 	if err != nil {
 		logger.Err(fmt.Sprintln("validation check failed with error ", err))
 		return false, err
 	}
-	routeUpdateConfig := server.UpdateRouteInfo{origconfig, newconfig, attrset}
+	routeUpdateConfig := server.UpdateRouteInfo{origconfig, newconfig, attrset, op}
 	m.server.RouteUpdateConfCh <- routeUpdateConfig
 	return true, nil
 }
 func (m RIBDServicesHandler) OnewayUpdateIPv4Route(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (err error) {
 	logger.Println("OneWayUpdateIPv4Route: Received update route request")
-	m.UpdateIPv4Route(origconfig, newconfig, attrset)
+	m.UpdateIPv4Route(origconfig, newconfig, attrset, "replace")
 	return err
 }
 func (m RIBDServicesHandler) GetIPv4RouteState(destNw string) (*ribd.IPv4RouteState, error) {

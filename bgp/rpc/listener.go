@@ -436,7 +436,7 @@ func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int,
 }
 
 func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal,
-	attrSet []bool) (bool, error) {
+	attrSet []bool, op string) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update global config attrs:", updatedG, "old config:", origG))
 	return h.SendBGPGlobal(updatedG)
 }
@@ -664,7 +664,7 @@ func (h *BGPHandler) GetBulkBGPNeighborState(index bgpd.Int,
 }
 
 func (h *BGPHandler) UpdateBGPNeighbor(origN *bgpd.BGPNeighbor, updatedN *bgpd.BGPNeighbor,
-	attrSet []bool) (bool, error) {
+	attrSet []bool, op string) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update peer attrs:", updatedN))
 	return h.SendBGPNeighbor(origN, updatedN, attrSet)
 }
@@ -744,7 +744,7 @@ func (h *BGPHandler) CreateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (bool, err
 }
 
 func (h *BGPHandler) UpdateBGPPeerGroup(origG *bgpd.BGPPeerGroup, updatedG *bgpd.BGPPeerGroup,
-	attrSet []bool) (bool, error) {
+	attrSet []bool, op string) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update peer attrs:", updatedG))
 	return h.SendBGPPeerGroup(origG, updatedG, attrSet)
 }
@@ -821,7 +821,7 @@ func (h *BGPHandler) GetBulkBGPPolicyConditionState(fromIndex bgpd.Int, rcount b
 
 func (h *BGPHandler) UpdateBGPPolicyCondition(origC *bgpd.BGPPolicyCondition,
 	updatedC *bgpd.BGPPolicyCondition,
-	attrSet []bool) (val bool, err error) {
+	attrSet []bool, op string) (val bool, err error) {
 	return val, err
 }
 
@@ -866,7 +866,7 @@ func (h *BGPHandler) GetBulkBGPPolicyActionState(fromIndex bgpd.Int, rcount bgpd
 }
 
 func (h *BGPHandler) UpdateBGPPolicyAction(origC *bgpd.BGPPolicyAction, updatedC *bgpd.BGPPolicyAction,
-	attrSet []bool) (val bool, err error) {
+	attrSet []bool, op string) (val bool, err error) {
 	return val, err
 }
 
@@ -904,7 +904,7 @@ func (h *BGPHandler) GetBulkBGPPolicyStmtState(fromIndex bgpd.Int, rcount bgpd.I
 }
 
 func (h *BGPHandler) UpdateBGPPolicyStmt(origC *bgpd.BGPPolicyStmt,
-	updatedC *bgpd.BGPPolicyStmt, attrSet []bool) (
+	updatedC *bgpd.BGPPolicyStmt, attrSet []bool, op string) (
 	val bool, err error) {
 	return val, err
 }
@@ -955,7 +955,7 @@ func (h *BGPHandler) GetBulkBGPPolicyDefinitionState(fromIndex bgpd.Int, rcount 
 
 func (h *BGPHandler) UpdateBGPPolicyDefinition(origC *bgpd.BGPPolicyDefinition,
 	updatedC *bgpd.BGPPolicyDefinition,
-	attrSet []bool) (val bool, err error) {
+	attrSet []bool, op string) (val bool, err error) {
 	return val, err
 }
 

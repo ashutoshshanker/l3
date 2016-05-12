@@ -1423,8 +1423,8 @@ func (m RIBDServer) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val bool, err
 	_, err = deleteV4Route(cfg.DestinationNw, cfg.NetworkMask, cfg.Protocol, cfg.NextHop[0].NextHopIp, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoInValid)
 	return true, err
 }
-func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
-	logger.Info("ProcessRouteUpdateConfig:Received update route request")
+func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool, op string) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with op: ", op))
 	if !RouteServiceHandler.AcceptConfig {
 		logger.Info("Not ready to accept config")
 		//return err
