@@ -22,46 +22,8 @@ type VlanProperty struct {
 	IpAddr     net.IP
 }
 
-type IPIntfProperty struct {
-	IfName  string
-	IpAddr  net.IP
-	MacAddr net.HardwareAddr
-	NetMask []byte
-}
-
 type LagProperty struct {
 	Links []int32
-}
-
-type IPv4IntfNotifyMsg struct {
-	IpAddr string
-	IfId   int32
-}
-
-func (server *BFDServer) updateIpInVlanPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
-	if msgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
-		ent := server.vlanPropertyMap[msg.IfId]
-		ip, _, _ := net.ParseCIDR(msg.IpAddr)
-		ent.IpAddr = ip
-		server.vlanPropertyMap[msg.IfId] = ent
-	} else { // Delete IP
-		ent := server.vlanPropertyMap[msg.IfId]
-		ent.IpAddr = nil
-		server.vlanPropertyMap[msg.IfId] = ent
-	}
-}
-
-func (server *BFDServer) updateIpInPortPropertyMap(msg IPv4IntfNotifyMsg, msgType uint8) {
-	if msgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE { // Create IP
-		ent := server.portPropertyMap[int32(msg.IfId)]
-		ip, _, _ := net.ParseCIDR(msg.IpAddr)
-		ent.IpAddr = ip
-		server.portPropertyMap[int32(msg.IfId)] = ent
-	} else { // Delete IP
-		ent := server.portPropertyMap[int32(msg.IfId)]
-		ent.IpAddr = nil
-		server.portPropertyMap[int32(msg.IfId)] = ent
-	}
 }
 
 func (server *BFDServer) updateVlanPropertyMap(vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg, msgType uint8) {
@@ -127,39 +89,6 @@ func (server *BFDServer) BuildPortPropertyMap() error {
 
 func (server *BFDServer) BuildLagPropertyMap() error {
 	server.logger.Info("Get configured lags ... TBD")
-	return nil
-}
-
-func (server *BFDServer) BuildIPv4InterfacesMap() error {
-	server.logger.Info("Getting IPv4 interfaces from asicd")
-	var currMarker asicdServices.Int
-	var count asicdServices.Int
-	count = 100
-	for {
-		var ipv4IntfMsg IPv4IntfNotifyMsg
-		server.logger.Info(fmt.Sprintf("Getting %d objects from currMarker %d\n", count, currMarker))
-		IPIntfBulk, err := server.asicdClient.ClientHdl.GetBulkIPv4IntfState(currMarker, count)
-		if err != nil {
-			server.logger.Info(fmt.Sprintln("GetBulkIPv4IntfState with err ", err))
-			return err
-		}
-		if IPIntfBulk.Count == 0 {
-			server.logger.Info(fmt.Sprintln("0 objects returned from GetBulkIPv4IntfState"))
-			return nil
-		}
-		server.logger.Info(fmt.Sprintf("Got IPv4 interfaces - len  = %d, num objects returned = %d\n", len(IPIntfBulk.IPv4IntfStateList), IPIntfBulk.Count))
-		for i := 0; i < int(IPIntfBulk.Count); i++ {
-			ipv4IntfMsg.IpAddr = IPIntfBulk.IPv4IntfStateList[i].IpAddr
-			ipv4IntfMsg.IfId = IPIntfBulk.IPv4IntfStateList[i].IfIndex
-			server.createIPIntfConfMap(ipv4IntfMsg)
-			server.logger.Info(fmt.Sprintf("Created IPv4 interface (%d : %s)\n", ipv4IntfMsg.IfId, ipv4IntfMsg.IpAddr))
-		}
-		if IPIntfBulk.More == false {
-			server.logger.Info(fmt.Sprintln("Get IPv4 interfaces - more returned as false, so no more get bulks"))
-			return nil
-		}
-		currMarker = asicdServices.Int(IPIntfBulk.EndIdx)
-	}
 	return nil
 }
 

@@ -50,13 +50,6 @@ type IpIntfProperty struct {
 	NetMask []byte
 }
 
-type BfdInterface struct {
-	Enabled     bool
-	NumSessions int32
-	conf        IntfConfig
-	property    IpIntfProperty
-}
-
 type BfdSessionMgmt struct {
 	DestIp    string
 	ParamName string
@@ -97,6 +90,7 @@ type BfdSession struct {
 	stateChanged        bool
 	isClientActive      bool
 	movedToDownState    bool
+	notifiedState       bool
 	server              *BFDServer
 }
 
@@ -106,9 +100,6 @@ type BfdSessionParam struct {
 
 type BfdGlobal struct {
 	Enabled                 bool
-	NumInterfaces           uint32
-	Interfaces              map[int32]*BfdInterface
-	InterfacesIdSlice       []int32
 	NumSessions             uint32
 	Sessions                map[int32]*BfdSession
 	SessionsIdSlice         []int32
@@ -140,7 +131,6 @@ type BFDServer struct {
 	ribdSubSocketErrCh    chan error
 	portPropertyMap       map[int32]PortProperty
 	vlanPropertyMap       map[int32]VlanProperty
-	IPIntfPropertyMap     map[string]IPIntfProperty
 	CreateSessionCh       chan BfdSessionMgmt
 	DeleteSessionCh       chan BfdSessionMgmt
 	AdminUpSessionCh      chan BfdSessionMgmt
@@ -174,9 +164,6 @@ func NewBFDServer(logger *logging.Writer) *BFDServer {
 	bfdServer.SessionParamConfigCh = make(chan SessionParamConfig)
 	bfdServer.SessionParamDeleteCh = make(chan string)
 	bfdServer.bfdGlobal.Enabled = false
-	bfdServer.bfdGlobal.NumInterfaces = 0
-	bfdServer.bfdGlobal.Interfaces = make(map[int32]*BfdInterface)
-	bfdServer.bfdGlobal.InterfacesIdSlice = []int32{}
 	bfdServer.bfdGlobal.NumSessions = 0
 	bfdServer.bfdGlobal.Sessions = make(map[int32]*BfdSession)
 	bfdServer.bfdGlobal.SessionsIdSlice = []int32{}
@@ -323,7 +310,6 @@ func (server *BFDServer) InitServer(paramFile string) {
 	server.initBfdGlobalConfDefault()
 	server.BuildPortPropertyMap()
 	server.BuildLagPropertyMap()
-	server.BuildIPv4InterfacesMap()
 	server.createDefaultSessionParam()
 }
 
