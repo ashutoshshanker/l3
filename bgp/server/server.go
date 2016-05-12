@@ -799,11 +799,11 @@ func (server *BGPServer) handleBfdNotifications(oper config.Operation, DestIp st
 	State bool) {
 	if peer, ok := server.PeerMap[DestIp]; ok {
 		if !State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "up" {
+			peer.NeighborConf.BfdFaultSet()
 			peer.Command(int(fsm.BGPEventManualStop), fsm.BGPCmdReasonNone)
-			peer.NeighborConf.Neighbor.State.BfdNeighborState = "down"
 		}
 		if State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
-			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
+			peer.NeighborConf.BfdFaultCleared()
 			peer.Command(int(fsm.BGPEventManualStart), fsm.BGPCmdReasonNone)
 		}
 		server.logger.Info(fmt.Sprintln("Bfd state of peer ",

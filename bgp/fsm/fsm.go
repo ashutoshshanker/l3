@@ -158,27 +158,17 @@ func NewIdleState(fsm *FSM) *IdleState {
 }
 
 func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
-	if st.fsm.neighborConf.Neighbor.State.UseBfdState &&
-		st.fsm.neighborConf.RunningConf.BfdEnable &&
-		st.fsm.neighborConf.Neighbor.State.BfdNeighborState == "down" {
-		st.logger.Info(fmt.Sprintln("Bfd is down for neighbor: ", st.fsm.pConf.NeighborAddress,
-			" do not process event: ", BGPEventTypeToStr[event]))
-		return
-	}
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "FSM:", st.fsm.id,
 		"State: Idle Event:", BGPEventTypeToStr[event]))
 	switch event {
 	case BGPEventManualStart, BGPEventAutoStart:
 		st.fsm.SetConnectRetryCounter(0)
 		st.fsm.StartConnectRetryTimer()
-		st.fsm.InitiateConnToPeer()
-		st.fsm.AcceptPeerConn()
 		st.fsm.ChangeState(NewConnectState(st.fsm))
 
 	case BGPEventManualStartPassTcpEst, BGPEventAutoStartPassTcpEst:
 		st.fsm.SetConnectRetryCounter(0)
 		st.fsm.StartConnectRetryTimer()
-		st.fsm.AcceptPeerConn()
 		st.fsm.ChangeState(NewActiveState(st.fsm))
 
 	case BGPEventAutoStartDampPeerOscl, BGPEventAutoStartDampPeerOsclPassTcpEst:
@@ -194,11 +184,8 @@ func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
 		//st.fsm.SetConnectRetryCounter(0)
 		st.fsm.StartConnectRetryTimer()
 		if st.passive {
-			st.fsm.AcceptPeerConn()
 			st.fsm.ChangeState(NewActiveState(st.fsm))
 		} else {
-			st.fsm.InitiateConnToPeer()
-			st.fsm.AcceptPeerConn()
 			st.fsm.ChangeState(NewConnectState(st.fsm))
 		}
 	}
@@ -251,7 +238,6 @@ func (st *ConnectState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.StopConnToPeer()
 		st.fsm.StartConnectRetryTimer()
 		st.fsm.InitiateConnToPeer()
-		st.fsm.AcceptPeerConn()
 
 	case BGPEventDelayOpenTimerExp: // Supported later
 
@@ -300,6 +286,17 @@ func (st *ConnectState) processEvent(event BGPFSMEvent, data interface{}) {
 func (st *ConnectState) enter() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "FSM:", st.fsm.id,
 		"State: Connect - enter"))
+	if st.fsm.neighborConf.Neighbor.State.UseBfdState &&
+		st.fsm.neighborConf.RunningConf.BfdEnable &&
+		st.fsm.neighborConf.Neighbor.State.BfdNeighborState == "down" {
+		st.logger.Info(fmt.Sprintln("Bfd is down for neighbor: ", st.fsm.pConf.NeighborAddress,
+			"go to Active state"))
+		st.fsm.ChangeState(NewActiveState(st.fsm))
+		return
+	}
+
+	st.fsm.AcceptPeerConn()
+	st.fsm.InitiateConnToPeer()
 }
 
 func (st *ConnectState) leave() {
@@ -339,7 +336,6 @@ func (st *ActiveState) processEvent(event BGPFSMEvent, data interface{}) {
 
 	case BGPEventConnRetryTimerExp:
 		st.fsm.StartConnectRetryTimer()
-		st.fsm.InitiateConnToPeer()
 		st.fsm.ChangeState(NewConnectState(st.fsm))
 
 	case BGPEventDelayOpenTimerExp: // Supported later
@@ -394,6 +390,7 @@ func (st *ActiveState) processEvent(event BGPFSMEvent, data interface{}) {
 func (st *ActiveState) enter() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "FSM:", st.fsm.id,
 		"State: Active - enter"))
+	st.fsm.AcceptPeerConn()
 }
 
 func (st *ActiveState) leave() {
@@ -458,7 +455,6 @@ func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
 		st.fsm.StartConnectRetryTimer()
-		st.fsm.AcceptPeerConn()
 		st.fsm.ChangeState(NewActiveState(st.fsm))
 
 	case BGPEventBGPOpen:
