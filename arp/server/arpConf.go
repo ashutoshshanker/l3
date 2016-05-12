@@ -46,6 +46,11 @@ func (server *ARPServer) processResolveIPv4(conf ResolveIPv4) {
 	}
 }
 
+func (server *ARPServer) processDeleteResolvedIPv4(ipAddr string) {
+	server.logger.Info(fmt.Sprintln("Delete Resolved IPv4 for ipAddr:", ipAddr))
+	server.arpDeleteArpEntryFromRibCh <- ipAddr
+}
+
 func (server *ARPServer) processArpConf(conf ArpConf) (int, error) {
 	server.logger.Debug(fmt.Sprintln("Received ARP Timeout Value via Configuration:", conf.RefTimeout))
 	if conf.RefTimeout < server.minRefreshTimeout {
@@ -60,4 +65,9 @@ func (server *ARPServer) processArpConf(conf ArpConf) (int, error) {
 	server.timeoutCounter = conf.RefTimeout / server.timerGranularity
 	server.arpEntryCntUpdateCh <- server.timeoutCounter
 	return 0, nil
+}
+
+func (server *ARPServer) processArpAction(msg ArpActionMsg) {
+	server.logger.Info(fmt.Sprintln("Processing Arp Action msg", msg))
+	server.arpActionProcessCh <- msg
 }

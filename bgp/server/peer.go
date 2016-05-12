@@ -59,11 +59,6 @@ func (p *Peer) IsBfdStateUp() bool {
 }
 
 func (p *Peer) Init() {
-	if up := p.IsBfdStateUp(); !up {
-		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n",
-			p.NeighborConf.Neighbor.NeighborAddress))
-		return
-	}
 	if p.fsmManager == nil {
 		p.logger.Info(fmt.Sprintf("Instantiating new FSM Manager for neighbor %s\n",
 			p.NeighborConf.Neighbor.NeighborAddress))
@@ -97,12 +92,6 @@ func (p *Peer) getIfIdx() int32 {
 }
 
 func (p *Peer) AcceptConn(conn *net.TCPConn) {
-	if up := p.IsBfdStateUp(); !up {
-		p.logger.Info(fmt.Sprintf("Neighbor's bfd state is down for %s\n",
-			p.NeighborConf.Neighbor.NeighborAddress))
-		(*conn).Close()
-		return
-	}
 	if p.fsmManager == nil {
 		p.logger.Info(fmt.Sprintf("FSM Manager is not instantiated yet for neighbor %s\n",
 			p.NeighborConf.Neighbor.NeighborAddress))
@@ -217,8 +206,8 @@ func (p *Peer) PeerConnEstablished(conn *net.Conn) {
 		return
 	}
 	p.NeighborConf.Neighbor.Transport.Config.LocalAddress = net.ParseIP(host)
+	p.NeighborConf.PeerConnEstablished()
 	p.clearRibOut()
-	p.NeighborConf.Neighbor.State.UseBfdState = true
 	//p.Server.PeerConnEstCh <- p.Neighbor.NeighborAddress.String()
 }
 
@@ -227,13 +216,7 @@ func (p *Peer) PeerConnBroken(fsmCleanup bool) {
 		p.NeighborConf.Neighbor.Transport.Config.LocalAddress = nil
 		//p.Server.PeerConnBrokenCh <- p.Neighbor.NeighborAddress.String()
 	}
-
-	p.NeighborConf.Neighbor.State.ConnectRetryTime = p.NeighborConf.RunningConf.ConnectRetryTime
-	p.NeighborConf.Neighbor.State.HoldTime = p.NeighborConf.RunningConf.HoldTime
-	p.NeighborConf.Neighbor.State.KeepaliveTime = p.NeighborConf.RunningConf.KeepaliveTime
-	p.NeighborConf.Neighbor.State.AddPathsRx = false
-	p.NeighborConf.Neighbor.State.AddPathsMaxTx = 0
-	p.NeighborConf.Neighbor.State.TotalPrefixes = 0
+	p.NeighborConf.PeerConnBroken()
 	p.clearRibOut()
 }
 

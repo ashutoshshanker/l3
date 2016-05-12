@@ -2,6 +2,7 @@ package server
 
 import (
 	"asicd/asicdCommonDefs"
+	"asicdServices"
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
@@ -15,9 +16,6 @@ import (
 	"utils/dbutils"
 	"utils/ipcutils"
 	"utils/logging"
-	//"github.com/google/gopacket/pcap"
-	"asicdServices"
-	//"utils/commonDefs"
 )
 
 type ClientJson struct {
@@ -26,12 +24,11 @@ type ClientJson struct {
 }
 
 type ArpEntry struct {
-	MacAddr string
-	VlanId  int
-	IfName  string
-	L3IfIdx int
-	Counter int
-	//Valid           bool
+	MacAddr   string
+	VlanId    int
+	IfName    string
+	L3IfIdx   int
+	Counter   int
 	TimeStamp time.Time
 	PortNum   int
 	Type      bool //True : RIB False: RX
@@ -51,8 +48,26 @@ type ResolveIPv4 struct {
 	IfId     int
 }
 
+type DeleteResolvedIPv4 struct {
+	IpAddr string
+}
+
 type ArpConf struct {
 	RefTimeout int
+}
+
+type ActionType uint8
+
+const (
+	DeleteByIPAddr  ActionType = 1
+	RefreshByIPAddr ActionType = 2
+	DeleteByIfName  ActionType = 3
+	RefreshByIfName ActionType = 4
+)
+
+type ArpActionMsg struct {
+	Type ActionType
+	Obj  string
 }
 
 type ArpClientBase struct {
@@ -99,10 +114,15 @@ type ARPServer struct {
 	arpSliceRefreshStartCh chan bool
 	arpSliceRefreshDoneCh  chan bool
 	arpCounterUpdateCh     chan bool
+	arpActionProcessCh     chan ArpActionMsg
 	ResolveIPv4Ch          chan ResolveIPv4
+	DeleteResolvedIPv4Ch   chan DeleteResolvedIPv4
 	ArpConfCh              chan ArpConf
 	dumpArpTable           bool
 	InitDone               chan bool
+
+	ArpActionCh                chan ArpActionMsg
+	arpDeleteArpEntryFromRibCh chan string
 }
 
 func NewARPServer(logger *logging.Writer) *ARPServer {
@@ -123,9 +143,13 @@ func NewARPServer(logger *logging.Writer) *ARPServer {
 	arpServer.arpSliceRefreshStartCh = make(chan bool)
 	arpServer.arpSliceRefreshDoneCh = make(chan bool)
 	arpServer.arpCounterUpdateCh = make(chan bool)
+	arpServer.arpActionProcessCh = make(chan ArpActionMsg)
+	arpServer.arpDeleteArpEntryFromRibCh = make(chan string)
 	arpServer.ResolveIPv4Ch = make(chan ResolveIPv4)
+	arpServer.DeleteResolvedIPv4Ch = make(chan DeleteResolvedIPv4)
 	arpServer.ArpConfCh = make(chan ArpConf)
 	arpServer.InitDone = make(chan bool)
+	arpServer.ArpActionCh = make(chan ArpActionMsg)
 	return arpServer
 }
 
@@ -227,6 +251,7 @@ func (server *ARPServer) InitServer(paramDir string) {
 	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
 	server.buildArpInfra()
+	server.processArpInfra()
 
 	err := server.initiateDB()
 	if err != nil {
@@ -247,7 +272,6 @@ func (server *ARPServer) InitServer(paramDir string) {
 	go server.sigHandler(sigChan)
 	go server.updateArpCache()
 	go server.refreshArpSlice()
-	server.processArpInfra()
 	server.FlushLinuxArpCache()
 	go server.arpCacheTimeout()
 }
@@ -262,6 +286,10 @@ func (server *ARPServer) StartServer(paramDir string) {
 			server.processArpConf(arpConf)
 		case rConf := <-server.ResolveIPv4Ch:
 			server.processResolveIPv4(rConf)
+		case rConf := <-server.DeleteResolvedIPv4Ch:
+			server.processDeleteResolvedIPv4(rConf.IpAddr)
+		case arpActionMsg := <-server.ArpActionCh:
+			server.processArpAction(arpActionMsg)
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:

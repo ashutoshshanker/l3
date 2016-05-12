@@ -75,6 +75,7 @@ func (h *BFDHandler) convertSessionStateToThrift(ent server.SessionState) *bfdd.
 	sessionState.RequiredMinRxInterval = string(strconv.Itoa(int(ent.RequiredMinRxInterval)) + "(us)")
 	sessionState.RemoteMinRxInterval = string(strconv.Itoa(int(ent.RemoteMinRxInterval)) + "(us)")
 	sessionState.DetectionMultiplier = int32(ent.DetectionMultiplier)
+	sessionState.RemoteDetectionMultiplier = int32(ent.RemoteDetectionMultiplier)
 	sessionState.DemandMode = ent.DemandMode
 	sessionState.RemoteDemandMode = ent.RemoteDemandMode
 	sessionState.AuthType = string(h.server.ConvertBfdAuthTypeValToStr(ent.AuthType))
