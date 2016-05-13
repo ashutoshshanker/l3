@@ -9,6 +9,7 @@ import (
 	"l3/bgp/packet"
 	bgppolicy "l3/bgp/policy"
 	bgprib "l3/bgp/rib"
+	"l3/bgp/utils"
 	"net"
 	"runtime"
 	"strconv"
@@ -53,6 +54,7 @@ type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
 	listener         *net.TCPListener
+	ifaceMgr         *utils.InterfaceMgr
 	BgpConfig        config.Bgp
 	GlobalConfigCh   chan config.GlobalConfig
 	AddPeerCh        chan PeerUpdate
@@ -94,6 +96,7 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.bgpPE = policyEngine
+	bgpServer.ifaceMgr = utils.NewInterfaceMgr(logger)
 	bgpServer.BgpConfig = config.Bgp{}
 	bgpServer.GlobalCfgDone = false
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
@@ -680,7 +683,7 @@ func (server *BGPServer) convertDestIPToIPPrefix(routes []*config.RouteInfo) []p
 	for _, r := range routes {
 		server.logger.Info(fmt.Sprintln("Route NS : ",
 			r.NetworkStatement, " Route Origin ", r.RouteOrigin))
-		ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
+		ipPrefix := packet.ConstructIPPrefix(r.IPAddr, r.Mask)
 		dest = append(dest, ipPrefix)
 	}
 	return dest
@@ -699,6 +702,16 @@ func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*config.RouteI
 		server.CheckForAggregation(updated, withdrawn, withdrawPath,
 			updatedAddPaths)
 	server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
+}
+
+func (server *BGPServer) ProcessIntfStates(intfs []*config.IntfStateInfo) {
+	for _, ifState := range intfs {
+		if ifState.State == config.INTF_CREATED {
+			server.ifaceMgr.AddIface(ifState.Idx, ifState.IPAddr)
+		} else if ifState.State == config.INTF_DELETED {
+			server.ifaceMgr.RemoveIface(ifState.Idx, ifState.IPAddr)
+		}
+	}
 }
 
 func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
@@ -1128,13 +1141,18 @@ func (server *BGPServer) listenChannelUpdates() {
 			server.handleBfdNotifications(bfdNotify.Oper,
 				bfdNotify.DestIp, bfdNotify.State)
 		case ifState := <-server.intfCh:
-			if peerList, ok := server.IfacePeerMap[ifState.Idx]; ok &&
-				ifState.State == config.INTF_STATE_DOWN {
-				for _, peerIP := range peerList {
-					if peer, ok := server.PeerMap[peerIP]; ok {
-						peer.StopFSM("Interface Down")
+			if ifState.State == config.INTF_STATE_DOWN {
+				if peerList, ok := server.IfacePeerMap[ifState.Idx]; ok {
+					for _, peerIP := range peerList {
+						if peer, ok := server.PeerMap[peerIP]; ok {
+							peer.StopFSM("Interface Down")
+						}
 					}
 				}
+			} else if ifState.State == config.INTF_CREATED {
+				server.ifaceMgr.AddIface(ifState.Idx, ifState.IPAddr)
+			} else if ifState.State == config.INTF_DELETED {
+				server.ifaceMgr.RemoveIface(ifState.Idx, ifState.IPAddr)
 			}
 		case routeInfo := <-server.routesCh:
 			server.ProcessConnectedRoutes(routeInfo.Add, routeInfo.Remove)
@@ -1184,6 +1202,10 @@ func (server *BGPServer) StartServer() {
 	if add != nil && remove != nil {
 		server.ProcessConnectedRoutes(add, remove)
 	}
+
+	intfs := server.IntfMgr.GetIPv4Intfs()
+	server.ProcessIntfStates(intfs)
+
 	server.listenChannelUpdates()
 }
 

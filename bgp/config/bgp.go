@@ -60,6 +60,7 @@ type Queues struct {
 type BaseConfig struct {
 	PeerAS                  uint32
 	LocalAS                 uint32
+	UpdateSource            string
 	AuthPassword            string
 	Description             string
 	RouteReflectorClusterId uint32
@@ -87,13 +88,14 @@ type NeighborConfig struct {
 }
 
 type NeighborState struct {
+	NeighborAddress         net.IP
+	IfIndex                 int32
 	PeerAS                  uint32
 	LocalAS                 uint32
+	UpdateSource            string
 	PeerType                PeerType
 	AuthPassword            string
 	Description             string
-	NeighborAddress         net.IP
-	IfIndex                 int32
 	SessionState            uint32
 	Messages                Messages
 	Queues                  Queues

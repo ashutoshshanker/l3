@@ -49,7 +49,7 @@ func SendBfdNotification(DestIp string, State bool, Oper config.Operation) {
 func SendIntfNotification(ifIndex int32, ipAddr string, state config.Operation) {
 	bgpapi.intfCh <- config.IntfStateInfo{
 		Idx:    ifIndex,
-		Ipaddr: ipAddr,
+		IPAddr: ipAddr,
 		State:  state,
 	}
 }
