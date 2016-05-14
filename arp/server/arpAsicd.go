@@ -2,16 +2,18 @@ package server
 
 import (
 	"asicd/asicdCommonDefs"
-	"asicdServices"
+	//"asicdServices"
 	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
 )
 
+/*
 type AsicdClient struct {
 	ArpClientBase
 	ClientHdl *asicdServices.ASICDServicesClient
 }
+*/
 
 func (server *ARPServer) createASICdSubscriber() {
 	for {

@@ -27,8 +27,8 @@ func main() {
 
 	logger.Info(fmt.Sprintln("Starting ARP server..."))
 	arpServer := server.NewARPServer(logger)
-	//go arpServer.StartServer(fileName)
-	go arpServer.StartServer(*paramsDir)
+	plugin := "Flexswitch" // Flexswitch/OvsDB
+	go arpServer.StartServer(*paramsDir, plugin)
 
 	<-arpServer.InitDone
 
