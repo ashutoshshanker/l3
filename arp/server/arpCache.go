@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	//"utils/asicdClientManager"
 	"utils/commonDefs"
 )
 
@@ -193,20 +194,22 @@ func (server *ARPServer) processArpActionMsg(msg ArpActionMsg) {
 func (server *ARPServer) processAsicdMsg(msg AsicdMsg) error {
 	switch msg.MsgType {
 	case Create:
-		_, err := server.asicdClient.ClientHdl.CreateIPv4Neighbor(msg.IpAddr, msg.MacAddr, msg.VlanId, msg.IfIdx)
+		//_, err := server.asicdClient.ClientHdl.CreateIPv4Neighbor(msg.IpAddr, msg.MacAddr, msg.VlanId, msg.IfIdx)
+		_, err := server.AsicdPlugin.CreateIPv4Neighbor(msg.IpAddr, msg.MacAddr, msg.VlanId, msg.IfIdx)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Asicd Create IPv4 Neighbor failed for IpAddr:", msg.IpAddr, "VlanId:", msg.VlanId, "IfIdx:", msg.IfIdx, "err:", err))
 			return err
 		}
 	case Delete:
-		_, err := server.asicdClient.ClientHdl.DeleteIPv4Neighbor(msg.IpAddr,
-			"00:00:00:00:00:00", 0, 0)
+		//_, err := server.asicdClient.ClientHdl.DeleteIPv4Neighbor(msg.IpAddr,
+		_, err := server.AsicdPlugin.DeleteIPv4Neighbor(msg.IpAddr)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Asicd was unable to delete neigbhor entry for", msg.IpAddr, "err:", err))
 			return err
 		}
 	case Update:
-		_, err := server.asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.IpAddr, msg.MacAddr, msg.VlanId, msg.IfIdx)
+		//_, err := server.asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.IpAddr, msg.MacAddr, msg.VlanId, msg.IfIdx)
+		_, err := server.AsicdPlugin.UpdateIPv4Neighbor(msg.IpAddr, msg.MacAddr, msg.VlanId, msg.IfIdx)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Asicd Update IPv4 Neighbor failed for IpAddr:", msg.IpAddr, "MacAddr:", msg.MacAddr, "VlanId:", msg.VlanId, "IfIdx:", msg.IfIdx, "err:", err))
 			return err
