@@ -906,10 +906,12 @@ func (server *BGPServer) listenChannelUpdates() {
 					server.logger.Info(fmt.Sprintln("Clean up peer", oldPeer.NeighborAddress.String()))
 					peer.Cleanup()
 					server.ProcessRemoveNeighbor(oldPeer.NeighborAddress.String(), peer)
-					err := netUtils.SetTCPListenerMD5(server.listener, oldPeer.NeighborAddress.String(), "")
-					if err != nil {
-						server.logger.Info(fmt.Sprintln("Failed to add MD5 authentication for old neighbor",
-							newPeer.NeighborAddress.String(), "with error", err))
+					if peer.NeighborConf.RunningConf.AuthPassword != "" {
+						err := netUtils.SetTCPListenerMD5(server.listener, oldPeer.NeighborAddress.String(), "")
+						if err != nil {
+							server.logger.Info(fmt.Sprintln("Failed to add MD5 authentication for old neighbor",
+								newPeer.NeighborAddress.String(), "with error", err))
+						}
 					}
 					peer.UpdateNeighborConf(newPeer, &server.BgpConfig)
 
@@ -941,11 +943,13 @@ func (server *BGPServer) listenChannelUpdates() {
 				}
 				server.logger.Info(fmt.Sprintln("Add neighbor, ip:", newPeer.NeighborAddress.String()))
 				peer = NewPeer(server, &server.BgpConfig.Global.Config, groupConfig, newPeer)
-				err := netUtils.SetTCPListenerMD5(server.listener, newPeer.NeighborAddress.String(),
-					peer.NeighborConf.RunningConf.AuthPassword)
-				if err != nil {
-					server.logger.Info(fmt.Sprintln("Failed to add MD5 authentication for neighbor",
-						newPeer.NeighborAddress.String(), "with error", err))
+				if peer.NeighborConf.RunningConf.AuthPassword != "" {
+					err := netUtils.SetTCPListenerMD5(server.listener, newPeer.NeighborAddress.String(),
+						peer.NeighborConf.RunningConf.AuthPassword)
+					if err != nil {
+						server.logger.Info(fmt.Sprintln("Failed to add MD5 authentication for neighbor",
+							newPeer.NeighborAddress.String(), "with error", err))
+					}
 				}
 				server.PeerMap[newPeer.NeighborAddress.String()] = peer
 				server.NeighborMutex.Lock()
