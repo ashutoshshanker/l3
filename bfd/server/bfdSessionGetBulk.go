@@ -36,6 +36,7 @@ func (server *BFDServer) GetBulkBfdSessionStates(idx int, cnt int) (int, int, []
 		result[i].RequiredMinRxInterval = server.bfdGlobal.Sessions[sessionId].state.RequiredMinRxInterval
 		result[i].RemoteMinRxInterval = server.bfdGlobal.Sessions[sessionId].state.RemoteMinRxInterval
 		result[i].DetectionMultiplier = server.bfdGlobal.Sessions[sessionId].state.DetectionMultiplier
+		result[i].RemoteDetectionMultiplier = server.bfdGlobal.Sessions[sessionId].state.RemoteDetectionMultiplier
 		result[i].DemandMode = server.bfdGlobal.Sessions[sessionId].state.DemandMode
 		result[i].RemoteDemandMode = server.bfdGlobal.Sessions[sessionId].state.RemoteDemandMode
 		result[i].AuthType = server.bfdGlobal.Sessions[sessionId].state.AuthType
@@ -71,6 +72,7 @@ func (server *BFDServer) GetBfdSessionState(ipAddr string) *SessionState {
 		sessionState.RequiredMinRxInterval = server.bfdGlobal.Sessions[sessionId].state.RequiredMinRxInterval
 		sessionState.RemoteMinRxInterval = server.bfdGlobal.Sessions[sessionId].state.RemoteMinRxInterval
 		sessionState.DetectionMultiplier = server.bfdGlobal.Sessions[sessionId].state.DetectionMultiplier
+		sessionState.RemoteDetectionMultiplier = server.bfdGlobal.Sessions[sessionId].state.RemoteDetectionMultiplier
 		sessionState.DemandMode = server.bfdGlobal.Sessions[sessionId].state.DemandMode
 		sessionState.RemoteDemandMode = server.bfdGlobal.Sessions[sessionId].state.RemoteDemandMode
 		sessionState.AuthType = server.bfdGlobal.Sessions[sessionId].state.AuthType

@@ -2,8 +2,8 @@ package server
 
 import (
 	"asicd/asicdCommonDefs"
-	"asicdInt"
-	"asicdServices"
+	//"asicdInt"
+	//"asicdServices"
 	"fmt"
 	"net"
 	"utils/commonDefs"
@@ -299,7 +299,8 @@ func (server *ARPServer) constructL3Infra() {
 	count := 100
 	var ifName string
 	for {
-		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkIPv4IntfState(asicdServices.Int(curMark), asicdServices.Int(count))
+		//bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkIPv4IntfState(asicdServices.Int(curMark), asicdServices.Int(count))
+		bulkInfo, _ := server.AsicdPlugin.GetBulkIPv4IntfState(curMark, count)
 		if bulkInfo == nil {
 			break
 		}
@@ -364,7 +365,8 @@ func (server *ARPServer) getBulkPortConfig() {
 	server.logger.Debug("Calling Asicd for getting Port Property")
 	count := 100
 	for {
-		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPort(asicdServices.Int(curMark), asicdServices.Int(count))
+		//bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPort(asicdServices.Int(curMark), asicdServices.Int(count))
+		bulkInfo, _ := server.AsicdPlugin.GetBulkPort(curMark, count)
 		if bulkInfo == nil {
 			break
 		}
@@ -389,7 +391,8 @@ func (server *ARPServer) getBulkPortState() {
 	server.logger.Debug("Calling Asicd for getting Port Property")
 	count := 100
 	for {
-		bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPortState(asicdServices.Int(curMark), asicdServices.Int(count))
+		//bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPortState(asicdServices.Int(curMark), asicdServices.Int(count))
+		bulkInfo, _ := server.AsicdPlugin.GetBulkPortState(curMark, count)
 		if bulkInfo == nil {
 			break
 		}
@@ -417,12 +420,14 @@ func (server *ARPServer) constructVlanInfra() {
 	server.logger.Debug("Calling Asicd for getting Vlan Property")
 	count := 100
 	for {
-		bulkVlanInfo, _ := server.asicdClient.ClientHdl.GetBulkVlan(asicdInt.Int(curMark), asicdInt.Int(count))
+		//bulkVlanInfo, _ := server.asicdClient.ClientHdl.GetBulkVlan(asicdInt.Int(curMark), asicdInt.Int(count))
+		bulkVlanInfo, _ := server.AsicdPlugin.GetBulkVlan(curMark, count)
 		if bulkVlanInfo == nil {
 			break
 		}
 		/* Get bulk on vlan state can re-use curMark and count used by get bulk vlan, as there is a 1:1 mapping in terms of cfg/state objs */
-		bulkVlanStateInfo, _ := server.asicdClient.ClientHdl.GetBulkVlanState(asicdServices.Int(curMark), asicdServices.Int(count))
+		//bulkVlanStateInfo, _ := server.asicdClient.ClientHdl.GetBulkVlanState(asicdServices.Int(curMark), asicdServices.Int(count))
+		bulkVlanStateInfo, _ := server.AsicdPlugin.GetBulkVlanState(curMark, count)
 		if bulkVlanStateInfo == nil {
 			break
 		}
