@@ -20,6 +20,11 @@ func (ribdServiceHandler *RIBDServer) UpdateRoutesFromDB() (err error) {
 				obj := ribd.NewIPv4Route()
 				dbObj := objList[idx].(models.IPv4Route)
 				models.ConvertribdIPv4RouteObjToThrift(&dbObj, obj)
+				err = ribdServiceHandler.RouteConfigValidationCheck(obj, "add")
+				if err != nil {
+					logger.Err("Route validation failed when reading from db")
+					continue
+				}
 				rv, _ := ribdServiceHandler.ProcessRouteCreateConfig(obj)
 				if rv == false {
 					logger.Err("IPv4Route create failed during init")

@@ -158,7 +158,7 @@ func (m RIBDServer) ConvertIntfStrToIfIndexStr(intfString string) (ifIndex strin
 	}
 	return ifIndex, nil
 }
-func (m RIBDServer) RouteConfigValidationCheckForUpdate(cfg *ribd.IPv4Route, attrset []bool) (err error) {
+func (m RIBDServer) RouteConfigValidationCheckForUpdate(cfg *ribd.IPv4Route, attrset []bool, op string) (err error) {
 	logger.Info(fmt.Sprintln("RouteConfigValidationCheckForUpdate"))
 	isCidr := strings.Contains(cfg.DestinationNw, "/")
 	if isCidr { //the given address is in CIDR format
@@ -201,6 +201,39 @@ func (m RIBDServer) RouteConfigValidationCheckForUpdate(cfg *ribd.IPv4Route, att
 		err = errors.New("No route found")
 		return err
 	}
+	if op == "add" {
+		logger.Info(fmt.Sprintln("Add operation in update"))
+		if attrset != nil {
+			logger.Info("attr set not nil, set individual attributes")
+			objTyp := reflect.TypeOf(*cfg)
+			for i := 0; i < objTyp.NumField(); i++ {
+				objName := objTyp.Field(i).Name
+				if attrset[i] {
+					if objName != "NextHop" {
+						logger.Err(fmt.Sprintln("Cannot add any other object ", objName, " other than next hop"))
+						return errors.New("Cannot add any other object other than next hop")
+					}
+					if len(cfg.NextHop) == 0 {
+						logger.Err("Must specify next hop")
+						return errors.New("Next hop ip not specified")
+					}
+					_, err = getIP(cfg.NextHop[0].NextHopIp)
+					if err != nil {
+						logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
+						return errors.New("Invalid next hop ip address")
+					}
+					logger.Info(fmt.Sprintln("IntRef before : ", cfg.NextHop[0].NextHopIntRef))
+					cfg.NextHop[0].NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(cfg.NextHop[0].NextHopIntRef)
+					if err != nil {
+						logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", cfg.NextHop[0].NextHopIntRef))
+						return errors.New("Invalid NextHop Intref")
+					}
+					logger.Info(fmt.Sprintln("IntRef after : ", cfg.NextHop[0].NextHopIntRef))
+				}
+			}
+		}
+		return err
+	}
 	if attrset != nil {
 		logger.Info("attr set not nil, set individual attributes")
 		objTyp := reflect.TypeOf(*cfg)
@@ -208,6 +241,10 @@ func (m RIBDServer) RouteConfigValidationCheckForUpdate(cfg *ribd.IPv4Route, att
 			objName := objTyp.Field(i).Name
 			if attrset[i] {
 				logger.Info(fmt.Sprintf("ProcessRouteUpdateConfig (server): changed ", objName))
+				if objName == "Protocol" {
+					logger.Err("Cannot update Protocol value of a route")
+					return errors.New("Cannot set Protocol field")
+				}
 				if objName == "NextHop" {
 					if len(cfg.NextHop) == 0 {
 						logger.Err("Must specify next hop")
@@ -222,7 +259,7 @@ func (m RIBDServer) RouteConfigValidationCheckForUpdate(cfg *ribd.IPv4Route, att
 					cfg.NextHop[0].NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(cfg.NextHop[0].NextHopIntRef)
 					if err != nil {
 						logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", cfg.NextHop[0].NextHopIntRef))
-						return err
+						return errors.New("Invalid Nexthop Intref")
 					}
 					logger.Info(fmt.Sprintln("IntRef after : ", cfg.NextHop[0].NextHopIntRef))
 				}
@@ -242,7 +279,7 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
 		}
 		logger.Info(fmt.Sprintln("Number of nexthops = ", len(cfg.NextHop)))
 		for i := 0; i < len(cfg.NextHop); i++ {
-			_, err = getIP(cfg.NextHop[0].NextHopIp)
+			_, err = getIP(cfg.NextHop[i].NextHopIp)
 			if err != nil {
 				logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
 				return errors.New("Invalid next hop ip address")

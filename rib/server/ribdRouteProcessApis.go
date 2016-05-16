@@ -198,10 +198,15 @@ func getConnectedRoutes() {
 			}
 			nextHop := ribd.NextHopInfo{
 				NextHopIp:     "0.0.0.0",
-				NextHopIntRef: strconv.Itoa(int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))),
+				NextHopIntRef: strconv.Itoa(int(IPIntfBulk.IPv4IntfStateList[i].IfIndex)),//strconv.Itoa(int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))),
 			}
 			cfg.NextHop = make([]*ribd.NextHopInfo, 0)
 			cfg.NextHop = append(cfg.NextHop, &nextHop)
+			err = RouteServiceHandler.RouteConfigValidationCheck(&cfg, "add")
+			if err != nil {
+				logger.Err("Route validation failed when reading from db")
+				continue
+			}
 			_, err = RouteServiceHandler.ProcessRouteCreateConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
 			if err != nil {
 				logger.Info(fmt.Sprintf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))))
@@ -1332,11 +1337,27 @@ func createV4Route(destNetIp string,
 }
 
 func (m RIBDServer) ProcessRouteCreateConfig(cfg *ribd.IPv4Route) (val bool, err error) {
-	logger.Info(fmt.Sprintln("ProcessRouteCreate: Received create route request for ip ", cfg.DestinationNw, " mask ", cfg.NetworkMask))
-	policyRoute := BuildPolicyRouteFromribdIPv4Route(cfg)
-	params := BuildRouteParamsFromribdIPv4Route(cfg, FIBAndRIB, Invalid, len(destNetSlice))
-	logger.Info(fmt.Sprintln("createType = ", params.createType, "deleteType = ", params.deleteType))
-	PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Import, params)
+	logger.Info(fmt.Sprintln("ProcessRouteCreate: Received create route request for ip ", cfg.DestinationNw, " mask ", cfg.NetworkMask, " number of next hops: ", len(cfg.NextHop)))
+    newCfg := ribd.IPv4Route{ 
+	    DestinationNw: cfg.DestinationNw,
+		NetworkMask  : cfg.NetworkMask,
+		Protocol     : cfg.Protocol,
+		Cost         : cfg.Cost,
+		NullRoute    : cfg.NullRoute,
+	}
+	for i := 0; i< len(cfg.NextHop) ; i++ {
+        nh := ribd.NextHopInfo {
+			NextHopIp     : cfg.NextHop[i].NextHopIp,
+			NextHopIntRef : cfg.NextHop[i].NextHopIntRef,
+			Weight        : cfg.NextHop[i].Weight, 
+		}		
+		newCfg.NextHop = make([]*ribd.NextHopInfo,0)
+		newCfg.NextHop = append(newCfg.NextHop, &nh)
+	    policyRoute := BuildPolicyRouteFromribdIPv4Route(&newCfg)
+	    params := BuildRouteParamsFromribdIPv4Route(&newCfg, FIBAndRIB, Invalid, len(destNetSlice))
+	    logger.Info(fmt.Sprintln("createType = ", params.createType, "deleteType = ", params.deleteType))
+	    PolicyEngineFilter(policyRoute, policyCommonDefs.PolicyPath_Import, params)
+	}
 
 	return true, err
 }
@@ -1437,10 +1458,30 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 		logger.Info("No route for destination network")
 		return val, err
 	}
-	callUpdate := true
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
+	if op == "add" {
+		logger.Info(fmt.Sprintln("Add operation in update"))
+		if attrset != nil {
+			logger.Info("attr set not nil, set individual attributes")
+			objTyp := reflect.TypeOf(*origconfig)
+			for i := 0; i < objTyp.NumField(); i++ {
+				objName := objTyp.Field(i).Name
+				if attrset[i] {
+					if objName != "NextHop" {
+						logger.Err(fmt.Sprintln("Cannot add any other object ", objName, " other than next hop"))
+						return false, errors.New("Cannot add any other object other than next hop")
+					}
+					m.ProcessRouteCreateConfig(newconfig)
+				}
+			}
+		}
+		return val, err
+	}
+	/*
+		Now starts the case when update operation is called with replace
+	*/
+	callUpdate := true
 	if attrset != nil {
-		logger.Info("attr set not nil, set individual attributes")
 		found, routeInfoRecord, index := findRouteWithNextHop(routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol], origconfig.NextHop[0].NextHopIp)
 		if !found || index == -1 {
 			logger.Info("Invalid nextHopIP")
