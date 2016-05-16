@@ -8,6 +8,7 @@ import (
 	"l3/bgp/config"
 	"l3/bgp/packet"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 	"utils/logging"
@@ -1319,8 +1320,11 @@ func (fsm *FSM) InitiateConnToPeer() {
 	}
 	remote := net.JoinHostPort(fsm.pConf.NeighborAddress.String(), config.BGPPort)
 	local := ""
-	if fsm.pConf.UpdateSource != "" {
-		local = net.JoinHostPort(fsm.pConf.UpdateSource, "0")
+
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "InitiateConnToPeer - source =",
+		fsm.pConf.UpdateSource, "source len =", len(fsm.pConf.UpdateSource)))
+	if strings.TrimSpace(fsm.pConf.UpdateSource) != "" {
+		local = net.JoinHostPort(strings.TrimSpace(fsm.pConf.UpdateSource), "0")
 	}
 	if fsm.outTCPConn == nil {
 		fsm.outTCPConn = NewOutTCPConn(fsm, fsm.outConnCh, fsm.outConnErrCh)
