@@ -9,6 +9,7 @@ import (
 	"l3/bgp/utils"
 	"math/rand"
 	"net"
+	"strings"
 	"time"
 	"utils/logging"
 	"utils/netUtils"
@@ -79,7 +80,7 @@ func (o *OutTCPConn) Connect(seconds uint32, remote, local string, connCh chan n
 
 	if local != "" {
 		o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
-			"local IP is set to", local))
+			"local IP is set to", local, "local IP len", len(local)))
 		localIP, _, err := net.SplitHostPort(local)
 		if err != nil {
 			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
@@ -88,9 +89,15 @@ func (o *OutTCPConn) Connect(seconds uint32, remote, local string, connCh chan n
 			return
 		}
 
-		if !o.ifaceMgr.IsIPConfigured(localIP) {
-			errCh <- errors.New(fmt.Sprintf("Local IP %s is not configured on the switch", localIP))
-			return
+		if strings.TrimSpace(localIP) != "" {
+			if !o.ifaceMgr.IsIPConfigured(strings.TrimSpace(localIP)) {
+				errCh <- errors.New(fmt.Sprintf("Local IP %s is not configured on the switch", localIP))
+				return
+			}
+		} else {
+			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+				"local IP is empty, set the local address to empty"))
+			local = ""
 		}
 	}
 
