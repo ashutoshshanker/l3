@@ -9,21 +9,23 @@ type ReachabilityInfo struct {
 type Operation int
 
 const (
-	NOTIFY_ROUTE_CREATED Operation = 1
-	NOTIFY_ROUTE_DELETED Operation = 2
-	BFD_STATE_VALID      Operation = 3
-	BFD_STATE_INVALID    Operation = 4
-	INTF_STATE_DOWN      Operation = 5
-	INTF_STATE_UP        Operation = 6
-	NOTIFY_POLICY_CONDITION_CREATED         Operation = 7
-	NOTIFY_POLICY_CONDITION_DELETED         Operation = 8
-	NOTIFY_POLICY_CONDITION_UPDATED         Operation = 9
-	NOTIFY_POLICY_STMT_CREATED              Operation = 10
-	NOTIFY_POLICY_STMT_DELETED              Operation = 11
-	NOTIFY_POLICY_STMT_UPDATED              Operation = 12
-	NOTIFY_POLICY_DEFINITION_CREATED        Operation = 13
-	NOTIFY_POLICY_DEFINITION_DELETED        Operation = 14
-	NOTIFY_POLICY_DEFINITION_UPDATED        Operation = 15
+	NOTIFY_ROUTE_CREATED Operation = iota + 1
+	NOTIFY_ROUTE_DELETED
+	BFD_STATE_VALID
+	BFD_STATE_INVALID
+	INTF_CREATED
+	INTF_DELETED
+	INTF_STATE_DOWN
+	INTF_STATE_UP
+	NOTIFY_POLICY_CONDITION_CREATED
+	NOTIFY_POLICY_CONDITION_DELETED
+	NOTIFY_POLICY_CONDITION_UPDATED
+	NOTIFY_POLICY_STMT_CREATED
+	NOTIFY_POLICY_STMT_DELETED
+	NOTIFY_POLICY_STMT_UPDATED
+	NOTIFY_POLICY_DEFINITION_CREATED
+	NOTIFY_POLICY_DEFINITION_DELETED
+	NOTIFY_POLICY_DEFINITION_UPDATED
 )
 
 type BfdInfo struct {
@@ -34,14 +36,22 @@ type BfdInfo struct {
 
 type IntfStateInfo struct {
 	Idx    int32
-	Ipaddr string
+	IPAddr string
 	State  Operation
+}
+
+func NewIntfStateInfo(idx int32, ipAddr string, state Operation) *IntfStateInfo {
+	return &IntfStateInfo{
+		Idx:    idx,
+		IPAddr: ipAddr,
+		State:  state,
+	}
 }
 
 /*  This is mimic of ribd object...@TODO: need to change this to bgp server object
  */
 type RouteInfo struct {
-	Ipaddr           string
+	IPAddr           string
 	Mask             string
 	NextHopIp        string
 	Prototype        int
@@ -55,7 +65,7 @@ type RouteCh struct {
 }
 
 type NextHopInfo struct {
-	Ipaddr         string
+	IPAddr         string
 	Mask           string
 	Metric         int32
 	NextHopIp      string

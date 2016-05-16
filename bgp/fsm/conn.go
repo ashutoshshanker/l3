@@ -2,9 +2,11 @@
 package fsm
 
 import (
+	"errors"
 	"fmt"
 	"l3/bgp/config"
 	"l3/bgp/packet"
+	"l3/bgp/utils"
 	"math/rand"
 	"net"
 	"time"
@@ -17,6 +19,7 @@ import (
 type OutTCPConn struct {
 	fsm          *FSM
 	logger       *logging.Writer
+	ifaceMgr     *utils.InterfaceMgr
 	fsmConnCh    chan net.Conn
 	fsmConnErrCh chan error
 	StopConnCh   chan bool
@@ -27,6 +30,7 @@ func NewOutTCPConn(fsm *FSM, fsmConnCh chan net.Conn, fsmConnErrCh chan error) *
 	outConn := OutTCPConn{
 		fsm:          fsm,
 		logger:       fsm.logger,
+		ifaceMgr:     utils.NewInterfaceMgr(fsm.logger),
 		fsmConnCh:    fsmConnCh,
 		fsmConnErrCh: fsmConnErrCh,
 		StopConnCh:   make(chan bool),
@@ -38,7 +42,15 @@ func NewOutTCPConn(fsm *FSM, fsmConnCh chan net.Conn, fsmConnErrCh chan error) *
 	return &outConn
 }
 
-func (o *OutTCPConn) Connect(seconds uint32, addr string, connCh chan net.Conn, errCh chan error) {
+func (o *OutTCPConn) Connect(seconds uint32, remote, local string, connCh chan net.Conn, errCh chan error) {
+	o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+		"Connect start, local IP:", local, "remote IP:", remote))
+	remoteIP, _, err := net.SplitHostPort(remote)
+	if err != nil {
+		errCh <- err
+		return
+	}
+
 	reachableCh := make(chan bool)
 	reachabilityInfo := config.ReachabilityInfo{
 		IP:          o.fsm.pConf.NeighborAddress.String(),
@@ -65,16 +77,29 @@ func (o *OutTCPConn) Connect(seconds uint32, addr string, connCh chan net.Conn, 
 		}
 	}
 
-	ip, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		errCh <- err
-		return
+	if local != "" {
+		o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+			"local IP is set to", local))
+		localIP, _, err := net.SplitHostPort(local)
+		if err != nil {
+			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+				"SplitHostPort for local IP", local, "failed with error", err))
+			errCh <- err
+			return
+		}
+
+		if !o.ifaceMgr.IsIPConfigured(localIP) {
+			errCh <- errors.New(fmt.Sprintf("Local IP %s is not configured on the switch", localIP))
+			return
+		}
 	}
 
 	o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
 		"Connect called... calling DialTimeout with", seconds, "second timeout", "OutTCPCOnn id", o.id))
-	socket, err := netUtils.ConnectSocket("tcp", addr)
+	socket, err := netUtils.ConnectSocket("tcp", remote, local)
 	if err != nil {
+		o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+			"ConnectSocket failed with error", err))
 		errCh <- err
 		return
 	}
@@ -82,15 +107,19 @@ func (o *OutTCPConn) Connect(seconds uint32, addr string, connCh chan net.Conn, 
 	if o.fsm.pConf.AuthPassword != "" {
 		o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
 			"Set MD5 option on the socket:", socket, "password:", o.fsm.pConf.AuthPassword))
-		err = netUtils.SetSockoptTCPMD5(socket, ip, o.fsm.pConf.AuthPassword)
+		err = netUtils.SetSockoptTCPMD5(socket, remoteIP, o.fsm.pConf.AuthPassword)
 		if err != nil {
+			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+				"Set MD5 option on the socket failed with error", err))
 			errCh <- err
 			return
 		}
 	}
 
-	err = netUtils.Connect(socket, "tcp", addr, time.Duration(seconds)*time.Second)
+	err = netUtils.Connect(socket, "tcp", remote, local, time.Duration(seconds)*time.Second)
 	if err != nil {
+		o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+			"Connect failed with error", err))
 		errCh <- err
 		return
 	}
@@ -113,7 +142,7 @@ func (o *OutTCPConn) Connect(seconds uint32, addr string, connCh chan net.Conn, 
 	}
 }
 
-func (o *OutTCPConn) ConnectToPeer(seconds uint32, addr string) {
+func (o *OutTCPConn) ConnectToPeer(seconds uint32, remote, local string) {
 	var stopConn bool = false
 	connCh := make(chan net.Conn)
 	errCh := make(chan error)
@@ -125,13 +154,13 @@ func (o *OutTCPConn) ConnectToPeer(seconds uint32, addr string) {
 		connTime = seconds
 	}
 
-	go o.Connect(seconds, addr, connCh, errCh)
+	go o.Connect(seconds, remote, local, connCh, errCh)
 
 	for {
 		select {
 		case conn := <-connCh:
 			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
-				"ConnectToPeer: Connected to peer", addr, "OutTCPCOnn id", o.id))
+				"ConnectToPeer: Connected to peer", remote, "OutTCPCOnn id", o.id))
 			if stopConn {
 				conn.Close()
 				return
@@ -142,7 +171,7 @@ func (o *OutTCPConn) ConnectToPeer(seconds uint32, addr string) {
 
 		case err := <-errCh:
 			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
-				"ConnectToPeer: Failed to connect to peer", addr, "with error:", err, "OutTCPCOnn id", o.id))
+				"ConnectToPeer: Failed to connect to peer", remote, "with error:", err, "OutTCPCOnn id", o.id))
 			if stopConn {
 				return
 			}
@@ -150,16 +179,16 @@ func (o *OutTCPConn) ConnectToPeer(seconds uint32, addr string) {
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
 				o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
 					"Connect to peer timed out, retrying...", "OutTCPCOnn id", o.id))
-				go o.Connect(3, addr, connCh, errCh)
+				go o.Connect(3, remote, local, connCh, errCh)
 			} else if _, ok := err.(config.AddressNotResolvedError); ok {
-				go o.Connect(3, addr, connCh, errCh)
+				go o.Connect(3, remote, local, connCh, errCh)
 			} else {
 				o.fsmConnErrCh <- err
 			}
 
 		case <-o.StopConnCh:
 			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
-				"ConnectToPeer: Recieved stop connecting to peer", addr, "OutTCPCOnn id", o.id))
+				"ConnectToPeer: Recieved stop connecting to peer", remote, "OutTCPCOnn id", o.id))
 			stopConn = true
 		}
 	}

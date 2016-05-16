@@ -5,6 +5,7 @@ package config
 type IntfStateMgrIntf interface {
 	Start()
 	PortStateChange()
+	GetIPv4Intfs() []*IntfStateInfo
 	GetIPv4Information(ifIndex int32) (string, error)
 	GetIfIndex(int, int) int32
 }
@@ -16,7 +17,7 @@ type RouteMgrIntf interface {
 	GetNextHopInfo(ipAddr string) (*NextHopInfo, error)
 	CreateRoute(*RouteConfig)
 	DeleteRoute(*RouteConfig)
-    ApplyPolicy(protocol string,policy string,action string,conditions []*ConditionInfo)
+	ApplyPolicy(protocol string, policy string, action string, conditions []*ConditionInfo)
 	GetRoutes() ([]*RouteInfo, []*RouteInfo)
 }
 
