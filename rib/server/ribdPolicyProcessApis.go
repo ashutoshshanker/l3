@@ -383,16 +383,7 @@ func (m RIBDServer) UpdateApplyPolicy(info ApplyPolicyInfo, apply bool, db *poli
 	//define Action
 	switch action {
 	case "Redistribution":
-		logger.Info("Setting up Redistribution action mep")
-		/*actionName := "RedeistributeTo"+source
-		    ok := PolicyEngineDB.PolicyActionsDB.Match(actionName)
-			if !ok {
-				logger.Info(fmt.Sprintln("Define action ", actionName))
-				policyAction := ribdInt.PolicyAction{Name:actionName, ActionType:action,RedistributeAction:"allow",RedistributeTargetProtocol:source}
-				m.ProcessPolicyActionConfigCreate(&policyAction)
-			}*/
-		//check if the policy is configured
-		//get should happen from DB
+		logger.Info("Setting up Redistribution action map")
 		redistributeActionInfo := policy.RedistributeActionInfo{true, source}
 		policyAction = policy.PolicyAction{Name: action, ActionType: policyCommonDefs.PolicyActionTypeRouteRedistribute, ActionInfo: redistributeActionInfo}
 		break
