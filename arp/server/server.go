@@ -2,19 +2,20 @@ package server
 
 import (
 	"asicd/asicdCommonDefs"
-	"asicdServices"
-	"encoding/json"
+	//"asicdServices"
+	//"encoding/json"
 	"fmt"
-	"git.apache.org/thrift.git/lib/go/thrift"
+	//"git.apache.org/thrift.git/lib/go/thrift"
 	nanomsg "github.com/op/go-nanomsg"
-	"io/ioutil"
+	//"io/ioutil"
 	"os"
 	"os/signal"
-	"strconv"
+	//"strconv"
 	"syscall"
 	"time"
+	"utils/asicdClientManager"
 	"utils/dbutils"
-	"utils/ipcutils"
+	//"utils/ipcutils"
 	"utils/logging"
 )
 
@@ -70,16 +71,18 @@ type ArpActionMsg struct {
 	Obj  string
 }
 
+/*
 type ArpClientBase struct {
 	Address            string
 	Transport          thrift.TTransport
 	PtrProtocolFactory *thrift.TBinaryProtocolFactory
 }
+*/
 
 type ARPServer struct {
-	logger                  *logging.Writer
-	arpCache                map[string]ArpEntry //Key: Dest IpAddr
-	asicdClient             AsicdClient
+	logger   *logging.Writer
+	arpCache map[string]ArpEntry //Key: Dest IpAddr
+	//asicdClient             AsicdClient
 	asicdSubSocket          *nanomsg.SubSocket
 	asicdSubSocketCh        chan []byte
 	asicdSubSocketErrCh     chan error
@@ -123,6 +126,11 @@ type ARPServer struct {
 
 	ArpActionCh                chan ArpActionMsg
 	arpDeleteArpEntryFromRibCh chan string
+
+	plugin string
+	//FSAsicd    *asicdClientManager.FSAsicdClientMgr
+	//OvsDBAsicd *asicdClientManager.OvsDBAsicdClientMgr
+	AsicdPlugin asicdClientManager.AsicdClientIntf
 }
 
 func NewARPServer(logger *logging.Writer) *ARPServer {
@@ -175,6 +183,7 @@ func (server *ARPServer) initArpParams() {
 	server.dumpArpTable = false
 }
 
+/*
 func (server *ARPServer) connectToServers(paramsFile string) {
 	server.logger.Debug(fmt.Sprintln("Inside connectToServers...paramsFile", paramsFile))
 	var clientsList []ClientJson
@@ -215,9 +224,11 @@ func (server *ARPServer) connectToServers(paramsFile string) {
 			}
 			server.logger.Info("Arpd is connected to Asicd")
 			server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
+			//server.FSAsicd = &asicdClientManager.FSAsicdClientMgr{server.asicdClient.ClientHdl}
 		}
 	}
 }
+*/
 
 func (server *ARPServer) sigHandler(sigChan <-chan os.Signal) {
 	server.logger.Debug("Inside sigHandler....")
@@ -236,9 +247,10 @@ func (server *ARPServer) sigHandler(sigChan <-chan os.Signal) {
 	}
 }
 
-func (server *ARPServer) InitServer(paramDir string) {
+func (server *ARPServer) InitServer(paramDir string, plugin string) {
 	server.initArpParams()
 
+	server.plugin = plugin
 	fileName := paramDir
 	if fileName[len(fileName)-1] != '/' {
 		fileName = fileName + "/"
@@ -246,7 +258,13 @@ func (server *ARPServer) InitServer(paramDir string) {
 	fileName = fileName + "clients.json"
 
 	server.logger.Debug("Starting Arp Server")
-	server.connectToServers(fileName)
+	//server.connectToServers(fileName)
+	//server.AsicdPlugin = asicdClientManager.NewAsicdClientInit(server.plugin, server.asicdClient.ClientHdl, 100)
+	server.AsicdPlugin = asicdClientManager.NewAsicdClientInit(server.plugin, fileName, server.logger)
+	if server.AsicdPlugin == nil {
+		server.logger.Err("Unable to instantiate Asicd Interface")
+		return
+	}
 	server.logger.Debug("Listen for ASICd updates")
 	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
 	go server.createASICdSubscriber()
@@ -276,9 +294,9 @@ func (server *ARPServer) InitServer(paramDir string) {
 	go server.arpCacheTimeout()
 }
 
-func (server *ARPServer) StartServer(paramDir string) {
+func (server *ARPServer) StartServer(paramDir string, plugin string) {
 	server.logger.Debug(fmt.Sprintln("Inside Start Server...", paramDir))
-	server.InitServer(paramDir)
+	server.InitServer(paramDir, plugin)
 	server.InitDone <- true
 	for {
 		select {
