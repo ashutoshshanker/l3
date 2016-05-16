@@ -1317,10 +1317,14 @@ func (fsm *FSM) InitiateConnToPeer() {
 		fsm.logger.Info("Unknown neighbor address")
 		return
 	}
-	addr := net.JoinHostPort(fsm.pConf.NeighborAddress.String(), config.BGPPort)
+	remote := net.JoinHostPort(fsm.pConf.NeighborAddress.String(), config.BGPPort)
+	local := ""
+	if fsm.pConf.UpdateSource != "" {
+		local = net.JoinHostPort(fsm.pConf.UpdateSource, "0")
+	}
 	if fsm.outTCPConn == nil {
 		fsm.outTCPConn = NewOutTCPConn(fsm, fsm.outConnCh, fsm.outConnErrCh)
-		go fsm.outTCPConn.ConnectToPeer(fsm.connectRetryTime, addr)
+		go fsm.outTCPConn.ConnectToPeer(fsm.connectRetryTime, remote, local)
 	}
 }
 
