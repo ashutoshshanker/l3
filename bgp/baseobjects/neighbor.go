@@ -63,6 +63,7 @@ func (n *NeighborConf) SetNeighborState(peerConf *config.NeighborConfig) {
 	n.Neighbor.State = config.NeighborState{
 		PeerAS:                  peerConf.PeerAS,
 		LocalAS:                 peerConf.LocalAS,
+		UpdateSource:            peerConf.UpdateSource,
 		AuthPassword:            peerConf.AuthPassword,
 		Description:             peerConf.Description,
 		NeighborAddress:         peerConf.NeighborAddress,
@@ -135,6 +136,10 @@ func (n *NeighborConf) GetConfFromNeighbor(inConf *config.NeighborConfig, outCon
 
 	if inConf.LocalAS != 0 {
 		outConf.LocalAS = inConf.LocalAS
+	}
+
+	if inConf.UpdateSource != "" {
+		outConf.UpdateSource = inConf.UpdateSource
 	}
 
 	if inConf.AuthPassword != "" {
