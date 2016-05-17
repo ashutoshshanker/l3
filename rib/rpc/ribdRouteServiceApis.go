@@ -8,8 +8,13 @@ import (
 	"ribdInt"
 )
 
+/* Create route API
+ */
+
 func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
 	logger.Info(fmt.Sprintln("Received create route request for ip", cfg.DestinationNw, " mask ", cfg.NetworkMask, "cfg.NextHopIntRef: ", cfg.NextHop[0].NextHopIntRef))
+    /* Validate Route config parameters for "add" operation
+    */
 	err = m.server.RouteConfigValidationCheck(cfg, "add")
 	if err != nil {
 		logger.Err(fmt.Sprintln("validation check failed with error ", err))
@@ -18,11 +23,19 @@ func (m RIBDServicesHandler) CreateIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 	m.server.RouteCreateConfCh <- cfg
 	return true, nil
 }
+
+/*
+    OnewayCreate API for route
+*/
 func (m RIBDServicesHandler) OnewayCreateIPv4Route(cfg *ribd.IPv4Route) (err error) {
 	logger.Info(fmt.Sprintln("OnewayCreateIPv4Route - Received create route request for ip", cfg.DestinationNw, " mask ", cfg.NetworkMask, "cfg.NextHopIntRef: ", cfg.NextHop[0].NextHopIntRef))
 	m.CreateIPv4Route(cfg)
 	return err
 }
+
+/*
+    Create Routes in Bulk using Oneway create API
+*/
 func (m RIBDServicesHandler) OnewayCreateBulkIPv4Route(cfg []*ribdInt.IPv4Route) (err error) {
 	//logger.Info(fmt.Sprintln("OnewayCreateIPv4Route - Received create route request for ip", cfg.DestinationNw, " mask ", cfg.NetworkMask, "cfg.OutgoingIntfType: ", cfg.OutgoingIntfType, "cfg.OutgoingInterface: ", cfg.OutgoingInterface))
 	logger.Info(fmt.Sprintln("OnewayCreateBulkIPv4Route for ", len(cfg), " routes"))
@@ -44,8 +57,14 @@ func (m RIBDServicesHandler) OnewayCreateBulkIPv4Route(cfg []*ribdInt.IPv4Route)
 	}
 	return err
 }
+/*
+    Delete Route
+*/
 func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
-	logger.Info(fmt.Sprintln("DeleteIPv4:RouteReceived Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHop[0].NextHopIp, "Protocol ", cfg.Protocol))
+	logger.Info(fmt.Sprintln("DeleteIPv4:RouteReceived Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "Protocol ", cfg.Protocol))
+	/*
+	    Validate route config parameters for "del" operation
+	*/
 	err = m.server.RouteConfigValidationCheck(cfg, "del")
 	if err != nil {
 		logger.Err(fmt.Sprintln("validation check failed with error ", err))
@@ -54,13 +73,22 @@ func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err
 	m.server.RouteDeleteConfCh <- cfg
 	return true, nil
 }
+/*
+    Delete route using Oneway Api
+*/
 func (m RIBDServicesHandler) OnewayDeleteIPv4Route(cfg *ribd.IPv4Route) (err error) {
 	logger.Info(fmt.Sprintln("OnewayDeleteIPv4Route:RouteReceived Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHop[0].NextHopIp, "Protocol ", cfg.Protocol))
 	m.DeleteIPv4Route(cfg)
 	return err
 }
+/*
+    Update route
+*/
 func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool, op string) (val bool, err error) {
 	logger.Println("UpdateIPv4Route: Received update route request")
+	/*
+	    validate route config parameters for update operation
+	*/
 	err = m.server.RouteConfigValidationCheckForUpdate(newconfig, attrset,op)
 	if err != nil {
 		logger.Err(fmt.Sprintln("validation check failed with error ", err))
@@ -70,11 +98,29 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
 	m.server.RouteUpdateConfCh <- routeUpdateConfig
 	return true, nil
 }
+/*
+    one way update route function
+*/
 func (m RIBDServicesHandler) OnewayUpdateIPv4Route(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (err error) {
 	logger.Println("OneWayUpdateIPv4Route: Received update route request")
 	m.UpdateIPv4Route(origconfig, newconfig, attrset, "replace")
 	return err
 }
+/*
+    Applications call this function to fetch all the routes that need to be redistributed into them.
+*/
+func (m RIBDServicesHandler) GetBulkRoutesForProtocol(srcProtocol string, fromIndex ribdInt.Int, rcount ribdInt.Int) (routes *ribdInt.RoutesGetInfo, err error) {
+	ret, err := m.server.GetBulkRoutesForProtocol(srcProtocol, fromIndex, rcount)
+	return ret, err
+}
+/*
+    Api to track a route's reachability status
+*/
+func (m RIBDServicesHandler) TrackReachabilityStatus(ipAddr string, protocol string, op string) (err error) {
+	m.server.TrackReachabilityCh <- server.TrackReachabilityInfo{ipAddr, protocol, op}
+	return nil
+}
+
 func (m RIBDServicesHandler) GetIPv4RouteState(destNw string) (*ribd.IPv4RouteState, error) {
 	logger.Info("Get state for IPv4Route")
 	route := ribd.NewIPv4RouteState()
@@ -94,11 +140,6 @@ func (m RIBDServicesHandler) GetIPv4EventState(index int32) (*ribd.IPv4EventStat
 
 func (m RIBDServicesHandler) GetBulkIPv4EventState(fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.IPv4EventStateGetInfo, err error) {
 	ret, err := m.server.GetBulkIPv4EventState(fromIndex, rcount)
-	return ret, err
-}
-
-func (m RIBDServicesHandler) GetBulkRoutesForProtocol(srcProtocol string, fromIndex ribdInt.Int, rcount ribdInt.Int) (routes *ribdInt.RoutesGetInfo, err error) {
-	ret, err := m.server.GetBulkRoutesForProtocol(srcProtocol, fromIndex, rcount)
 	return ret, err
 }
 
@@ -122,8 +163,4 @@ func (m RIBDServicesHandler) GetRoute(destNetIp string, networkMask string) (rou
 func (m RIBDServicesHandler) GetRouteReachabilityInfo(destNet string) (nextHopIntf *ribdInt.NextHopInfo, err error) {
 	nh, err := m.server.GetRouteReachabilityInfo(destNet)
 	return nh, err
-}
-func (m RIBDServicesHandler) TrackReachabilityStatus(ipAddr string, protocol string, op string) (err error) {
-	m.server.TrackReachabilityCh <- server.TrackReachabilityInfo{ipAddr, protocol, op}
-	return nil
 }

@@ -158,10 +158,19 @@ func (m RIBDServer) ConvertIntfStrToIfIndexStr(intfString string) (ifIndex strin
 	}
 	return ifIndex, nil
 }
+/*
+    This function performs config parameters validation for Route update operation.
+	Key validations performed by this fucntion include:
+	   - Validate destinationNw. If provided in CIDR notation, convert to ip addr and mask values
+	   - Check if the route is present in the DB
+*/
 func (m RIBDServer) RouteConfigValidationCheckForUpdate(cfg *ribd.IPv4Route, attrset []bool, op string) (err error) {
 	logger.Info(fmt.Sprintln("RouteConfigValidationCheckForUpdate"))
 	isCidr := strings.Contains(cfg.DestinationNw, "/")
-	if isCidr { //the given address is in CIDR format
+	if isCidr { 
+	    /*
+		    the given address is in CIDR format
+		*/
 		ip, ipNet, err := net.ParseCIDR(cfg.DestinationNw)
 		if err != nil {
 			logger.Err(fmt.Sprintln("Invalid Destination IP address"))
@@ -176,125 +185,179 @@ func (m RIBDServer) RouteConfigValidationCheckForUpdate(cfg *ribd.IPv4Route, att
 		copy(ipMask, ipNet.Mask)
 		ipMaskStr := net.IP(ipMask).String()
 		cfg.NetworkMask = ipMaskStr
-		/*
-			In case where user provides CIDR address, the DB cannot verify if the route is present, so check here
-		*/
-		if m.DbHdl != nil {
-			var dbObjCfg models.IPv4Route
-			dbObjCfg.DestinationNw = cfg.DestinationNw
-			dbObjCfg.NetworkMask = cfg.NetworkMask
-			key := "IPv4Route#" + cfg.DestinationNw + "#" + cfg.NetworkMask
-			_, err := m.DbHdl.GetObjectFromDb(dbObjCfg, key)
-			if err == nil {
-				logger.Err("Duplicate entry")
-				return errors.New("Duplicate entry")
-			}
-		}
 	}
 	destNet, err := getNetowrkPrefixFromStrings(cfg.DestinationNw, cfg.NetworkMask)
 	if err != nil {
 		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
 		return errors.New("Invalid destination ip address")
 	}
+	/*
+	    Check if the route being updated is present in RIB DB
+	*/
 	ok := RouteInfoMap.Match(destNet)
 	if !ok {
 		err = errors.New("No route found")
 		return err
 	}
 	if op == "add" {
-		logger.Info(fmt.Sprintln("Add operation in update"))
+		/*
+		   This is a update add operation. 
+		   "add" option is set for an update call when the user wants to add a new value
+		   instead of modifying existing ones. 
+		*/
+		logger.Debug(fmt.Sprintln("Add operation in update"))
 		if attrset != nil {
-			logger.Info("attr set not nil, set individual attributes")
+			logger.Debug("attr set not nil, set individual attributes")
 			objTyp := reflect.TypeOf(*cfg)
 			for i := 0; i < objTyp.NumField(); i++ {
 				objName := objTyp.Field(i).Name
 				if attrset[i] {
+					/*
+					    Currently, we can only add next hop info via route update
+					*/
 					if objName != "NextHop" {
 						logger.Err(fmt.Sprintln("Cannot add any other object ", objName, " other than next hop"))
 						return errors.New("Cannot add any other object other than next hop")
 					}
 					if len(cfg.NextHop) == 0 {
+						/*
+						   If route update is trying to add next hop, non zero nextHop info is expected
+						*/
 						logger.Err("Must specify next hop")
 						return errors.New("Next hop ip not specified")
 					}
-					_, err = getIP(cfg.NextHop[0].NextHopIp)
-					if err != nil {
-						logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
-						return errors.New("Invalid next hop ip address")
+					for i :=0 ;i<len(cfg.NextHop);i++ {
+					    /*
+					        Check if the next hop ip valid
+					    */
+					    _, err = getIP(cfg.NextHop[i].NextHopIp)
+					    if err != nil {
+						    logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
+						    return errors.New("Invalid next hop ip address")
+					    }
+						/*
+						    Check if the next hop ref is valid L3 interface
+						*/
+					    logger.Debug(fmt.Sprintln("IntRef before : ", cfg.NextHop[i].NextHopIntRef))
+					    cfg.NextHop[i].NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(cfg.NextHop[i].NextHopIntRef)
+					    if err != nil {
+						    logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", cfg.NextHop[i].NextHopIntRef))
+						    return errors.New("Invalid NextHop Intref")
+					    }
+					    logger.Debug(fmt.Sprintln("IntRef after : ", cfg.NextHop[i].NextHopIntRef))
 					}
-					logger.Info(fmt.Sprintln("IntRef before : ", cfg.NextHop[0].NextHopIntRef))
-					cfg.NextHop[0].NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(cfg.NextHop[0].NextHopIntRef)
-					if err != nil {
-						logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", cfg.NextHop[0].NextHopIntRef))
-						return errors.New("Invalid NextHop Intref")
-					}
-					logger.Info(fmt.Sprintln("IntRef after : ", cfg.NextHop[0].NextHopIntRef))
 				}
 			}
 		}
-		return err
-	}
+		return err 
+	} //end of update add operation
+	
+	/*
+	    Default operation for update function is to update route Info. The following 
+		logic deals with updating route attributes
+	*/
 	if attrset != nil {
-		logger.Info("attr set not nil, set individual attributes")
+		logger.Debug("attr set not nil, set individual attributes")
 		objTyp := reflect.TypeOf(*cfg)
 		for i := 0; i < objTyp.NumField(); i++ {
 			objName := objTyp.Field(i).Name
 			if attrset[i] {
-				logger.Info(fmt.Sprintf("ProcessRouteUpdateConfig (server): changed ", objName))
+				logger.Debug(fmt.Sprintf("ProcessRouteUpdateConfig (server): changed ", objName))
 				if objName == "Protocol" {
+					/*
+					    Updating route protocol type is not allowed
+					*/
 					logger.Err("Cannot update Protocol value of a route")
 					return errors.New("Cannot set Protocol field")
 				}
 				if objName == "NextHop" {
+					/*
+					   Next hop info is being updated
+					*/
 					if len(cfg.NextHop) == 0 {
+						/*
+						   Expects non-zero nexthop info
+						*/
 						logger.Err("Must specify next hop")
 						return errors.New("Next hop ip not specified")
 					}
+					/*
+					    Check if next hop IP is valid
+					*/
 					_, err = getIP(cfg.NextHop[0].NextHopIp)
 					if err != nil {
 						logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
 						return errors.New("Invalid next hop ip address")
 					}
-					logger.Info(fmt.Sprintln("IntRef before : ", cfg.NextHop[0].NextHopIntRef))
+					/*
+					    Check if next hop intf is valid L3 interface
+					*/
+					logger.Debug(fmt.Sprintln("IntRef before : ", cfg.NextHop[0].NextHopIntRef))
 					cfg.NextHop[0].NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(cfg.NextHop[0].NextHopIntRef)
 					if err != nil {
 						logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", cfg.NextHop[0].NextHopIntRef))
 						return errors.New("Invalid Nexthop Intref")
 					}
-					logger.Info(fmt.Sprintln("IntRef after : ", cfg.NextHop[0].NextHopIntRef))
+					logger.Debug(fmt.Sprintln("IntRef after : ", cfg.NextHop[0].NextHopIntRef))
 				}
 			}
 		}
 	}
 	return nil
 }
+
+/*
+    This function performs config parameters validation for op = "add" and "del" values.
+	Key validations performed by this fucntion include:
+	   - if the Protocol specified is valid (STATIC/CONNECTED/EBGP/OSPF)
+	   - Validate destinationNw. If provided in CIDR notation, convert to ip addr and mask values
+	   - In case of op == "del", check if the route is present in the DB
+	   - for each of the nextHop info, check:
+	       - if the next hop ip is valid 
+		   - if the nexthopIntf is valid L3 intf and if so, convert to string value
+*/
 func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (err error) {
-	logger.Info(fmt.Sprintln("RouteConfigValidationCheck"))
+	logger.Debug(fmt.Sprintln("RouteConfigValidationCheck"))
+	/*
+	    op is to add new route
+	*/
 	if op == "add" {
+		/*
+		    check if route protocol type is valid
+		*/
 		_, ok := RouteProtocolTypeMapDB[cfg.Protocol]
 		if !ok {
-			logger.Info(fmt.Sprintln("route type ", cfg.Protocol, " invalid"))
+			logger.Err(fmt.Sprintln("route type ", cfg.Protocol, " invalid"))
 			err = errors.New("Invalid route protocol type")
 			return err
 		}
-		logger.Info(fmt.Sprintln("Number of nexthops = ", len(cfg.NextHop)))
+		logger.Debug(fmt.Sprintln("Number of nexthops = ", len(cfg.NextHop)))
 		for i := 0; i < len(cfg.NextHop); i++ {
+			/*
+			    Check if the NextHop IP valid
+			*/
 			_, err = getIP(cfg.NextHop[i].NextHopIp)
 			if err != nil {
 				logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
 				return errors.New("Invalid next hop ip address")
 			}
-			logger.Info(fmt.Sprintln("IntRef before : ", cfg.NextHop[i].NextHopIntRef))
+			logger.Debug(fmt.Sprintln("IntRef before : ", cfg.NextHop[i].NextHopIntRef))
+			/*
+			   Validate if nextHopIntRef is a valid L3 interface
+			*/
 			cfg.NextHop[i].NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(cfg.NextHop[i].NextHopIntRef)
 			if err != nil {
 				logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", cfg.NextHop[i].NextHopIntRef))
 				return err
 			}
-			logger.Info(fmt.Sprintln("IntRef after : ", cfg.NextHop[i].NextHopIntRef))
+			logger.Debug(fmt.Sprintln("IntRef after : ", cfg.NextHop[i].NextHopIntRef))
 		}
 	}
 	isCidr := strings.Contains(cfg.DestinationNw, "/")
-	if isCidr { //the given address is in CIDR format
+	if isCidr { 
+	    /*
+		    the given address is in CIDR format
+		*/
 		ip, ipNet, err := net.ParseCIDR(cfg.DestinationNw)
 		if err != nil {
 			logger.Err(fmt.Sprintln("Invalid Destination IP address"))
@@ -304,6 +367,9 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
 		if err != nil {
 			return errors.New("Invalid destination ip/network Mask")
 		}
+		/*
+		    Convert the CIDR format address to IP and mask strings
+		*/
 		cfg.DestinationNw = ip.String()
 		ipMask := make(net.IP, 4)
 		copy(ipMask, ipNet.Mask)
@@ -329,12 +395,23 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
 		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
 		return errors.New("Invalid destination ip address")
 	}
-	if op == "del" {
-		ok := RouteInfoMap.Match(destNet)
-		if !ok {
-			err = errors.New("No route found")
-			return err
-		}
+	/*
+	    Check if route present.
+	*/
+    ok := RouteInfoMap.Match(destNet) 
+	if !ok && op == "del"{
+	/*
+	    If delete operation, err if no route found
+	*/
+        err = errors.New("No route found")
+        return err
+    }
+	if ok && op == "add" {
+	/*
+	    If add operation, err if the route exists
+	*/
+       logger.Err("Duplicate entry")
+	   return errors.New("Duplicate entry")
 	}
 	return nil
 }
