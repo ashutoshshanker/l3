@@ -500,6 +500,17 @@ func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string,
 	return ip, ifIndex, err
 }
 
+func (h *BGPHandler) isValidIP(ip string) bool {
+	if strings.TrimSpace(ip) != "" {
+		netIP := net.ParseIP(strings.TrimSpace(ip))
+		if netIP == nil {
+			return false
+		}
+	}
+
+	return true
+}
+
 // Set BGP Default values.. This needs to move to API Layer once Northbound interfaces are implemented
 // for all the listeners
 func (h *BGPHandler) setDefault(pconf *config.NeighborConfig) {
@@ -524,6 +535,11 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf c
 		h.logger.Info(fmt.Sprintln("ValidateBGPNeighbor: getIPAndIfIndexForNeighbor",
 			"failed for neighbor address", bgpNeighbor.NeighborAddress,
 			"and ifIndex", bgpNeighbor.IfIndex))
+		return pConf, err
+	}
+
+	if !h.isValidIP(bgpNeighbor.UpdateSource) {
+		err = errors.New(fmt.Sprintf("Update source %s not a valid IP", bgpNeighbor.UpdateSource))
 		return pConf, err
 	}
 
@@ -696,6 +712,11 @@ func (h *BGPHandler) PeerCommand(in *PeerConfigCommands, out *bool) error {
 func (h *BGPHandler) ValidateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (group config.PeerGroupConfig,
 	err error) {
 	if peerGroup == nil {
+		return group, err
+	}
+
+	if !h.isValidIP(peerGroup.UpdateSource) {
+		err = errors.New(fmt.Sprintf("Update source %s not a valid IP", peerGroup.UpdateSource))
 		return group, err
 	}
 
