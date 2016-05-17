@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // conn.go
 package config
 
@@ -9,12 +32,23 @@ type ReachabilityInfo struct {
 type Operation int
 
 const (
-	NOTIFY_ROUTE_CREATED Operation = 1
-	NOTIFY_ROUTE_DELETED Operation = 2
-	BFD_STATE_VALID      Operation = 3
-	BFD_STATE_INVALID    Operation = 4
-	INTF_STATE_DOWN      Operation = 5
-	INTF_STATE_UP        Operation = 6
+	NOTIFY_ROUTE_CREATED Operation = iota + 1
+	NOTIFY_ROUTE_DELETED
+	BFD_STATE_VALID
+	BFD_STATE_INVALID
+	INTF_CREATED
+	INTF_DELETED
+	INTF_STATE_DOWN
+	INTF_STATE_UP
+	NOTIFY_POLICY_CONDITION_CREATED
+	NOTIFY_POLICY_CONDITION_DELETED
+	NOTIFY_POLICY_CONDITION_UPDATED
+	NOTIFY_POLICY_STMT_CREATED
+	NOTIFY_POLICY_STMT_DELETED
+	NOTIFY_POLICY_STMT_UPDATED
+	NOTIFY_POLICY_DEFINITION_CREATED
+	NOTIFY_POLICY_DEFINITION_DELETED
+	NOTIFY_POLICY_DEFINITION_UPDATED
 )
 
 type BfdInfo struct {
@@ -25,14 +59,22 @@ type BfdInfo struct {
 
 type IntfStateInfo struct {
 	Idx    int32
-	Ipaddr string
+	IPAddr string
 	State  Operation
+}
+
+func NewIntfStateInfo(idx int32, ipAddr string, state Operation) *IntfStateInfo {
+	return &IntfStateInfo{
+		Idx:    idx,
+		IPAddr: ipAddr,
+		State:  state,
+	}
 }
 
 /*  This is mimic of ribd object...@TODO: need to change this to bgp server object
  */
 type RouteInfo struct {
-	Ipaddr           string
+	IPAddr           string
 	Mask             string
 	NextHopIp        string
 	Prototype        int
@@ -46,7 +88,7 @@ type RouteCh struct {
 }
 
 type NextHopInfo struct {
-	Ipaddr         string
+	IPAddr         string
 	Mask           string
 	Metric         int32
 	NextHopIp      string

@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // server.go
 package server
 
@@ -9,12 +32,15 @@ import (
 	"l3/bgp/packet"
 	bgppolicy "l3/bgp/policy"
 	bgprib "l3/bgp/rib"
+	"l3/bgp/utils"
 	"net"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"utils/logging"
+	"utils/netUtils"
 	utilspolicy "utils/policy"
 	"utils/policy/policyCommonDefs"
 )
@@ -50,6 +76,8 @@ type PolicyParams struct {
 type BGPServer struct {
 	logger           *logging.Writer
 	bgpPE            *bgppolicy.BGPPolicyEngine
+	listener         *net.TCPListener
+	ifaceMgr         *utils.InterfaceMgr
 	BgpConfig        config.Bgp
 	GlobalConfigCh   chan config.GlobalConfig
 	AddPeerCh        chan PeerUpdate
@@ -80,18 +108,18 @@ type BGPServer struct {
 	actionFuncMap  map[int]bgppolicy.PolicyActionFunc
 	AddPathCount   int
 	// all managers
-	IntfMgr   config.IntfStateMgrIntf
-	policyMgr config.PolicyMgrIntf
-	routeMgr  config.RouteMgrIntf
-	bfdMgr    config.BfdMgrIntf
+	IntfMgr  config.IntfStateMgrIntf
+	routeMgr config.RouteMgrIntf
+	bfdMgr   config.BfdMgrIntf
 }
 
 func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngine,
-	iMgr config.IntfStateMgrIntf, pMgr config.PolicyMgrIntf, rMgr config.RouteMgrIntf,
+	iMgr config.IntfStateMgrIntf, rMgr config.RouteMgrIntf,
 	bMgr config.BfdMgrIntf) *BGPServer {
 	bgpServer := &BGPServer{}
 	bgpServer.logger = logger
 	bgpServer.bgpPE = policyEngine
+	bgpServer.ifaceMgr = utils.NewInterfaceMgr(logger)
 	bgpServer.BgpConfig = config.Bgp{}
 	bgpServer.GlobalCfgDone = false
 	bgpServer.GlobalConfigCh = make(chan config.GlobalConfig)
@@ -112,7 +140,6 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	bgpServer.Neighbors = make([]*Peer, 0)
 	bgpServer.IntfMgr = iMgr
 	bgpServer.routeMgr = rMgr
-	bgpServer.policyMgr = pMgr
 	bgpServer.bfdMgr = bMgr
 	bgpServer.AdjRib = bgprib.NewAdjRib(logger, rMgr, &bgpServer.BgpConfig.Global.Config)
 	bgpServer.IfacePeerMap = make(map[int32][]string)
@@ -136,19 +163,26 @@ func NewBGPServer(logger *logging.Writer, policyEngine *bgppolicy.BGPPolicyEngin
 	return bgpServer
 }
 
-func (server *BGPServer) listenForPeers(acceptCh chan *net.TCPConn) {
+func (server *BGPServer) createListener() (*net.TCPListener, error) {
+	proto := "tcp4"
 	addr := ":" + config.BGPPort
 	server.logger.Info(fmt.Sprintf("Listening for incomig connections on %s\n", addr))
-	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
+	tcpAddr, err := net.ResolveTCPAddr(proto, addr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("ResolveTCPAddr failed with", err))
+		return nil, err
 	}
 
-	listener, err := net.ListenTCP("tcp", tcpAddr)
+	listener, err := net.ListenTCP(proto, tcpAddr)
 	if err != nil {
 		server.logger.Info(fmt.Sprintln("ListenTCP failed with", err))
+		return nil, err
 	}
 
+	return listener, nil
+}
+
+func (server *BGPServer) listenForPeers(listener *net.TCPListener, acceptCh chan *net.TCPConn) {
 	for {
 		server.logger.Info(fmt.Sprintln("Waiting for peer connections..."))
 		tcpConn, err := listener.AcceptTCP()
@@ -672,7 +706,7 @@ func (server *BGPServer) convertDestIPToIPPrefix(routes []*config.RouteInfo) []p
 	for _, r := range routes {
 		server.logger.Info(fmt.Sprintln("Route NS : ",
 			r.NetworkStatement, " Route Origin ", r.RouteOrigin))
-		ipPrefix := packet.ConstructIPPrefix(r.Ipaddr, r.Mask)
+		ipPrefix := packet.ConstructIPPrefix(r.IPAddr, r.Mask)
 		dest = append(dest, ipPrefix)
 	}
 	return dest
@@ -691,6 +725,16 @@ func (server *BGPServer) ProcessConnectedRoutes(installedRoutes []*config.RouteI
 		server.CheckForAggregation(updated, withdrawn, withdrawPath,
 			updatedAddPaths)
 	server.SendUpdate(updated, withdrawn, withdrawPath, updatedAddPaths)
+}
+
+func (server *BGPServer) ProcessIntfStates(intfs []*config.IntfStateInfo) {
+	for _, ifState := range intfs {
+		if ifState.State == config.INTF_CREATED {
+			server.ifaceMgr.AddIface(ifState.Idx, ifState.IPAddr)
+		} else if ifState.State == config.INTF_DELETED {
+			server.ifaceMgr.RemoveIface(ifState.Idx, ifState.IPAddr)
+		}
+	}
 }
 
 func (server *BGPServer) ProcessRemoveNeighbor(peerIp string, peer *Peer) {
@@ -755,6 +799,29 @@ func (server *BGPServer) UpdatePeerGroupInPeers(groupName string, peerGroup *con
 		peer.Init()
 	}
 }
+func (server *BGPServer) SetupRedistribution(gConf config.GlobalConfig) {
+	server.logger.Info("SetUpRedistribution")
+	if gConf.Redistribution == nil || len(gConf.Redistribution) == 0 {
+		server.logger.Info("No redistribution policies configured")
+		return
+	}
+	conditions := make([]*config.ConditionInfo, 0)
+	for i := 0; i < len(gConf.Redistribution); i++ {
+		server.logger.Info(fmt.Sprintln("Sources: ", gConf.Redistribution[i].Sources))
+		sources := make([]string, 0)
+		sources = strings.Split(gConf.Redistribution[i].Sources, ",")
+		server.logger.Info(fmt.Sprintf("Setting up %s as redistribution policy for source(s): ", gConf.Redistribution[i].Policy))
+		for j := 0; j < len(sources); j++ {
+			server.logger.Info(fmt.Sprintf("%s ", sources[j]))
+			if sources[j] == "" {
+				continue
+			}
+			conditions = append(conditions, &config.ConditionInfo{ConditionType: "MatchProtocol", Protocol: sources[j]})
+		}
+		server.logger.Info(fmt.Sprintln(""))
+		server.routeMgr.ApplyPolicy("BGP", gConf.Redistribution[i].Policy, "Redistribution", conditions)
+	}
+}
 func (server *BGPServer) copyGlobalConf(gConf config.GlobalConfig) {
 	server.BgpConfig.Global.Config.AS = gConf.AS
 	server.BgpConfig.Global.Config.RouterId = gConf.RouterId
@@ -768,11 +835,11 @@ func (server *BGPServer) handleBfdNotifications(oper config.Operation, DestIp st
 	State bool) {
 	if peer, ok := server.PeerMap[DestIp]; ok {
 		if !State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "up" {
+			peer.NeighborConf.BfdFaultSet()
 			peer.Command(int(fsm.BGPEventManualStop), fsm.BGPCmdReasonNone)
-			peer.NeighborConf.Neighbor.State.BfdNeighborState = "down"
 		}
 		if State && peer.NeighborConf.Neighbor.State.BfdNeighborState == "down" {
-			peer.NeighborConf.Neighbor.State.BfdNeighborState = "up"
+			peer.NeighborConf.BfdFaultCleared()
 			peer.Command(int(fsm.BGPEventManualStart), fsm.BGPCmdReasonNone)
 		}
 		server.logger.Info(fmt.Sprintln("Bfd state of peer ",
@@ -849,6 +916,7 @@ func (server *BGPServer) listenChannelUpdates() {
 			for _, peer := range server.PeerMap {
 				peer.Init()
 			}
+			server.SetupRedistribution(gConf)
 
 		case peerUpdate := <-server.AddPeerCh:
 			server.logger.Info("message received on AddPeerCh")
@@ -858,17 +926,21 @@ func (server *BGPServer) listenChannelUpdates() {
 			var ok bool
 			if oldPeer.NeighborAddress != nil {
 				if peer, ok = server.PeerMap[oldPeer.NeighborAddress.String()]; ok {
-					server.logger.Info(fmt.Sprintln("Clean up peer",
-						oldPeer.NeighborAddress.String()))
+					server.logger.Info(fmt.Sprintln("Clean up peer", oldPeer.NeighborAddress.String()))
 					peer.Cleanup()
-					server.ProcessRemoveNeighbor(oldPeer.NeighborAddress.String(),
-						peer)
+					server.ProcessRemoveNeighbor(oldPeer.NeighborAddress.String(), peer)
+					if peer.NeighborConf.RunningConf.AuthPassword != "" {
+						err := netUtils.SetTCPListenerMD5(server.listener, oldPeer.NeighborAddress.String(), "")
+						if err != nil {
+							server.logger.Info(fmt.Sprintln("Failed to add MD5 authentication for old neighbor",
+								newPeer.NeighborAddress.String(), "with error", err))
+						}
+					}
 					peer.UpdateNeighborConf(newPeer, &server.BgpConfig)
 
 					runtime.Gosched()
 				} else {
-					server.logger.Info(fmt.Sprintln(
-						"Can't find neighbor with old address",
+					server.logger.Info(fmt.Sprintln("Can't find neighbor with old address",
 						oldPeer.NeighborAddress.String()))
 				}
 			}
@@ -886,19 +958,22 @@ func (server *BGPServer) listenChannelUpdates() {
 				if newPeer.PeerGroup != "" {
 					if group, ok :=
 						server.BgpConfig.PeerGroups[newPeer.PeerGroup]; !ok {
-						server.logger.Info(fmt.Sprintln("Peer group",
-							newPeer.PeerGroup,
-							"not created yet, creating peer",
-							newPeer.NeighborAddress.String(),
-							"without the group"))
+						server.logger.Info(fmt.Sprintln("Peer group", newPeer.PeerGroup,
+							"not created yet, creating peer", newPeer.NeighborAddress.String(), "without the group"))
 					} else {
 						groupConfig = &group.Config
 					}
 				}
-				server.logger.Info(fmt.Sprintln("Add neighbor, ip:",
-					newPeer.NeighborAddress.String()))
-				peer = NewPeer(server, &server.BgpConfig.Global.Config,
-					groupConfig, newPeer)
+				server.logger.Info(fmt.Sprintln("Add neighbor, ip:", newPeer.NeighborAddress.String()))
+				peer = NewPeer(server, &server.BgpConfig.Global.Config, groupConfig, newPeer)
+				if peer.NeighborConf.RunningConf.AuthPassword != "" {
+					err := netUtils.SetTCPListenerMD5(server.listener, newPeer.NeighborAddress.String(),
+						peer.NeighborConf.RunningConf.AuthPassword)
+					if err != nil {
+						server.logger.Info(fmt.Sprintln("Failed to add MD5 authentication for neighbor",
+							newPeer.NeighborAddress.String(), "with error", err))
+					}
+				}
 				server.PeerMap[newPeer.NeighborAddress.String()] = peer
 				server.NeighborMutex.Lock()
 				server.addPeerToList(peer)
@@ -1093,13 +1168,18 @@ func (server *BGPServer) listenChannelUpdates() {
 			server.handleBfdNotifications(bfdNotify.Oper,
 				bfdNotify.DestIp, bfdNotify.State)
 		case ifState := <-server.intfCh:
-			if peerList, ok := server.IfacePeerMap[ifState.Idx]; ok &&
-				ifState.State == config.INTF_STATE_DOWN {
-				for _, peerIP := range peerList {
-					if peer, ok := server.PeerMap[peerIP]; ok {
-						peer.StopFSM("Interface Down")
+			if ifState.State == config.INTF_STATE_DOWN {
+				if peerList, ok := server.IfacePeerMap[ifState.Idx]; ok {
+					for _, peerIP := range peerList {
+						if peer, ok := server.PeerMap[peerIP]; ok {
+							peer.StopFSM("Interface Down")
+						}
 					}
 				}
+			} else if ifState.State == config.INTF_CREATED {
+				server.ifaceMgr.AddIface(ifState.Idx, ifState.IPAddr)
+			} else if ifState.State == config.INTF_DELETED {
+				server.ifaceMgr.RemoveIface(ifState.Idx, ifState.IPAddr)
 			}
 		case routeInfo := <-server.routesCh:
 			server.ProcessConnectedRoutes(routeInfo.Add, routeInfo.Remove)
@@ -1130,13 +1210,15 @@ func (server *BGPServer) StartServer() {
 	// Channel for handling route notifications
 	server.routesCh = make(chan *config.RouteCh)
 
-	go server.listenForPeers(server.acceptCh)
+	server.listener, _ = server.createListener()
+	go server.listenForPeers(server.listener, server.acceptCh)
 
 	server.logger.Info("Start all managers and initialize API Layer")
 	api.Init(server.bfdCh, server.intfCh, server.routesCh)
 	server.IntfMgr.Start()
 	server.routeMgr.Start()
 	server.bfdMgr.Start()
+	server.SetupRedistribution(gConf)
 
 	/*  ALERT: StartServer is a go routine and hence do not have any other go routine where
 	 *	   you are making calls to other client. FlexSwitch uses thrift for rpc and hence
@@ -1147,6 +1229,10 @@ func (server *BGPServer) StartServer() {
 	if add != nil && remove != nil {
 		server.ProcessConnectedRoutes(add, remove)
 	}
+
+	intfs := server.IntfMgr.GetIPv4Intfs()
+	server.ProcessIntfStates(intfs)
+
 	server.listenChannelUpdates()
 }
 

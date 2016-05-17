@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
@@ -7,8 +30,7 @@ import (
 	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
-	"net"
-	"utils/commonDefs"
+	//"utils/commonDefs"
 )
 
 type AsicdClient struct {
@@ -65,59 +87,21 @@ func (server *OSPFServer) processAsicdNotification(asicdrxBuf []byte) {
 	if msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE ||
 		msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_DELETE {
 		var NewIpv4IntfMsg asicdCommonDefs.IPv4IntfNotifyMsg
-		var ipv4IntfMsg IPv4IntfNotifyMsg
 		err = json.Unmarshal(msg.Msg, &NewIpv4IntfMsg)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Unable to unmarshal msg:", msg.Msg))
 			return
 		}
-		ipv4IntfMsg.IpAddr = NewIpv4IntfMsg.IpAddr
-		ipv4IntfMsg.IfType = uint8(asicdCommonDefs.GetIntfTypeFromIfIndex(NewIpv4IntfMsg.IfIndex))
-		ipv4IntfMsg.IfId = uint16(asicdCommonDefs.GetIntfIdFromIfIndex(NewIpv4IntfMsg.IfIndex))
-		if msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE {
-			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_CREATE", ipv4IntfMsg))
-			mtu := server.computeMinMTU(ipv4IntfMsg)
-			// We need more information from Asicd about numbered/unnumbered p2p
-			// or broadcast
-			//Start
-			ip, _, _ := net.ParseCIDR(ipv4IntfMsg.IpAddr)
-			if ip.String() == "40.0.1.10" {
-				server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, unnumberedP2P)
-			} else if ip.String() == "40.0.1.15" {
-				server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, numberedP2P)
-			} else {
-				server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex, broadcast)
-			}
-
-			//End
-			server.updateIpPropertyMap(ipv4IntfMsg, msg.MsgType)
-			//server.createIPIntfConfMap(ipv4IntfMsg, mtu, NewIpv4IntfMsg.IfIndex)
-			if ipv4IntfMsg.IfType == commonDefs.IfTypePort { // PHY
-				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
-			} else if ipv4IntfMsg.IfType == commonDefs.IfTypeVlan { // Vlan
-				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
-			}
-		} else {
-			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_DELETE", ipv4IntfMsg))
-			server.deleteIPIntfConfMap(ipv4IntfMsg, NewIpv4IntfMsg.IfIndex)
-			server.updateIpPropertyMap(ipv4IntfMsg, msg.MsgType)
-			if ipv4IntfMsg.IfType == commonDefs.IfTypePort { // PHY
-				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
-			} else if ipv4IntfMsg.IfType == commonDefs.IfTypeVlan { // Vlan
-				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
-			}
-		}
+		server.UpdateIPv4Infra(NewIpv4IntfMsg, msg.MsgType)
 	} else if msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_CREATE ||
 		msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_DELETE {
-		//Vlan Create Msg
 		var vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg
 		err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Unable to unmashal vlanNotifyMsg:", msg.Msg))
 			return
 		}
-		server.updatePortPropertyMap(vlanNotifyMsg, msg.MsgType)
-		server.updateVlanPropertyMap(vlanNotifyMsg, msg.MsgType)
+		server.UpdateVlanInfra(vlanNotifyMsg, msg.MsgType)
 	}
 }
 

@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package rpc
 
 import (
@@ -27,18 +50,6 @@ func (h *OSPFHandler) UpdateOspfStubAreaEntry(origConf *ospfd.OspfStubAreaEntry,
 	return true, nil
 }
 
-func (h *OSPFHandler) UpdateOspfAreaRangeEntry(origConf *ospfd.OspfAreaRangeEntry, newConf *ospfd.OspfAreaRangeEntry, attrset []bool) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Original address range config attrs:", origConf))
-	h.logger.Info(fmt.Sprintln("New address range config attrs:", newConf))
-	return true, nil
-}
-
-func (h *OSPFHandler) UpdateOspfHostEntry(origConf *ospfd.OspfHostEntry, newConf *ospfd.OspfHostEntry, attrset []bool) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Original host config attrs:", origConf))
-	h.logger.Info(fmt.Sprintln("New host config attrs:", newConf))
-	return true, nil
-}
-
 func (h *OSPFHandler) UpdateOspfIfEntry(origConf *ospfd.OspfIfEntry, newConf *ospfd.OspfIfEntry, attrset []bool) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Original interface config attrs:", origConf))
 	h.logger.Info(fmt.Sprintln("New interface config attrs:", newConf))
@@ -57,14 +68,3 @@ func (h *OSPFHandler) UpdateOspfVirtIfEntry(origConf *ospfd.OspfVirtIfEntry, new
 	return true, nil
 }
 
-func (h *OSPFHandler) UpdateOspfNbrEntry(origConf *ospfd.OspfNbrEntry, newConf *ospfd.OspfNbrEntry, attrset []bool) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Original neighbor config attrs:", origConf))
-	h.logger.Info(fmt.Sprintln("New neighbor config attrs:", newConf))
-	return true, nil
-}
-
-func (h *OSPFHandler) UpdateOspfAreaAggregateEntry(origConf *ospfd.OspfAreaAggregateEntry, newConf *ospfd.OspfAreaAggregateEntry, attrset []bool) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Original Area Aggregate config attrs:", origConf))
-	h.logger.Info(fmt.Sprintln("New Area Aggregate config attrs:", newConf))
-	return true, nil
-}

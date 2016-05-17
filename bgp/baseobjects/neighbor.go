@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // neighbor.go
 package base
 
@@ -6,8 +29,11 @@ import (
 	"l3/bgp/config"
 	"l3/bgp/packet"
 	"net"
+	"time"
 	"utils/logging"
 )
+
+const IgnoreBfdFaultsDefaultTime uint32 = 300 // seconds
 
 type NeighborConf struct {
 	logger               *logging.Writer
@@ -19,6 +45,7 @@ type NeighborConf struct {
 	ASSize               uint8
 	AfiSafiMap           map[uint32]bool
 	MaxPrefixesThreshold uint32
+	ignoreBfdFaultsTimer *time.Timer
 }
 
 func NewNeighborConf(logger *logging.Writer, globalConf *config.GlobalConfig, peerGroup *config.PeerGroupConfig,
@@ -59,6 +86,7 @@ func (n *NeighborConf) SetNeighborState(peerConf *config.NeighborConfig) {
 	n.Neighbor.State = config.NeighborState{
 		PeerAS:                  peerConf.PeerAS,
 		LocalAS:                 peerConf.LocalAS,
+		UpdateSource:            peerConf.UpdateSource,
 		AuthPassword:            peerConf.AuthPassword,
 		Description:             peerConf.Description,
 		NeighborAddress:         peerConf.NeighborAddress,
@@ -131,6 +159,10 @@ func (n *NeighborConf) GetConfFromNeighbor(inConf *config.NeighborConfig, outCon
 
 	if inConf.LocalAS != 0 {
 		outConf.LocalAS = inConf.LocalAS
+	}
+
+	if inConf.UpdateSource != "" {
+		outConf.UpdateSource = inConf.UpdateSource
 	}
 
 	if inConf.AuthPassword != "" {
@@ -270,4 +302,37 @@ func (n *NeighborConf) SetPeerAttrs(bgpId net.IP, asSize uint8, holdTime uint32,
 			}
 		}
 	}
+}
+
+func (n *NeighborConf) BfdFaultSet() {
+	n.Neighbor.State.BfdNeighborState = "down"
+	if n.ignoreBfdFaultsTimer != nil {
+		n.ignoreBfdFaultsTimer.Stop()
+	}
+	n.ignoreBfdFaultsTimer = time.AfterFunc(time.Duration(IgnoreBfdFaultsDefaultTime)*time.Second,
+		n.IgnoreBfdFaultsTimerExpired)
+}
+
+func (n *NeighborConf) BfdFaultCleared() {
+	if n.IgnoreBfdFaultsTimerExpired != nil {
+		n.ignoreBfdFaultsTimer.Stop()
+	}
+	n.Neighbor.State.BfdNeighborState = "up"
+}
+
+func (n *NeighborConf) IgnoreBfdFaultsTimerExpired() {
+	n.Neighbor.State.UseBfdState = false
+}
+
+func (n *NeighborConf) PeerConnEstablished() {
+	n.Neighbor.State.UseBfdState = true
+}
+
+func (n *NeighborConf) PeerConnBroken() {
+	n.Neighbor.State.ConnectRetryTime = n.RunningConf.ConnectRetryTime
+	n.Neighbor.State.HoldTime = n.RunningConf.HoldTime
+	n.Neighbor.State.KeepaliveTime = n.RunningConf.KeepaliveTime
+	n.Neighbor.State.AddPathsRx = false
+	n.Neighbor.State.AddPathsMaxTx = 0
+	n.Neighbor.State.TotalPrefixes = 0
 }

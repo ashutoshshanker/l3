@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // server.go
 package rpc
 
@@ -53,6 +76,13 @@ func (h *BGPHandler) convertModelToBGPGlobalConfig(obj models.BGPGlobal) (config
 		EBGPAllowMultipleAS: obj.EBGPAllowMultipleAS,
 		IBGPMaxPaths:        obj.IBGPMaxPaths,
 	}
+	if obj.Redistribution != nil {
+		gConf.Redistribution = make([]config.SourcePolicyMap, 0)
+		for i := 0; i < len(obj.Redistribution); i++ {
+			redistribution := config.SourcePolicyMap{obj.Redistribution[i].Sources, obj.Redistribution[i].Policy}
+			gConf.Redistribution = append(gConf.Redistribution, redistribution)
+		}
+	}
 
 	if gConf.RouterId == nil {
 		h.logger.Err(fmt.Sprintln("convertModelToBGPGlobalConfig - IP is not valid:", obj.RouterId))
@@ -78,7 +108,6 @@ func (h *BGPHandler) handleGlobalConfig() error {
 			h.logger.Err(fmt.Sprintln("handleGlobalConfig - Failed to convert Model object BGP Global, error:", err))
 			return err
 		}
-
 		h.server.GlobalConfigCh <- gConf
 	}
 	return nil
@@ -89,6 +118,7 @@ func (h *BGPHandler) convertModelToBGPPeerGroup(obj models.BGPPeerGroup) (group 
 		BaseConfig: config.BaseConfig{
 			PeerAS:                  uint32(obj.PeerAS),
 			LocalAS:                 uint32(obj.LocalAS),
+			UpdateSource:            obj.UpdateSource,
 			AuthPassword:            obj.AuthPassword,
 			Description:             obj.Description,
 			RouteReflectorClusterId: uint32(obj.RouteReflectorClusterId),
@@ -148,6 +178,7 @@ func (h *BGPHandler) convertModelToBGPNeighbor(obj models.BGPNeighbor) (neighbor
 		BaseConfig: config.BaseConfig{
 			PeerAS:                  uint32(obj.PeerAS),
 			LocalAS:                 uint32(obj.LocalAS),
+			UpdateSource:            obj.UpdateSource,
 			AuthPassword:            obj.AuthPassword,
 			Description:             obj.Description,
 			RouteReflectorClusterId: uint32(obj.RouteReflectorClusterId),
@@ -387,6 +418,13 @@ func (h *BGPHandler) SendBGPGlobal(bgpGlobal *bgpd.BGPGlobal) (bool, error) {
 		EBGPAllowMultipleAS: bgpGlobal.EBGPAllowMultipleAS,
 		IBGPMaxPaths:        uint32(bgpGlobal.IBGPMaxPaths),
 	}
+	if bgpGlobal.Redistribution != nil {
+		gConf.Redistribution = make([]config.SourcePolicyMap, 0)
+		for i := 0; i < len(bgpGlobal.Redistribution); i++ {
+			redistribution := config.SourcePolicyMap{bgpGlobal.Redistribution[i].Sources, bgpGlobal.Redistribution[i].Policy}
+			gConf.Redistribution = append(gConf.Redistribution, redistribution)
+		}
+	}
 	h.server.GlobalConfigCh <- gConf
 	return true, err
 }
@@ -485,6 +523,17 @@ func (h *BGPHandler) getIPAndIfIndexForNeighbor(neighborIP string,
 	return ip, ifIndex, err
 }
 
+func (h *BGPHandler) isValidIP(ip string) bool {
+	if strings.TrimSpace(ip) != "" {
+		netIP := net.ParseIP(strings.TrimSpace(ip))
+		if netIP == nil {
+			return false
+		}
+	}
+
+	return true
+}
+
 // Set BGP Default values.. This needs to move to API Layer once Northbound interfaces are implemented
 // for all the listeners
 func (h *BGPHandler) setDefault(pconf *config.NeighborConfig) {
@@ -512,10 +561,16 @@ func (h *BGPHandler) ValidateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (pConf c
 		return pConf, err
 	}
 
+	if !h.isValidIP(bgpNeighbor.UpdateSource) {
+		err = errors.New(fmt.Sprintf("Update source %s not a valid IP", bgpNeighbor.UpdateSource))
+		return pConf, err
+	}
+
 	pConf = config.NeighborConfig{
 		BaseConfig: config.BaseConfig{
 			PeerAS:                  uint32(bgpNeighbor.PeerAS),
 			LocalAS:                 uint32(bgpNeighbor.LocalAS),
+			UpdateSource:            bgpNeighbor.UpdateSource,
 			AuthPassword:            bgpNeighbor.AuthPassword,
 			Description:             bgpNeighbor.Description,
 			RouteReflectorClusterId: uint32(bgpNeighbor.RouteReflectorClusterId),
@@ -571,13 +626,14 @@ func (h *BGPHandler) CreateBGPNeighbor(bgpNeighbor *bgpd.BGPNeighbor) (bool, err
 
 func (h *BGPHandler) convertToThriftNeighbor(neighborState *config.NeighborState) *bgpd.BGPNeighborState {
 	bgpNeighborResponse := bgpd.NewBGPNeighborState()
+	bgpNeighborResponse.NeighborAddress = neighborState.NeighborAddress.String()
+	bgpNeighborResponse.IfIndex = neighborState.IfIndex
 	bgpNeighborResponse.PeerAS = int32(neighborState.PeerAS)
 	bgpNeighborResponse.LocalAS = int32(neighborState.LocalAS)
+	bgpNeighborResponse.UpdateSource = neighborState.UpdateSource
 	bgpNeighborResponse.AuthPassword = neighborState.AuthPassword
 	bgpNeighborResponse.PeerType = int8(neighborState.PeerType)
 	bgpNeighborResponse.Description = neighborState.Description
-	bgpNeighborResponse.NeighborAddress = neighborState.NeighborAddress.String()
-	bgpNeighborResponse.IfIndex = neighborState.IfIndex
 	bgpNeighborResponse.SessionState = int32(neighborState.SessionState)
 	bgpNeighborResponse.RouteReflectorClusterId = int32(neighborState.RouteReflectorClusterId)
 	bgpNeighborResponse.RouteReflectorClient = neighborState.RouteReflectorClient
@@ -626,6 +682,9 @@ func (h *BGPHandler) GetBGPNeighborState(neighborAddr string,
 	}
 
 	bgpNeighborState := h.server.GetBGPNeighborState(ip.String())
+	if bgpNeighborState == nil {
+		return bgpd.NewBGPNeighborState(), errors.New(fmt.Sprintf("GetBGPNeighborState: Neighbor %s not configured", ip))
+	}
 	bgpNeighborResponse := h.convertToThriftNeighbor(bgpNeighborState)
 	return bgpNeighborResponse, nil
 }
@@ -679,10 +738,16 @@ func (h *BGPHandler) ValidateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (group c
 		return group, err
 	}
 
+	if !h.isValidIP(peerGroup.UpdateSource) {
+		err = errors.New(fmt.Sprintf("Update source %s not a valid IP", peerGroup.UpdateSource))
+		return group, err
+	}
+
 	group = config.PeerGroupConfig{
 		BaseConfig: config.BaseConfig{
 			PeerAS:                  uint32(peerGroup.PeerAS),
 			LocalAS:                 uint32(peerGroup.LocalAS),
+			UpdateSource:            peerGroup.UpdateSource,
 			AuthPassword:            peerGroup.AuthPassword,
 			Description:             peerGroup.Description,
 			RouteReflectorClusterId: uint32(peerGroup.RouteReflectorClusterId),
@@ -723,7 +788,7 @@ func (h *BGPHandler) SendBGPPeerGroup(oldGroup *bgpd.BGPPeerGroup,
 }
 
 func (h *BGPHandler) CreateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create BGP neighbor attrs:", peerGroup))
+	h.logger.Info(fmt.Sprintln("Create BGP peer group attrs:", peerGroup))
 	return h.SendBGPPeerGroup(nil, peerGroup, make([]bool, 0))
 }
 

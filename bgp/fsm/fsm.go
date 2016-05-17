@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // fsm.go
 package fsm
 
@@ -8,6 +31,7 @@ import (
 	"l3/bgp/config"
 	"l3/bgp/packet"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 	"utils/logging"
@@ -158,27 +182,18 @@ func NewIdleState(fsm *FSM) *IdleState {
 }
 
 func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
-	if st.fsm.neighborConf.Neighbor.State.UseBfdState &&
 		st.fsm.neighborConf.RunningConf.BfdEnable &&
-		st.fsm.neighborConf.Neighbor.State.BfdNeighborState == "down" {
-		st.logger.Info(fmt.Sprintln("Bfd is down for neighbor: ", st.fsm.pConf.NeighborAddress,
-			" do not process event: ", BGPEventTypeToStr[event]))
-		return
-	}
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "FSM:", st.fsm.id,
 		"State: Idle Event:", BGPEventTypeToStr[event]))
 	switch event {
 	case BGPEventManualStart, BGPEventAutoStart:
 		st.fsm.SetConnectRetryCounter(0)
 		st.fsm.StartConnectRetryTimer()
-		st.fsm.InitiateConnToPeer()
-		st.fsm.AcceptPeerConn()
 		st.fsm.ChangeState(NewConnectState(st.fsm))
 
 	case BGPEventManualStartPassTcpEst, BGPEventAutoStartPassTcpEst:
 		st.fsm.SetConnectRetryCounter(0)
 		st.fsm.StartConnectRetryTimer()
-		st.fsm.AcceptPeerConn()
 		st.fsm.ChangeState(NewActiveState(st.fsm))
 
 	case BGPEventAutoStartDampPeerOscl, BGPEventAutoStartDampPeerOsclPassTcpEst:
@@ -194,11 +209,8 @@ func (st *IdleState) processEvent(event BGPFSMEvent, data interface{}) {
 		//st.fsm.SetConnectRetryCounter(0)
 		st.fsm.StartConnectRetryTimer()
 		if st.passive {
-			st.fsm.AcceptPeerConn()
 			st.fsm.ChangeState(NewActiveState(st.fsm))
 		} else {
-			st.fsm.InitiateConnToPeer()
-			st.fsm.AcceptPeerConn()
 			st.fsm.ChangeState(NewConnectState(st.fsm))
 		}
 	}
@@ -251,7 +263,6 @@ func (st *ConnectState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.StopConnToPeer()
 		st.fsm.StartConnectRetryTimer()
 		st.fsm.InitiateConnToPeer()
-		st.fsm.AcceptPeerConn()
 
 	case BGPEventDelayOpenTimerExp: // Supported later
 
@@ -300,6 +311,17 @@ func (st *ConnectState) processEvent(event BGPFSMEvent, data interface{}) {
 func (st *ConnectState) enter() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "FSM:", st.fsm.id,
 		"State: Connect - enter"))
+	if st.fsm.neighborConf.Neighbor.State.UseBfdState &&
+		st.fsm.neighborConf.RunningConf.BfdEnable &&
+		st.fsm.neighborConf.Neighbor.State.BfdNeighborState == "down" {
+		st.logger.Info(fmt.Sprintln("Bfd is down for neighbor: ", st.fsm.pConf.NeighborAddress,
+			"go to Active state"))
+		st.fsm.ChangeState(NewActiveState(st.fsm))
+		return
+	}
+
+	st.fsm.AcceptPeerConn()
+	st.fsm.InitiateConnToPeer()
 }
 
 func (st *ConnectState) leave() {
@@ -339,7 +361,6 @@ func (st *ActiveState) processEvent(event BGPFSMEvent, data interface{}) {
 
 	case BGPEventConnRetryTimerExp:
 		st.fsm.StartConnectRetryTimer()
-		st.fsm.InitiateConnToPeer()
 		st.fsm.ChangeState(NewConnectState(st.fsm))
 
 	case BGPEventDelayOpenTimerExp: // Supported later
@@ -394,6 +415,7 @@ func (st *ActiveState) processEvent(event BGPFSMEvent, data interface{}) {
 func (st *ActiveState) enter() {
 	st.logger.Info(fmt.Sprintln("Neighbor:", st.fsm.pConf.NeighborAddress, "FSM:", st.fsm.id,
 		"State: Active - enter"))
+	st.fsm.AcceptPeerConn()
 }
 
 func (st *ActiveState) leave() {
@@ -458,7 +480,6 @@ func (st *OpenSentState) processEvent(event BGPFSMEvent, data interface{}) {
 		st.fsm.ClearPeerConn()
 		st.fsm.StopConnToPeer()
 		st.fsm.StartConnectRetryTimer()
-		st.fsm.AcceptPeerConn()
 		st.fsm.ChangeState(NewActiveState(st.fsm))
 
 	case BGPEventBGPOpen:
@@ -1321,10 +1342,17 @@ func (fsm *FSM) InitiateConnToPeer() {
 		fsm.logger.Info("Unknown neighbor address")
 		return
 	}
-	addr := net.JoinHostPort(fsm.pConf.NeighborAddress.String(), config.BGPPort)
+	remote := net.JoinHostPort(fsm.pConf.NeighborAddress.String(), config.BGPPort)
+	local := ""
+
+	fsm.logger.Info(fmt.Sprintln("Neighbor:", fsm.pConf.NeighborAddress, "FSM", fsm.id, "InitiateConnToPeer - source =",
+		fsm.pConf.UpdateSource, "source len =", len(fsm.pConf.UpdateSource)))
+	if strings.TrimSpace(fsm.pConf.UpdateSource) != "" {
+		local = net.JoinHostPort(strings.TrimSpace(fsm.pConf.UpdateSource), "0")
+	}
 	if fsm.outTCPConn == nil {
 		fsm.outTCPConn = NewOutTCPConn(fsm, fsm.outConnCh, fsm.outConnErrCh)
-		go fsm.outTCPConn.ConnectToPeer(fsm.connectRetryTime, addr)
+		go fsm.outTCPConn.ConnectToPeer(fsm.connectRetryTime, remote, local)
 	}
 }
 

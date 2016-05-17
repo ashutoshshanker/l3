@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
@@ -7,6 +30,7 @@ import (
 	"time"
 	//"l3/ospf/rpc"
 	//    "l3/rib/ribdCommonDefs"
+	"errors"
 	"github.com/google/gopacket/pcap"
 	"net"
 )
@@ -100,33 +124,33 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 	switch ifType {
 	case numberedP2P:
 		intfType = config.NumberedP2P
-		server.logger.Info("Creating point2point")
+		server.logger.Info("Creating numbered point2point")
 	case unnumberedP2P:
 		intfType = config.UnnumberedP2P
-		 server.logger.Info("Creating point2point")
+		server.logger.Info("Creating unnumbered point2point")
 	default:
-		 intfType = config.Broadcast
+		intfType = config.Broadcast
 		server.logger.Info("Creating broadcast")
 	}
 	/*
-	if ifType == numberedP2P ||
-		ifType == unnumberedP2P {
-		intfType = config.PointToPoint
-		server.logger.Info("Creating point2point")
-	} else {
-		intfType = config.Broadcast
-		server.logger.Info("Creating broadcast")
-	} */
+		if ifType == numberedP2P ||
+			ifType == unnumberedP2P {
+			intfType = config.PointToPoint
+			server.logger.Info("Creating point2point")
+		} else {
+			intfType = config.Broadcast
+			server.logger.Info("Creating broadcast")
+		} */
 	ent, exist := server.IntfConfMap[key]
 	if !exist {
 		areaId := convertAreaOrRouterId("0.0.0.0")
 		if areaId == nil {
 			return
 		}
-                server.updateIntfToAreaMap(key, "none", "0.0.0.0")
+		server.updateIntfToAreaMap(key, "none", "0.0.0.0")
 		ent.IfAreaId = areaId
 		ent.IfType = intfType
-		ent.IfAdminStat = config.Enabled
+		ent.IfAdminStat = config.Disabled
 		ent.IfRtrPriority = uint8(config.DesignatedRouterPriority(1))
 		ent.IfTransitDelay = config.UpToMaxAge(1)
 		ent.IfRetransInterval = config.UpToMaxAge(5)
@@ -263,9 +287,11 @@ func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg, mtu int32, 
 	server.IntfKeySlice = append(server.IntfKeySlice, intfConfKey)
 	server.IntfKeyToSliceIdxMap[intfConfKey] = true
 
-	if server.ospfGlobalConf.AdminStat == config.Enabled {
-		server.StartSendRecvPkts(intfConfKey)
-	}
+	/*
+		if server.ospfGlobalConf.AdminStat == config.Enabled {
+			server.StartSendRecvPkts(intfConfKey)
+		}
+	*/
 }
 
 func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg, ifIndex int32) {
@@ -296,8 +322,8 @@ func (server *OSPFServer) deleteIPIntfConfMap(msg IPv4IntfNotifyMsg, ifIndex int
 		return
 	}
 	areaId := convertIPv4ToUint32(ent.IfAreaId)
-        oldAreaId := convertIPInByteToString(ent.IfAreaId)
-        server.updateIntfToAreaMap(intfConfKey, oldAreaId, "none")
+	oldAreaId := convertIPInByteToString(ent.IfAreaId)
+	server.updateIntfToAreaMap(intfConfKey, oldAreaId, "none")
 
 	if server.ospfGlobalConf.AdminStat == config.Enabled &&
 		ent.IfAdminStat == config.Enabled {
@@ -324,24 +350,24 @@ func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 	ent, exist := server.IntfConfMap[intfConfKey]
 	//  we can update only when we already have entry
 	if exist {
-                oldAreaId := convertIPInByteToString(ent.IfAreaId)
-                newAreaId := string(ifConf.IfAreaId)
-                if oldAreaId != newAreaId {
-                        server.updateIntfToAreaMap(intfConfKey, oldAreaId, newAreaId)
-                }
-                ent.IfAreaId = convertAreaOrRouterId(newAreaId)
-/*
-		areaId := convertAreaOrRouterId(string(ifConf.IfAreaId))
-		if areaId == nil {
-			server.logger.Err("Invalid areaId")
-			return
+		oldAreaId := convertIPInByteToString(ent.IfAreaId)
+		newAreaId := string(ifConf.IfAreaId)
+		if oldAreaId != newAreaId {
+			server.updateIntfToAreaMap(intfConfKey, oldAreaId, newAreaId)
 		}
-                if bytesEqual(ent.IfAreaId, areaId) == false {
-                        oldAreaId := config.AreaId(convertIPInByteToString(ent.IfAreaId))
-                        areaId := server.updateIntfToAreaMap(intfConfKey, ifConf.IfAreaId, oldAreaId)
-                        ent.IfAreaId =  convertAreaOrRouterId(string(areaId))
-                }
-*/
+		ent.IfAreaId = convertAreaOrRouterId(newAreaId)
+		/*
+		   		areaId := convertAreaOrRouterId(string(ifConf.IfAreaId))
+		   		if areaId == nil {
+		   			server.logger.Err("Invalid areaId")
+		   			return
+		   		}
+		                   if bytesEqual(ent.IfAreaId, areaId) == false {
+		                           oldAreaId := config.AreaId(convertIPInByteToString(ent.IfAreaId))
+		                           areaId := server.updateIntfToAreaMap(intfConfKey, ifConf.IfAreaId, oldAreaId)
+		                           ent.IfAreaId =  convertAreaOrRouterId(string(areaId))
+		                   }
+		*/
 		ent.IfType = ifConf.IfType
 		ent.IfAdminStat = ifConf.IfAdminStat
 		ent.IfRtrPriority = uint8(ifConf.IfRtrPriority)
@@ -372,7 +398,7 @@ func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 	}
 }
 
-func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
+func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) error {
 	intfConfKey := IntfConfKey{
 		IPAddr:  ifConf.IfIpAddress,
 		IntfIdx: config.InterfaceIndexOrZero(ifConf.AddressLessIf),
@@ -380,7 +406,8 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
 	ent, exist := server.IntfConfMap[intfConfKey]
 	if !exist {
 		server.logger.Err("No such L3 interface exists")
-		return
+		err := errors.New("No such L3 interface exists")
+		return err
 	}
 	if intfConfKey.IPAddr == "0.0.0.0" &&
 		ifConf.IfType == config.NumberedP2P || ifConf.IfType == config.UnnumberedP2P {
@@ -395,7 +422,8 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
 		if flag == false {
 			server.logger.Err("Invalid Configuration")
 			server.logger.Err("Unnumbered PointToPoint Interface cannot be configured without having any other IP interface")
-			return
+			err := errors.New("Invalid Configuration")
+			return err
 		}
 	}
 
@@ -412,6 +440,7 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) {
 		server.ospfGlobalConf.AdminStat == config.Enabled {
 		server.StartSendRecvPkts(intfConfKey)
 	}
+	return nil
 }
 
 func (server *OSPFServer) StopSendRecvPkts(intfConfKey IntfConfKey) {

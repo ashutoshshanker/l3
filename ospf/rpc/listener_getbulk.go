@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package rpc
 
 import (
@@ -185,48 +208,11 @@ func (h *OSPFHandler) GetBulkOspfVirtNbrEntryState(fromIdx ospfd.Int, count ospf
 	return ospfVirtNbrResponse, nil
 }
 
-func (h *OSPFHandler) GetBulkOspfExtLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfExtLsdbEntryStateGetInfo, error) {
-	h.logger.Info(fmt.Sprintln("Get External LSA Link State attrs"))
-	ospfExtLsdbResponse := ospfd.NewOspfExtLsdbEntryStateGetInfo()
-	return ospfExtLsdbResponse, nil
-}
-
-func (h *OSPFHandler) GetBulkOspfHostEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfHostEntryStateGetInfo, error) {
-	h.logger.Info(fmt.Sprintln("Get Host Entry State attrs"))
-	ospfHostEntryResponse := ospfd.NewOspfHostEntryStateGetInfo()
-	return ospfHostEntryResponse, nil
-}
-
-/*
-func (h *OSPFHandler) GetOspfAreaAggregateEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfAreaAggregateEntryStateGetInfo, error) {
-    h.logger.Info(fmt.Sprintln("Get Area Aggregate State attrs"))
-    ospfAreaAggregateResponse := ospfd.NewOspfAreaAggregateEntryStateGetInfo()
-    return ospfAreaAggregateResponse, nil
-}
-*/
-
-func (h *OSPFHandler) GetBulkOspfLocalLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfLocalLsdbEntryStateGetInfo, error) {
-	h.logger.Info(fmt.Sprintln("Get Local Link State for non virtual links attrs"))
-	ospfLocalLsdbResponse := ospfd.NewOspfLocalLsdbEntryStateGetInfo()
-	return ospfLocalLsdbResponse, nil
-}
 
 func (h *OSPFHandler) GetBulkOspfVirtLocalLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfVirtLocalLsdbEntryStateGetInfo, error) {
 	h.logger.Info(fmt.Sprintln("Get Local Link State for virtual links attrs"))
 	ospfVirtLocalLsdbResponse := ospfd.NewOspfVirtLocalLsdbEntryStateGetInfo()
 	return ospfVirtLocalLsdbResponse, nil
-}
-
-func (h *OSPFHandler) GetBulkOspfAsLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfAsLsdbEntryStateGetInfo, error) {
-	h.logger.Info(fmt.Sprintln("Get Local Link State for AS attrs"))
-	ospfAsLsdbResponse := ospfd.NewOspfAsLsdbEntryStateGetInfo()
-	return ospfAsLsdbResponse, nil
-}
-
-func (h *OSPFHandler) GetBulkOspfAreaLsaCountEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfAreaLsaCountEntryStateGetInfo, error) {
-	h.logger.Info(fmt.Sprintln("Get Area LSA Counter"))
-	ospfAreaLsaCountResponse := ospfd.NewOspfAreaLsaCountEntryStateGetInfo()
-	return ospfAreaLsaCountResponse, nil
 }
 
 func (h *OSPFHandler) GetBulkOspfGlobalState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfGlobalStateGetInfo, error) {

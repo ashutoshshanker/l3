@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package rpc
 
 import (
@@ -10,7 +33,7 @@ import (
 	//    "net"
 )
 
-func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) bool {
+func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) error {
 	gConf := config.GlobalConf{
 		RouterId:                 config.RouterId(ospfGlobalConf.RouterId),
 		AdminStat:                config.Status(ospfGlobalConf.AdminStat),
@@ -27,10 +50,11 @@ func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) bool {
 		StubRouterAdvertisement:  config.AdvertiseAction(ospfGlobalConf.StubRouterAdvertisement),
 	}
 	h.server.GlobalConfigCh <- gConf
-	return true
+	retMsg := <-h.server.GlobalConfigRetCh
+	return retMsg
 }
 
-func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) bool {
+func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) error {
 	ifConf := config.InterfaceConf{
 		IfIpAddress:           config.IpAddress(ospfIfConf.IfIpAddress),
 		AddressLessIf:         config.InterfaceIndexOrZero(ospfIfConf.AddressLessIf),
@@ -50,10 +74,11 @@ func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) bool {
 	}
 
 	h.server.IntfConfigCh <- ifConf
-	return true
+	retMsg := <-h.server.IntfConfigRetCh
+	return retMsg
 }
 
-func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntry) bool {
+func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntry) error {
 	areaConf := config.AreaConf{
 		AreaId:                              config.AreaId(ospfAreaConf.AreaId),
 		AuthType:                            config.AuthType(ospfAreaConf.AuthType),
@@ -64,8 +89,8 @@ func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntry) bool {
 	}
 
 	h.server.AreaConfigCh <- areaConf
-	return true
-
+	retMsg := <-h.server.AreaConfigRetCh
+	return retMsg
 }
 
 func (h *OSPFHandler) CreateOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) (bool, error) {
@@ -74,7 +99,11 @@ func (h *OSPFHandler) CreateOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) (bool, 
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Create global config attrs:", ospfGlobalConf))
-	return h.SendOspfGlobal(ospfGlobalConf), nil
+	err := h.SendOspfGlobal(ospfGlobalConf)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (h *OSPFHandler) CreateOspfAreaEntry(ospfAreaConf *ospfd.OspfAreaEntry) (bool, error) {
@@ -83,21 +112,15 @@ func (h *OSPFHandler) CreateOspfAreaEntry(ospfAreaConf *ospfd.OspfAreaEntry) (bo
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Create Area config attrs:", ospfAreaConf))
-	return h.SendOspfAreaConf(ospfAreaConf), nil
+	err := h.SendOspfAreaConf(ospfAreaConf)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (h *OSPFHandler) CreateOspfStubAreaEntry(ospfStubAreaConf *ospfd.OspfStubAreaEntry) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Create Stub Area config attrs:", ospfStubAreaConf))
-	return true, nil
-}
-
-func (h *OSPFHandler) CreateOspfAreaRangeEntry(ospfAreaRangeConf *ospfd.OspfAreaRangeEntry) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create address range config attrs:", ospfAreaRangeConf))
-	return true, nil
-}
-
-func (h *OSPFHandler) CreateOspfHostEntry(ospfHostConf *ospfd.OspfHostEntry) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create host config attrs:", ospfHostConf))
 	return true, nil
 }
 
@@ -107,7 +130,11 @@ func (h *OSPFHandler) CreateOspfIfEntry(ospfIfConf *ospfd.OspfIfEntry) (bool, er
 		return false, err
 	}
 	h.logger.Info(fmt.Sprintln("Create interface config attrs:", ospfIfConf))
-	return h.SendOspfIfConf(ospfIfConf), nil
+	err := h.SendOspfIfConf(ospfIfConf)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (h *OSPFHandler) CreateOspfIfMetricEntry(ospfIfMetricConf *ospfd.OspfIfMetricEntry) (bool, error) {
@@ -120,12 +147,3 @@ func (h *OSPFHandler) CreateOspfVirtIfEntry(ospfVirtIfConf *ospfd.OspfVirtIfEntr
 	return true, nil
 }
 
-func (h *OSPFHandler) CreateOspfNbrEntry(ospfNbrConf *ospfd.OspfNbrEntry) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create Neighbor Config attrs:", ospfNbrConf))
-	return true, nil
-}
-
-func (h *OSPFHandler) CreateOspfAreaAggregateEntry(ospfAreaAggregateConf *ospfd.OspfAreaAggregateEntry) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Create Area Agggregate Config attrs:", ospfAreaAggregateConf))
-	return true, nil
-}
