@@ -16,7 +16,6 @@ import (
 	"ribdInt"
 	"strconv"
 	"time"
-	"utils/commonDefs"
 	"utils/dbutils"
 	"utils/ipcutils"
 	"utils/logging"
@@ -42,10 +41,10 @@ type NextHopInfo struct {
 	refCount int //number of routes using this as a next hop
 }
 type ApplyPolicyInfo struct {
-	Source         string
-	Policy         string
-	Action         string
-	Conditions     []*ribdInt.ConditionInfo
+	Source     string
+	Policy     string
+	Action     string
+	Conditions []*ribdInt.ConditionInfo
 }
 type RIBDServer struct {
 	Logger                       *logging.Writer
@@ -159,8 +158,8 @@ var logger *logging.Writer
 var AsicdSub *nanomsg.SubSocket
 var RouteServiceHandler *RIBDServer
 var IntfIdNameMap map[int32]IntfEntry
-var	GlobalPolicyEngineDB  *policy.PolicyEngineDB
-var	PolicyEngineDB  *policy.PolicyEngineDB
+var GlobalPolicyEngineDB *policy.PolicyEngineDB
+var PolicyEngineDB *policy.PolicyEngineDB
 var PARAMSDIR string
 
 func (ribdServiceHandler *RIBDServer) ProcessL3IntfDownEvent(ipAddr string) {
@@ -293,9 +292,8 @@ func getPortInfo() {
 		}
 		logger.Info(fmt.Sprintln("len(bulkInfo.PortStateList)  = %d, num objects returned = %d\n", len(bulkInfo.PortStateList), bulkInfo.Count))
 		for i := 0; i < int(bulkInfo.Count); i++ {
-			portNum := bulkInfo.PortStateList[i].PortNum
-			ifId := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(portNum), commonDefs.IfTypePort)
-			logger.Info(fmt.Sprintln("portNum = ", portNum, "ifId = ", ifId))
+			ifId := bulkInfo.PortStateList[i].IfIndex
+			logger.Info(fmt.Sprintln("ifId = ", ifId))
 			if IntfIdNameMap == nil {
 				IntfIdNameMap = make(map[int32]IntfEntry)
 			}
@@ -490,8 +488,8 @@ func NewRIBDServicesHandler(dbHdl *dbutils.DBUtil, loggerC *logging.Writer) *RIB
 	ribdServicesHandler.PolicyDefinitionCreateConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.PolicyDefinitionDeleteConfCh = make(chan *ribd.PolicyDefinition)
 	ribdServicesHandler.PolicyDefinitionUpdateConfCh = make(chan *ribd.PolicyDefinition)
-	ribdServicesHandler.PolicyApplyCh = make(chan ApplyPolicyInfo,100)
-	ribdServicesHandler.PolicyUpdateApplyCh = make(chan ApplyPolicyInfo,100)
+	ribdServicesHandler.PolicyApplyCh = make(chan ApplyPolicyInfo, 100)
+	ribdServicesHandler.PolicyUpdateApplyCh = make(chan ApplyPolicyInfo, 100)
 	ribdServicesHandler.DBRouteAddCh = make(chan RouteDBInfo)
 	ribdServicesHandler.DBRouteDelCh = make(chan RouteDBInfo)
 	ribdServicesHandler.ServerUpCh = make(chan bool)
@@ -536,10 +534,10 @@ func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 			    logger.Println("received message on RouteInstallConfCh channel")
 				ribdServiceHandler.ProcessRouteInstall(routeInfo)*/
 		case info := <-ribdServiceHandler.PolicyApplyCh:
-		    logger.Info("received message on PolicyApplyCh channel")
+			logger.Info("received message on PolicyApplyCh channel")
 			//update the local policyEngineDB
 			ribdServiceHandler.UpdateApplyPolicy(info, true, PolicyEngineDB)
-	         ribdServiceHandler.PolicyUpdateApplyCh <- info
+			ribdServiceHandler.PolicyUpdateApplyCh <- info
 		case info := <-ribdServiceHandler.TrackReachabilityCh:
 			logger.Info("received message on TrackReachabilityCh channel")
 			ribdServiceHandler.TrackReachabilityStatus(info.IpAddr, info.Protocol, info.Op)

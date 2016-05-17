@@ -22,7 +22,6 @@ type portConfig struct {
 	Name         string
 	HardwareAddr net.HardwareAddr
 	Speed        int32
-	PortNum      int32
 	IfIndex      int32
 }
 
@@ -95,7 +94,6 @@ func ConstructPortConfigMap() {
 			for i := 0; i < objCount; i++ {
 				ifindex := bulkInfo.PortStateList[i].IfIndex
 				ent := PortConfigMap[ifindex]
-				ent.PortNum = bulkInfo.PortStateList[i].PortNum
 				ent.IfIndex = ifindex
 				ent.Name = bulkInfo.PortStateList[i].Name
 				ent.HardwareAddr, _ = net.ParseMAC(bulkCfgInfo.PortList[i].MacAddr)
