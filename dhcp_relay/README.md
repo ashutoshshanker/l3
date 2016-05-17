@@ -34,7 +34,7 @@ Dhcp Relay Agent is a standalone protocol daemon with configuration dependant to
 
 
 ### Configuration
- Detailed information for the object can be found in [models package] https://github.com/SnapRoute/models/blob/master/dhcprelayObjects.go
+ Detailed information for the object can be found in [models package](https://github.com/SnapRoute/models/blob/master/dhcprelayObjects.go)
  The objects are created keeping in mind the basic Relay Agent Design.
  - Global Config to enable/disable Relay Agent across all interfaces
  - Create/Delete Relay Agent per interface
