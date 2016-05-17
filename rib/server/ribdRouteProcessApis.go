@@ -1452,12 +1452,15 @@ networkMask string,
 routeTypeString string,
 nextHopIP string) (rc ribd.Int, err error) {*/
 func (m RIBDServer) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val bool, err error) {
-	logger.Info(fmt.Sprintln("ProcessRouteDeleteConfig:Received Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "nextHopIP:", cfg.NextHop[0].NextHopIp, "Protocol ", cfg.Protocol))
+	logger.Info(fmt.Sprintln("ProcessRouteDeleteConfig:Received Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "number of nextHops:", len(cfg.NextHop), "Protocol ", cfg.Protocol))
 	if !RouteServiceHandler.AcceptConfig {
 		logger.Info("Not ready to accept config")
 		//return 0,err
 	}
-	_, err = deleteV4Route(cfg.DestinationNw, cfg.NetworkMask, cfg.Protocol, cfg.NextHop[0].NextHopIp, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoInValid)
+	for i := 0; i< len(cfg.NextHop) ; i++ {
+		logger.Info(fmt.Sprintln("nexthop info: ip: ", cfg.NextHop[i].NextHopIp, " intref: ", cfg.NextHop[i].NextHopIntRef))
+	    _, err = deleteV4Route(cfg.DestinationNw, cfg.NetworkMask, cfg.Protocol, cfg.NextHop[i].NextHopIp, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoInValid)
+	}
 	return true, err
 }
 func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool, op string) (val bool, err error) {
@@ -1483,9 +1486,9 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 	}
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
 	if op == "add" {
-		logger.Info(fmt.Sprintln("Add operation in update"))
+		logger.Debug(fmt.Sprintln("Add operation in update"))
 		if attrset != nil {
-			logger.Info("attr set not nil, set individual attributes")
+			logger.Debug("attr set not nil, set individual attributes")
 			objTyp := reflect.TypeOf(*origconfig)
 			for i := 0; i < objTyp.NumField(); i++ {
 				objName := objTyp.Field(i).Name
@@ -1495,6 +1498,24 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 						return false, errors.New("Cannot add any other object other than next hop")
 					}
 					m.ProcessRouteCreateConfig(newconfig)
+				}
+			}
+		}
+		return val, err
+	}
+	if op == "remove" {
+		logger.Debug(fmt.Sprintln("Remove operation in update"))
+		if attrset != nil {
+			logger.Debug("attr set not nil, set individual attributes")
+			objTyp := reflect.TypeOf(*origconfig)
+			for i := 0; i < objTyp.NumField(); i++ {
+				objName := objTyp.Field(i).Name
+				if attrset[i] {
+					if objName != "NextHop" {
+						logger.Err(fmt.Sprintln("Cannot remove any other object ", objName, " other than next hop"))
+						return false, errors.New("Cannot remove any other object other than next hop")
+					}
+					m.ProcessRouteDeleteConfig(newconfig)
 				}
 			}
 		}
@@ -1525,8 +1546,9 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 							logger.Info("nextHopIpAddr invalid")
 							return val, errors.New("Invalid next hop")
 						}
-						logger.Info(fmt.Sprintln("Update the next hop info old ip: ", origconfig.NextHop[0].NextHopIp, " new value: ", newconfig.NextHop[0].NextHopIp))
+						logger.Info(fmt.Sprintln("Update the next hop info old ip: ", origconfig.NextHop[0].NextHopIp, " new value: ", newconfig.NextHop[0].NextHopIp, " weight : ", newconfig.NextHop[0].Weight))
 						routeInfoRecord.nextHopIp = nextHopIpAddr
+						routeInfoRecord.weight = ribd.Int(newconfig.NextHop[0].Weight)
 						if newconfig.NextHop[0].NextHopIntRef != "" {
 							nextHopIntRef, _ := strconv.Atoi(newconfig.NextHop[0].NextHopIntRef)
 							routeInfoRecord.nextHopIfIndex = ribd.Int(nextHopIntRef)

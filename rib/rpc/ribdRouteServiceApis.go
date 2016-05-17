@@ -84,7 +84,7 @@ func (m RIBDServicesHandler) OnewayCreateBulkIPv4Route(cfg []*ribdInt.IPv4Route)
     Delete Route
 */
 func (m RIBDServicesHandler) DeleteIPv4Route(cfg *ribd.IPv4Route) (val bool, err error) {
-	logger.Info(fmt.Sprintln("DeleteIPv4:RouteReceived Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "Protocol ", cfg.Protocol))
+	logger.Info(fmt.Sprintln("DeleteIPv4:RouteReceived Route Delete request for ", cfg.DestinationNw, ":", cfg.NetworkMask, "Protocol ", cfg.Protocol, "number of nextHops: ", len(cfg.NextHop)))
 	/*
 	    Validate route config parameters for "del" operation
 	*/
@@ -112,7 +112,7 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
 	/*
 	    validate route config parameters for update operation
 	*/
-	err = m.server.RouteConfigValidationCheckForUpdate(newconfig, attrset,op)
+	err = m.server.RouteConfigValidationCheckForUpdate(origconfig, newconfig, attrset,op)
 	if err != nil {
 		logger.Err(fmt.Sprintln("validation check failed with error ", err))
 		return false, err
