@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package FSMgr
 
 import (
@@ -6,12 +29,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	nanomsg "github.com/op/go-nanomsg"
 	"l3/bgp/api"
 	"l3/bgp/config"
 	"l3/bgp/rpc"
 	"strconv"
 	"utils/logging"
+
+	nanomsg "github.com/op/go-nanomsg"
 )
 
 /*  Interface manager is responsible for handling asicd notifications and hence
@@ -106,17 +130,63 @@ func (mgr *FSIntfMgr) listenForAsicdEvents() {
 				return
 			}
 
-			mgr.logger.Info(fmt.Sprintf("Asicd L3INTF event idx %d ip %s state %d\n",
-				msg.IfIndex, msg.IpAddr, msg.IfState))
+			mgr.logger.Info(fmt.Sprintf("Asicd L3INTF event idx %d ip %s state %d\n", msg.IfIndex, msg.IpAddr,
+				msg.IfState))
 			if msg.IfState == asicdCommonDefs.INTF_STATE_DOWN {
-				api.SendIntfNotification(msg.IfIndex, msg.IpAddr,
-					config.INTF_STATE_DOWN)
+				api.SendIntfNotification(msg.IfIndex, msg.IpAddr, config.INTF_STATE_DOWN)
 			} else {
-				api.SendIntfNotification(msg.IfIndex, msg.IpAddr,
-					config.INTF_STATE_UP)
+				api.SendIntfNotification(msg.IfIndex, msg.IpAddr, config.INTF_STATE_UP)
+			}
+
+		case asicdCommonDefs.NOTIFY_IPV4INTF_CREATE, asicdCommonDefs.NOTIFY_IPV4INTF_DELETE:
+			var msg asicdCommonDefs.IPv4IntfNotifyMsg
+			err = json.Unmarshal(event.Msg, &msg)
+			if err != nil {
+				mgr.logger.Err(fmt.Sprintf("Unmarshal Asicd IPV4INTF event failed with err %s", err))
+				return
+			}
+
+			mgr.logger.Info(fmt.Sprintf("Asicd IPV4INTF event idx %d ip %s\n", msg.IfIndex, msg.IpAddr))
+			if event.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE {
+				api.SendIntfNotification(msg.IfIndex, msg.IpAddr, config.INTF_CREATED)
+			} else {
+				api.SendIntfNotification(msg.IfIndex, msg.IpAddr, config.INTF_DELETED)
 			}
 		}
 	}
+}
+
+func (mgr *FSIntfMgr) GetIPv4Intfs() []*config.IntfStateInfo {
+	var currMarker asicdServices.Int
+	var count asicdServices.Int
+	intfs := make([]*config.IntfStateInfo, 0)
+	count = 100
+	for {
+		mgr.logger.Info(fmt.Sprintln("Getting ", count,
+			"IPv4IntfState objects from currMarker", currMarker))
+		getBulkInfo, err := mgr.AsicdClient.GetBulkIPv4IntfState(currMarker, count)
+		if err != nil {
+			mgr.logger.Info(fmt.Sprintln("GetBulkIPv4IntfState failed with error", err))
+			break
+		}
+		if getBulkInfo.Count == 0 {
+			mgr.logger.Info("0 objects returned from GetBulkIPv4IntfState")
+			break
+		}
+		mgr.logger.Info(fmt.Sprintln("len(getBulkInfo.IPv4IntfStateList)  =", len(getBulkInfo.IPv4IntfStateList),
+			"num objects returned =", getBulkInfo.Count))
+		for _, intfState := range getBulkInfo.IPv4IntfStateList {
+			intf := config.NewIntfStateInfo(intfState.IfIndex, intfState.IpAddr, config.INTF_CREATED)
+			intfs = append(intfs, intf)
+		}
+		if getBulkInfo.More == false {
+			mgr.logger.Info("more returned as false, so no more get bulks")
+			break
+		}
+		currMarker = getBulkInfo.EndIdx
+	}
+
+	return intfs
 }
 
 func (mgr *FSIntfMgr) GetIPv4Information(ifIndex int32) (string, error) {

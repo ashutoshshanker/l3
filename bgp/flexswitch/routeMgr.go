@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package FSMgr
 
 import (
@@ -5,7 +28,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	nanomsg "github.com/op/go-nanomsg"
 	"l3/bgp/api"
 	"l3/bgp/config"
 	"l3/bgp/rpc"
@@ -13,6 +35,8 @@ import (
 	"ribd"
 	"ribdInt"
 	"utils/logging"
+
+	nanomsg "github.com/op/go-nanomsg"
 )
 
 /*  Init route manager with ribd client as its core
@@ -95,7 +119,7 @@ func (mgr *FSRouteMgr) listenForRIBUpdates(socket *nanomsg.SubSocket) {
 
 func (mgr *FSRouteMgr) populateConfigRoute(route *ribdInt.Routes) *config.RouteInfo {
 	rv := &config.RouteInfo{
-		Ipaddr:           route.Ipaddr,
+		IPAddr:           route.Ipaddr,
 		Mask:             route.Mask,
 		NextHopIp:        route.NextHopIp,
 		Prototype:        int(route.Prototype),
@@ -119,9 +143,9 @@ func (mgr *FSRouteMgr) handleRibUpdates(rxBuf []byte) {
 			mgr.logger.Err(fmt.Sprintf(
 				"Unmarshal RIB route update failed with err %s", err))
 		}
-	    if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
-		    updateMsg = "Remove"
-	    }
+		if msg.MsgType == ribdCommonDefs.NOTIFY_ROUTE_DELETED {
+			updateMsg = "Remove"
+		}
 		mgr.logger.Info(fmt.Sprintln(updateMsg, "connected route, dest:",
 			routeListInfo.RouteInfo.Ipaddr, "netmask:",
 			routeListInfo.RouteInfo.Mask, "nexthop:",
@@ -153,7 +177,7 @@ func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error
 		return nil, err
 	}
 	reachInfo := &config.NextHopInfo{
-		Ipaddr:         info.Ipaddr,
+		IPAddr:         info.Ipaddr,
 		Mask:           info.Mask,
 		Metric:         int32(info.Metric),
 		NextHopIp:      info.NextHopIp,
@@ -192,16 +216,16 @@ func (mgr *FSRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
 	mgr.ribdClient.OnewayDeleteIPv4Route(mgr.createRibdIPv4RouteCfg(cfg,
 		false /*delete*/))
 }
-func (mgr *FSRouteMgr) ApplyPolicy(protocol string,policy string,action string,conditions []*config.ConditionInfo) {
-	temp := make ([]ribdInt.ConditionInfo,len(conditions))
-	ribdConditions := make([]*ribdInt.ConditionInfo,0)
-	j :=0
-	for i := 0;i<len(conditions);i++ {
+func (mgr *FSRouteMgr) ApplyPolicy(protocol string, policy string, action string, conditions []*config.ConditionInfo) {
+	temp := make([]ribdInt.ConditionInfo, len(conditions))
+	ribdConditions := make([]*ribdInt.ConditionInfo, 0)
+	j := 0
+	for i := 0; i < len(conditions); i++ {
 		temp[j] = ribdInt.ConditionInfo{conditions[i].ConditionType, conditions[i].Protocol, conditions[i].IpPrefix, conditions[i].MasklengthRange}
 		ribdConditions = append(ribdConditions, &temp[j])
 		j++
 	}
-	mgr.ribdClient.ApplyPolicy(protocol,policy,action,ribdConditions)
+	mgr.ribdClient.ApplyPolicy(protocol, policy, action, ribdConditions)
 }
 
 func (mgr *FSRouteMgr) GetRoutes() ([]*config.RouteInfo, []*config.RouteInfo) {
