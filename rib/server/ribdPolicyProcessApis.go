@@ -27,9 +27,9 @@ import (
 	"fmt"
 	"ribd"
 	"ribdInt"
+	"utils/patriciaDB"
 	"utils/policy"
 	"utils/policy/policyCommonDefs"
-	"utils/patriciaDB"
 )
 
 type PolicyExtensions struct {
@@ -43,6 +43,7 @@ type Policy struct {
 	routeList     []string
 	routeInfoList []ribdInt.Routes
 }
+
 func (m RIBDServer) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition, db *policy.PolicyEngineDB) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg: ", cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.Protocol}
@@ -52,28 +53,28 @@ func (m RIBDServer) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition
 	return val, err
 }
 
-func (m RIBDServer) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyCondition,db *policy.PolicyEngineDB) (val bool, err error) {
+func (m RIBDServer) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyCondition, db *policy.PolicyEngineDB) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition: ", cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name}
 	val, err = db.DeletePolicyCondition(newPolicy)
 	return val, err
 }
 
-func (m RIBDServer) ProcessPolicyActionConfigCreate(cfg *ribdInt.PolicyAction,db *policy.PolicyEngineDB) (val bool, err error) {
+func (m RIBDServer) ProcessPolicyActionConfigCreate(cfg *ribdInt.PolicyAction, db *policy.PolicyEngineDB) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigCreate:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name, ActionType: cfg.ActionType, SetAdminDistanceValue: int(cfg.SetAdminDistanceValue), Accept: cfg.Accept, Reject: cfg.Reject, RedistributeAction: cfg.RedistributeAction, RedistributeTargetProtocol: cfg.RedistributeTargetProtocol, NetworkStatementTargetProtocol: cfg.NetworkStatementTargetProtocol}
 	val, err = db.CreatePolicyAction(newAction)
 	return val, err
 }
 
-func (m RIBDServer) ProcessPolicyActionConfigDelete(cfg *ribdInt.PolicyAction,db *policy.PolicyEngineDB) (val bool, err error) {
+func (m RIBDServer) ProcessPolicyActionConfigDelete(cfg *ribdInt.PolicyAction, db *policy.PolicyEngineDB) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigDelete:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name}
 	val, err = db.DeletePolicyAction(newAction)
 	return val, err
 }
 
-func (m RIBDServer) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmt,db *policy.PolicyEngineDB) (err error) {
+func (m RIBDServer) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmt, db *policy.PolicyEngineDB) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyStatementCreate:CreatePolicyStatement"))
 	newPolicyStmt := policy.PolicyStmtConfig{Name: cfg.Name, MatchConditions: cfg.MatchConditions}
 	newPolicyStmt.Conditions = make([]string, 0)
@@ -81,19 +82,19 @@ func (m RIBDServer) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmt,db *polic
 		newPolicyStmt.Conditions = append(newPolicyStmt.Conditions, cfg.Conditions[i])
 	}
 	newPolicyStmt.Actions = make([]string, 0)
-	newPolicyStmt.Actions = append(newPolicyStmt.Actions,cfg.Action)
+	newPolicyStmt.Actions = append(newPolicyStmt.Actions, cfg.Action)
 	err = db.CreatePolicyStatement(newPolicyStmt)
 	return err
 }
 
-func (m RIBDServer) ProcessPolicyStmtConfigDelete(cfg *ribd.PolicyStmt,db *policy.PolicyEngineDB) (err error) {
+func (m RIBDServer) ProcessPolicyStmtConfigDelete(cfg *ribd.PolicyStmt, db *policy.PolicyEngineDB) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyStatementDelete:DeletePolicyStatement for name ", cfg.Name))
 	stmt := policy.PolicyStmtConfig{Name: cfg.Name}
 	err = db.DeletePolicyStatement(stmt)
 	return err
 }
 
-func (m RIBDServer) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefinition,db *policy.PolicyEngineDB) (err error) {
+func (m RIBDServer) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefinition, db *policy.PolicyEngineDB) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyDefinitionCreate:CreatePolicyDefinition"))
 	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Priority), MatchType: cfg.MatchType}
 	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence, 0)
@@ -108,14 +109,14 @@ func (m RIBDServer) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefiniti
 	return err
 }
 
-func (m RIBDServer) ProcessPolicyDefinitionConfigDelete(cfg *ribd.PolicyDefinition,db *policy.PolicyEngineDB) (err error) {
+func (m RIBDServer) ProcessPolicyDefinitionConfigDelete(cfg *ribd.PolicyDefinition, db *policy.PolicyEngineDB) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyDefinitionDelete:DeletePolicyDefinition for name ", cfg.Name))
 	policy := policy.PolicyDefinitionConfig{Name: cfg.Name}
 	err = db.DeletePolicyDefinition(policy)
 	return err
 }
 
-func (m RIBDServer) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.Int,db *policy.PolicyEngineDB) (policyConditions *ribd.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServer) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.Int, db *policy.PolicyEngineDB) (policyConditions *ribd.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyConditionState"))
 	PolicyConditionsDB := db.PolicyConditionsDB
 	localPolicyConditionsDB := *db.LocalPolicyConditionsDB
@@ -175,6 +176,7 @@ func (m RIBDServer) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.
 	policyConditions.Count = validCount
 	return policyConditions, err
 }
+
 /*
 func (m RIBDServer) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribdInt.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyActionState"))
@@ -237,7 +239,7 @@ func (m RIBDServer) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int
 	return policyActions, err
 }
 */
-func (m RIBDServer) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int,db *policy.PolicyEngineDB) (policyStmts *ribd.PolicyStmtStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServer) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int, db *policy.PolicyEngineDB) (policyStmts *ribd.PolicyStmtStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyStmtState"))
 	PolicyStmtDB := db.PolicyStmtDB
 	localPolicyStmtDB := *db.LocalPolicyStmtDB
@@ -299,7 +301,7 @@ func (m RIBDServer) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int,d
 	return policyStmts, err
 }
 
-func (m RIBDServer) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd.Int,db *policy.PolicyEngineDB) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
+func (m RIBDServer) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd.Int, db *policy.PolicyEngineDB) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
 	logger.Info(fmt.Sprintln("GetBulkPolicyDefinitionState"))
 	PolicyDB := db.PolicyDB
 	localPolicyDB := *db.LocalPolicyDB
@@ -358,68 +360,59 @@ func (m RIBDServer) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd
 	return policyStmts, err
 }
 
-func (m RIBDServer) UpdateApplyPolicy(info ApplyPolicyInfo, apply bool, db *policy.PolicyEngineDB)  {
+func (m RIBDServer) UpdateApplyPolicy(info ApplyPolicyInfo, apply bool, db *policy.PolicyEngineDB) {
 	var err error
 	conditionName := ""
-	source := info.Source 
+	source := info.Source
 	policyName := info.Policy
 	action := info.Action
 	var policyAction policy.PolicyAction
-	conditionNameList := make([]string,0)
-	
+	conditionNameList := make([]string, 0)
+
 	policyDB := db.PolicyDB
 	policyConditionsDB := db.PolicyConditionsDB
-	
+
 	nodeGet := policyDB.Get(patriciaDB.Prefix(policyName))
 	if nodeGet == nil {
 		logger.Err(fmt.Sprintln("Policy ", policyName, " not defined"))
 		return
 	}
 	node := nodeGet.(policy.Policy)
-	conditions := make([]ribdInt.ConditionInfo,0)
-	for i:=0;i<len(info.Conditions);i++ {
-		conditions = append(conditions,*info.Conditions[i])
+	conditions := make([]ribdInt.ConditionInfo, 0)
+	for i := 0; i < len(info.Conditions); i++ {
+		conditions = append(conditions, *info.Conditions[i])
 	}
-	logger.Info(fmt.Sprintln("RIB handler UpdateApplyPolicy source:", source, " policy:", policyName, " action:", action," apply:", apply, "conditions: ", ))
-	for j:=0;j<len(conditions);j++ {
+	logger.Info(fmt.Sprintln("RIB handler UpdateApplyPolicy source:", source, " policy:", policyName, " action:", action, " apply:", apply, "conditions: "))
+	for j := 0; j < len(conditions); j++ {
 		logger.Info(fmt.Sprintf("ConditionType = %s :", conditions[j].ConditionType))
 		switch conditions[j].ConditionType {
-			case "MatchProtocol":
-			    logger.Info(fmt.Sprintln(conditions[j].Protocol))
-				conditionName := "Match"+conditions[j].Protocol
-				ok := policyConditionsDB.Match(patriciaDB.Prefix(conditionName))
-				if !ok {
-					logger.Info(fmt.Sprintln("Define condition ", conditionName))
-					policyCondition := ribd.PolicyCondition{Name:conditionName,ConditionType:conditions[j].ConditionType,Protocol:conditions[j].Protocol}
-					_,err = m.ProcessPolicyConditionConfigCreate(&policyCondition,db)
-				}
-			case "MatchDstIpPrefix":
-			case "MatchSrcIpPrefix":
-			    logger.Info(fmt.Sprintln("IpPrefix:", conditions[j].IpPrefix, "MasklengthRange:",conditions[j].MasklengthRange))
+		case "MatchProtocol":
+			logger.Info(fmt.Sprintln(conditions[j].Protocol))
+			conditionName := "Match" + conditions[j].Protocol
+			ok := policyConditionsDB.Match(patriciaDB.Prefix(conditionName))
+			if !ok {
+				logger.Info(fmt.Sprintln("Define condition ", conditionName))
+				policyCondition := ribd.PolicyCondition{Name: conditionName, ConditionType: conditions[j].ConditionType, Protocol: conditions[j].Protocol}
+				_, err = m.ProcessPolicyConditionConfigCreate(&policyCondition, db)
+			}
+		case "MatchDstIpPrefix":
+		case "MatchSrcIpPrefix":
+			logger.Info(fmt.Sprintln("IpPrefix:", conditions[j].IpPrefix, "MasklengthRange:", conditions[j].MasklengthRange))
 		}
 		if err == nil {
-			conditionNameList = append(conditionNameList,conditionName)
+			conditionNameList = append(conditionNameList, conditionName)
 		}
 	}
 	//define Action
 	switch action {
-		case "Redistribution":
-		    logger.Info("Setting up Redistribution action mep")
-		    /*actionName := "RedeistributeTo"+source
-		    ok := PolicyEngineDB.PolicyActionsDB.Match(actionName)
-			if !ok {
-				logger.Info(fmt.Sprintln("Define action ", actionName))
-				policyAction := ribdInt.PolicyAction{Name:actionName, ActionType:action,RedistributeAction:"allow",RedistributeTargetProtocol:source}
-				m.ProcessPolicyActionConfigCreate(&policyAction)
-			}*/
-			//check if the policy is configured
-			//get should happen from DB
-		    redistributeActionInfo :=policy.RedistributeActionInfo{true,source}
-		    policyAction = policy.PolicyAction{Name: action, ActionType: policyCommonDefs.PolicyActionTypeRouteRedistribute, ActionInfo: redistributeActionInfo}
-		    break
-		default:
-		    logger.Info(fmt.Sprintln("Action ", action, "currently a no-op"))
+	case "Redistribution":
+		logger.Info("Setting up Redistribution action map")
+		redistributeActionInfo := policy.RedistributeActionInfo{true, source}
+		policyAction = policy.PolicyAction{Name: action, ActionType: policyCommonDefs.PolicyActionTypeRouteRedistribute, ActionInfo: redistributeActionInfo}
+		break
+	default:
+		logger.Info(fmt.Sprintln("Action ", action, "currently a no-op"))
 	}
-	db.UpdateApplyPolicy(policy.ApplyPolicyInfo{node,policyAction,conditionNameList},apply)
-	return 
+	db.UpdateApplyPolicy(policy.ApplyPolicyInfo{node, policyAction, conditionNameList}, apply)
+	return
 }

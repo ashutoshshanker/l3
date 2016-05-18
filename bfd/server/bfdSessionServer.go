@@ -280,7 +280,7 @@ func (server *BFDServer) GetIfIndexFromDestIp(DestIp string) (int32, error) {
 		return int32(0), err
 	}
 	server.ribdClient.ClientHdl.TrackReachabilityStatus(DestIp, "BFD", "add")
-	ifIndex := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(reachabilityInfo.NextHopIfIndex), int(reachabilityInfo.NextHopIfType))
+	ifIndex := int32(reachabilityInfo.NextHopIfIndex)//asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(reachabilityInfo.NextHopIfIndex), int(reachabilityInfo.NextHopIfType))
 	server.logger.Info(fmt.Sprintln("GetIfIndexFromDestIp: DestIp: ", DestIp, "IfIndex: ", ifIndex))
 	return ifIndex, nil
 }

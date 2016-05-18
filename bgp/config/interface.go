@@ -40,6 +40,7 @@ type RouteMgrIntf interface {
 	GetNextHopInfo(ipAddr string) (*NextHopInfo, error)
 	CreateRoute(*RouteConfig)
 	DeleteRoute(*RouteConfig)
+	UpdateRoute(cfg *RouteConfig , op string)
 	ApplyPolicy(protocol string, policy string, action string, conditions []*ConditionInfo)
 	GetRoutes() ([]*RouteInfo, []*RouteInfo)
 }

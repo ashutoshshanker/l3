@@ -37,9 +37,8 @@ func addAsicdRoute(routeInfoRecord RouteInfoRecord) {
 			routeInfoRecord.networkMask.String(),
 			[]*asicdInt.IPv4NextHop{
 				&asicdInt.IPv4NextHop{
-					NextHopIp:     routeInfoRecord.resolvedNextHopIpIntf.NextHopIp,
-					Weight:        int32(routeInfoRecord.weight + 1),
-					NextHopIfType: int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType),
+					NextHopIp: routeInfoRecord.resolvedNextHopIpIntf.NextHopIp,
+					Weight:    int32(routeInfoRecord.weight + 1),
 				},
 			},
 		},
@@ -53,9 +52,9 @@ func delAsicdRoute(routeInfoRecord RouteInfoRecord) {
 			routeInfoRecord.networkMask.String(),
 			[]*asicdInt.IPv4NextHop{
 				&asicdInt.IPv4NextHop{
-					NextHopIp:     routeInfoRecord.resolvedNextHopIpIntf.NextHopIp,
-					Weight:        int32(routeInfoRecord.weight + 1),
-					NextHopIfType: int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType),
+					NextHopIp: routeInfoRecord.resolvedNextHopIpIntf.NextHopIp,
+					Weight:    int32(routeInfoRecord.weight + 1),
+					//NextHopIfType: int32(routeInfoRecord.resolvedNextHopIpIntf.NextHopIfType),
 				},
 			},
 		},

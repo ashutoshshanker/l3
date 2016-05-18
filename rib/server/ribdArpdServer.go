@@ -30,9 +30,9 @@ import (
 )
 
 func arpdResolveRoute(routeInfoRecord RouteInfoRecord) {
-	logger.Info(fmt.Sprintln(" arpdResolveRoute: Sending ARP Resolve for ", routeInfoRecord.nextHopIp.String(), routeInfoRecord.nextHopIfType))
-	arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, arpdInt.Int(routeInfoRecord.nextHopIfType), arpdInt.Int(routeInfoRecord.nextHopIfIndex))
-	logger.Info(fmt.Sprintln("ARP resolve for ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, arpdInt.Int(routeInfoRecord.nextHopIfType), arpdInt.Int(routeInfoRecord.nextHopIfIndex), " returned "))
+	logger.Info(fmt.Sprintln(" arpdResolveRoute: Sending ARP Resolve for ", routeInfoRecord.nextHopIp.String(), " routeInfoRecord.nextHopIfIndex ", routeInfoRecord.nextHopIfIndex, " routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIfIndex))
+	arpdclnt.ClientHdl.ResolveArpIPV4(routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, arpdInt.Int(routeInfoRecord.nextHopIfIndex))
+	logger.Info(fmt.Sprintln("ARP resolve for ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, arpdInt.Int(routeInfoRecord.nextHopIfIndex), " returned "))
 }
 func arpdRemoveRoute(routeInfoRecord RouteInfoRecord) {
 	logger.Info(fmt.Sprintln("arpdRemoveRoute: for ", routeInfoRecord.nextHopIp.String()))
