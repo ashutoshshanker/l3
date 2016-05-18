@@ -22,3 +22,7 @@ Summary of functionality implemented by this module is as follows:
    a. Based on the policy objects configured and applied on the device, the policy engine filter will match on the conditions provisioned and implement actions based on the application location. For instance, the policy engine filter may result in redistributing certain (route type based/ network prefix based) routes into other applications (BGP,OSPF, etc.,)
 4. Responsible for calling ASICd thrift APIs to program the routes in the FIB.
 
+.. toctree::
+   :maxdepth: 4
+
+    examples <examples>

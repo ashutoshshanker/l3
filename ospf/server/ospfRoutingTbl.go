@@ -1,10 +1,33 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
 	"fmt"
 	"ribd"
-	"ribdInt"
 	"strconv"
+	"asicd/asicdCommonDefs"
 )
 
 type DestType uint8
@@ -521,11 +544,14 @@ func (server *OSPFServer) DeleteRoute(rKey RoutingTblEntryKey) {
 		cfg := ribd.IPv4Route{
 			DestinationNw:     destNetIp,
 			Protocol:          routeType,
-			OutgoingInterface: "",
-			OutgoingIntfType:  "",
 			Cost:              0,
 			NetworkMask:       networkMask,
-			NextHopIp:         nextHopIp}
+		}
+		nextHopInfo := ribd.NextHopInfo{
+			NextHopIp : nextHopIp,
+		}
+		cfg.NextHop = make([]*ribd.NextHopInfo,0)
+		cfg.NextHop = append(cfg.NextHop, &nextHopInfo)
 		ret, err := server.ribdClient.ClientHdl.DeleteIPv4Route(&cfg)
 		//destNetIp, networkMask, routeType, nextHopIp)
 		if err != nil {
@@ -562,19 +588,20 @@ func (server *OSPFServer) InstallRoute(rKey RoutingTblEntryKey) {
 			server.logger.Err(fmt.Sprintln("Unable to find entry for ip:", key.IfIPAddr, "in ipPropertyMap"))
 			continue
 		}
-		nextHopIfType := ribd.Int(ipProp.IfType) // ifType int : 5
-		nextHopIfIndex := ribd.Int(ipProp.IfId)  // Vlan Id int : 6
-		server.logger.Info(fmt.Sprintln("Installing Route: destNetIp:", destNetIp, "networkMask:", networkMask, "metric:", metric, "nextHopIp:", nextHopIp, "nextHopIfType:", nextHopIfType, "nextHopIfIndex:", nextHopIfIndex, "routeType:", routeType))
-		nextHopIfTypeStr, _ := server.ribdClient.ClientHdl.GetNextHopIfTypeStr(ribdInt.Int(nextHopIfType))
+		nextHopIfIndex := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(ipProp.IfType), int(ipProp.IfId))
+		server.logger.Info(fmt.Sprintln("Installing Route: destNetIp:", destNetIp, "networkMask:", networkMask, "metric:", metric, "nextHopIp:", nextHopIp,  "nextHopIfIndex:", nextHopIfIndex, "routeType:", routeType))
 		cfg := ribd.IPv4Route{
 			DestinationNw:     destNetIp,
 			Protocol:          routeType,
-			OutgoingInterface: strconv.Itoa(int(nextHopIfIndex)),
-			OutgoingIntfType:  nextHopIfTypeStr,
 			Cost:              int32(metric),
 			NetworkMask:       networkMask,
-			NextHopIp:         nextHopIp}
-
+         }
+		nextHopInfo := ribd.NextHopInfo{
+			NextHopIp : nextHopIp,
+			NextHopIntRef : strconv.Itoa(int(nextHopIfIndex)),
+		}
+		cfg.NextHop = make([]*ribd.NextHopInfo,0)
+		cfg.NextHop = append(cfg.NextHop, &nextHopInfo)
 		ret, err := server.ribdClient.ClientHdl.CreateIPv4Route(&cfg) //destNetIp, networkMask, metric, nextHopIp, nextHopIfType, nextHopIfIndex, routeType)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Error Installing Route:", err))

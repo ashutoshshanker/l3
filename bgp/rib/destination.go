@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // destination.go
 package server
 
@@ -432,6 +455,7 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 
 	d.logger.Info(fmt.Sprintln("Destination =", d.IPPrefix.Prefix.String(),
 		"ECMP routes =", d.ecmpPaths, "updated paths =", updatedPaths))
+    firstRoute := true
 	if len(updatedPaths) > 0 {
 		var ecmpPaths [][]*Path
 		var addPaths []*Path
@@ -466,6 +490,7 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 				if route, ok := d.ecmpPaths[path]; ok {
 					// Update path
 					found = true
+					firstRoute = false
 					if (idx == 0) && path.IsAggregate() {
 						locRibAction = RouteActionReplace
 					}
@@ -524,7 +549,8 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 						OutgoingInterface: strconv.Itoa(
 							int(path.reachabilityInfo.NextHopIfIdx)),
 					}
-					d.rib.routeMgr.DeleteRoute(&cfg)
+					//d.rib.routeMgr.DeleteRoute(&cfg)
+					d.rib.routeMgr.UpdateRoute(&cfg,"remove")
 					d.logger.Info(fmt.Sprintf("DeleteV4Route for ip=%s",
 						"nexthop=%s DONE\n", d.IPPrefix.Prefix.String(),
 						path.reachabilityInfo.NextHop))
@@ -555,7 +581,8 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 					OutgoingInterface: strconv.Itoa(
 						int(path.reachabilityInfo.NextHopIfIdx)),
 				}
-				d.rib.routeMgr.DeleteRoute(&cfg)
+				//d.rib.routeMgr.DeleteRoute(&cfg)
+				d.rib.routeMgr.UpdateRoute(&cfg,"remove")
 				d.logger.Info(fmt.Sprintln("DeleteV4Route from ECMP paths, route =",
 					route, "ip =", d.IPPrefix.Prefix.String(),
 					"next hop =", path.reachabilityInfo.NextHop, "DONE"))
@@ -585,7 +612,12 @@ func (d *Destination) SelectRouteForLocRib(addPathCount int) (RouteAction, bool,
 			DestinationNw:     d.IPPrefix.Prefix.String(),
 			OutgoingInterface: strconv.Itoa(int(path.reachabilityInfo.NextHopIfIdx)),
 		}
-		d.rib.routeMgr.CreateRoute(&cfg)
+		if firstRoute {
+		    d.rib.routeMgr.CreateRoute(&cfg)
+			firstRoute = false
+		} else {
+			d.rib.routeMgr.UpdateRoute(&cfg, "add")
+		}
 	}
 	return locRibAction, addPathsUpdated, addedRoutes, updatedRoutes, deletedRoutes
 }
@@ -604,7 +636,8 @@ func (d *Destination) updateRoute(path *Path) {
 		Cost:              int32(path.reachabilityInfo.Metric),
 		NetworkMask:       constructNetmaskFromLen(int(d.IPPrefix.Length), 32).String(),
 		NextHopIp:         path.reachabilityInfo.NextHop}
-	d.rib.routeMgr.DeleteRoute(&cfg)
+	//d.rib.routeMgr.DeleteRoute(&cfg)
+	d.rib.routeMgr.UpdateRoute(&cfg,"remove")
 
 	if path.IsAggregate() || !path.IsLocal() {
 		var nextHop string

@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // ribdEventHandler.go
 package server
 
@@ -46,6 +69,10 @@ func (ribdServiceHandler *RIBDServer) ProcessAsicdEvents(sub *nanomsg.SubSocket)
 			intfEntry := IntfEntry{name: logicalIntfNotifyMsg.LogicalIntfName}
 			ribdServiceHandler.Logger.Info(fmt.Sprintln("Updating IntfIdMap at index ", ifId, " with name ", logicalIntfNotifyMsg.LogicalIntfName))
 			IntfIdNameMap[int32(ifId)] = intfEntry
+			if IfNameToIfIndex == nil {
+				IfNameToIfIndex = make(map[string]int32)
+			}
+			IfNameToIfIndex[logicalIntfNotifyMsg.LogicalIntfName] = ifId
 			break
 		case asicdCommonDefs.NOTIFY_VLAN_CREATE:
 			ribdServiceHandler.Logger.Info("asicdCommonDefs.NOTIFY_VLAN_CREATE")
@@ -62,6 +89,10 @@ func (ribdServiceHandler *RIBDServer) ProcessAsicdEvents(sub *nanomsg.SubSocket)
 			}
 			intfEntry := IntfEntry{name: vlanNotifyMsg.VlanName}
 			IntfIdNameMap[int32(ifId)] = intfEntry
+			if IfNameToIfIndex == nil {
+				IfNameToIfIndex = make(map[string]int32)
+			}
+			IfNameToIfIndex[vlanNotifyMsg.VlanName] = ifId
 			break
 		case asicdCommonDefs.NOTIFY_L3INTF_STATE_CHANGE:
 			ribdServiceHandler.Logger.Info("NOTIFY_L3INTF_STATE_CHANGE event")
@@ -88,7 +119,7 @@ func (ribdServiceHandler *RIBDServer) ProcessAsicdEvents(sub *nanomsg.SubSocket)
 				ribdServiceHandler.Logger.Info(fmt.Sprintln("Error in reading msg ", err))
 				return
 			}
-			ribdServiceHandler.Logger.Info(fmt.Sprintln("Received ipv4 intf create with ipAddr ", msg.IpAddr, " ifIndex = ", msg.IfIndex, " ifType ", asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex), " ifId ", asicdCommonDefs.GetIntfIdFromIfIndex(msg.IfIndex)))
+			ribdServiceHandler.Logger.Info(fmt.Sprintln("Received NOTIFY_IPV4INTF_CREATE ipAddr ", msg.IpAddr, " ifIndex = ", msg.IfIndex, " ifType ", asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex), " ifId ", asicdCommonDefs.GetIntfIdFromIfIndex(msg.IfIndex)))
 			var ipMask net.IP
 			ip, ipNet, err := net.ParseCIDR(msg.IpAddr)
 			if err != nil {
@@ -98,30 +129,19 @@ func (ribdServiceHandler *RIBDServer) ProcessAsicdEvents(sub *nanomsg.SubSocket)
 			copy(ipMask, ipNet.Mask)
 			ipAddrStr := ip.String()
 			ipMaskStr := net.IP(ipMask).String()
-			ribdServiceHandler.Logger.Info(fmt.Sprintln("Calling createv4Route with ipaddr ", ipAddrStr, " mask ", ipMaskStr))
-			nextHopIfTypeStr := ""
-			switch asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex) {
-			case commonDefs.IfTypePort:
-				nextHopIfTypeStr = "PHY"
-				break
-			case commonDefs.IfTypeVlan:
-				nextHopIfTypeStr = "VLAN"
-				break
-			case commonDefs.IfTypeNull:
-				nextHopIfTypeStr = "NULL"
-				break
-			case commonDefs.IfTypeLoopback:
-				nextHopIfTypeStr = "Loopback"
-				break
-			}
+			ribdServiceHandler.Logger.Info(fmt.Sprintln("Calling createv4Route with ipaddr ", ipAddrStr, " mask ", ipMaskStr, " nextHopIntRef: ",strconv.Itoa(int(msg.IfIndex) )))
 			cfg := ribd.IPv4Route{
-				DestinationNw:     ipAddrStr,
-				Protocol:          "CONNECTED",
-				OutgoingInterface: strconv.Itoa(int(asicdCommonDefs.GetIntfIdFromIfIndex(msg.IfIndex))),
-				OutgoingIntfType:  nextHopIfTypeStr,
-				Cost:              0,
-				NetworkMask:       ipMaskStr,
-				NextHopIp:         "0.0.0.0"}
+				DestinationNw: ipAddrStr,
+				Protocol:      "CONNECTED",
+				Cost:          0,
+				NetworkMask:   ipMaskStr,
+			}
+			nextHop := ribd.NextHopInfo{
+				NextHopIp:     "0.0.0.0",
+				NextHopIntRef: strconv.Itoa(int(msg.IfIndex)),
+			}
+			cfg.NextHop = make([]*ribd.NextHopInfo, 0)
+			cfg.NextHop = append(cfg.NextHop, &nextHop)
 
 			_, err = ribdServiceHandler.ProcessRouteCreateConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
 			//_, err = createV4Route(ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(msg.IfIndex)), ribdCommonDefs.CONNECTED, FIBAndRIB, ribdCommonDefs.RoutePolicyStateChangetoValid,ribd.Int(len(destNetSlice)))
@@ -149,34 +169,18 @@ func (ribdServiceHandler *RIBDServer) ProcessAsicdEvents(sub *nanomsg.SubSocket)
 			ipAddrStr := ip.String()
 			ipMaskStr := net.IP(ipMask).String()
 			ribdServiceHandler.Logger.Info(fmt.Sprintln("Calling deletev4Route with ipaddr ", ipAddrStr, " mask ", ipMaskStr))
-			nextHopIfTypeStr := ""
-			switch asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex) {
-			case commonDefs.IfTypePort:
-				nextHopIfTypeStr = "PHY"
-				break
-			case commonDefs.IfTypeVlan:
-				nextHopIfTypeStr = "VLAN"
-				break
-			case commonDefs.IfTypeNull:
-				nextHopIfTypeStr = "NULL"
-				break
-			case commonDefs.IfTypeLoopback:
-				nextHopIfTypeStr = "Loopback"
-				if IntfIdNameMap == nil {
-					IntfIdNameMap = make(map[int32]IntfEntry)
-				}
-				intfEntry := IntfEntry{}
-				IntfIdNameMap[msg.IfIndex] = intfEntry
-				break
-			}
 			cfg := ribd.IPv4Route{
-				DestinationNw:     ipAddrStr,
-				Protocol:          "CONNECTED",
-				OutgoingInterface: strconv.Itoa(int(asicdCommonDefs.GetIntfIdFromIfIndex(msg.IfIndex))),
-				OutgoingIntfType:  nextHopIfTypeStr,
-				Cost:              0,
-				NetworkMask:       ipMaskStr,
-				NextHopIp:         "0.0.0.0"}
+				DestinationNw: ipAddrStr,
+				Protocol:      "CONNECTED",
+				Cost:          0,
+				NetworkMask:   ipMaskStr,
+			}
+			nextHop := ribd.NextHopInfo{
+				NextHopIp:     "0.0.0.0",
+				NextHopIntRef: strconv.Itoa(int(msg.IfIndex)),
+			}
+			cfg.NextHop = make([]*ribd.NextHopInfo, 0)
+			cfg.NextHop = append(cfg.NextHop, &nextHop)
 			_, err = ribdServiceHandler.ProcessRouteDeleteConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(msg.IfIndex)), "CONNECTED")
 			if err != nil {
 				ribdServiceHandler.Logger.Info(fmt.Sprintln("Route delete failed with err %s\n", err))

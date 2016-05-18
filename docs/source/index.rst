@@ -14,7 +14,7 @@ Contents:
     Introduction <l3introduction>
     BGP          <bgp>
     OSPF         <ospf>
-    RIB          <rib>
+    RIB          <rib/rib>
     BFD          <bfd>
     ARP          <arp>
     DHCP         <dhcp>
