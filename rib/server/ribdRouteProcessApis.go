@@ -1134,11 +1134,16 @@ func deleteRoutes(destNetPrefix patriciaDB.Prefix,
 		deleteRoute(destNetPrefix, deleteRouteList[i].routeInfoRecord, routeInfoRecordList, policyPath, deleteRouteList[i].opType)
 	}
 }
+/*
+    This function is called whenever a route is added or deleted. In either of the cases, 
+	this function selects the best route to be programmed in FIB.
+*/
 func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 	routeInfoRecordList RouteInfoRecordList, //the current list of routes for this prefix
 	routeInfoRecord RouteInfoRecord, //the route to be added or deleted or invalidated or validated
-	op ribd.Int,
-	opType int) (err error) {
+	op ribd.Int,                     //add or delete of the route
+	opType int                       //whether this operation is at FIB only or RIBAndFIB
+	) (err error) {
 	//	index int) (err error) {
 	logger.Info(fmt.Sprintln("Selecting the best Route for destNetPrefix ", destNetPrefix))
 	if op == add {
@@ -1396,7 +1401,7 @@ func deleteV4Route(destNetIp string,
 	nextHopIP string,
 	delType ribd.Int,
 	policyStateChange int) (rc ribd.Int, err error) {
-	logger.Info(fmt.Sprintln("deleteV4Route  with del type ", delType))
+	logger.Debug(fmt.Sprintln("deleteV4Route  with del type ", delType))
 
 	destNetIpAddr, err := getIP(destNetIp)
 	if err != nil {
@@ -1410,9 +1415,10 @@ func deleteV4Route(destNetIp string,
 	if err != nil {
 		return -1, err
 	}
-	logger.Info(fmt.Sprintf("destNet = %v\n", destNet))
+	logger.Debug(fmt.Sprintln("destNet = ", destNet))
 	ok := RouteInfoMap.Match(destNet)
 	if !ok {
+		logger.Err(fmt.Sprintln("Destnet ", destNet , " not found"))
 		return 0, nil
 	}
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
@@ -1422,7 +1428,7 @@ func deleteV4Route(destNetIp string,
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
 	found := IsRoutePresent(routeInfoRecordList, routeType)
 	if !found {
-		logger.Info(fmt.Sprintln("Route with protocol ", routeType, " not found"))
+		logger.Err(fmt.Sprintln("Route with protocol ", routeType, " not found"))
 		return 0, err
 	}
 	if policyStateChange == ribdCommonDefs.RoutePolicyStateChangetoInValid {
@@ -1432,9 +1438,12 @@ func deleteV4Route(destNetIp string,
 	}
 	found, routeInfoRecord, _ := findRouteWithNextHop(routeInfoRecordList.routeInfoProtocolMap[routeType], nextHopIP)
 	if !found {
-		logger.Info(fmt.Sprintln("Route with nextHop IP ", nextHopIP, " not found"))
+		logger.Err(fmt.Sprintln("Route with nextHop IP ", nextHopIP, " not found"))
 		return 0, err
 	}
+	/*
+	    Call selectv4Route to select the best route
+	*/
 	SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, del, int(delType))
 
 	if routeType == "CONNECTED" { //PROTOCOL_CONNECTED {
