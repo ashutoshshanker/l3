@@ -26,3 +26,4 @@ Summary of functionality implemented by this module is as follows:
    :maxdepth: 4
 
     examples <examples>
+	policyMgr <policy>
