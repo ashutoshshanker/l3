@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -246,6 +246,30 @@ func (server *OSPFServer) findNetworkLsa(areaId uint32, LSId uint32) (lsaKey Lsa
 	return lsaKey, err
 }
 
+func (server *OSPFServer) findRouterLsa(areaId uint32, LSId uint32) (err error) {
+	lsdbKey := LsdbKey{
+		AreaId: areaId,
+	}
+	lsDbEnt, exist := server.AreaLsdb[lsdbKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("No LS Database found for areaId:", areaId))
+		return
+	}
+
+	lsaKey := LsaKey{
+		LSType:    RouterLSA,
+		LSId:      LSId,
+		AdvRouter: LSId,
+	}
+
+	_, exist = lsDbEnt.RouterLsaMap[lsaKey]
+	if !exist {
+		err = errors.New("Router LSA not found")
+		return err
+	}
+	return nil
+}
+
 func (server *OSPFServer) UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaKey, areaId uint32) error {
 	server.logger.Info(fmt.Sprintln("1: Using Lsa with key as:", dumpLsaKey(lsaKey), "for SPF calc"))
 	vertexKey := VertexKey{
@@ -319,7 +343,22 @@ func (server *OSPFServer) UpdateAreaGraphRouterLsa(lsaEnt RouterLsa, lsaKey LsaK
 			sentry.LinkStateId = lsaKey.LSId
 			server.AreaStubs[vKey] = sentry
 		} else if linkDetail.LinkType == P2PLink {
-			// TODO
+			server.logger.Info("===It is P2PLink===")
+			vKey = VertexKey{
+				Type:   RouterVertex,
+				ID:     linkDetail.LinkId,
+				AdvRtr: linkDetail.LinkId,
+			}
+			err := server.findRouterLsa(areaId, vKey.ID)
+			if err != nil {
+				server.logger.Info(fmt.Sprintln("Err:", err, vKey.ID))
+				return err
+			}
+			cost = linkDetail.LinkMetric
+			lData = linkDetail.LinkData
+			ent.NbrVertexKey = append(ent.NbrVertexKey, vKey)
+			ent.NbrVertexCost = append(ent.NbrVertexCost, cost)
+			ent.LinkData[vKey] = lData
 		}
 	}
 	if len(ent.NbrVertexKey) == 0 {
