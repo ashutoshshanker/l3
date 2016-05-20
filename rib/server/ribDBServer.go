@@ -120,12 +120,13 @@ func (ribdServiceHandler *RIBDServer) StartDBServer() {
 	logger.Info("Starting the arpdserver loop")
 	for {
 		select {
-		case info := <-ribdServiceHandler.DBRouteAddCh:
-			logger.Info(" received message on DBRouteAddCh")
-			ribdServiceHandler.WriteIPv4RouteStateEntryToDB(info)
-		case info := <-ribdServiceHandler.DBRouteDelCh:
-			logger.Info(" received message on DBRouteDelCh")
-			ribdServiceHandler.DelIPv4RouteStateEntryFromDB(info)
+		case info := <-ribdServiceHandler.DBRouteCh:
+			logger.Info(fmt.Sprintln(" received message on DBRouteCh, op: ", info.Op))
+			if info.Op == "add" {
+				ribdServiceHandler.WriteIPv4RouteStateEntryToDB(info.OrigConfigObject.(RouteDBInfo))
+			} else if info.Op == "del" {
+				ribdServiceHandler.DelIPv4RouteStateEntryFromDB(info.OrigConfigObject.(RouteDBInfo))
+			}
 		}
 	}
 }

@@ -479,20 +479,32 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
 	/*
 	    Check if route present.
 	*/
-    ok := RouteInfoMap.Match(destNet) 
-	if !ok && op == "del"{
+    routeInfoRecordItem := RouteInfoMap.Get(destNet) 
+	if routeInfoRecordItem == nil && op == "del"{
 	/*
 	    If delete operation, err if no route found
 	*/
         err = errors.New("No route found")
         return err
     }
-	if ok && op == "add" {
+	if routeInfoRecordItem != nil && op == "add" {
 	/*
-	    If add operation, err if the route exists
+	    If add operation, check if this is a valid route
 	*/
-       logger.Err("Duplicate entry")
-	   return errors.New("Duplicate entry")
+	   routeInfoRecordList := routeInfoRecordItem.(RouteInfoRecordList)
+	   routeInfoList:= routeInfoRecordList.routeInfoProtocolMap[cfg.Protocol]
+	   if routeInfoList != nil {
+		   /*
+		       There are routes of the same protocol type already configured
+		   */
+	       if cfg.Cost > int32(routeInfoList[0].metric) {
+			  /*
+			      Routes configured for this route type are of lower cost than the new route
+			  */
+               logger.Err("Duplicate entry")
+	           return errors.New("Duplicate entry")
+		  }
+	   }
 	}
 	return nil
 }
