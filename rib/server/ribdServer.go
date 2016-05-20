@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -39,7 +39,6 @@ import (
 	"ribdInt"
 	"strconv"
 	"time"
-	"utils/commonDefs"
 	"utils/dbutils"
 	"utils/ipcutils"
 	"utils/logging"
@@ -319,9 +318,8 @@ func getPortInfo() {
 		}
 		logger.Info(fmt.Sprintln("len(bulkInfo.PortStateList)  = ",len(bulkInfo.PortStateList), " num objects returned = ",  bulkInfo.Count))
 		for i := 0; i < int(bulkInfo.Count); i++ {
-			portNum := bulkInfo.PortStateList[i].PortNum
-			ifId := asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(int(portNum), commonDefs.IfTypePort)
-			logger.Info(fmt.Sprintln("portNum = ", portNum, "ifId = ", ifId))
+			ifId := bulkInfo.PortStateList[i].IfIndex
+			logger.Info(fmt.Sprintln("ifId = ", ifId))
 			if IntfIdNameMap == nil {
 				IntfIdNameMap = make(map[int32]IntfEntry)
 			}
