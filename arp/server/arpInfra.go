@@ -386,11 +386,11 @@ func (server *ARPServer) getBulkPortConfig() {
 		more := bool(bulkInfo.More)
 		curMark = int(bulkInfo.EndIdx)
 		for i := 0; i < objCnt; i++ {
-			portNum := int(bulkInfo.PortList[i].PortNum)
-			ent := server.portPropMap[portNum]
+			ifIndex := int(bulkInfo.PortList[i].IfIndex)
+			ent := server.portPropMap[ifIndex]
 			ent.MacAddr = bulkInfo.PortList[i].MacAddr
 			ent.CtrlCh = make(chan bool)
-			server.portPropMap[portNum] = ent
+			server.portPropMap[ifIndex] = ent
 		}
 		if more == false {
 			break
@@ -411,14 +411,14 @@ func (server *ARPServer) getBulkPortState() {
 		more := bool(bulkInfo.More)
 		curMark = int(bulkInfo.EndIdx)
 		for i := 0; i < objCnt; i++ {
-			portNum := int(bulkInfo.PortStateList[i].PortNum)
-			ent := server.portPropMap[portNum]
+			ifIndex := int(bulkInfo.PortStateList[i].IfIndex)
+			ent := server.portPropMap[ifIndex]
 			ent.IfName = bulkInfo.PortStateList[i].Name
 			ent.L3IfIdx = -1
 			ent.LagIfIdx = -1
 			ent.CtrlCh = make(chan bool)
 			ent.PcapHdl = nil
-			server.portPropMap[portNum] = ent
+			server.portPropMap[ifIndex] = ent
 		}
 		if more == false {
 			break
