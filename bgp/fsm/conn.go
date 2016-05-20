@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // conn.go
 package fsm
 
@@ -9,6 +32,7 @@ import (
 	"l3/bgp/utils"
 	"math/rand"
 	"net"
+	"strings"
 	"time"
 	"utils/logging"
 	"utils/netUtils"
@@ -79,7 +103,7 @@ func (o *OutTCPConn) Connect(seconds uint32, remote, local string, connCh chan n
 
 	if local != "" {
 		o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
-			"local IP is set to", local))
+			"local IP is set to", local, "local IP len", len(local)))
 		localIP, _, err := net.SplitHostPort(local)
 		if err != nil {
 			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
@@ -88,9 +112,15 @@ func (o *OutTCPConn) Connect(seconds uint32, remote, local string, connCh chan n
 			return
 		}
 
-		if !o.ifaceMgr.IsIPConfigured(localIP) {
-			errCh <- errors.New(fmt.Sprintf("Local IP %s is not configured on the switch", localIP))
-			return
+		if strings.TrimSpace(localIP) != "" {
+			if !o.ifaceMgr.IsIPConfigured(strings.TrimSpace(localIP)) {
+				errCh <- errors.New(fmt.Sprintf("Local IP %s is not configured on the switch", localIP))
+				return
+			}
+		} else {
+			o.logger.Info(fmt.Sprintln("Neighbor:", o.fsm.pConf.NeighborAddress, "FSM", o.fsm.id,
+				"local IP is empty, set the local address to empty"))
+			local = ""
 		}
 	}
 

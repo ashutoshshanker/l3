@@ -20,7 +20,7 @@ Modules
 OSPF has below components
 1) Interface FSM - 
 Handles per interfce OSPF config events,send hello packets, DR/BDR election .
-It signals Neighbor FSM whenenever new neighbor is detected.
+It signals Neighbor FSM whenenever new neighbor is detected. 
 
 2) Neighbor FSM -
 This component implements 
