@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // server.go
 package rpc
 
@@ -438,7 +461,7 @@ func (h *BGPHandler) GetBulkBGPGlobalState(index bgpd.Int,
 }
 
 func (h *BGPHandler) UpdateBGPGlobal(origG *bgpd.BGPGlobal, updatedG *bgpd.BGPGlobal,
-	attrSet []bool) (bool, error) {
+	attrSet []bool, op string) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update global config attrs:", updatedG, "old config:", origG))
 	return h.SendBGPGlobal(updatedG)
 }
@@ -684,7 +707,7 @@ func (h *BGPHandler) GetBulkBGPNeighborState(index bgpd.Int,
 }
 
 func (h *BGPHandler) UpdateBGPNeighbor(origN *bgpd.BGPNeighbor, updatedN *bgpd.BGPNeighbor,
-	attrSet []bool) (bool, error) {
+	attrSet []bool, op string) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update peer attrs:", updatedN))
 	return h.SendBGPNeighbor(origN, updatedN, attrSet)
 }
@@ -770,7 +793,7 @@ func (h *BGPHandler) CreateBGPPeerGroup(peerGroup *bgpd.BGPPeerGroup) (bool, err
 }
 
 func (h *BGPHandler) UpdateBGPPeerGroup(origG *bgpd.BGPPeerGroup, updatedG *bgpd.BGPPeerGroup,
-	attrSet []bool) (bool, error) {
+	attrSet []bool, op string) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Update peer attrs:", updatedG))
 	return h.SendBGPPeerGroup(origG, updatedG, attrSet)
 }
@@ -847,7 +870,7 @@ func (h *BGPHandler) GetBulkBGPPolicyConditionState(fromIndex bgpd.Int, rcount b
 
 func (h *BGPHandler) UpdateBGPPolicyCondition(origC *bgpd.BGPPolicyCondition,
 	updatedC *bgpd.BGPPolicyCondition,
-	attrSet []bool) (val bool, err error) {
+	attrSet []bool, op string) (val bool, err error) {
 	return val, err
 }
 
@@ -892,7 +915,7 @@ func (h *BGPHandler) GetBulkBGPPolicyActionState(fromIndex bgpd.Int, rcount bgpd
 }
 
 func (h *BGPHandler) UpdateBGPPolicyAction(origC *bgpd.BGPPolicyAction, updatedC *bgpd.BGPPolicyAction,
-	attrSet []bool) (val bool, err error) {
+	attrSet []bool, op string) (val bool, err error) {
 	return val, err
 }
 
@@ -930,7 +953,7 @@ func (h *BGPHandler) GetBulkBGPPolicyStmtState(fromIndex bgpd.Int, rcount bgpd.I
 }
 
 func (h *BGPHandler) UpdateBGPPolicyStmt(origC *bgpd.BGPPolicyStmt,
-	updatedC *bgpd.BGPPolicyStmt, attrSet []bool) (
+	updatedC *bgpd.BGPPolicyStmt, attrSet []bool, op string) (
 	val bool, err error) {
 	return val, err
 }
@@ -981,7 +1004,7 @@ func (h *BGPHandler) GetBulkBGPPolicyDefinitionState(fromIndex bgpd.Int, rcount 
 
 func (h *BGPHandler) UpdateBGPPolicyDefinition(origC *bgpd.BGPPolicyDefinition,
 	updatedC *bgpd.BGPPolicyDefinition,
-	attrSet []bool) (val bool, err error) {
+	attrSet []bool, op string) (val bool, err error) {
 	return val, err
 }
 

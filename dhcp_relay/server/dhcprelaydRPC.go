@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package relayServer
 
 import (
@@ -22,7 +45,7 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobal(
 func (h *DhcpRelayServiceHandler) UpdateDhcpRelayGlobal(
 	origconfig *dhcprelayd.DhcpRelayGlobal,
 	newconfig *dhcprelayd.DhcpRelayGlobal,
-	attrset []bool) (bool, error) {
+	attrset []bool, op string) (bool, error) {
 	logger.Info(fmt.Sprintln("DRA: updating relay config to",
 		newconfig.Enable))
 	dhcprelayEnable = newconfig.Enable
@@ -77,7 +100,7 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntf(
 func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntf(
 	origconfig *dhcprelayd.DhcpRelayIntf,
 	newconfig *dhcprelayd.DhcpRelayIntf,
-	attrset []bool) (bool, error) {
+	attrset []bool, op string) (bool, error) {
 	logger.Info("DRA: Intf Config Update")
 	logger.Info("DRA: Updating Dhcp Relay Config for interface")
 	if origconfig.IfIndex != newconfig.IfIndex {

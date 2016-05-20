@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // ribDB.go
 package server
 
@@ -15,11 +38,16 @@ func (ribdServiceHandler *RIBDServer) UpdateRoutesFromDB() (err error) {
 		var dbObjCfg models.IPv4Route
 		objList, err := dbHdl.GetAllObjFromDb(dbObjCfg)
 		if err == nil {
-		    logger.Info(fmt.Sprintln("Number of routes from DB: ", len((objList))))
+			logger.Info(fmt.Sprintln("Number of routes from DB: ", len((objList))))
 			for idx := 0; idx < len(objList); idx++ {
 				obj := ribd.NewIPv4Route()
 				dbObj := objList[idx].(models.IPv4Route)
 				models.ConvertribdIPv4RouteObjToThrift(&dbObj, obj)
+				err = ribdServiceHandler.RouteConfigValidationCheck(obj, "add")
+				if err != nil {
+					logger.Err("Route validation failed when reading from db")
+					continue
+				}
 				rv, _ := ribdServiceHandler.ProcessRouteCreateConfig(obj)
 				if rv == false {
 					logger.Err("IPv4Route create failed during init")
@@ -46,7 +74,7 @@ func (ribdServiceHandler *RIBDServer) UpdateGlobalPolicyConditionsFromDB(dbHdl *
 				obj := ribd.NewPolicyCondition()
 				dbObj := objList[idx].(models.PolicyCondition)
 				models.ConvertribdPolicyConditionObjToThrift(&dbObj, obj)
-	             ribdServiceHandler.PolicyConditionCreateConfCh <- obj
+				ribdServiceHandler.PolicyConditionCreateConfCh <- obj
 				/*rv, _ := ribdServiceHandler.ProcessPolicyConditionConfigCreate(obj,GlobalPolicyEngineDB)
 				if rv == false {
 					logger.Err("PolicyCondition create failed during init")
@@ -116,7 +144,7 @@ func (ribdServiceHandler *RIBDServer) UpdatePolicyObjectsFromDB() { //(paramsDir
 	ribdServiceHandler.UpdateGlobalPolicyConditionsFromDB(dbHdl) //paramsDir, dbHdl)
 	ribdServiceHandler.UpdateGlobalPolicyStmtsFromDB(dbHdl)
 	ribdServiceHandler.UpdateGlobalPolicyFromDB(dbHdl)
-    //local route policies
+	//local route policies
 	ribdServiceHandler.UpdateRoutePolicyConditionsFromDB(dbHdl) //paramsDir, dbHdl)
 	ribdServiceHandler.UpdateRoutePolicyStmtsFromDB(dbHdl)
 	ribdServiceHandler.UpdateRoutePolicyFromDB(dbHdl)

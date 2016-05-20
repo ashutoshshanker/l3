@@ -1,7 +1,6 @@
 namespace go ribdInt
 typedef i32 int
 struct NextHopInfo {
-	1: int NextHopIfType,
     2: string NextHopIp,
     3: int NextHopIfIndex,
 	4: int Metric,
@@ -13,7 +12,6 @@ struct Routes {
 	1: string Ipaddr,
 	2: string Mask,
 	3: string NextHopIp,
-	4: int NextHopIfType
 	5: int IfIndex,
 	6: int Metric,
 	7: int Prototype,
@@ -72,8 +70,7 @@ struct IPv4Route {
 	2 : string NetworkMask
 	3 : string NextHopIp
 	4 : i32 Cost
-	5 : string OutgoingIntfType
-	6 : string OutgoingInterface
+	6 : string NextHopIntRef
 	7 : string Protocol
 	8 : string CreateTime
 	9 : i32    Weight
@@ -97,7 +94,7 @@ service RIBDINTServices
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	oneway void OnewayCreateBulkIPv4Route(1: list<IPv4Route> config);
 	bool CreatePolicyAction(1: PolicyAction config);
-	bool UpdatePolicyAction(1: PolicyAction origconfig, 2: PolicyAction newconfig, 3: list<bool> attrset);
+	bool UpdatePolicyAction(1: PolicyAction origconfig, 2: PolicyAction newconfig, 3: list<bool> attrset, 4: string op);
 	bool DeletePolicyAction(1: PolicyAction config);
 	void ApplyPolicy(1: string source, 2: string policy, 3: string action, 4: list<ConditionInfo>conditions)
 	void UpdateApplyPolicy(1: string source, 2: string policy, 3: string action, 4: list<ConditionInfo>conditions)
