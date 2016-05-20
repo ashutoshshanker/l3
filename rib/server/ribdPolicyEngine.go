@@ -309,7 +309,7 @@ func policyEngineUpdateRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, han
 	cfg.NextHop = append(cfg.NextHop, &nextHop)
 	//Even though we could potentially have multiple selected routes, calling update once for this prefix should suffice
 	//routeServiceHandler.UpdateIPv4Route(&cfg, nil, nil)
-	RouteServiceHandler.ProcessRouteUpdateConfig(&cfg, &cfg, nil, "replace")
+	RouteServiceHandler.ProcessRouteUpdateConfig(&cfg, &cfg, nil,"replace")
 	return err
 }
 func policyEngineTraverseAndUpdate() {

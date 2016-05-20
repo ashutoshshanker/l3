@@ -64,12 +64,13 @@ func (ribdServiceHandler *RIBDServer) StartAsicdServer() {
 	logger.Info("Starting the asicdserver loop")
 	for {
 		select {
-		case route := <-ribdServiceHandler.AsicdAddRouteCh:
-			logger.Info(" received message on AsicdAddRouteCh")
-			addAsicdRoute(route)
-		case route := <-ribdServiceHandler.AsicdDelRouteCh:
-			logger.Info(" received message on AsicdDelRouteCh")
-			delAsicdRoute(route)
+		case route := <-ribdServiceHandler.AsicdRouteCh:
+			logger.Debug(fmt.Sprintln(" received message on AsicdRouteCh, op:", route.Op))
+			if route.Op == "add" {
+			    addAsicdRoute(route.OrigConfigObject.(RouteInfoRecord))
+			} else if route.Op == "del" {
+			    delAsicdRoute(route.OrigConfigObject.(RouteInfoRecord))
+			}
 		}
 	}
 }

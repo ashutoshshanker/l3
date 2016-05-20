@@ -31,7 +31,10 @@ import (
 	"utils/policy"
 	"utils/policy/policyCommonDefs"
 )
-
+/*
+   This structure can be used along with policyDefinitionConfig object to pass on any application specific
+   info to policy engine
+*/
 type PolicyExtensions struct {
 	hitCounter    int
 	routeList     []string

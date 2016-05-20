@@ -792,7 +792,7 @@ func SelectBestRoute(routeInfoRecordList RouteInfoRecordList) (addRouteList []Ro
 
 //this function is called when a route is being added after it has cleared import policies
 func selectBestRouteOnAdd(routeInfoRecordList RouteInfoRecordList, routeInfoRecord RouteInfoRecord) (addRouteList []RouteOpInfoRecord, deleteRouteList []RouteOpInfoRecord, newSelectedProtocol string) {
-	logger.Info(fmt.Sprintln("selectBestRouteOnAdd current selected protocol = ", routeInfoRecordList.selectedRouteProtocol))
+	logger.Debug(fmt.Sprintln("selectBestRouteOnAdd current selected protocol = ", routeInfoRecordList.selectedRouteProtocol))
 	deleteRouteList = make([]RouteOpInfoRecord, 0)
 	addRouteList = make([]RouteOpInfoRecord, 0)
 	newSelectedProtocol = routeInfoRecordList.selectedRouteProtocol
@@ -801,15 +801,23 @@ func selectBestRouteOnAdd(routeInfoRecordList RouteInfoRecordList, routeInfoReco
 	del := false
 	var addrouteOpInfoRecord RouteOpInfoRecord
 	var delrouteOpInfoRecord RouteOpInfoRecord
+	
 	if routeInfoRecordList.selectedRouteProtocol == "INVALID" {
+		/*
+		    Currently, no route has been selected
+		*/
 		if routeInfoRecord.protocol != PROTOCOL_NONE {
-			logger.Info("Selecting the new route because the current selected route is invalid")
+			logger.Debug("Selecting the new route because the current selected route is invalid")
 			add = true
 			addrouteOpInfoRecord.opType = FIBAndRIB
 			newSelectedProtocol = newRouteProtocol
 		}
 	} else if ProtocolAdminDistanceMapDB[newRouteProtocol].configuredDistance > ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol].configuredDistance {
-		logger.Info(fmt.Sprintln(" Rejecting the new route because the admin distance of the new routetype ", newRouteProtocol, ":", ProtocolAdminDistanceMapDB[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]].configuredDistance, "is configured to be higher than the selected route protocol ", routeInfoRecordList.selectedRouteProtocol, "'s admin distance ", ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol]))
+		/*
+		    If the configured admin distance is more than the incoming route, reject the route
+		*/
+		add = true
+		addrouteOpInfoRecord.opType = RIBOnly
 	} else if ProtocolAdminDistanceMapDB[newRouteProtocol].configuredDistance < ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol].configuredDistance {
 		logger.Info(fmt.Sprintln(" Selecting the new route because the admin distance of the new routetype ", newRouteProtocol, ":", ProtocolAdminDistanceMapDB[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]].configuredDistance, "is better than the selected route protocol ", routeInfoRecordList.selectedRouteProtocol, "'s admin distance ", ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol]))
 		del = true
@@ -818,42 +826,42 @@ func selectBestRouteOnAdd(routeInfoRecordList RouteInfoRecordList, routeInfoReco
 		delrouteOpInfoRecord.opType = FIBOnly
 		newSelectedProtocol = newRouteProtocol
 	} else if ProtocolAdminDistanceMapDB[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]].configuredDistance == ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol].configuredDistance {
-		logger.Info("Same admin distance ")
+		logger.Debug("Same admin distance ")
 		if newRouteProtocol == routeInfoRecordList.selectedRouteProtocol {
-			logger.Info("Same protocol as the selected route")
+			logger.Debug("Same protocol as the selected route")
 			if routeInfoRecord.metric == routeInfoRecordList.routeInfoProtocolMap[routeInfoRecordList.selectedRouteProtocol][0].metric {
-				logger.Info("Adding a same cost route as the current selected routes")
+				logger.Debug("Adding a same cost route as the current selected routes")
 				if !newNextHopIP(routeInfoRecord.nextHopIp.String(), routeInfoRecordList.routeInfoProtocolMap[routeInfoRecordList.selectedRouteProtocol]) {
 					logger.Info("Not a new next hop ip, so do nothing")
 				} else {
-					logger.Info("This is a new route with a new next hop IP")
+					logger.Debug("This is a new route with a new next hop IP")
 					addrouteOpInfoRecord.opType = FIBAndRIB
 					add = true
 				}
 			} else if routeInfoRecord.metric < routeInfoRecordList.routeInfoProtocolMap[routeInfoRecordList.selectedRouteProtocol][0].metric {
-				logger.Info(fmt.Sprintln("New metric ", routeInfoRecord.metric, " is lower than the current metric ", routeInfoRecordList.routeInfoProtocolMap[routeInfoRecordList.selectedRouteProtocol][0].metric))
+				logger.Debug(fmt.Sprintln("New metric ", routeInfoRecord.metric, " is lower than the current metric ", routeInfoRecordList.routeInfoProtocolMap[routeInfoRecordList.selectedRouteProtocol][0].metric))
 				del = true
 				delrouteOpInfoRecord.opType = FIBAndRIB
 				add = true
 				addrouteOpInfoRecord.opType = FIBAndRIB
 			}
 		} else {
-			logger.Info(fmt.Sprintln("Protocol ", newRouteProtocol, " has the same admin distance ", ProtocolAdminDistanceMapDB[newRouteProtocol].configuredDistance, " as the protocol", routeInfoRecordList.selectedRouteProtocol, "'s configured admin distance ", ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol].configuredDistance))
+			logger.Debug(fmt.Sprintln("Protocol ", newRouteProtocol, " has the same admin distance ", ProtocolAdminDistanceMapDB[newRouteProtocol].configuredDistance, " as the protocol", routeInfoRecordList.selectedRouteProtocol, "'s configured admin distance ", ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol].configuredDistance))
 			if ProtocolAdminDistanceMapDB[newRouteProtocol].defaultDistance < ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol].defaultDistance {
-				logger.Info(fmt.Sprintln("Protocol ", newRouteProtocol, " has lower default admin distance ", ProtocolAdminDistanceMapDB[newRouteProtocol].defaultDistance, " than the protocol", routeInfoRecordList.selectedRouteProtocol, "'s default admin distance ", ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol].defaultDistance))
+				logger.Debug(fmt.Sprintln("Protocol ", newRouteProtocol, " has lower default admin distance ", ProtocolAdminDistanceMapDB[newRouteProtocol].defaultDistance, " than the protocol", routeInfoRecordList.selectedRouteProtocol, "'s default admin distance ", ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol].defaultDistance))
 				del = true
 				delrouteOpInfoRecord.opType = FIBOnly
 				add = true
 				addrouteOpInfoRecord.opType = FIBAndRIB
 				newSelectedProtocol = newRouteProtocol
 			} else {
-				logger.Info(fmt.Sprintln("Protocol ", newRouteProtocol, " has higher default admin distance ", ProtocolAdminDistanceMapDB[newRouteProtocol].configuredDistance, " than the protocol", routeInfoRecordList.selectedRouteProtocol, "'s default admin distance ", ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol].configuredDistance))
+				logger.Debug(fmt.Sprintln("Protocol ", newRouteProtocol, " has higher default admin distance ", ProtocolAdminDistanceMapDB[newRouteProtocol].configuredDistance, " than the protocol", routeInfoRecordList.selectedRouteProtocol, "'s default admin distance ", ProtocolAdminDistanceMapDB[routeInfoRecordList.selectedRouteProtocol].configuredDistance))
 				add = true
-				addrouteOpInfoRecord.opType = FIBAndRIB
+				addrouteOpInfoRecord.opType = RIBOnly
 			}
 		}
 	}
-	logger.Info(fmt.Sprintln("At the end of the route selection logic, add = ", add, " del = ", del))
+	logger.Debug(fmt.Sprintln("At the end of the route selection logic, add = ", add, " del = ", del))
 	if add == true {
 		addrouteOpInfoRecord.routeInfoRecord = routeInfoRecord
 		addRouteList = append(addRouteList, addrouteOpInfoRecord)
@@ -915,8 +923,6 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		routeInfoRecordList.routeInfoProtocolMap[ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)]][idx] = currRecord
 	}
 
-	//RouteServiceHandler.DBRouteAddCh <- RouteDBInfo { routeInfoRecord, routeInfoRecordList}//.WriteIPv4RouteStateEntryToDB(routeInfoRecord, routeInfoRecordList)
-	RouteServiceHandler.WriteIPv4RouteStateEntryToDB(RouteDBInfo{routeInfoRecord, routeInfoRecordList})
 	RouteInfoMap.Set(patriciaDB.Prefix(destNetPrefix), routeInfoRecordList)
 
 	if ReverseRouteProtoTypeMapDB[int(routeInfoRecord.protocol)] != routeInfoRecordList.selectedRouteProtocol {
@@ -924,6 +930,10 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		return
 	}
 	logger.Info("This is a selected route, so install and parse through export policy engine")
+
+	//RouteServiceHandler.DBRouteAddCh <- RouteDBInfo { routeInfoRecord, routeInfoRecordList}//.WriteIPv4RouteStateEntryToDB(routeInfoRecord, routeInfoRecordList)
+	RouteServiceHandler.WriteIPv4RouteStateEntryToDB(RouteDBInfo{routeInfoRecord, routeInfoRecordList})
+
 	policyRoute := ribdInt.Routes{Ipaddr: routeInfoRecord.destNetIp.String(), Mask: routeInfoRecord.networkMask.String(), NextHopIp: routeInfoRecord.nextHopIp.String(), IfIndex: ribdInt.Int(routeInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(routeInfoRecord.metric), Prototype: ribdInt.Int(routeInfoRecord.protocol), IsPolicyBasedStateValid: routeInfoRecordList.isPolicyBasedStateValid}
 	var params RouteParams
 	params = BuildRouteParamsFromRouteInoRecord(routeInfoRecord)
@@ -935,13 +945,13 @@ func addNewRoute(destNetPrefix patriciaDB.Prefix,
 		//call asicd to add
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
-			RouteServiceHandler.AsicdAddRouteCh <- routeInfoRecord
+			RouteServiceHandler.AsicdRouteCh <- RIBdServerConfig{OrigConfigObject:routeInfoRecord,Op:"add"}
 		}
 		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 			if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}) {
 				//call arpd to resolve the ip
-				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, " to ArpdResolveRouteCh"))
-				RouteServiceHandler.ArpdResolveRouteCh <- routeInfoRecord
+				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, " to ArpdRouteCh"))
+				RouteServiceHandler.ArpdRouteCh <- RIBdServerConfig{OrigConfigObject:routeInfoRecord,Op:"add"}
 			}
 			updateNextHopMap(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}, add)
 		}
@@ -1097,7 +1107,7 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 	//delete in asicd
 	if asicdclnt.IsConnected {
 		logger.Info(fmt.Sprintln("Calling asicd to delete this route- ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
-		RouteServiceHandler.AsicdDelRouteCh <- routeInfoRecord
+			RouteServiceHandler.AsicdRouteCh <- RIBdServerConfig{OrigConfigObject:routeInfoRecord,Op:"del"}
 	}
 	if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 		if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}) {
@@ -1105,8 +1115,8 @@ func deleteRoute(destNetPrefix patriciaDB.Prefix,
 		} else {
 			refCount := updateNextHopMap(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}, del)
 			if refCount == 0 {
-				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, " to ArpdRemoveRouteCh"))
-				RouteServiceHandler.ArpdRemoveRouteCh <- routeInfoRecord
+				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, " to ArpdRouteCh"))
+				RouteServiceHandler.ArpdRouteCh <- RIBdServerConfig { OrigConfigObject:routeInfoRecord,Op:"del"}
 			}
 		}
 	}
@@ -1134,28 +1144,34 @@ func deleteRoutes(destNetPrefix patriciaDB.Prefix,
 		deleteRoute(destNetPrefix, deleteRouteList[i].routeInfoRecord, routeInfoRecordList, policyPath, deleteRouteList[i].opType)
 	}
 }
+/*
+    This function is called whenever a route is added or deleted. In either of the cases, 
+	this function selects the best route to be programmed in FIB.
+*/
 func SelectV4Route(destNetPrefix patriciaDB.Prefix,
 	routeInfoRecordList RouteInfoRecordList, //the current list of routes for this prefix
 	routeInfoRecord RouteInfoRecord, //the route to be added or deleted or invalidated or validated
-	op ribd.Int,
-	opType int) (err error) {
-	//	index int) (err error) {
-	logger.Info(fmt.Sprintln("Selecting the best Route for destNetPrefix ", destNetPrefix))
+	op ribd.Int,                     //add or delete of the route
+	opType int,                       //whether this operation is at FIB only or RIBAndFIB
+	) (err error) {
+	logger.Debug(fmt.Sprintln("Selecting the best Route for destNetPrefix ", destNetPrefix))
 	if op == add {
-		logger.Info("Op is to add the new route")
+		logger.Debug("Op is to add the new route")
 		_, deleteRouteList, newSelectedProtocol := selectBestRouteOnAdd(routeInfoRecordList, routeInfoRecord)
+		/*
+		   If any of the routes need to be deleted as part of adding the new route, call delete of those routes
+		*/
 		if len(deleteRouteList) > 0 {
 			deleteRoutes(destNetPrefix, deleteRouteList, routeInfoRecordList, policyCommonDefs.PolicyPath_Export)
 		}
 		routeInfoRecordList.selectedRouteProtocol = newSelectedProtocol
 		addNewRoute(destNetPrefix, routeInfoRecord, routeInfoRecordList, policyCommonDefs.PolicyPath_Export)
 	} else if op == del {
-		logger.Info("Op is to delete new route")
+		logger.Debug("Op is to delete new route")
 		deleteRoute(destNetPrefix, routeInfoRecord, routeInfoRecordList, policyCommonDefs.PolicyPath_Export, opType)
 		addRouteList, _, newSelectedProtocol := SelectBestRoute(routeInfoRecordList)
 		routeInfoRecordList.selectedRouteProtocol = newSelectedProtocol
 		if len(addRouteList) > 0 {
-			logger.Info(fmt.Sprintln("Number of routes to be added = ", len(addRouteList)))
 			addNewRouteList(destNetPrefix, addRouteList, routeInfoRecordList, policyCommonDefs.PolicyPath_Import)
 		}
 	}
@@ -1253,13 +1269,13 @@ func createV4Route(destNetIp string,
 		//call asicd
 		if asicdclnt.IsConnected {
 			logger.Info(fmt.Sprintln("New route selected, call asicd to install a new route - ip", routeInfoRecord.destNetIp.String(), " mask ", routeInfoRecord.networkMask.String(), " nextHopIP ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp))
-			RouteServiceHandler.AsicdAddRouteCh <- routeInfoRecord
+			RouteServiceHandler.AsicdRouteCh <- RIBdServerConfig{OrigConfigObject:routeInfoRecord,Op:"add"}
 		}
 		if arpdclnt.IsConnected && routeInfoRecord.protocol != ribdCommonDefs.CONNECTED {
 			if !arpResolveCalled(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}) {
 				//call arpd to resolve the ip
-				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, " to ArpdResolveRouteCh"))
-				RouteServiceHandler.ArpdResolveRouteCh <- routeInfoRecord
+				logger.Info(fmt.Sprintln("Adding ", routeInfoRecord.resolvedNextHopIpIntf.NextHopIp, " to ArpdRouteCh"))
+				RouteServiceHandler.ArpdRouteCh <- RIBdServerConfig{OrigConfigObject:routeInfoRecord,Op:"add"}
 			}
 			//update the ref count for the resolved next hop ip
 			updateNextHopMap(NextHopInfoKey{routeInfoRecord.resolvedNextHopIpIntf.NextHopIp}, add)
@@ -1396,7 +1412,7 @@ func deleteV4Route(destNetIp string,
 	nextHopIP string,
 	delType ribd.Int,
 	policyStateChange int) (rc ribd.Int, err error) {
-	logger.Info(fmt.Sprintln("deleteV4Route  with del type ", delType))
+	logger.Debug(fmt.Sprintln("deleteV4Route  with del type ", delType))
 
 	destNetIpAddr, err := getIP(destNetIp)
 	if err != nil {
@@ -1410,9 +1426,10 @@ func deleteV4Route(destNetIp string,
 	if err != nil {
 		return -1, err
 	}
-	logger.Info(fmt.Sprintf("destNet = %v\n", destNet))
+	logger.Debug(fmt.Sprintln("destNet = ", destNet))
 	ok := RouteInfoMap.Match(destNet)
 	if !ok {
+		logger.Err(fmt.Sprintln("Destnet ", destNet , " not found"))
 		return 0, nil
 	}
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
@@ -1422,7 +1439,7 @@ func deleteV4Route(destNetIp string,
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
 	found := IsRoutePresent(routeInfoRecordList, routeType)
 	if !found {
-		logger.Info(fmt.Sprintln("Route with protocol ", routeType, " not found"))
+		logger.Err(fmt.Sprintln("Route with protocol ", routeType, " not found"))
 		return 0, err
 	}
 	if policyStateChange == ribdCommonDefs.RoutePolicyStateChangetoInValid {
@@ -1432,9 +1449,12 @@ func deleteV4Route(destNetIp string,
 	}
 	found, routeInfoRecord, _ := findRouteWithNextHop(routeInfoRecordList.routeInfoProtocolMap[routeType], nextHopIP)
 	if !found {
-		logger.Info(fmt.Sprintln("Route with nextHop IP ", nextHopIP, " not found"))
+		logger.Err(fmt.Sprintln("Route with nextHop IP ", nextHopIP, " not found"))
 		return 0, err
 	}
+	/*
+	    Call selectv4Route to select the best route
+	*/
 	SelectV4Route(destNet, routeInfoRecordList, routeInfoRecord, del, int(delType))
 
 	if routeType == "CONNECTED" { //PROTOCOL_CONNECTED {
@@ -1463,6 +1483,130 @@ func (m RIBDServer) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val bool, err
 	}
 	return true, err
 }
+/*
+func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with op: "))
+	if !RouteServiceHandler.AcceptConfig {
+		logger.Info("Not ready to accept config")
+		//return err
+	}
+	destNet, err := getNetowrkPrefixFromStrings(origconfig.DestinationNw, origconfig.NetworkMask)
+	if err != nil {
+		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
+		return val, err
+	}
+	ok := RouteInfoMap.Match(destNet)
+	if !ok {
+		err = errors.New("No route found")
+		return val, err
+	}
+	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
+	if routeInfoRecordListItem == nil {
+		logger.Info("No route for destination network")
+		return val, err
+	}
+	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
+	callUpdate := true
+	if attrset != nil {
+		found, routeInfoRecord, index := findRouteWithNextHop(routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol], origconfig.NextHop[0].NextHopIp)
+		if !found || index == -1 {
+			logger.Info("Invalid nextHopIP")
+			return val, err
+		}
+		objTyp := reflect.TypeOf(*origconfig)
+		for i := 0; i < objTyp.NumField(); i++ {
+			objName := objTyp.Field(i).Name
+			if attrset[i] {
+				logger.Info(fmt.Sprintf("ProcessRouteUpdateConfig (server): changed ", objName))
+				if objName == "NextHop" {
+					if len(newconfig.NextHop) == 0 {
+						logger.Err("Must specify next hop")
+						return val, err
+					} else {
+						nextHopIpAddr, err := getIP(newconfig.NextHop[0].NextHopIp)
+						if err != nil {
+							logger.Info("nextHopIpAddr invalid")
+							return val, errors.New("Invalid next hop")
+						}
+						logger.Info(fmt.Sprintln("Update the next hop info old ip: ", origconfig.NextHop[0].NextHopIp, " new value: ", newconfig.NextHop[0].NextHopIp, " weight : ", newconfig.NextHop[0].Weight))
+						routeInfoRecord.nextHopIp = nextHopIpAddr
+						routeInfoRecord.weight = ribd.Int(newconfig.NextHop[0].Weight)
+						if newconfig.NextHop[0].NextHopIntRef != "" {
+							nextHopIntRef, _ := strconv.Atoi(newconfig.NextHop[0].NextHopIntRef)
+							routeInfoRecord.nextHopIfIndex = ribd.Int(nextHopIntRef)
+						}
+					}
+				}
+				if objName == "Cost" {
+					routeInfoRecord.metric = ribd.Int(newconfig.Cost)
+				}*/
+				/*				if objName == "OutgoingInterface" {
+								nextHopIfIndex, _ := strconv.Atoi(newconfig.OutgoingInterface)
+								routeInfoRecord.nextHopIfIndex = ribd.Int(nextHopIfIndex)
+								callUpdate = false
+							}*/
+			/*}
+		}
+		routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol][index] = routeInfoRecord
+		RouteInfoMap.Set(destNet, routeInfoRecordList)
+		//RouteServiceHandler.DBRouteAddCh <- RouteDBInfo{routeInfoRecord, routeInfoRecordList}//.WriteIPv4RouteStateEntryToDB(routeInfoRecord, routeInfoRecordList)
+		RouteServiceHandler.WriteIPv4RouteStateEntryToDB(RouteDBInfo{routeInfoRecord, routeInfoRecordList})
+		if callUpdate == false {
+			return val, err
+		}
+	}
+	updateBestRoute(destNet, routeInfoRecordList)
+	return val, err
+}
+
+func (m RIBDServer) ProcessRoutePatchUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, op []*ribd.PatchOpInfo) (val bool, err error) {
+	logger.Info(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with number of patch ops: ", len(op)))
+	if !RouteServiceHandler.AcceptConfig {
+		logger.Info("Not ready to accept config")
+		//return err
+	}
+	destNet, err := getNetowrkPrefixFromStrings(origconfig.DestinationNw, origconfig.NetworkMask)
+	if err != nil {
+		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
+		return val, err
+	}
+	ok := RouteInfoMap.Match(destNet)
+	if !ok {
+		err = errors.New("No route found")
+		return val, err
+	}
+    for idx := 0;idx < len(op);idx++ {
+		logger.Debug(fmt.Sprintln("Add operation in update"))
+		switch op[idx].Path {
+			case "NextHop":
+			    logger.Debug("Patch update for next hop")
+				if newconfig.NextHop == nil {
+					newconfig.NextHop = make([]*ribd.NextHopInfo,0)
+				}
+				for j := 0;j<len(op[idx].Value);j++ {
+					wt,_ := strconv.Atoi((op[idx].Value[j]["Weight"]))
+					nh := ribd.NextHopInfo {
+					    NextHopIp : op[idx].Value[j]["NextHopIp"],
+					    NextHopIntRef : op[idx].Value[j]["NextHopIntRef"],
+					    Weight      : int32(wt),
+					}
+					newconfig.NextHop = append(newconfig.NextHop,&nh)
+				}
+				switch op[idx].Op {
+					case "add":
+					    m.ProcessRouteCreateConfig(newconfig)
+					case "remove":
+					    m.ProcessRouteDeleteConfig(newconfig)
+					default:
+					    logger.Err(fmt.Sprintln("Operation ", op[idx].Op, " not supported"))
+				}
+			default:
+			    logger.Err(fmt.Sprintln("Patch update for attribute:", op[idx].Path, " not supported"))
+		}
+	}
+	return val, err
+}
+*/
 func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool, op string) (val bool, err error) {
 	logger.Info(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with op: ", op))
 	if !RouteServiceHandler.AcceptConfig {
@@ -1576,6 +1720,7 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 	updateBestRoute(destNet, routeInfoRecordList)
 	return val, err
 }
+
 
 func printRoutesInfo(prefix patriciaDB.Prefix, item patriciaDB.Item) (err error) {
 	rmapInfoRecordList := item.(RouteInfoRecordList)
