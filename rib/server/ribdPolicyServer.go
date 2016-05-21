@@ -32,7 +32,9 @@ import (
 	"models"
 	"ribd"
 )
-
+/*
+    Function to send PolicyCondition Notification
+*/
 func (ribdServiceHandler *RIBDServer) PolicyConditionNotificationSend(PUB *nanomsg.PubSocket, cfg ribd.PolicyCondition, evt int) {
 	logger.Println("PolicyConditionNotificationSend")
 	msgBuf := models.PolicyCondition{}
@@ -62,6 +64,9 @@ func (ribdServiceHandler *RIBDServer) PolicyConditionNotificationSend(PUB *nanom
 	ribdServiceHandler.NotificationChannel <- NotificationMsg{PUB, buf, eventInfo}
 }
 
+/*
+    Function to send PolicyStmt Notification
+*/
 func (ribdServiceHandler *RIBDServer) PolicyStmtNotificationSend(PUB *nanomsg.PubSocket, cfg ribd.PolicyStmt, evt int) {
 	logger.Println("PolicyStmtNotificationSend")
 	msgBuf := models.PolicyStmt{}
@@ -93,6 +98,9 @@ func (ribdServiceHandler *RIBDServer) PolicyStmtNotificationSend(PUB *nanomsg.Pu
 	ribdServiceHandler.NotificationChannel <- NotificationMsg{PUB, buf, eventInfo}
 }
 
+/*
+    Function to send PolicyDefinition Notification
+*/
 func (ribdServiceHandler *RIBDServer) PolicyDefinitionNotificationSend(PUB *nanomsg.PubSocket, cfg ribd.PolicyDefinition, evt int) {
 	logger.Println("PolicyDefinitionNotificationSend")
 	msgBuf := models.PolicyDefinition{}

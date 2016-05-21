@@ -47,8 +47,11 @@ type Policy struct {
 	routeInfoList []ribdInt.Routes
 }
 
+/*
+    Function to create policy condition in the policyEngineDB
+*/
 func (m RIBDServer) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition, db *policy.PolicyEngineDB) (val bool, err error) {
-	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg: ", cfg.Name))
+	logger.Debug(fmt.Sprintln("ProcessPolicyConditionConfigCreate:CreatePolicyConditioncfg: ", cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name, ConditionType: cfg.ConditionType, MatchProtocolConditionInfo: cfg.Protocol}
 	matchPrefix := policy.PolicyPrefix{IpPrefix: cfg.IpPrefix, MasklengthRange: cfg.MaskLengthRange}
 	newPolicy.MatchDstIpPrefixConditionInfo = policy.PolicyDstIpMatchPrefixSetCondition{Prefix: matchPrefix}
@@ -56,29 +59,41 @@ func (m RIBDServer) ProcessPolicyConditionConfigCreate(cfg *ribd.PolicyCondition
 	return val, err
 }
 
+/*
+    Function to delete policy condition in the policyEngineDB
+*/
 func (m RIBDServer) ProcessPolicyConditionConfigDelete(cfg *ribd.PolicyCondition, db *policy.PolicyEngineDB) (val bool, err error) {
-	logger.Info(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition: ", cfg.Name))
+	logger.Debug(fmt.Sprintln("ProcessPolicyConditionConfigDelete:DeletePolicyCondition: ", cfg.Name))
 	newPolicy := policy.PolicyConditionConfig{Name: cfg.Name}
 	val, err = db.DeletePolicyCondition(newPolicy)
 	return val, err
 }
 
+/*
+    Function to create policy action in the policyEngineDB
+*/
 func (m RIBDServer) ProcessPolicyActionConfigCreate(cfg *ribdInt.PolicyAction, db *policy.PolicyEngineDB) (val bool, err error) {
-	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigCreate:CreatePolicyAction"))
+	logger.Debug(fmt.Sprintln("ProcessPolicyActionConfigCreate:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name, ActionType: cfg.ActionType, SetAdminDistanceValue: int(cfg.SetAdminDistanceValue), Accept: cfg.Accept, Reject: cfg.Reject, RedistributeAction: cfg.RedistributeAction, RedistributeTargetProtocol: cfg.RedistributeTargetProtocol, NetworkStatementTargetProtocol: cfg.NetworkStatementTargetProtocol}
 	val, err = db.CreatePolicyAction(newAction)
 	return val, err
 }
 
+/*
+    Function to delete policy action in the policyEngineDB
+*/
 func (m RIBDServer) ProcessPolicyActionConfigDelete(cfg *ribdInt.PolicyAction, db *policy.PolicyEngineDB) (val bool, err error) {
-	logger.Info(fmt.Sprintln("ProcessPolicyActionConfigDelete:CreatePolicyAction"))
+	logger.Debug(fmt.Sprintln("ProcessPolicyActionConfigDelete:CreatePolicyAction"))
 	newAction := policy.PolicyActionConfig{Name: cfg.Name}
 	val, err = db.DeletePolicyAction(newAction)
 	return val, err
 }
 
+/*
+    Function to create policy stmt in the policyEngineDB
+*/
 func (m RIBDServer) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmt, db *policy.PolicyEngineDB) (err error) {
-	logger.Info(fmt.Sprintln("ProcessPolicyStatementCreate:CreatePolicyStatement"))
+	logger.Debug(fmt.Sprintln("ProcessPolicyStatementCreate:CreatePolicyStatement"))
 	newPolicyStmt := policy.PolicyStmtConfig{Name: cfg.Name, MatchConditions: cfg.MatchConditions}
 	newPolicyStmt.Conditions = make([]string, 0)
 	for i := 0; i < len(cfg.Conditions); i++ {
@@ -90,15 +105,21 @@ func (m RIBDServer) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmt, db *poli
 	return err
 }
 
+/*
+    Function to delete policy stmt in the policyEngineDB
+*/
 func (m RIBDServer) ProcessPolicyStmtConfigDelete(cfg *ribd.PolicyStmt, db *policy.PolicyEngineDB) (err error) {
-	logger.Info(fmt.Sprintln("ProcessPolicyStatementDelete:DeletePolicyStatement for name ", cfg.Name))
+	logger.Debug(fmt.Sprintln("ProcessPolicyStatementDelete:DeletePolicyStatement for name ", cfg.Name))
 	stmt := policy.PolicyStmtConfig{Name: cfg.Name}
 	err = db.DeletePolicyStatement(stmt)
 	return err
 }
 
+/*
+    Function to create policy definition in the policyEngineDB
+*/
 func (m RIBDServer) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefinition, db *policy.PolicyEngineDB) (err error) {
-	logger.Info(fmt.Sprintln("ProcessPolicyDefinitionCreate:CreatePolicyDefinition"))
+	logger.Debug(fmt.Sprintln("ProcessPolicyDefinitionCreate:CreatePolicyDefinition"))
 	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Priority), MatchType: cfg.MatchType}
 	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence, 0)
 	var policyDefinitionStatement policy.PolicyDefinitionStmtPrecedence
@@ -112,15 +133,18 @@ func (m RIBDServer) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefiniti
 	return err
 }
 
+/*
+    Function to delete policy definition in the policyEngineDB
+*/
 func (m RIBDServer) ProcessPolicyDefinitionConfigDelete(cfg *ribd.PolicyDefinition, db *policy.PolicyEngineDB) (err error) {
-	logger.Info(fmt.Sprintln("ProcessPolicyDefinitionDelete:DeletePolicyDefinition for name ", cfg.Name))
+	logger.Debug(fmt.Sprintln("ProcessPolicyDefinitionDelete:DeletePolicyDefinition for name ", cfg.Name))
 	policy := policy.PolicyDefinitionConfig{Name: cfg.Name}
 	err = db.DeletePolicyDefinition(policy)
 	return err
 }
 
 func (m RIBDServer) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.Int, db *policy.PolicyEngineDB) (policyConditions *ribd.PolicyConditionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
-	logger.Info(fmt.Sprintln("GetBulkPolicyConditionState"))
+	logger.Debug(fmt.Sprintln("GetBulkPolicyConditionState"))
 	PolicyConditionsDB := db.PolicyConditionsDB
 	localPolicyConditionsDB := *db.LocalPolicyConditionsDB
 	var i, validCount, toIndex ribd.Int
@@ -132,25 +156,25 @@ func (m RIBDServer) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.
 	policyConditions = &returnGetInfo
 	more := true
 	if localPolicyConditionsDB == nil {
-		logger.Info(fmt.Sprintln("PolicyDefinitionStmtMatchProtocolConditionGetInfo not initialized"))
+		logger.Debug(fmt.Sprintln("PolicyDefinitionStmtMatchProtocolConditionGetInfo not initialized"))
 		return policyConditions, err
 	}
 	for ; ; i++ {
-		logger.Info(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
+		logger.Debug(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
 		if i+fromIndex >= ribd.Int(len(localPolicyConditionsDB)) {
-			logger.Info(fmt.Sprintln("All the policy conditions fetched"))
+			logger.Debug(fmt.Sprintln("All the policy conditions fetched"))
 			more = false
 			break
 		}
 		if localPolicyConditionsDB[i+fromIndex].IsValid == false {
-			logger.Info(fmt.Sprintln("Invalid policy condition statement"))
+			logger.Debug(fmt.Sprintln("Invalid policy condition statement"))
 			continue
 		}
 		if validCount == rcount {
-			logger.Info(fmt.Sprintln("Enough policy conditions fetched"))
+			logger.Debug(fmt.Sprintln("Enough policy conditions fetched"))
 			break
 		}
-		logger.Info(fmt.Sprintf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyConditionsDB[i+fromIndex].Prefix)))
+		logger.Debug(fmt.Sprintf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyConditionsDB[i+fromIndex].Prefix)))
 		prefixNodeGet := PolicyConditionsDB.Get(localPolicyConditionsDB[i+fromIndex].Prefix)
 		if prefixNodeGet != nil {
 			prefixNode := prefixNodeGet.(policy.PolicyCondition)
@@ -171,7 +195,7 @@ func (m RIBDServer) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.
 			validCount++
 		}
 	}
-	logger.Info(fmt.Sprintf("Returning %d list of policyConditions", validCount))
+	logger.Debug(fmt.Sprintf("Returning %d list of policyConditions", validCount))
 	policyConditions.PolicyConditionStateList = returnNodes
 	policyConditions.StartIdx = fromIndex
 	policyConditions.EndIdx = toIndex + 1
@@ -182,7 +206,7 @@ func (m RIBDServer) GetBulkPolicyConditionState(fromIndex ribd.Int, rcount ribd.
 
 /*
 func (m RIBDServer) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int) (policyActions *ribdInt.PolicyActionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
-	logger.Info(fmt.Sprintln("GetBulkPolicyActionState"))
+	logger.Debug(fmt.Sprintln("GetBulkPolicyActionState"))
 	PolicyActionsDB := PolicyEngineDB.PolicyActionsDB
 	localPolicyActionsDB := *PolicyEngineDB.LocalPolicyActionsDB
 	var i, validCount, toIndex ribd.Int
@@ -194,25 +218,25 @@ func (m RIBDServer) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int
 	policyActions = &returnGetInfo
 	more := true
 	if localPolicyActionsDB == nil {
-		logger.Info(fmt.Sprintln("PolicyDefinitionStmtMatchProtocolActionGetInfo not initialized"))
+		logger.Debug(fmt.Sprintln("PolicyDefinitionStmtMatchProtocolActionGetInfo not initialized"))
 		return policyActions, err
 	}
 	for ; ; i++ {
-		logger.Info(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
+		logger.Debug(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
 		if i+fromIndex >= ribd.Int(len(localPolicyActionsDB)) {
-			logger.Info(fmt.Sprintln("All the policy Actions fetched"))
+			logger.Debug(fmt.Sprintln("All the policy Actions fetched"))
 			more = false
 			break
 		}
 		if localPolicyActionsDB[i+fromIndex].IsValid == false {
-			logger.Info(fmt.Sprintln("Invalid policy Action statement"))
+			logger.Debug(fmt.Sprintln("Invalid policy Action statement"))
 			continue
 		}
 		if validCount == rcount {
-			logger.Info(fmt.Sprintln("Enough policy Actions fetched"))
+			logger.Debug(fmt.Sprintln("Enough policy Actions fetched"))
 			break
 		}
-		logger.Info(fmt.Sprintf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyActionsDB[i+fromIndex].Prefix)))
+		logger.Debug(fmt.Sprintf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyActionsDB[i+fromIndex].Prefix)))
 		prefixNodeGet := PolicyActionsDB.Get(localPolicyActionsDB[i+fromIndex].Prefix)
 		if prefixNodeGet != nil {
 			prefixNode := prefixNodeGet.(policy.PolicyAction)
@@ -233,7 +257,7 @@ func (m RIBDServer) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int
 			validCount++
 		}
 	}
-	logger.Info(fmt.Sprintf("Returning %d list of policyActions", validCount))
+	logger.Debug(fmt.Sprintf("Returning %d list of policyActions", validCount))
 	policyActions.PolicyActionStateList = returnNodes
 	policyActions.StartIdx = fromIndex
 	policyActions.EndIdx = toIndex + 1
@@ -243,7 +267,7 @@ func (m RIBDServer) GetBulkPolicyActionState(fromIndex ribd.Int, rcount ribd.Int
 }
 */
 func (m RIBDServer) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int, db *policy.PolicyEngineDB) (policyStmts *ribd.PolicyStmtStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
-	logger.Info(fmt.Sprintln("GetBulkPolicyStmtState"))
+	logger.Debug(fmt.Sprintln("GetBulkPolicyStmtState"))
 	PolicyStmtDB := db.PolicyStmtDB
 	localPolicyStmtDB := *db.LocalPolicyStmtDB
 	var i, validCount, toIndex ribd.Int
@@ -255,25 +279,25 @@ func (m RIBDServer) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int, 
 	policyStmts = &returnGetInfo
 	more := true
 	if localPolicyStmtDB == nil {
-		logger.Info(fmt.Sprintln("destNetSlice not initialized"))
+		logger.Debug(fmt.Sprintln("destNetSlice not initialized"))
 		return policyStmts, err
 	}
 	for ; ; i++ {
-		logger.Info(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
+		logger.Debug(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
 		if i+fromIndex >= ribd.Int(len(localPolicyStmtDB)) {
-			logger.Info(fmt.Sprintln("All the policy statements fetched"))
+			logger.Debug(fmt.Sprintln("All the policy statements fetched"))
 			more = false
 			break
 		}
 		if localPolicyStmtDB[i+fromIndex].IsValid == false {
-			logger.Info(fmt.Sprintln("Invalid policy statement"))
+			logger.Debug(fmt.Sprintln("Invalid policy statement"))
 			continue
 		}
 		if validCount == rcount {
-			logger.Info(fmt.Sprintln("Enough policy statements fetched"))
+			logger.Debug(fmt.Sprintln("Enough policy statements fetched"))
 			break
 		}
-		logger.Info(fmt.Sprintf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyStmtDB[i+fromIndex].Prefix)))
+		logger.Debug(fmt.Sprintf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyStmtDB[i+fromIndex].Prefix)))
 		prefixNodeGet := PolicyStmtDB.Get(localPolicyStmtDB[i+fromIndex].Prefix)
 		if prefixNodeGet != nil {
 			prefixNode := prefixNodeGet.(policy.PolicyStmt)
@@ -295,7 +319,7 @@ func (m RIBDServer) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int, 
 			validCount++
 		}
 	}
-	logger.Info(fmt.Sprintf("Returning %d list of policyStmts", validCount))
+	logger.Debug(fmt.Sprintf("Returning %d list of policyStmts", validCount))
 	policyStmts.PolicyStmtStateList = returnNodes
 	policyStmts.StartIdx = fromIndex
 	policyStmts.EndIdx = toIndex + 1
@@ -305,7 +329,7 @@ func (m RIBDServer) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount ribd.Int, 
 }
 
 func (m RIBDServer) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd.Int, db *policy.PolicyEngineDB) (policyStmts *ribd.PolicyDefinitionStateGetInfo, err error) { //(routes []*ribd.Routes, err error) {
-	logger.Info(fmt.Sprintln("GetBulkPolicyDefinitionState"))
+	logger.Debug(fmt.Sprintln("GetBulkPolicyDefinitionState"))
 	PolicyDB := db.PolicyDB
 	localPolicyDB := *db.LocalPolicyDB
 	var i, validCount, toIndex ribd.Int
@@ -317,25 +341,25 @@ func (m RIBDServer) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd
 	policyStmts = &returnGetInfo
 	more := true
 	if localPolicyDB == nil {
-		logger.Info(fmt.Sprintln("LocalPolicyDB not initialized"))
+		logger.Debug(fmt.Sprintln("LocalPolicyDB not initialized"))
 		return policyStmts, err
 	}
 	for ; ; i++ {
-		logger.Info(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
+		logger.Debug(fmt.Sprintf("Fetching trie record for index %d\n", i+fromIndex))
 		if i+fromIndex >= ribd.Int(len(localPolicyDB)) {
-			logger.Info(fmt.Sprintln("All the policies fetched"))
+			logger.Debug(fmt.Sprintln("All the policies fetched"))
 			more = false
 			break
 		}
 		if localPolicyDB[i+fromIndex].IsValid == false {
-			logger.Info(fmt.Sprintln("Invalid policy"))
+			logger.Debug(fmt.Sprintln("Invalid policy"))
 			continue
 		}
 		if validCount == rcount {
-			logger.Info(fmt.Sprintln("Enough policies fetched"))
+			logger.Debug(fmt.Sprintln("Enough policies fetched"))
 			break
 		}
-		logger.Info(fmt.Sprintf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyDB[i+fromIndex].Prefix)))
+		logger.Debug(fmt.Sprintf("Fetching trie record for index %d and prefix %v\n", i+fromIndex, (localPolicyDB[i+fromIndex].Prefix)))
 		prefixNodeGet := PolicyDB.Get(localPolicyDB[i+fromIndex].Prefix)
 		if prefixNodeGet != nil {
 			prefixNode := prefixNodeGet.(policy.Policy)
@@ -354,7 +378,7 @@ func (m RIBDServer) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd
 			validCount++
 		}
 	}
-	logger.Info(fmt.Sprintf("Returning %d list of policies", validCount))
+	logger.Debug(fmt.Sprintf("Returning %d list of policies", validCount))
 	policyStmts.PolicyDefinitionStateList = returnNodes
 	policyStmts.StartIdx = fromIndex
 	policyStmts.EndIdx = toIndex + 1
@@ -363,6 +387,15 @@ func (m RIBDServer) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rcount ribd
 	return policyStmts, err
 }
 
+/*
+    Function called when apply policy is called by an application
+	Inputs: 
+	        info - type ApplyPolicyInfo - specifies the policy, 
+			                             Source protocol which is applying the policy,
+                                          Conditions when to apply the policy,
+                                          Action - what needs to be done on a hit
+            apply - type bool - whether to apply the policy
+*/
 func (m RIBDServer) UpdateApplyPolicy(info ApplyPolicyInfo, apply bool, db *policy.PolicyEngineDB) {
 	var err error
 	conditionName := ""
@@ -385,22 +418,22 @@ func (m RIBDServer) UpdateApplyPolicy(info ApplyPolicyInfo, apply bool, db *poli
 	for i := 0; i < len(info.Conditions); i++ {
 		conditions = append(conditions, *info.Conditions[i])
 	}
-	logger.Info(fmt.Sprintln("RIB handler UpdateApplyPolicy source:", source, " policy:", policyName, " action:", action, " apply:", apply, "conditions: "))
+	logger.Debug(fmt.Sprintln("RIB handler UpdateApplyPolicy source:", source, " policy:", policyName, " action:", action, " apply:", apply, "conditions: "))
 	for j := 0; j < len(conditions); j++ {
-		logger.Info(fmt.Sprintf("ConditionType = %s :", conditions[j].ConditionType))
+		logger.Debug(fmt.Sprintln("ConditionType =  :", conditions[j].ConditionType))
 		switch conditions[j].ConditionType {
 		case "MatchProtocol":
-			logger.Info(fmt.Sprintln(conditions[j].Protocol))
+			logger.Debug(fmt.Sprintln(conditions[j].Protocol))
 			conditionName := "Match" + conditions[j].Protocol
 			ok := policyConditionsDB.Match(patriciaDB.Prefix(conditionName))
 			if !ok {
-				logger.Info(fmt.Sprintln("Define condition ", conditionName))
+				logger.Debug(fmt.Sprintln("Define condition ", conditionName))
 				policyCondition := ribd.PolicyCondition{Name: conditionName, ConditionType: conditions[j].ConditionType, Protocol: conditions[j].Protocol}
 				_, err = m.ProcessPolicyConditionConfigCreate(&policyCondition, db)
 			}
 		case "MatchDstIpPrefix":
 		case "MatchSrcIpPrefix":
-			logger.Info(fmt.Sprintln("IpPrefix:", conditions[j].IpPrefix, "MasklengthRange:", conditions[j].MasklengthRange))
+			logger.Debug(fmt.Sprintln("IpPrefix:", conditions[j].IpPrefix, "MasklengthRange:", conditions[j].MasklengthRange))
 		}
 		if err == nil {
 			conditionNameList = append(conditionNameList, conditionName)
@@ -409,13 +442,16 @@ func (m RIBDServer) UpdateApplyPolicy(info ApplyPolicyInfo, apply bool, db *poli
 	//define Action
 	switch action {
 	case "Redistribution":
-		logger.Info("Setting up Redistribution action map")
+		logger.Debug("Setting up Redistribution action map")
 		redistributeActionInfo := policy.RedistributeActionInfo{true, source}
 		policyAction = policy.PolicyAction{Name: action, ActionType: policyCommonDefs.PolicyActionTypeRouteRedistribute, ActionInfo: redistributeActionInfo}
 		break
 	default:
-		logger.Info(fmt.Sprintln("Action ", action, "currently a no-op"))
+		logger.Debug(fmt.Sprintln("Action ", action, "currently a no-op"))
 	}
+	/*
+	   Call the policy library updateApplyPolicy function
+	*/
 	db.UpdateApplyPolicy(policy.ApplyPolicyInfo{node, policyAction, conditionNameList}, apply)
 	return
 }

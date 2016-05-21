@@ -35,6 +35,29 @@ import (
 	"utils/policy"
 	"utils/policy/policyCommonDefs"
 )
+/*
+    Index of policy entity
+*/
+type PolicyRouteIndex struct {
+	destNetIP string //CIDR format
+	policy    string
+}
+
+/*
+    data-structure used to communicate with policy engine
+*/
+type RouteParams struct {
+	destNetIp      string
+	networkMask    string
+	nextHopIp      string
+	nextHopIfIndex ribd.Int
+	metric         ribd.Int
+	sliceIdx       ribd.Int
+	routeType      ribd.Int
+	createType     ribd.Int
+	deleteType     ribd.Int
+	weight         ribd.Int
+}
 
 type TraverseAndApplyPolicyData struct {
 	data       interface{}
@@ -292,7 +315,7 @@ func policyEngineUpdateRoute(prefix patriciaDB.Prefix, item patriciaDB.Item, han
 		return err
 	}
 	logger.Info(fmt.Sprintln("Selected route protocol = ", rmapInfoRecordList.selectedRouteProtocol))
-	selectedRouteInfoRecord := routeInfoList[rmapInfoRecordList.selectedRouteIdx]
+	selectedRouteInfoRecord := routeInfoList[0]
 	//route := ribdInt.Routes{Ipaddr:selectedRouteInfoRecord.destNetIp.String() , Mask: selectedRouteInfoRecord.networkMask.String(), NextHopIp: selectedRouteInfoRecord.nextHopIp.String(), NextHopIfType: ribdInt.Int(selectedRouteInfoRecord.nextHopIfType), IfIndex: ribdInt.Int(selectedRouteInfoRecord.nextHopIfIndex), Metric: ribdInt.Int(selectedRouteInfoRecord.metric), Prototype: ribdInt.Int(selectedRouteInfoRecord.protocol), IsPolicyBasedStateValid: rmapInfoRecordList.isPolicyBasedStateValid}
 	nextHopIf := strconv.Itoa(int(selectedRouteInfoRecord.nextHopIfIndex))
 	cfg := ribd.IPv4Route{
