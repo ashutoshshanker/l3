@@ -452,25 +452,6 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
         err = errors.New("No route found")
         return err
     }
-	if routeInfoRecordItem != nil && op == "add" {
-	/*
-	    If add operation, check if this is a valid route
-	*/
-	   routeInfoRecordList := routeInfoRecordItem.(RouteInfoRecordList)
-	   routeInfoList:= routeInfoRecordList.routeInfoProtocolMap[cfg.Protocol]
-	   if routeInfoList != nil {
-		   /*
-		       There are routes of the same protocol type already configured
-		   */
-	       if cfg.Cost > int32(routeInfoList[0].metric) {
-			  /*
-			      Routes configured for this route type are of lower cost than the new route
-			  */
-               logger.Err("Duplicate entry")
-	           return errors.New("Duplicate entry")
-		  }
-	   }
-	}
 	/*
 	    op is to add new route
 	*/
