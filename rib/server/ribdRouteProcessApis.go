@@ -1685,16 +1685,10 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 		return val, err
 	}
 	ok := RouteInfoMap.Match(destNet)
-	if !ok {
-		err = errors.New("No route found")
+	if !ok && op != "add"{
+		err = errors.New(fmt.Sprintln("No route found for ip ", destNet))
 		return val, err
 	}
-	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
-	if routeInfoRecordListItem == nil {
-		logger.Debug("No route for destination network")
-		return val, err
-	}
-	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
 	if op == "add" {
 		logger.Debug(fmt.Sprintln("Add operation in update"))
 		if attrset != nil {
@@ -1713,6 +1707,12 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 		}
 		return val, err
 	}
+	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
+	if routeInfoRecordListItem == nil {
+		logger.Debug(fmt.Sprintln("No route for destination network", destNet))
+		return val, err
+	}
+	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
 	if op == "remove" {
 		logger.Debug(fmt.Sprintln("Remove operation in update"))
 		if attrset != nil {

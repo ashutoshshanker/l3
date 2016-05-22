@@ -209,18 +209,10 @@ func (m RIBDServer) RouteConfigValidationCheckForUpdate(oldcfg *ribd.IPv4Route, 
 		ipMaskStr := net.IP(ipMask).String()
 		cfg.NetworkMask = ipMaskStr
 	}
-	destNet, err := validateNetworkPrefix(cfg.DestinationNw, cfg.NetworkMask)
+	_, err = validateNetworkPrefix(cfg.DestinationNw, cfg.NetworkMask)
 	if err != nil {
 		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
 		return errors.New("Invalid destination ip address")
-	}
-	/*
-	    Check if the route being updated is present in RIB DB
-	*/
-	ok := RouteInfoMap.Match(destNet)
-	if !ok {
-		err = errors.New("No route found")
-		return err
 	}
 	if op == "add" {
 		/*
@@ -436,22 +428,11 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
 			}
 		}
 	}
-	destNet, err := validateNetworkPrefix(cfg.DestinationNw, cfg.NetworkMask)
+	_, err = validateNetworkPrefix(cfg.DestinationNw, cfg.NetworkMask)
 	if err != nil {
 		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
 		return err
 	}
-	/*
-	    Check if route present.
-	*/
-    routeInfoRecordItem := RouteInfoMap.Get(destNet) 
-	if routeInfoRecordItem == nil && op == "del"{
-	/*
-	    If delete operation, err if no route found
-	*/
-        err = errors.New("No route found")
-        return err
-    }
 	/*
 	    op is to add new route
 	*/
