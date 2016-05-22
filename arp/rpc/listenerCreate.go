@@ -30,10 +30,9 @@ import (
 	"l3/arp/server"
 )
 
-func (h *ARPHandler) SendResolveArpIPv4(targetIp string, ifType arpdInt.Int, ifId arpdInt.Int) {
+func (h *ARPHandler) SendResolveArpIPv4(targetIp string, ifId arpdInt.Int) {
 	rConf := server.ResolveIPv4{
 		TargetIP: targetIp,
-		IfType:   int(ifType),
 		IfId:     int(ifId),
 	}
 	h.server.ResolveIPv4Ch <- rConf
@@ -48,9 +47,10 @@ func (h *ARPHandler) SendSetArpConfig(refTimeout int) bool {
 	return true
 }
 
-func (h *ARPHandler) ResolveArpIPV4(targetIp string, ifType arpdInt.Int, ifId arpdInt.Int) error {
-	h.logger.Info(fmt.Sprintln("Received ResolveArpIPV4 call with targetIp:", targetIp, "ifType:", ifType, "ifId:", ifId))
-	h.SendResolveArpIPv4(targetIp, ifType, ifId)
+//func (h *ARPHandler) ResolveArpIPV4(targetIp string, ifType arpdInt.Int, ifId arpdInt.Int) (arpdInt.Int, error) {
+func (h *ARPHandler) ResolveArpIPV4(targetIp string, ifId arpdInt.Int) error {
+	h.logger.Info(fmt.Sprintln("Received ResolveArpIPV4 call with targetIp:", targetIp, "ifId:", ifId))
+	h.SendResolveArpIPv4(targetIp, ifId)
 	return nil
 }
 

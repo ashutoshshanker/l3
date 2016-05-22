@@ -26,25 +26,33 @@ package rpc
 
 import (
 	"fmt"
+	"l3/rib/server"
 	"ribdInt"
 )
 
 func (m RIBDServicesHandler) CreatePolicyAction(cfg *ribdInt.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
-	m.server.PolicyActionCreateConfCh <- cfg
+	m.server.PolicyActionConfCh <- server.RIBdServerConfig{
+	                                   OrigConfigObject:cfg,
+	                                   Op : "add",
+	                              }
 	return true, err
 }
 
 func (m RIBDServicesHandler) DeletePolicyAction(cfg *ribdInt.PolicyAction) (val bool, err error) {
 	logger.Info(fmt.Sprintln("CreatePolicyAction"))
-	m.server.PolicyActionDeleteConfCh <- cfg
+	m.server.PolicyActionConfCh <- server.RIBdServerConfig{
+	                                   OrigConfigObject:cfg,
+	                                   Op : "del",
+	                              }
 	return true, err
 }
 
-func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribdInt.PolicyAction, newconfig *ribdInt.PolicyAction, attrset []bool) (val bool, err error) {
+func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribdInt.PolicyAction, newconfig *ribdInt.PolicyAction, attrset []bool, op string) (val bool, err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyAction"))
 	return true, err
 }
+
 /*func (m RIBDServicesHandler) GetPolicyActionState(name string) (*ribdInt.PolicyActionState, error) {
 	logger.Info("Get state for Policy Action")
 	retState := ribd.NewPolicyActionState()

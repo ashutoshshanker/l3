@@ -328,10 +328,10 @@ func (server *DHCPServer) getBulkPortConfig() {
 		more := bool(bulkInfo.More)
 		curMark = int(bulkInfo.EndIdx)
 		for i := 0; i < objCnt; i++ {
-			portNum := bulkInfo.PortList[i].PortNum
-			ent := server.portPropertyMap[portNum]
+			ifIndex := bulkInfo.PortList[i].IfIndex
+			ent := server.portPropertyMap[ifIndex]
 			ent.MacAddr = bulkInfo.PortList[i].MacAddr
-			server.portPropertyMap[portNum] = ent
+			server.portPropertyMap[ifIndex] = ent
 		}
 		if more == false {
 			break
@@ -352,15 +352,15 @@ func (server *DHCPServer) getBulkPortState() {
 		more := bool(bulkInfo.More)
 		curMark = int(bulkInfo.EndIdx)
 		for i := 0; i < objCnt; i++ {
-			portNum := bulkInfo.PortStateList[i].PortNum
-			ent := server.portPropertyMap[portNum]
+			ifIndex := bulkInfo.PortStateList[i].IfIndex
+			ent := server.portPropertyMap[ifIndex]
 			ent.IfName = bulkInfo.PortStateList[i].Name
 			ent.L3IfIndex = -1
 			ent.CtrlCh = make(chan bool)
 			ent.PcapHdl = nil
 			ent.IpAddr = 0
 			ent.Mask = 0
-			server.portPropertyMap[portNum] = ent
+			server.portPropertyMap[ifIndex] = ent
 		}
 		if more == false {
 			break

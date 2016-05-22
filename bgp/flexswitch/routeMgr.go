@@ -34,6 +34,7 @@ import (
 	"l3/rib/ribdCommonDefs"
 	"ribd"
 	"ribdInt"
+	"reflect"
 	"utils/logging"
 
 	nanomsg "github.com/op/go-nanomsg"
@@ -182,7 +183,6 @@ func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error
 		Metric:         int32(info.Metric),
 		NextHopIp:      info.NextHopIp,
 		IsReachable:    info.IsReachable,
-		NextHopIfType:  int32(info.NextHopIfType),
 		NextHopIfIndex: int32(info.NextHopIfIndex),
 	}
 	return reachInfo, err
@@ -190,20 +190,18 @@ func (mgr *FSRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error
 
 func (mgr *FSRouteMgr) createRibdIPv4RouteCfg(cfg *config.RouteConfig,
 	create bool) *ribd.IPv4Route {
-	nextHopIfTypeStr := ""
-	if create {
-		nextHopIfTypeStr, _ = ribdCommonDefs.GetNextHopIfTypeStr(
-			ribdInt.Int(cfg.IntfType))
-	}
 	rCfg := ribd.IPv4Route{
 		Cost:              cfg.Cost,
 		Protocol:          cfg.Protocol,
-		NextHopIp:         cfg.NextHopIp,
 		NetworkMask:       cfg.NetworkMask,
 		DestinationNw:     cfg.DestinationNw,
-		OutgoingIntfType:  nextHopIfTypeStr,
-		OutgoingInterface: cfg.OutgoingInterface,
 	}
+	nextHop := ribd.NextHopInfo { 
+		NextHopIp : cfg.NextHopIp,
+		NextHopIntRef:cfg.OutgoingInterface,
+	}
+	rCfg.NextHop = make([]*ribd.NextHopInfo,0)
+	rCfg.NextHop = append(rCfg.NextHop,&nextHop)
 	return &rCfg
 }
 
@@ -215,6 +213,30 @@ func (mgr *FSRouteMgr) CreateRoute(cfg *config.RouteConfig) {
 func (mgr *FSRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
 	mgr.ribdClient.OnewayDeleteIPv4Route(mgr.createRibdIPv4RouteCfg(cfg,
 		false /*delete*/))
+}
+func (mgr *FSRouteMgr) UpdateRoute(cfg *config.RouteConfig, op string) {
+	rCfg := ribd.IPv4Route{
+		Cost:              cfg.Cost,
+		Protocol:          cfg.Protocol,
+		NetworkMask:       cfg.NetworkMask,
+		DestinationNw:     cfg.DestinationNw,
+	}
+	nextHop := ribd.NextHopInfo { 
+		NextHopIp : cfg.NextHopIp,
+		NextHopIntRef:cfg.OutgoingInterface,
+	}
+	rCfg.NextHop = make([]*ribd.NextHopInfo,0)
+	rCfg.NextHop = append(rCfg.NextHop,&nextHop)
+	objTyp := reflect.TypeOf(rCfg)
+	attrSet := make([]bool, objTyp.NumField())
+	for i := 0; i < objTyp.NumField(); i++ {
+		objName := objTyp.Field(i).Name
+		if objName == "NextHop" {
+			attrSet[i] = true
+			break
+		}
+    }
+	mgr.ribdClient.UpdateIPv4Route(&rCfg, &rCfg, attrSet, op)
 }
 func (mgr *FSRouteMgr) ApplyPolicy(protocol string, policy string, action string, conditions []*config.ConditionInfo) {
 	temp := make([]ribdInt.ConditionInfo, len(conditions))

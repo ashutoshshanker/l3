@@ -7,31 +7,28 @@
 //
 //    http://www.apache.org/licenses/LICENSE-2.0
 //
-//	 Unless required by applicable law or agreed to in writing, software
-//	 distributed under the License is distributed on an "AS IS" BASIS,
-//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//	 See the License for the specific language governing permissions and
-//	 limitations under the License.
+//       Unless required by applicable law or agreed to in writing, software
+//       distributed under the License is distributed on an "AS IS" BASIS,
+//       WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//       See the License for the specific language governing permissions and
+//       limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
 import (
 	"asicd/asicdCommonDefs"
-	//"asicdInt"
-	//"asicdServices"
 	"fmt"
+	"github.com/google/gopacket/pcap"
 	"net"
 	"utils/commonDefs"
-	//"asicd/pluginManager/pluginCommon"
-	"github.com/google/gopacket/pcap"
 )
 
 type L3IntfProperty struct {
@@ -78,7 +75,7 @@ func (server *ARPServer) getL3IntfOnSameSubnet(ip string) int {
 	return -1
 }
 
-func (server *ARPServer) processIPv4IntfCreate(msg asicdCommonDefs.IPv4IntfNotifyMsg) {
+func (server *ARPServer) processIPv4IntfCreate(msg commonDefs.IPv4IntfNotifyMsg) {
 	ip, ipNet, _ := net.ParseCIDR(msg.IpAddr)
 	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
 	ifIdx := int(msg.IfIndex)
@@ -141,7 +138,7 @@ func (server *ARPServer) processIPv4IntfCreate(msg asicdCommonDefs.IPv4IntfNotif
 	}
 }
 
-func (server *ARPServer) processIPv4IntfDelete(msg asicdCommonDefs.IPv4IntfNotifyMsg) {
+func (server *ARPServer) processIPv4IntfDelete(msg commonDefs.IPv4IntfNotifyMsg) {
 	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
 	ifIdx := int(msg.IfIndex)
 
@@ -204,15 +201,15 @@ func (server *ARPServer) processIPv4IntfDelete(msg asicdCommonDefs.IPv4IntfNotif
 	delete(server.l3IntfPropMap, ifIdx)
 }
 
-func (server *ARPServer) updateIpv4Infra(msg asicdCommonDefs.IPv4IntfNotifyMsg, msgType uint8) {
-	if msgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE {
+func (server *ARPServer) updateIpv4Infra(msg commonDefs.IPv4IntfNotifyMsg) {
+	if msg.MsgType == commonDefs.NOTIFY_IPV4INTF_CREATE {
 		server.processIPv4IntfCreate(msg)
 	} else {
 		server.processIPv4IntfDelete(msg)
 	}
 }
 
-func (server *ARPServer) processL3StateChange(msg asicdCommonDefs.L3IntfStateNotifyMsg) {
+func (server *ARPServer) processL3StateChange(msg commonDefs.L3IntfStateNotifyMsg) {
 	ifIdx := int(msg.IfIndex)
 	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
 	if msg.IfState == 0 {
@@ -245,7 +242,7 @@ func (server *ARPServer) processL3StateChange(msg asicdCommonDefs.L3IntfStateNot
 	}
 }
 
-func (server *ARPServer) processIPv4NbrMacMove(msg asicdCommonDefs.IPv4NbrMacMoveNotifyMsg) {
+func (server *ARPServer) processIPv4NbrMacMove(msg commonDefs.IPv4NbrMacMoveNotifyMsg) {
 	server.arpEntryMacMoveCh <- msg
 }
 
@@ -310,10 +307,6 @@ func (server *ARPServer) buildArpInfra() {
 	server.constructVlanInfra()
 	server.constructL3Infra()
 	//server.constructLagInfra()
-	//server.logger.Info(fmt.Sprintln("Port Property Map:", server.portPropMap))
-	//server.logger.Info(fmt.Sprintln("Lag Property Map:", server.portPropMap))
-	//server.logger.Info(fmt.Sprintln("Vlan Property Map:", server.portPropMap))
-	//server.logger.Info(fmt.Sprintln("L3 Intf Property Map:", server.l3IntfPropMap))
 }
 
 func (server *ARPServer) constructL3Infra() {
@@ -322,7 +315,6 @@ func (server *ARPServer) constructL3Infra() {
 	count := 100
 	var ifName string
 	for {
-		//bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkIPv4IntfState(asicdServices.Int(curMark), asicdServices.Int(count))
 		bulkInfo, _ := server.AsicdPlugin.GetBulkIPv4IntfState(curMark, count)
 		if bulkInfo == nil {
 			break
@@ -377,10 +369,8 @@ func (server *ARPServer) constructL3Infra() {
 }
 
 func (server *ARPServer) constructPortInfra() {
-	//server.logger.Info(fmt.Sprintln("Port Property Map:", server.portPropMap))
 	server.getBulkPortState()
 	server.getBulkPortConfig()
-	//server.logger.Info(fmt.Sprintln("Port Property Map:", server.portPropMap))
 }
 
 func (server *ARPServer) getBulkPortConfig() {
@@ -388,7 +378,6 @@ func (server *ARPServer) getBulkPortConfig() {
 	server.logger.Debug("Calling Asicd for getting Port Property")
 	count := 100
 	for {
-		//bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPort(asicdServices.Int(curMark), asicdServices.Int(count))
 		bulkInfo, _ := server.AsicdPlugin.GetBulkPort(curMark, count)
 		if bulkInfo == nil {
 			break
@@ -397,11 +386,11 @@ func (server *ARPServer) getBulkPortConfig() {
 		more := bool(bulkInfo.More)
 		curMark = int(bulkInfo.EndIdx)
 		for i := 0; i < objCnt; i++ {
-			portNum := int(bulkInfo.PortList[i].PortNum)
-			ent := server.portPropMap[portNum]
+			ifIndex := int(bulkInfo.PortList[i].IfIndex)
+			ent := server.portPropMap[ifIndex]
 			ent.MacAddr = bulkInfo.PortList[i].MacAddr
 			ent.CtrlCh = make(chan bool)
-			server.portPropMap[portNum] = ent
+			server.portPropMap[ifIndex] = ent
 		}
 		if more == false {
 			break
@@ -414,7 +403,6 @@ func (server *ARPServer) getBulkPortState() {
 	server.logger.Debug("Calling Asicd for getting Port Property")
 	count := 100
 	for {
-		//bulkInfo, _ := server.asicdClient.ClientHdl.GetBulkPortState(asicdServices.Int(curMark), asicdServices.Int(count))
 		bulkInfo, _ := server.AsicdPlugin.GetBulkPortState(curMark, count)
 		if bulkInfo == nil {
 			break
@@ -423,14 +411,14 @@ func (server *ARPServer) getBulkPortState() {
 		more := bool(bulkInfo.More)
 		curMark = int(bulkInfo.EndIdx)
 		for i := 0; i < objCnt; i++ {
-			portNum := int(bulkInfo.PortStateList[i].PortNum)
-			ent := server.portPropMap[portNum]
+			ifIndex := int(bulkInfo.PortStateList[i].IfIndex)
+			ent := server.portPropMap[ifIndex]
 			ent.IfName = bulkInfo.PortStateList[i].Name
 			ent.L3IfIdx = -1
 			ent.LagIfIdx = -1
 			ent.CtrlCh = make(chan bool)
 			ent.PcapHdl = nil
-			server.portPropMap[portNum] = ent
+			server.portPropMap[ifIndex] = ent
 		}
 		if more == false {
 			break
@@ -443,13 +431,11 @@ func (server *ARPServer) constructVlanInfra() {
 	server.logger.Debug("Calling Asicd for getting Vlan Property")
 	count := 100
 	for {
-		//bulkVlanInfo, _ := server.asicdClient.ClientHdl.GetBulkVlan(asicdInt.Int(curMark), asicdInt.Int(count))
 		bulkVlanInfo, _ := server.AsicdPlugin.GetBulkVlan(curMark, count)
 		if bulkVlanInfo == nil {
 			break
 		}
 		/* Get bulk on vlan state can re-use curMark and count used by get bulk vlan, as there is a 1:1 mapping in terms of cfg/state objs */
-		//bulkVlanStateInfo, _ := server.asicdClient.ClientHdl.GetBulkVlanState(asicdServices.Int(curMark), asicdServices.Int(count))
 		bulkVlanStateInfo, _ := server.AsicdPlugin.GetBulkVlanState(curMark, count)
 		if bulkVlanStateInfo == nil {
 			break
@@ -474,12 +460,12 @@ func (server *ARPServer) constructVlanInfra() {
 	}
 }
 
-func (server *ARPServer) updateVlanInfra(msg asicdCommonDefs.VlanNotifyMsg, msgType uint8) {
+func (server *ARPServer) updateVlanInfra(msg commonDefs.VlanNotifyMsg) {
 	vlanId := int(msg.VlanId)
 	ifIdx := int(asicdCommonDefs.GetIfIndexFromIntfIdAndIntfType(vlanId, commonDefs.IfTypeVlan))
 	portList := msg.UntagPorts
 	vlanEnt, _ := server.vlanPropMap[ifIdx]
-	if msgType == asicdCommonDefs.NOTIFY_VLAN_CREATE { // VLAN CREATE
+	if msg.MsgType == commonDefs.NOTIFY_VLAN_CREATE { // VLAN CREATE
 		server.logger.Debug(fmt.Sprintln("Received Vlan Create or Update Notification Vlan:", vlanId, "PortList:", portList))
 		vlanEnt.IfName = msg.VlanName
 		vlanEnt.UntagPortMap = nil
@@ -489,7 +475,7 @@ func (server *ARPServer) updateVlanInfra(msg asicdCommonDefs.VlanNotifyMsg, msgT
 			vlanEnt.UntagPortMap[port] = true
 		}
 		server.vlanPropMap[ifIdx] = vlanEnt
-	} else if msgType == asicdCommonDefs.NOTIFY_VLAN_UPDATE { //VLAN UPDATE
+	} else if msg.MsgType == commonDefs.NOTIFY_VLAN_UPDATE { //VLAN UPDATE
 		newPortMap := make(map[int]bool)
 		for i := 0; i < len(portList); i++ {
 			port := int(portList[i])
@@ -526,11 +512,11 @@ func (server *ARPServer) updateVlanInfra(msg asicdCommonDefs.VlanNotifyMsg, msgT
 	}
 }
 
-func (server *ARPServer) updateLagInfra(msg asicdCommonDefs.LagNotifyMsg, msgType uint8) {
+func (server *ARPServer) updateLagInfra(msg commonDefs.LagNotifyMsg) {
 	ifIdx := int(msg.IfIndex)
 	portList := msg.IfIndexList
 	lagEnt, _ := server.lagPropMap[ifIdx]
-	if msgType == asicdCommonDefs.NOTIFY_LAG_CREATE {
+	if msg.MsgType == commonDefs.NOTIFY_LAG_CREATE {
 		server.logger.Debug(fmt.Sprintln("Received Lag Create Notification IfIdx:", ifIdx, "PortList:", portList))
 		lagEnt.IfName = msg.LagName
 		lagEnt.PortMap = nil
@@ -543,7 +529,7 @@ func (server *ARPServer) updateLagInfra(msg asicdCommonDefs.LagNotifyMsg, msgTyp
 			lagEnt.PortMap[port] = true
 		}
 		server.lagPropMap[ifIdx] = lagEnt
-	} else if msgType == asicdCommonDefs.NOTIFY_LAG_UPDATE {
+	} else if msg.MsgType == commonDefs.NOTIFY_LAG_UPDATE {
 		newPortMap := make(map[int]bool)
 		for i := 0; i < len(portList); i++ {
 			port := int(portList[i])
@@ -590,7 +576,6 @@ func (server *ARPServer) updateLagInfra(msg asicdCommonDefs.LagNotifyMsg, msgTyp
 		lagEnt.PortMap = nil
 		delete(server.lagPropMap, ifIdx)
 	}
-	//server.logger.Info(fmt.Sprintln("Lag Property Map:", server.lagPropMap))
 }
 
 /*

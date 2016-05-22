@@ -95,12 +95,12 @@ func (server *BFDServer) BuildPortPropertyMap() error {
 			server.logger.Info(fmt.Sprintln("Bulkget port got ", objCount, more))
 			currMarker = asicdServices.Int(bulkInfo.EndIdx)
 			for i := 0; i < objCount; i++ {
-				portNum := bulkInfo.PortStateList[i].PortNum
-				ent := server.portPropertyMap[portNum]
+				ifIndex := bulkInfo.PortStateList[i].IfIndex
+				ent := server.portPropertyMap[ifIndex]
 				ent.Name = bulkInfo.PortStateList[i].Name
 				ent.VlanId = 0
 				ent.VlanName = ""
-				server.portPropertyMap[portNum] = ent
+				server.portPropertyMap[ifIndex] = ent
 			}
 			if more == false {
 				return nil

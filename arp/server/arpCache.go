@@ -7,19 +7,19 @@
 //
 //    http://www.apache.org/licenses/LICENSE-2.0
 //
-//	 Unless required by applicable law or agreed to in writing, software
-//	 distributed under the License is distributed on an "AS IS" BASIS,
-//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//	 See the License for the specific language governing permissions and
-//	 limitations under the License.
+//       Unless required by applicable law or agreed to in writing, software
+//       distributed under the License is distributed on an "AS IS" BASIS,
+//       WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//       See the License for the specific language governing permissions and
+//       limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -28,7 +28,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-	//"utils/asicdClientManager"
 	"utils/commonDefs"
 )
 
@@ -217,21 +216,18 @@ func (server *ARPServer) processArpActionMsg(msg ArpActionMsg) {
 func (server *ARPServer) processAsicdMsg(msg AsicdMsg) error {
 	switch msg.MsgType {
 	case Create:
-		//_, err := server.asicdClient.ClientHdl.CreateIPv4Neighbor(msg.IpAddr, msg.MacAddr, msg.VlanId, msg.IfIdx)
 		_, err := server.AsicdPlugin.CreateIPv4Neighbor(msg.IpAddr, msg.MacAddr, msg.VlanId, msg.IfIdx)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Asicd Create IPv4 Neighbor failed for IpAddr:", msg.IpAddr, "VlanId:", msg.VlanId, "IfIdx:", msg.IfIdx, "err:", err))
 			return err
 		}
 	case Delete:
-		//_, err := server.asicdClient.ClientHdl.DeleteIPv4Neighbor(msg.IpAddr,
 		_, err := server.AsicdPlugin.DeleteIPv4Neighbor(msg.IpAddr)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Asicd was unable to delete neigbhor entry for", msg.IpAddr, "err:", err))
 			return err
 		}
 	case Update:
-		//_, err := server.asicdClient.ClientHdl.UpdateIPv4Neighbor(msg.IpAddr, msg.MacAddr, msg.VlanId, msg.IfIdx)
 		_, err := server.AsicdPlugin.UpdateIPv4Neighbor(msg.IpAddr, msg.MacAddr, msg.VlanId, msg.IfIdx)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Asicd Update IPv4 Neighbor failed for IpAddr:", msg.IpAddr, "MacAddr:", msg.MacAddr, "VlanId:", msg.VlanId, "IfIdx:", msg.IfIdx, "err:", err))
@@ -253,7 +249,7 @@ func (server *ARPServer) processArpEntryCntUpdateMsg(cnt int) {
 	}
 }
 
-func (server *ARPServer) processArpEntryMacMoveMsg(msg asicdCommonDefs.IPv4NbrMacMoveNotifyMsg) {
+func (server *ARPServer) processArpEntryMacMoveMsg(msg commonDefs.IPv4NbrMacMoveNotifyMsg) {
 	if entry, ok := server.arpCache[msg.IpAddr]; ok {
 		entry.PortNum = int(msg.IfIndex)
 		server.arpCache[msg.IpAddr] = entry
@@ -353,7 +349,6 @@ func (server *ARPServer) processArpEntryUpdateMsg(msg UpdateArpEntryMsg) {
 		}
 	}
 	if !exist {
-		//server.storeArpEntryInDB(msg.IpAddr, msg.PortNum)
 		server.storeArpEntryInDB(msg.IpAddr, portEnt.L3IfIdx)
 	}
 	arpEnt.MacAddr = msg.MacAddr

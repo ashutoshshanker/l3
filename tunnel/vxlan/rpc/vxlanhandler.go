@@ -103,7 +103,7 @@ func (v *VXLANDServiceHandler) DeleteVxlanInstance(config *vxland.VxlanInstance)
 	return false, err
 }
 
-func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInstance, newconfig *vxland.VxlanInstance, attrset []bool) (bool, error) {
+func (v *VXLANDServiceHandler) UpdateVxlanInstance(origconfig *vxland.VxlanInstance, newconfig *vxland.VxlanInstance, attrset []bool, op string) (bool, error) {
 	v.logger.Info(fmt.Sprintf("UpdateVxlanConfigInstance orig[%#v] new[%#v]", origconfig, newconfig))
 	oc, _ := v.server.ConvertVxlanInstanceToVxlanConfig(origconfig)
 	nc, err := v.server.ConvertVxlanInstanceToVxlanConfig(newconfig)
@@ -139,7 +139,7 @@ func (v *VXLANDServiceHandler) DeleteVxlanVtepInstances(config *vxland.VxlanVtep
 	return false, err
 }
 
-func (v *VXLANDServiceHandler) UpdateVxlanVtepInstances(origconfig *vxland.VxlanVtepInstances, newconfig *vxland.VxlanVtepInstances, attrset []bool) (bool, error) {
+func (v *VXLANDServiceHandler) UpdateVxlanVtepInstances(origconfig *vxland.VxlanVtepInstances, newconfig *vxland.VxlanVtepInstances, attrset []bool, op string) (bool, error) {
 	v.logger.Info(fmt.Sprintf("UpdateVxlanVtepInstances orig[%#v] new[%#v]", origconfig, newconfig))
 	oc, _ := v.server.ConvertVxlanVtepInstanceToVtepConfig(origconfig)
 	nc, err := v.server.ConvertVxlanVtepInstanceToVtepConfig(newconfig)
