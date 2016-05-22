@@ -13,21 +13,24 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package main
 
 import (
 	"flag"
 	"fmt"
+	"l3/arp/asicdMgr"
 	"l3/arp/rpc"
 	"l3/arp/server"
+	"utils/asicdClient"
+	"utils/commonDefs"
 	"utils/keepalive"
 	"utils/logging"
 )
@@ -50,8 +53,17 @@ func main() {
 
 	logger.Info(fmt.Sprintln("Starting ARP server..."))
 	arpServer := server.NewARPServer(logger)
-	plugin := "Flexswitch" // Flexswitch/OvsDB
-	go arpServer.StartServer(*paramsDir, plugin)
+
+	pluginName := "Flexswitch" // Flexswitch/OvsDB
+	clientInfoFile := fileName + "clients.json"
+	nHdl, nMap := asicdMgr.NewNotificationHdl(arpServer, logger)
+	asicdHdl := commonDefs.AsicdClientStruct{
+		Logger: logger,
+		NHdl:   nHdl,
+		NMap:   nMap,
+	}
+	asicdPlugin := asicdClient.NewAsicdClientInit(pluginName, clientInfoFile, asicdHdl)
+	go arpServer.StartServer(asicdPlugin)
 
 	<-arpServer.InitDone
 

@@ -22,15 +22,16 @@
 //                                                                                                           
 
 package rpc
+
 import (
 	"encoding/json"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"io/ioutil"
+	"l3/rib/server"
 	"ribd"
 	"strconv"
 	"utils/logging"
-	"l3/rib/server"
 )
 
 type ClientJson struct {
@@ -41,7 +42,9 @@ type RIBDServicesHandler struct {
 	server *server.RIBDServer
 	logger *logging.Writer
 }
+
 var logger *logging.Writer
+
 func getClient(logger *logging.Writer, fileName string, process string) (*ClientJson, error) {
 	var allClients []ClientJson
 
@@ -61,20 +64,20 @@ func getClient(logger *logging.Writer, fileName string, process string) (*Client
 	logger.Err(fmt.Sprintf("Did not find port for %s in config file:%s", process, fileName))
 	return nil, nil
 }
-func NewRIBdHandler(loggerC *logging.Writer, server *server.RIBDServer) (*RIBDServicesHandler) {
+func NewRIBdHandler(loggerC *logging.Writer, server *server.RIBDServer) *RIBDServicesHandler {
 	hdl := new(RIBDServicesHandler)
 	hdl.server = server
 	hdl.logger = loggerC
 	logger = loggerC
 	return hdl
 }
-func NewRIBdRPCServer(logger *logging.Writer, handler *RIBDServicesHandler, fileName string) () {
+func NewRIBdRPCServer(logger *logging.Writer, handler *RIBDServicesHandler, fileName string) {
 	var transport thrift.TServerTransport
 	clientJson, err := getClient(logger, fileName+"clients.json", "ribd")
 	if err != nil || clientJson == nil {
 		return
 	}
-	var addr = "localhost:" + strconv.Itoa(clientJson.Port)//"localhost:5000"
+	var addr = "localhost:" + strconv.Itoa(clientJson.Port) //"localhost:5000"
 	fmt.Println("Starting rib daemon at addr ", addr)
 
 	transport, err = thrift.NewTServerSocket(addr)

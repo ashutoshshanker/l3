@@ -50,6 +50,10 @@ func (mgr *OvsRouteMgr) DeleteRoute(cfg *config.RouteConfig) {
 
 }
 
+func (mgr *OvsRouteMgr) UpdateRoute(cfg *config.RouteConfig, op string) {
+
+}
+
 func (mgr *OvsRouteMgr) GetNextHopInfo(ipAddr string) (*config.NextHopInfo, error) {
 	return nil, nil
 }

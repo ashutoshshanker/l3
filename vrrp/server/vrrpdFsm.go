@@ -116,7 +116,7 @@ func (svr *VrrpServer) VrrpUpdateSubIntf(gblInfo VrrpGlobalInfo, configure bool)
 		attrset[elems-2] = true
 	}
 	_, err := svr.asicdClient.ClientHdl.UpdateSubIPv4Intf(&config, &config,
-		attrset)
+		attrset, "replace")
 	if err != nil {
 		svr.logger.Err(fmt.Sprintln("updating sub interface config failed",
 			"Error:", err))

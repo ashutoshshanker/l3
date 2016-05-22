@@ -197,10 +197,10 @@ func (server *OSPFServer) getBulkPortState() {
 			more := bool(bulkInfo.More)
 			currMarker = asicdServices.Int(bulkInfo.EndIdx)
 			for i := 0; i < objCount; i++ {
-				portNum := bulkInfo.PortStateList[i].PortNum
-				ent := server.portPropertyMap[portNum]
+				ifIndex := bulkInfo.PortStateList[i].IfIndex
+				ent := server.portPropertyMap[ifIndex]
 				ent.Name = bulkInfo.PortStateList[i].Name
-				server.portPropertyMap[portNum] = ent
+				server.portPropertyMap[ifIndex] = ent
 			}
 			if more == false {
 				break
@@ -223,10 +223,10 @@ func (server *OSPFServer) getBulkPortConfig() {
 			more := bool(bulkInfo.More)
 			currMarker = asicdServices.Int(bulkInfo.EndIdx)
 			for i := 0; i < objCount; i++ {
-				portNum := bulkInfo.PortList[i].PortNum
-				ent := server.portPropertyMap[portNum]
+				ifIndex := bulkInfo.PortList[i].IfIndex
+				ent := server.portPropertyMap[ifIndex]
 				ent.Mtu = bulkInfo.PortList[i].Mtu
-				server.portPropertyMap[portNum] = ent
+				server.portPropertyMap[ifIndex] = ent
 			}
 			if more == false {
 				break
