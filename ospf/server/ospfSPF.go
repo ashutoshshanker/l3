@@ -84,6 +84,18 @@ func (v VertexDataArr) Len() int {
 }
 
 func (v VertexDataArr) Less(i, j int) bool {
+	//return v[i].distance < v[j].distance
+	if v[i].distance == v[j].distance {
+		if v[i].vKey.Type == v[j].vKey.Type {
+			return false
+		} else if v[i].vKey.Type == RouterVertex &&
+			v[j].vKey.Type == TNetworkVertex {
+			return false
+		} else if v[i].vKey.Type == TNetworkVertex &&
+			v[j].vKey.Type == RouterVertex {
+			return true
+		}
+	}
 	return v[i].distance < v[j].distance
 }
 
@@ -489,9 +501,15 @@ func (server *OSPFServer) CreateAreaGraph(areaId uint32) (VertexKey, error) {
 }
 
 func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
-	var treeVSlice []VertexKey = make([]VertexKey, 0)
+	//var treeVSlice []VertexKey = make([]VertexKey, 0)
+	var treeVSlice []VertexData = make([]VertexData, 0)
 
-	treeVSlice = append(treeVSlice, vKey)
+	//treeVSlice = append(treeVSlice, vKey)
+	vData := VertexData{
+		vKey:     vKey,
+		distance: 0,
+	}
+	treeVSlice = append(treeVSlice, vData)
 	ent, exist := server.SPFTree[vKey]
 	if !exist {
 		ent.Distance = 0
@@ -505,28 +523,30 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 
 	for j := 0; j < len(treeVSlice); j++ {
 		verArr := make([]VertexData, 0)
-		server.logger.Info(fmt.Sprintln("The value of j:", j, "treeVSlice:", treeVSlice[j]))
-		ent, exist := server.AreaGraph[treeVSlice[j]]
+		server.logger.Debug(fmt.Sprintln("treeVSlice:", treeVSlice))
+		server.logger.Debug(fmt.Sprintln("The value of j:", j, "treeVSlice:", treeVSlice[j].vKey))
+		//ent, exist := server.AreaGraph[treeVSlice[j]]
+		ent, exist := server.AreaGraph[treeVSlice[j].vKey]
 		if !exist {
-			server.logger.Info(fmt.Sprintln("No entry found for:", treeVSlice[j]))
-			err := errors.New(fmt.Sprintln("No entry found for:", treeVSlice[j]))
+			server.logger.Info(fmt.Sprintln("No entry found for:", treeVSlice[j].vKey))
+			err := errors.New(fmt.Sprintln("No entry found for:", treeVSlice[j].vKey))
 			return err
 		}
 
-		server.logger.Info(fmt.Sprintln("Number of neighbor of treeVSlice:", treeVSlice[j], "ent:", ent, "is:", len(ent.NbrVertexKey)))
+		server.logger.Debug(fmt.Sprintln("Number of neighbor of treeVSlice:", treeVSlice[j].vKey, "ent:", ent, "is:", len(ent.NbrVertexKey)))
 		for i := 0; i < len(ent.NbrVertexKey); i++ {
 			verKey := ent.NbrVertexKey[i]
 			cost := ent.NbrVertexCost[i]
 			entry, exist := server.AreaGraph[verKey]
-			server.logger.Info(fmt.Sprintln("Neighboring Vertex Number :", i, "verKey", verKey, "cost:", cost, "entry:", entry))
+			server.logger.Debug(fmt.Sprintln("Neighboring Vertex Number :", i, "verKey", verKey, "cost:", cost, "entry:", entry))
 			if !exist {
-				server.logger.Info("Something is wrong in SPF Calculation: Entry should exist in Area Graph")
+				server.logger.Err("Something is wrong in SPF Calculation: Entry should exist in Area Graph")
 				err := errors.New("Something is wrong in SPF Calculation: Entry should exist in Area Graph")
 				return err
 			}
 			tEnt, exist := server.SPFTree[verKey]
 			if !exist {
-				server.logger.Info("Entry doesnot exist for the neighbor in SPF hence adding it")
+				server.logger.Debug("Entry doesnot exist for the neighbor in SPF hence adding it")
 				tEnt.Paths = make([]Path, 1)
 				var path Path
 				path = make(Path, 0)
@@ -534,16 +554,16 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 				tEnt.Distance = 0xff00 // LSInfinity
 				tEnt.NumOfPaths = 1
 			}
-			tEntry, exist := server.SPFTree[treeVSlice[j]]
+			tEntry, exist := server.SPFTree[treeVSlice[j].vKey]
 			if !exist {
 				server.logger.Err("Something is wrong is SPF Calculation")
 				err := errors.New("Something is wrong is SPF Calculation")
 				return err
 			}
-			//server.logger.Info(fmt.Sprintln("Parent Node:", treeVSlice[j], tEntry))
-			//server.logger.Info(fmt.Sprintln("Child Node:", verKey, tEnt))
+			server.logger.Debug(fmt.Sprintln("Parent Node:", treeVSlice[j].vKey, tEntry))
+			server.logger.Debug(fmt.Sprintln("Child Node:", verKey, tEnt))
 			if tEnt.Distance > tEntry.Distance+cost {
-				//server.logger.Info(fmt.Sprintln("We have lower cost path via", tEntry))
+				server.logger.Debug(fmt.Sprintln("We have lower cost path via", tEntry))
 				tEnt.Distance = tEntry.Distance + cost
 				for l := 0; l < tEnt.NumOfPaths; l++ {
 					tEnt.Paths[l] = nil
@@ -556,14 +576,14 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 					var path Path
 					path = make(Path, len(tEntry.Paths[l])+1)
 					copy(path, tEntry.Paths[l])
-					path[len(tEntry.Paths[l])] = treeVSlice[j]
+					path[len(tEntry.Paths[l])] = treeVSlice[j].vKey
 					tEnt.Paths[l] = path
 				}
 				tEnt.NumOfPaths = tEntry.NumOfPaths
 			} else if tEnt.Distance == tEntry.Distance+cost {
-				//server.logger.Info(fmt.Sprintln("We have equal cost path via:", tEntry))
-				//server.logger.Info(fmt.Sprintln("tEnt:", tEnt, "tEntry:", tEntry))
-				//server.logger.Info(fmt.Sprintln("tEnt.NumOfPaths:", tEnt.NumOfPaths, "tEntry.NumOfPaths:", tEntry.NumOfPaths))
+				server.logger.Debug(fmt.Sprintln("We have equal cost path via:", tEntry))
+				server.logger.Debug(fmt.Sprintln("tEnt:", tEnt, "tEntry:", tEntry))
+				server.logger.Debug(fmt.Sprintln("tEnt.NumOfPaths:", tEnt.NumOfPaths, "tEntry.NumOfPaths:", tEntry.NumOfPaths))
 				paths := make([]Path, (tEntry.NumOfPaths + tEnt.NumOfPaths))
 				for l := 0; l < tEnt.NumOfPaths; l++ {
 					var path Path
@@ -572,22 +592,22 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 					paths[l] = path
 					tEnt.Paths[l] = nil
 				}
-				//server.logger.Info(fmt.Sprintln("1. paths:", paths))
+				server.logger.Debug(fmt.Sprintln("1. paths:", paths))
 				tEnt.Paths = tEnt.Paths[:0]
 				tEnt.Paths = nil
 				for l := 0; l < tEntry.NumOfPaths; l++ {
 					var path Path
 					path = make(Path, len(tEntry.Paths[l])+1)
 					copy(path, tEntry.Paths[l])
-					path[len(tEntry.Paths[l])] = treeVSlice[j]
+					path[len(tEntry.Paths[l])] = treeVSlice[j].vKey
 					paths[tEnt.NumOfPaths+l] = path
 				}
-				//server.logger.Info(fmt.Sprintln("2. paths:", paths))
+				server.logger.Debug(fmt.Sprintln("2. paths:", paths))
 				tEnt.Paths = paths
 				tEnt.NumOfPaths = tEntry.NumOfPaths + tEnt.NumOfPaths
 			}
 			if _, ok := server.SPFTree[verKey]; !ok {
-				server.logger.Info(fmt.Sprintln("Adding verKey:", verKey, "to treeVSlice"))
+				server.logger.Debug(fmt.Sprintln("Adding verKey:", verKey, "to treeVSlice"))
 				vData := VertexData{
 					vKey:     verKey,
 					distance: tEnt.Distance,
@@ -596,41 +616,16 @@ func (server *OSPFServer) ExecuteDijkstra(vKey VertexKey, areaId uint32) error {
 			}
 			server.SPFTree[verKey] = tEnt
 		}
-		sort.Sort(VertexDataArr(verArr))
-		for _, v := range verArr {
-			treeVSlice = append(treeVSlice, v.vKey)
+		treeVSlice = append(treeVSlice, verArr...)
+		if len(treeVSlice[j+1:]) > 0 {
+			sort.Sort(VertexDataArr(treeVSlice[j+1:]))
 		}
 		verArr = verArr[:0]
 		verArr = nil
 		ent.Visited = true
-		server.AreaGraph[treeVSlice[j]] = ent
+		server.AreaGraph[treeVSlice[j].vKey] = ent
 	}
 
-	//Handling Stub Networks
-
-	/*
-		server.logger.Info("Handle Stub Networks")
-		for key, entry := range server.AreaStubs {
-			//Finding the Vertex(Router) to which this stub is connected to
-			vertexKey := entry.NbrVertexKey
-			parent, exist := server.SPFTree[vertexKey]
-			if !exist {
-				continue
-			}
-			ent, _ := server.SPFTree[key]
-			ent.Distance = parent.Distance + entry.NbrVertexCost
-			ent.Paths = make([]Path, parent.NumOfPaths)
-			for i := 0; i < parent.NumOfPaths; i++ {
-				var path Path
-				path = make(Path, len(parent.Paths[i])+1)
-				copy(path, parent.Paths[i])
-				path[len(parent.Paths[i])] = vertexKey
-				ent.Paths[i] = path
-			}
-			ent.NumOfPaths = parent.NumOfPaths
-			server.SPFTree[key] = ent
-		}
-	*/
 	return nil
 }
 
