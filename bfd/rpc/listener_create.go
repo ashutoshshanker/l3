@@ -74,8 +74,7 @@ func (h *BFDHandler) CreateBfdGlobal(bfdGlobalConf *bfdd.BfdGlobal) (bool, error
 		err := errors.New("Invalid Global Configuration")
 		return false, err
 	}
-	err := errors.New("BFD Global config create not supported")
-	return false, err
+	return h.SendBfdGlobalConfig(bfdGlobalConf), nil
 }
 
 func (h *BFDHandler) CreateBfdSession(bfdSessionConf *bfdd.BfdSession) (bool, error) {
