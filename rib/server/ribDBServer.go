@@ -64,6 +64,7 @@ func (m RIBDServer) WriteIPv4RouteStateEntryToDB(dbInfo RouteDBInfo) error {
 			logger.Debug(fmt.Sprintln("Map foud for ifndex : ", routeInfoList[sel].nextHopIfIndex, "Name = ", intfEntry.name))
 			nextHopInfo[i].NextHopIntRef = intfEntry.name
 		}
+		logger.Debug(fmt.Sprintln("IntfRef = ", nextHopInfo[i].NextHopIntRef))
 		nextHopInfo[i].Weight = int32(routeInfoList[sel].weight)
 		obj.NextHopList = append(obj.NextHopList, &nextHopInfo[i])
 		i++
