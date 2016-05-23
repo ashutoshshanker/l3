@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -49,7 +49,7 @@ func (server *ARPServer) initiateDB() error {
 }
 
 func (server *ARPServer) getArpGlobalConfig() {
-	var dbObj models.ArpConfig
+	var dbObj models.ArpGlobal
 
 	objList, err := dbObj.GetAllObjFromDb(server.dbHdl)
 	if err != nil {
@@ -61,9 +61,9 @@ func (server *ARPServer) getArpGlobalConfig() {
 		server.logger.Debug("No Config object found in DB for Arp")
 		return
 	}
-	obj := arpd.NewArpConfig()
-	dbObject := objList[0].(models.ArpConfig)
-	models.ConvertarpdArpConfigObjToThrift(&dbObject, obj)
+	obj := arpd.NewArpGlobal()
+	dbObject := objList[0].(models.ArpGlobal)
+	models.ConvertarpdArpGlobalObjToThrift(&dbObject, obj)
 	server.logger.Info(fmt.Sprintln("Timeout : ", int(obj.Timeout)))
 	arpConf := ArpConf{
 		RefTimeout: int(obj.Timeout),
