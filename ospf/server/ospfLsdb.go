@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -454,27 +454,49 @@ func (server *OSPFServer) generateNetworkLSA(areaId uint32, key IntfConfKey, isD
 
 func (server *OSPFServer) constructStubLinkP2P(ent IntfConf, likType config.IfType) LinkDetail {
 	var linkDetail LinkDetail
-	/*RFC 2328   Assuming that the neighboring router's IP
-	  address is known, set the Link ID of the Type 3
-	  link to the neighbor's IP address, the Link Data
-	  to the mask 0xffffffff (indicating a host
-	  route), and the cost to the interface's
-	  configured output cost.[15]
+	/*
+	   There are two forms that this stub link can take:
+
+	   Option 1
+	   Assuming that the neighboring router's IP
+	   address is known, set the Link ID of the Type 3
+	   link to the neighbor's IP address, the Link Data
+	   to the mask 0xffffffff (indicating a host
+	   route), and the cost to the interface's
+	   configured output cost.[15]
+
+	   Option 2
+	   If a subnet has been assigned to the point-to-
+	   point link, set the Link ID of the Type 3 link
+	   to the subnet's IP address, the Link Data to the
+	   subnet's mask, and the cost to the interface's
+	   configured output cost.[16]
 
 	*/
 
-	var nbrIp uint32
-	nbrIp = 0
-	for key, _ := range ent.NeighborMap {
-		nbrIp = convertAreaOrRouterIdUint32(string(key.IPAddr))
-		break
-	}
+	/*
+		var nbrIp uint32
+		nbrIp = 0
+		for key, _ := range ent.NeighborMap {
+			nbrIp = convertAreaOrRouterIdUint32(string(key.IPAddr))
+			break
+		}
 
-	linkDetail.LinkId = uint32(nbrIp)
-	linkDetail.LinkData = 0xffffffff
+		linkDetail.LinkId = uint32(nbrIp)
+		linkDetail.LinkData = 0xffffffff
+		linkDetail.LinkType = StubLink
+		linkDetail.NumOfTOS = 0
+		linkDetail.LinkMetric = 10
+	*/
+
+	ipAddr := convertAreaOrRouterIdUint32(ent.IfIpAddr.String())
+	netmask := convertIPv4ToUint32(ent.IfNetmask)
+	linkDetail.LinkId = ipAddr & netmask
+	linkDetail.LinkData = netmask
 	linkDetail.LinkType = StubLink
 	linkDetail.NumOfTOS = 0
 	linkDetail.LinkMetric = 10
+
 	return linkDetail
 }
 

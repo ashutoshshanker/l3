@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -77,12 +77,12 @@ func (server *ARPServer) processDeleteResolvedIPv4(ipAddr string) {
 
 func (server *ARPServer) processArpConf(conf ArpConf) (int, error) {
 	server.logger.Debug(fmt.Sprintln("Received ARP Timeout Value via Configuration:", conf.RefTimeout))
-	if conf.RefTimeout < server.minRefreshTimeout {
-		server.logger.Err(fmt.Sprintln("Refresh Timeout is below minimum allowed refresh timeout value of:", server.minRefreshTimeout))
+	if conf.RefTimeout < server.MinRefreshTimeout {
+		server.logger.Err(fmt.Sprintln("Refresh Timeout is below minimum allowed refresh timeout value of:", server.MinRefreshTimeout))
 		err := errors.New("Invalid Timeout Value")
 		return 0, err
-	} else if conf.RefTimeout == server.confRefreshTimeout {
-		server.logger.Err(fmt.Sprintln("Arp is already configured with Refresh Timeout Value of:", server.confRefreshTimeout, "(seconds)"))
+	} else if conf.RefTimeout == server.ConfRefreshTimeout {
+		server.logger.Err(fmt.Sprintln("Arp is already configured with Refresh Timeout Value of:", server.ConfRefreshTimeout, "(seconds)"))
 		return 0, nil
 	}
 
