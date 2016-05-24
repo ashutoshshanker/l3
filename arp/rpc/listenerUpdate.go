@@ -35,8 +35,8 @@ func (h *ARPHandler) sanityCheckArpGlobalConfig(timeout int) error {
 		err := errors.New(fmt.Sprintln("Arp refresh timeout value is below allowed refresh timeout value of:", h.server.MinRefreshTimeout))
 		return err
 	} else if timeout == h.server.ConfRefreshTimeout {
-		err := errors.New(fmt.Sprintln("Arp refresh timeout is already configured with value of:", h.server.ConfRefreshTimeout))
-		return err
+		h.logger.Info(fmt.Sprintln("Arp refresh timeout is already configured with value of:", h.server.ConfRefreshTimeout))
+		return nil
 	}
 	return nil
 }
