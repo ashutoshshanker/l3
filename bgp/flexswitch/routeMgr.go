@@ -34,7 +34,6 @@ import (
 	"l3/rib/ribdCommonDefs"
 	"ribd"
 	"ribdInt"
-	"reflect"
 	"utils/logging"
 
 	nanomsg "github.com/op/go-nanomsg"
@@ -225,26 +224,20 @@ func (mgr *FSRouteMgr) UpdateRoute(cfg *config.RouteConfig, op string) {
 		NextHopIp : cfg.NextHopIp,
 		NextHopIntRef:cfg.OutgoingInterface,
 	}
-	rCfg.NextHop = make([]*ribd.NextHopInfo,0)
-	rCfg.NextHop = append(rCfg.NextHop,&nextHop)
-	objTyp := reflect.TypeOf(rCfg)
-	valueMap := make(map[string]string)
-	value := make([]map[string]string,0)
-	for i := 0; i < objTyp.NumField(); i++ {
-		objName := objTyp.Field(i).Name
-		if objName == "NextHop" {
-			valueMap["NextHopIp"] = cfg.NextHopIp
-			valueMap["NextHopIntRef"] = cfg.OutgoingInterface
-			value = append(value,valueMap)
-			patchOpInfo = append(patchOp,&ribd.PatchOpInfo{
-			                     Op: op,
-							    Path:"NextHop",
-								Value : value,
-								})
-			break
-		}
-    }
-	mgr.ribdClient.UpdateIPv4Route(&rCfg, &rCfg, attrSet, patchOp)
+    rCfg.NextHop = make([]*ribd.NextHopInfo,0)
+    rCfg.NextHop = append(rCfg.NextHop,&nextHop)
+    valueMap := make(map[string]string)
+    value := make([]map[string]string,0)
+    patchOp := make([]*ribd.PatchOpInfo,0)
+    valueMap["NextHopIp"] = cfg.NextHopIp
+    valueMap["NextHopIntRef"] = cfg.OutgoingInterface
+    value = append(value,valueMap)
+    patchOp = append(patchOp,&ribd.PatchOpInfo {
+			        Op: op,
+                     Path:"NextHop",
+                     Value : value,
+                     })
+	mgr.ribdClient.UpdateIPv4Route(&rCfg, &rCfg, nil,patchOp)
 }
 func (mgr *FSRouteMgr) ApplyPolicy(protocol string, policy string, action string, conditions []*config.ConditionInfo) {
 	temp := make([]ribdInt.ConditionInfo, len(conditions))

@@ -45,7 +45,7 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayGlobal(
 func (h *DhcpRelayServiceHandler) UpdateDhcpRelayGlobal(
 	origconfig *dhcprelayd.DhcpRelayGlobal,
 	newconfig *dhcprelayd.DhcpRelayGlobal,
-	attrset []bool, op string) (bool, error) {
+	attrset []bool, op []*dhcprelayd.PatchOpInfo) (bool, error) {
 	logger.Info(fmt.Sprintln("DRA: updating relay config to",
 		newconfig.Enable))
 	dhcprelayEnable = newconfig.Enable
@@ -100,7 +100,7 @@ func (h *DhcpRelayServiceHandler) CreateDhcpRelayIntf(
 func (h *DhcpRelayServiceHandler) UpdateDhcpRelayIntf(
 	origconfig *dhcprelayd.DhcpRelayIntf,
 	newconfig *dhcprelayd.DhcpRelayIntf,
-	attrset []bool, op string) (bool, error) {
+	attrset []bool, op []*dhcprelayd.PatchOpInfo) (bool, error) {
 	logger.Info("DRA: Intf Config Update")
 	logger.Info("DRA: Updating Dhcp Relay Config for interface")
 	if origconfig.IfIndex != newconfig.IfIndex {
