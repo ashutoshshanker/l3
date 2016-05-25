@@ -208,3 +208,8 @@ func (h *OSPFHandler) GetBulkOspfGlobalState(fromIdx ospfd.Int, count ospfd.Int)
 	ospfGlobalStateGetInfo.OspfGlobalStateList = ospfGlobalStateResponse
 	return ospfGlobalStateGetInfo, nil
 }
+
+func (h *OSPFHandler) GetBulkOspfIPv4Routes(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfIPv4RoutesGetInfo, error) {
+	/* This is template API . All OSPF routes are currently installed in the redis db */
+	return  nil, nil
+}

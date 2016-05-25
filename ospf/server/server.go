@@ -349,21 +349,21 @@ func (server *OSPFServer) StartServer(paramFile string) {
 			if err == nil {
 				//Handle Global Configuration
 			}
-			server.GlobalConfigRetCh <- err
+		//	server.GlobalConfigRetCh <- err
 		case areaConf := <-server.AreaConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Area Configuration", areaConf))
 			err := server.processAreaConfig(areaConf)
 			if err == nil {
 				//Handle Area Configuration
 			}
-			server.AreaConfigRetCh <- err
+		//	server.AreaConfigRetCh <- err
 		case ifConf := <-server.IntfConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Intf Configuration", ifConf))
 			err := server.processIntfConfig(ifConf)
 			if err == nil {
 				//Handle Intf Configuration
 			}
-			server.IntfConfigRetCh <- err
+		//	server.IntfConfigRetCh <- err
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:

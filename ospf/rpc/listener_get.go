@@ -94,3 +94,6 @@ func (h *OSPFHandler) GetOspfVirtNbrEntryState(virtNbrRtrId string, virtNbrArea 
 	return ospfVirtNbrResponse, nil
 }
 
+func (h *OSPFHandler) GetOspfIPv4Routes(destId string, addrMask string, destType string) (*ospfd.OspfIPv4Routes, error) {
+	return nil, nil
+}

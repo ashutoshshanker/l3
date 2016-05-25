@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -376,14 +376,12 @@ func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 		ent.IfHelloInterval = uint16(ifConf.IfHelloInterval)
 		ent.IfRtrDeadInterval = uint32(ifConf.IfRtrDeadInterval)
 		ent.IfPollInterval = ifConf.IfPollInterval
-		authKey := convertAuthKey(string(ifConf.IfAuthKey))
-		if authKey == nil {
-			server.logger.Err("Invalid authKey")
-			return
-		}
-		ent.IfAuthKey = authKey
-		ent.IfMulticastForwarding = ifConf.IfMulticastForwarding
-		ent.IfDemand = ifConf.IfDemand
+		//authKey := convertAuthKey(string(ifConf.IfAuthKey))
+		//if authKey == nil {
+		//	server.logger.Err("Invalid authKey")
+		//	return
+		//}
+		//ent.IfAuthKey = authKey
 		ent.IfAuthType = uint16(ifConf.IfAuthType)
 		/* Re initiate the Interface State */
 		ent.IfDRIp = []byte{0, 0, 0, 0}
