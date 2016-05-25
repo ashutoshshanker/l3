@@ -1549,81 +1549,6 @@ func (m RIBDServer) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val bool, err
 	}
 	return true, err
 }
-/*
-func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
-	logger.Debug(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with op: "))
-	if !RouteServiceHandler.AcceptConfig {
-		logger.Debug("Not ready to accept config")
-		//return err
-	}
-	destNet, err := getNetowrkPrefixFromStrings(origconfig.DestinationNw, origconfig.NetworkMask)
-	if err != nil {
-		logger.Debug(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
-		return val, err
-	}
-	ok := RouteInfoMap.Match(destNet)
-	if !ok {
-		err = errors.New("No route found")
-		return val, err
-	}
-	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
-	if routeInfoRecordListItem == nil {
-		logger.Debug("No route for destination network")
-		return val, err
-	}
-	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
-	callUpdate := true
-	if attrset != nil {
-		found, routeInfoRecord, index := findRouteWithNextHop(routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol], origconfig.NextHop[0].NextHopIp)
-		if !found || index == -1 {
-			logger.Debug("Invalid nextHopIP")
-			return val, err
-		}
-		objTyp := reflect.TypeOf(*origconfig)
-		for i := 0; i < objTyp.NumField(); i++ {
-			objName := objTyp.Field(i).Name
-			if attrset[i] {
-				logger.Debug(fmt.Sprintf("ProcessRouteUpdateConfig (server): changed ", objName))
-				if objName == "NextHop" {
-					if len(newconfig.NextHop) == 0 {
-						logger.Err("Must specify next hop")
-						return val, err
-					} else {
-						nextHopIpAddr, err := getIP(newconfig.NextHop[0].NextHopIp)
-						if err != nil {
-							logger.Debug("nextHopIpAddr invalid")
-							return val, errors.New("Invalid next hop")
-						}
-						logger.Debug(fmt.Sprintln("Update the next hop info old ip: ", origconfig.NextHop[0].NextHopIp, " new value: ", newconfig.NextHop[0].NextHopIp, " weight : ", newconfig.NextHop[0].Weight))
-						routeInfoRecord.nextHopIp = nextHopIpAddr
-						routeInfoRecord.weight = ribd.Int(newconfig.NextHop[0].Weight)
-						if newconfig.NextHop[0].NextHopIntRef != "" {
-							nextHopIntRef, _ := strconv.Atoi(newconfig.NextHop[0].NextHopIntRef)
-							routeInfoRecord.nextHopIfIndex = ribd.Int(nextHopIntRef)
-						}
-					}
-				}
-				if objName == "Cost" {
-					routeInfoRecord.metric = ribd.Int(newconfig.Cost)
-				}*/
-				/*				if objName == "OutgoingInterface" {
-								nextHopIfIndex, _ := strconv.Atoi(newconfig.OutgoingInterface)
-								routeInfoRecord.nextHopIfIndex = ribd.Int(nextHopIfIndex)
-								callUpdate = false
-							}*/
-			/*}
-		}
-		routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol][index] = routeInfoRecord
-		RouteInfoMap.Set(destNet, routeInfoRecordList)
-		//RouteServiceHandler.DBRouteAddCh <- RouteDBInfo{routeInfoRecord, routeInfoRecordList}//.WriteIPv4RouteStateEntryToDB(routeInfoRecord, routeInfoRecordList)
-		RouteServiceHandler.WriteIPv4RouteStateEntryToDB(RouteDBInfo{routeInfoRecord, routeInfoRecordList})
-		if callUpdate == false {
-			return val, err
-		}
-	}
-	updateBestRoute(destNet, routeInfoRecordList)
-	return val, err
-}
 
 func (m RIBDServer) ProcessRoutePatchUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, op []*ribd.PatchOpInfo) (val bool, err error) {
 	logger.Debug(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with number of patch ops: ", len(op)))
@@ -1672,9 +1597,9 @@ func (m RIBDServer) ProcessRoutePatchUpdateConfig(origconfig *ribd.IPv4Route, ne
 	}
 	return val, err
 }
-*/
-func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool, op string) (val bool, err error) {
-	logger.Debug(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with op: ", op))
+
+func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
+	logger.Debug(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request "))
 	if !RouteServiceHandler.AcceptConfig {
 		logger.Debug("Not ready to accept config")
 		//return err
@@ -1685,26 +1610,8 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 		return val, err
 	}
 	ok := RouteInfoMap.Match(destNet)
-	if !ok && op != "add"{
+	if !ok {
 		err = errors.New(fmt.Sprintln("No route found for ip ", destNet))
-		return val, err
-	}
-	if op == "add" {
-		logger.Debug(fmt.Sprintln("Add operation in update"))
-		if attrset != nil {
-			logger.Debug("attr set not nil, set individual attributes")
-			objTyp := reflect.TypeOf(*origconfig)
-			for i := 0; i < objTyp.NumField(); i++ {
-				objName := objTyp.Field(i).Name
-				if attrset[i] {
-					if objName != "NextHop" {
-						logger.Err(fmt.Sprintln("Cannot add any other object ", objName, " other than next hop"))
-						return false, errors.New("Cannot add any other object other than next hop")
-					}
-					m.ProcessRouteCreateConfig(newconfig)
-				}
-			}
-		}
 		return val, err
 	}
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
@@ -1713,27 +1620,6 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 		return val, err
 	}
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
-	if op == "remove" {
-		logger.Debug(fmt.Sprintln("Remove operation in update"))
-		if attrset != nil {
-			logger.Debug("attr set not nil, set individual attributes")
-			objTyp := reflect.TypeOf(*origconfig)
-			for i := 0; i < objTyp.NumField(); i++ {
-				objName := objTyp.Field(i).Name
-				if attrset[i] {
-					if objName != "NextHop" {
-						logger.Err(fmt.Sprintln("Cannot remove any other object ", objName, " other than next hop"))
-						return false, errors.New("Cannot remove any other object other than next hop")
-					}
-					m.ProcessRouteDeleteConfig(newconfig)
-				}
-			}
-		}
-		return val, err
-	}
-	/*
-		Now starts the case when update operation is called with replace
-	*/
 	callUpdate := true
 	if attrset != nil {
 		found, routeInfoRecord, index := findRouteWithNextHop(routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol], origconfig.NextHop[0].NextHopIp)
