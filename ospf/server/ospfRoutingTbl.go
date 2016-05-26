@@ -25,6 +25,7 @@ package server
 
 import (
 	"asicd/asicdCommonDefs"
+	"errors"
 	"fmt"
 	"ribd"
 	"strconv"
@@ -167,6 +168,77 @@ func (server *OSPFServer) dumpRoutingTbl() {
 	server.logger.Info("==============End of Routing Table================")
 }
 
+func (server *OSPFServer) findP2PNextHopIP(vFirst VertexKey, vSecond VertexKey, areaIdKey AreaIdKey) (ifIPAddr uint32, nextHopIP uint32, err error) {
+	// Our link is P2P
+	lsDbKey := LsdbKey{
+		AreaId: areaIdKey.AreaId,
+	}
+	lsDbEnt, exist := server.AreaLsdb[lsDbKey]
+	if !exist {
+		server.logger.Err(fmt.Sprintln("No LS Database found for areaId:", areaIdKey.AreaId))
+		err = errors.New("No LS Database found")
+		return 0, 0, err
+	}
+	//firstID := convertUint32ToIPv4(vFirst.ID)
+	//secondID := convertUint32ToIPv4(vSecond.ID)
+	//server.logger.Info(fmt.Sprintln("===============Hello=============== First Router:", firstID, "secondID:", secondID))
+	firstLsaKey := LsaKey{
+		LSType:    RouterLSA,
+		LSId:      vFirst.ID,
+		AdvRouter: vFirst.AdvRtr,
+	}
+	firstLsa, exist := lsDbEnt.RouterLsaMap[firstLsaKey]
+	if !exist {
+		server.logger.Err("Unable to find the Router Lsa for first node")
+		err = errors.New("Unable to find the Router Lsa for second node")
+		return 0, 0, err
+	}
+	secondLsaKey := LsaKey{
+		LSType:    RouterLSA,
+		LSId:      vSecond.ID,
+		AdvRouter: vSecond.AdvRtr,
+	}
+	secondLsa, exist := lsDbEnt.RouterLsaMap[secondLsaKey]
+	if !exist {
+		server.logger.Err("Unable to find the Router Lsa for second node")
+		err = errors.New("Unable to find the Router Lsa for second node")
+		return 0, 0, err
+	}
+	var firstLink LinkDetail
+	flag := false
+	var secondLink LinkDetail
+	for _, link := range firstLsa.LinkDetails {
+		if link.LinkId == vSecond.AdvRtr {
+			firstLink = link
+			flag = true
+			break
+		}
+	}
+	if flag == false {
+		err = errors.New("Unable to find the Link for second vertex")
+		return 0, 0, err
+	} else {
+		flag = false
+	}
+	for _, link := range secondLsa.LinkDetails {
+		if link.LinkId == vFirst.AdvRtr &&
+			link.LinkType == P2PLink {
+			secondLink = link
+			flag = true
+			break
+		}
+	}
+
+	if flag == false {
+		err = errors.New("Unable to find the Link for first vertex")
+		return 0, 0, err
+	}
+	ifIPAddr = firstLink.LinkData
+	nextHopIP = secondLink.LinkData
+	return ifIPAddr, nextHopIP, nil
+
+}
+
 func (server *OSPFServer) UpdateRoutingTblForRouter(areaIdKey AreaIdKey, vKey VertexKey, tVertex TreeVertex, rootVKey VertexKey) {
 	server.logger.Info(fmt.Sprintln("Updating Routing Table for Router Vertex", vKey, tVertex))
 
@@ -232,30 +304,51 @@ func (server *OSPFServer) UpdateRoutingTblForRouter(areaIdKey AreaIdKey, vKey Ve
 			server.logger.Info("Starting vertex is not our router, hence ignoring this path")
 			continue
 		}
-		if pathlen < 2 {
+		//if pathlen < 2 {
+		if pathlen < 1 {
 			server.logger.Info("Connected Route so no next hops")
 			continue
 		}
-		vFirst := tVertex.Paths[i][0]
-		vSecond := tVertex.Paths[i][1]
-		var vThird VertexKey
-		if pathlen == 2 {
-			vThird = vKey
+		var vFirst VertexKey
+		var vSecond VertexKey
+		if pathlen == 1 {
+			vFirst = tVertex.Paths[i][0]
+			vSecond = vKey
 		} else {
-			vThird = tVertex.Paths[i][2]
+			vFirst = tVertex.Paths[i][0]
+			vSecond = tVertex.Paths[i][1]
 		}
-		gFirst, exist := server.AreaGraph[vFirst]
-		if !exist {
-			server.logger.Info(fmt.Sprintln("1. Entry does not exist for:", vFirst, "in Area Graph"))
-			continue
+		var ifIPAddr uint32
+		var nextHopIP uint32
+		if vFirst.Type == RouterVertex &&
+			vSecond.Type == RouterVertex {
+			var err error
+			ifIPAddr, nextHopIP, err = server.findP2PNextHopIP(vFirst, vSecond, areaIdKey)
+			if err != nil {
+				server.logger.Err(fmt.Sprintln("Error in find P2P Next HOP IP:", err))
+				continue
+			}
+			server.logger.Info(fmt.Sprintln("P2P ifIPAddr:", ifIPAddr, "nextHopIP:", nextHopIP))
+		} else {
+			var vThird VertexKey
+			if pathlen == 2 {
+				vThird = vKey
+			} else {
+				vThird = tVertex.Paths[i][2]
+			}
+			gFirst, exist := server.AreaGraph[vFirst]
+			if !exist {
+				server.logger.Info(fmt.Sprintln("1. Entry does not exist for:", vFirst, "in Area Graph"))
+				continue
+			}
+			gThird, exist := server.AreaGraph[vThird]
+			if !exist {
+				server.logger.Info(fmt.Sprintln("3. Entry does not exist for:", vThird, "in Area Graph"))
+				continue
+			}
+			ifIPAddr = gFirst.LinkData[vSecond]
+			nextHopIP = gThird.LinkData[vSecond]
 		}
-		gThird, exist := server.AreaGraph[vThird]
-		if !exist {
-			server.logger.Info(fmt.Sprintln("3. Entry does not exist for:", vThird, "in Area Graph"))
-			continue
-		}
-		ifIPAddr := gFirst.LinkData[vSecond]
-		nextHopIP := gThird.LinkData[vSecond]
 		nextHop := NextHop{
 			IfIPAddr:  ifIPAddr,
 			IfIdx:     0, //TODO
@@ -424,6 +517,7 @@ func (server *OSPFServer) UpdateRoutingTblForSNetwork(areaIdKey AreaIdKey, vKey 
 */
 
 func (server *OSPFServer) UpdateRoutingTblForTNetwork(areaIdKey AreaIdKey, vKey VertexKey, tVertex TreeVertex, rootVKey VertexKey) {
+	var err error
 	server.logger.Info(fmt.Sprintln("Updating Routing Table for Transit Network Vertex", vKey, tVertex))
 
 	gEnt, exist := server.AreaGraph[vKey]
@@ -469,24 +563,46 @@ func (server *OSPFServer) UpdateRoutingTblForTNetwork(areaIdKey AreaIdKey, vKey 
 			continue
 		}
 		if pathlen < 3 { //Path Example {R1}, {R1, N1, R2} -- TODO
-			server.logger.Info("Connected Route so no next hops")
-			continue
+			if pathlen == 2 { // Path Example {R1, R2} P2P
+				vFirst := tVertex.Paths[i][0]
+				vSecond := tVertex.Paths[i][1]
+				if vFirst.Type != RouterVertex ||
+					vSecond.Type != RouterVertex {
+					server.logger.Info("Connected Route so no next hops")
+					continue
+				}
+			} else {
+				server.logger.Info("Connected Route so no next hops")
+				continue
+			}
 		}
 		vFirst := tVertex.Paths[i][0]
 		vSecond := tVertex.Paths[i][1]
-		vThird := tVertex.Paths[i][2]
-		gFirst, exist := server.AreaGraph[vFirst]
-		if !exist {
-			server.logger.Info(fmt.Sprintln("1. Entry does not exist for:", vFirst, "in Area Graph"))
-			continue
+		var ifIPAddr uint32
+		var nextHopIP uint32
+		if vFirst.Type == RouterVertex &&
+			vSecond.Type == RouterVertex {
+			ifIPAddr, nextHopIP, err = server.findP2PNextHopIP(vFirst, vSecond, areaIdKey)
+			if err != nil {
+				server.logger.Err(fmt.Sprintln("Error in find P2P Next HOP IP:", err))
+				continue
+			}
+			server.logger.Info(fmt.Sprintln("P2P ifIPAddr:", ifIPAddr, "nextHopIP:", nextHopIP))
+		} else {
+			vThird := tVertex.Paths[i][2]
+			gFirst, exist := server.AreaGraph[vFirst]
+			if !exist {
+				server.logger.Info(fmt.Sprintln("1. Entry does not exist for:", vFirst, "in Area Graph"))
+				continue
+			}
+			gThird, exist := server.AreaGraph[vThird]
+			if !exist {
+				server.logger.Info(fmt.Sprintln("3. Entry does not exist for:", vThird, "in Area Graph"))
+				continue
+			}
+			ifIPAddr = gFirst.LinkData[vSecond]
+			nextHopIP = gThird.LinkData[vSecond]
 		}
-		gThird, exist := server.AreaGraph[vThird]
-		if !exist {
-			server.logger.Info(fmt.Sprintln("3. Entry does not exist for:", vThird, "in Area Graph"))
-			continue
-		}
-		ifIPAddr := gFirst.LinkData[vSecond]
-		nextHopIP := gThird.LinkData[vSecond]
 		nextHop := NextHop{
 			IfIPAddr:  ifIPAddr,
 			IfIdx:     0, //TODO

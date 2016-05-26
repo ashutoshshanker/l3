@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package rpc
 
@@ -39,22 +39,29 @@ func (h *ARPHandler) SendResolveArpIPv4(targetIp string, ifId arpdInt.Int) {
 	return
 }
 
-func (h *ARPHandler) SendSetArpConfig(refTimeout int) bool {
+func (h *ARPHandler) SendSetArpGlobalConfig(refTimeout int) error {
+	err := h.sanityCheckArpGlobalConfig(refTimeout)
+	if err != nil {
+		return err
+	}
 	arpConf := server.ArpConf{
 		RefTimeout: refTimeout,
 	}
 	h.server.ArpConfCh <- arpConf
-	return true
+	return err
 }
 
-//func (h *ARPHandler) ResolveArpIPV4(targetIp string, ifType arpdInt.Int, ifId arpdInt.Int) (arpdInt.Int, error) {
 func (h *ARPHandler) ResolveArpIPV4(targetIp string, ifId arpdInt.Int) error {
 	h.logger.Info(fmt.Sprintln("Received ResolveArpIPV4 call with targetIp:", targetIp, "ifId:", ifId))
 	h.SendResolveArpIPv4(targetIp, ifId)
 	return nil
 }
 
-func (h *ARPHandler) CreateArpConfig(conf *arpd.ArpConfig) (bool, error) {
-	h.logger.Info(fmt.Sprintln("Received CreateArpConfig call with Timeout:", conf.Timeout))
-	return h.SendSetArpConfig(int(conf.Timeout)), nil
+func (h *ARPHandler) CreateArpGlobal(conf *arpd.ArpGlobal) (bool, error) {
+	h.logger.Info(fmt.Sprintln("Received CreateArpGlobal call with Timeout:", conf.Timeout))
+	err := h.SendSetArpGlobalConfig(int(conf.Timeout))
+	if err != nil {
+		return false, err
+	}
+	return true, err
 }
