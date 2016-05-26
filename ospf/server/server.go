@@ -1,7 +1,30 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
-	"asicd/pluginManager/pluginCommon"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"container/list"
 	"encoding/json"
@@ -14,6 +37,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"utils/dbutils"
 	"utils/ipcutils"
 	"utils/logging"
 )
@@ -35,7 +59,7 @@ type LsdbKey struct {
 }
 
 type RoutingTblKey struct {
-        AreaId uint32
+	AreaId uint32
 }
 
 type LsdbSliceEnt struct {
@@ -46,17 +70,19 @@ type LsdbSliceEnt struct {
 }
 
 type OSPFServer struct {
-	logger          *logging.Writer
-	ribdClient      RibdClient
-	asicdClient     AsicdClient
-	portPropertyMap map[int32]PortProperty
-	vlanPropertyMap map[uint16]VlanProperty
-	//IPIntfPropertyMap  map[string]IPIntfProperty
+	logger             *logging.Writer
+	ribdClient         RibdClient
+	asicdClient        AsicdClient
+	portPropertyMap    map[int32]PortProperty
+	vlanPropertyMap    map[uint16]VlanProperty
 	ipPropertyMap      map[uint32]IpProperty
 	ospfGlobalConf     GlobalConf
 	GlobalConfigCh     chan config.GlobalConf
 	AreaConfigCh       chan config.AreaConf
 	IntfConfigCh       chan config.InterfaceConf
+	GlobalConfigRetCh  chan error
+	AreaConfigRetCh    chan error
+	IntfConfigRetCh    chan error
 	AreaLsdb           map[LsdbKey]LSDatabase
 	LsdbSlice          []LsdbSliceEnt
 	LsdbStateTimer     *time.Timer
@@ -69,12 +95,13 @@ type OSPFServer struct {
 	CreateNetworkLSACh chan ospfNbrMdata
 	AdjOKEvtCh         chan AdjOKEvtMsg
 	maxAgeLsaCh        chan maxAgeLsaMsg
-	/*
-	   connRoutesTimer         *time.Timer
-	   ribSubSocket        *nanomsg.SubSocket
-	   ribSubSocketCh      chan []byte
-	   ribSubSocketErrCh   chan error
-	*/
+	ExternalRouteNotif chan RouteMdata
+
+	//	   connRoutesTimer         *time.Timer
+	ribSubSocket      *nanomsg.SubSocket
+	ribSubSocketCh    chan []byte
+	ribSubSocketErrCh chan error
+
 	asicdSubSocket        *nanomsg.SubSocket
 	asicdSubSocketCh      chan []byte
 	asicdSubSocketErrCh   chan error
@@ -82,7 +109,7 @@ type OSPFServer struct {
 	IntfConfMap           map[IntfConfKey]IntfConf
 	IntfTxMap             map[IntfConfKey]IntfTxHandle
 	IntfRxMap             map[IntfConfKey]IntfRxHandle
-	NeighborConfigMap     map[uint32]OspfNeighborEntry
+	NeighborConfigMap     map[NeighborConfKey]OspfNeighborEntry
 	NeighborListMap       map[IntfConfKey]list.List
 	neighborConfMutex     sync.Mutex
 	neighborHelloEventCh  chan IntfToNeighMsg
@@ -92,7 +119,7 @@ type OSPFServer struct {
 	nbrFSMCtrlCh          chan bool
 	neighborSliceRefCh    *time.Ticker
 	neighborSliceStartCh  chan bool
-	neighborBulkSlice     []uint32
+	neighborBulkSlice     []NeighborConfKey
 	neighborDBDEventCh    chan ospfNeighborDBDMsg
 	neighborLSAReqEventCh chan ospfNeighborLSAreqMsg
 	neighborLSAUpdEventCh chan ospfNeighborLSAUpdMsg
@@ -119,18 +146,20 @@ type OSPFServer struct {
 
 	RefreshDuration time.Duration
 
-	TempAreaRoutingTbl map[AreaIdKey]AreaRoutingTbl
-        GlobalRoutingTbl        map[RoutingTblEntryKey]GlobalRoutingTblEntry
-        OldGlobalRoutingTbl     map[RoutingTblEntryKey]GlobalRoutingTblEntry
-        TempGlobalRoutingTbl    map[RoutingTblEntryKey]GlobalRoutingTblEntry
+	TempAreaRoutingTbl   map[AreaIdKey]AreaRoutingTbl
+	GlobalRoutingTbl     map[RoutingTblEntryKey]GlobalRoutingTblEntry
+	OldGlobalRoutingTbl  map[RoutingTblEntryKey]GlobalRoutingTblEntry
+	TempGlobalRoutingTbl map[RoutingTblEntryKey]GlobalRoutingTblEntry
 
-        SummaryLsDb             map[LsdbKey]SummaryLsaMap
+	SummaryLsDb map[LsdbKey]SummaryLsaMap
 
 	StartCalcSPFCh chan bool
 	DoneCalcSPFCh  chan bool
 	AreaGraph      map[VertexKey]Vertex
 	SPFTree        map[VertexKey]TreeVertex
 	AreaStubs      map[VertexKey]StubVertex
+
+	dbHdl *dbutils.DBUtil
 }
 
 func NewOSPFServer(logger *logging.Writer) *OSPFServer {
@@ -139,6 +168,9 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.GlobalConfigCh = make(chan config.GlobalConf)
 	ospfServer.AreaConfigCh = make(chan config.AreaConf)
 	ospfServer.IntfConfigCh = make(chan config.InterfaceConf)
+	ospfServer.GlobalConfigRetCh = make(chan error)
+	ospfServer.AreaConfigRetCh = make(chan error)
+	ospfServer.IntfConfigRetCh = make(chan error)
 	ospfServer.portPropertyMap = make(map[int32]PortProperty)
 	ospfServer.vlanPropertyMap = make(map[uint16]VlanProperty)
 	ospfServer.ipPropertyMap = make(map[uint32]IpProperty)
@@ -152,12 +184,13 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.NetworkDRChangeCh = make(chan DrChangeMsg)
 	ospfServer.CreateNetworkLSACh = make(chan ospfNbrMdata)
 	ospfServer.FlushNetworkLSACh = make(chan NetworkLSAChangeMsg)
+	ospfServer.ExternalRouteNotif = make(chan RouteMdata)
 	ospfServer.LsdbSlice = []LsdbSliceEnt{}
 	ospfServer.LsdbUpdateCh = make(chan LsdbUpdateMsg)
 	ospfServer.LsaUpdateRetCodeCh = make(chan bool)
 	ospfServer.AdjOKEvtCh = make(chan AdjOKEvtMsg)
 	ospfServer.maxAgeLsaCh = make(chan maxAgeLsaMsg)
-	ospfServer.NeighborConfigMap = make(map[uint32]OspfNeighborEntry)
+	ospfServer.NeighborConfigMap = make(map[NeighborConfKey]OspfNeighborEntry)
 	ospfServer.NeighborListMap = make(map[IntfConfKey]list.List)
 	ospfServer.neighborConfMutex = sync.Mutex{}
 	ospfServer.neighborHelloEventCh = make(chan IntfToNeighMsg)
@@ -185,12 +218,11 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.ospfRxNbrPktStopCh = make(chan bool)
 	ospfServer.ospfTxNbrPktStopCh = make(chan bool)
 
-	/*
-	   ospfServer.ribSubSocketCh = make(chan []byte)
-	   ospfServer.ribSubSocketErrCh = make(chan error)
-	   ospfServer.connRoutesTimer = time.NewTimer(time.Duration(10) * time.Second)
-	   ospfServer.connRoutesTimer.Stop()
-	*/
+	ospfServer.ribSubSocketCh = make(chan []byte)
+	ospfServer.ribSubSocketErrCh = make(chan error)
+	// ospfServer.connRoutesTimer = time.NewTimer(time.Duration(10) * time.Second)
+	// ospfServer.connRoutesTimer.Stop()
+
 	ospfServer.asicdSubSocketCh = make(chan []byte)
 	ospfServer.asicdSubSocketErrCh = make(chan error)
 
@@ -221,8 +253,6 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 	}
 
 	for _, client := range clientsList {
-		//server.logger.Info("#### Client name is ")
-		//server.logger.Info(client.Name)
 		if client.Name == "asicd" {
 			server.logger.Info(fmt.Sprintln("found asicd at port", client.Port))
 			server.asicdClient.Address = "localhost:" + strconv.Itoa(client.Port)
@@ -247,13 +277,6 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 			server.logger.Info("Ospfd is connected to Asicd")
 			server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
 			server.asicdClient.IsConnected = true
-			/*
-				if server.asicdClient.Transport != nil && server.asicdClient.PtrProtocolFactory != nil {
-					server.logger.Info("connecting to asicd")
-					server.asicdClient.ClientHdl = asicdServices.NewASICDServicesClientFactory(server.asicdClient.Transport, server.asicdClient.PtrProtocolFactory)
-					server.asicdClient.IsConnected = true
-				}
-			*/
 		} else if client.Name == "ribd" {
 			server.logger.Info(fmt.Sprintln("found ribd at port", client.Port))
 			server.ribdClient.Address = "localhost:" + strconv.Itoa(client.Port)
@@ -277,36 +300,43 @@ func (server *OSPFServer) ConnectToClients(paramsFile string) {
 			server.logger.Info("Ospfd is connected to Ribd")
 			server.ribdClient.ClientHdl = ribd.NewRIBDServicesClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
 			server.ribdClient.IsConnected = true
-			/*
-				if server.ribdClient.Transport != nil && server.ribdClient.PtrProtocolFactory != nil {
-					server.logger.Info("connecting to ribd")
-					server.ribdClient.ClientHdl = ribd.NewRouteServiceClientFactory(server.ribdClient.Transport, server.ribdClient.PtrProtocolFactory)
-					server.ribdClient.IsConnected = true
-				}
-			*/
 		}
 	}
 }
 
 func (server *OSPFServer) InitServer(paramFile string) {
 	server.logger.Info(fmt.Sprintln("Starting Ospf Server"))
-	server.ConnectToClients(paramFile)
-	server.BuildPortPropertyMap()
 	server.initOspfGlobalConfDefault()
 	server.logger.Info(fmt.Sprintln("GlobalConf:", server.ospfGlobalConf))
 	server.initAreaConfDefault()
 	server.logger.Info(fmt.Sprintln("AreaConf:", server.AreaConfMap))
 	server.initIntfStateSlice()
+	server.ConnectToClients(paramFile)
+	server.logger.Info("Listen for ASICd updates")
+	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
+	go server.createASICdSubscriber()
+
+	server.BuildOspfInfra()
+	err := server.InitializeDB()
+	if err != nil {
+		server.logger.Err(fmt.Sprintln("DB Initialization faliure err:", err))
+	}
 	/*
 	   server.logger.Info("Listen for RIBd updates")
 	   server.listenForRIBUpdates(ribdCommonDefs.PUB_SOCKET_ADDR)
 	   go createRIBSubscriber()
 	   server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
 	*/
-	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
-	go server.createASICdSubscriber()
+	err = server.initAsicdForRxMulticastPkt()
+	if err != nil {
+		server.logger.Err(fmt.Sprintln("Unable to initialize asicd for receiving multicast packets", err))
+	}
+
 	go server.spfCalculation()
+	if server.dbHdl != nil {
+		// Read DB for config objects in case of restarts
+		server.ReadOspfCfgFromDB()
+	}
 
 }
 
@@ -315,29 +345,41 @@ func (server *OSPFServer) StartServer(paramFile string) {
 	for {
 		select {
 		case gConf := <-server.GlobalConfigCh:
-			server.processGlobalConfig(gConf)
+			err := server.processGlobalConfig(gConf)
+			if err == nil {
+				//Handle Global Configuration
+			}
+		//	server.GlobalConfigRetCh <- err
 		case areaConf := <-server.AreaConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Area Configuration", areaConf))
-			server.processAreaConfig(areaConf)
+			err := server.processAreaConfig(areaConf)
+			if err == nil {
+				//Handle Area Configuration
+			}
+		//	server.AreaConfigRetCh <- err
 		case ifConf := <-server.IntfConfigCh:
 			server.logger.Info(fmt.Sprintln("Received call for performing Intf Configuration", ifConf))
-			server.processIntfConfig(ifConf)
+			err := server.processIntfConfig(ifConf)
+			if err == nil {
+				//Handle Intf Configuration
+			}
+		//	server.IntfConfigRetCh <- err
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:
 
-			/*
-			   case ribrxBuf := <-server.ribSubSocketCh:
-			       server.processRibdNotification(ribdrxBuf)
-			   case <-server.connRoutesTimer.C:
-			       routes, _ := server.ribdClient.ClientHdl.GetConnectedRoutesInfo()
-			       server.logger.Info(fmt.Sprintln("Received Connected Routes:", routes))
-			       //server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
-			       //server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
+		case ribrxBuf := <-server.ribSubSocketCh:
+			server.processRibdNotification(ribrxBuf)
+		/*
+		   case <-server.connRoutesTimer.C:
+		       routes, _ := server.ribdClient.ClientHdl.GetConnectedRoutesInfo()
+		       server.logger.Info(fmt.Sprintln("Received Connected Routes:", routes))
+		       //server.ProcessConnectedRoutes(routes, make([]*ribd.Routes, 0))
+		       //server.connRoutesTimer.Reset(time.Duration(10) * time.Second)
 
-			   case <-server.ribSubSocketErrCh:
-			       ;
-			*/
+		   case <-server.ribSubSocketErrCh:
+		       ;
+		*/
 		case msg := <-server.IntfSliceRefreshCh:
 			if msg == true {
 				server.refreshIntfKeySlice()

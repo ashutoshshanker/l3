@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
@@ -67,7 +90,7 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 	result := make([]config.LsdbState, cnt)
 	var i int
 	var j int
-	server.logger.Info(fmt.Sprintln("idx:", idx, "cnt:", cnt, "length of Ls DB Slice:", length))
+	//server.logger.Info(fmt.Sprintln("idx:", idx, "cnt:", cnt, "length of Ls DB Slice:", length))
 	for i, j = 0, idx; i < cnt && j < length; j++ {
 		var lsaEnc []byte
 		var lsaMd LsaMetadata
@@ -124,9 +147,9 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 		}
 
 		server.logger.Info(fmt.Sprintln(lsaEnc))
-		server.logger.Info(fmt.Sprintln("lsaEnc:", lsaEnc))
+		//server.logger.Info(fmt.Sprintln("lsaEnc:", lsaEnc))
 		adv := convertByteToOctetString(lsaEnc[OSPF_LSA_HEADER_SIZE:])
-		server.logger.Info(fmt.Sprintln("adv:", adv))
+		//server.logger.Info(fmt.Sprintln("adv:", adv))
 		result[i].LsdbAreaId = config.AreaId(convertUint32ToIPv4(lsdbKey.AreaId))
 		result[i].LsdbType = config.LsaType(lsaKey.LSType)
 		result[i].LsdbLsid = config.IpAddress(convertUint32ToIPv4(lsaKey.LSId))
@@ -135,7 +158,7 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 		result[i].LsdbAge = int(lsaMd.LSAge)
 		result[i].LsdbCheckSum = int(lsaMd.LSChecksum)
 		result[i].LsdbAdvertisement = adv
-		server.logger.Info(fmt.Sprintln("Result of GetBulk:", result))
+		//server.logger.Info(fmt.Sprintln("Result of GetBulk:", result))
 		i++
 	}
 
@@ -145,7 +168,7 @@ func (server *OSPFServer) GetBulkOspfLsdbEntryState(idx int, cnt int) (int, int,
 	count = i
 
 	server.LsdbStateTimer.Reset(server.RefreshDuration)
-	server.logger.Info(fmt.Sprintln("length:", length, "count:", count, "nextIdx:", nextIdx, "result:", result))
+	//server.logger.Info(fmt.Sprintln("length:", length, "count:", count, "nextIdx:", nextIdx, "result:", result))
 	return nextIdx, count, result
 }
 
@@ -249,7 +272,7 @@ func (server *OSPFServer) GetBulkOspfNbrEntryState(idx int, cnt int) (int, int, 
 		if ent, ok := server.NeighborConfigMap[key]; ok {
 			result[i].NbrIpAddress = config.IpAddress(ent.OspfNbrIPAddr.String())
 			result[i].NbrAddressLessIndex = int(ent.intfConfKey.IntfIdx)
-			result[i].NbrRtrId = convertUint32ToIPv4(key)
+			result[i].NbrRtrId = convertUint32ToIPv4(ent.OspfNbrRtrId)
 			result[i].NbrOptions = ent.OspfNbrOptions
 			result[i].NbrPriority = uint8(ent.OspfRtrPrio)
 			result[i].NbrState = ent.OspfNbrState

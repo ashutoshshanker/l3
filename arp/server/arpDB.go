@@ -1,115 +1,158 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
+
 package server
 
 import (
-    "fmt"
-    _ "github.com/mattn/go-sqlite3"
-    "utils/dbutils"
-    "database/sql"
+	"arpd"
+	"fmt"
+	"github.com/garyburd/redigo/redis"
+	"models"
+	"strconv"
+	"utils/dbutils"
 )
 
-
-func (server *ARPServer) initiateDB(dbName string) error {
-    var err error
-    err = nil
-    //DbName := paramsFile + server.usrConfDbName
-        //TODO
-    //DbName := server.usrConfDbName
-    //logger.Println("DB Location: ", DbName)
-    server.logger.Info(fmt.Sprintln("DB Location: ", dbName))
-    server.dbHdl, err = sql.Open("sqlite3", dbName)
-    if err != nil {
-        server.logger.Err("Failed to create the handle")
-        return err
-    }
-
-    if err = server.dbHdl.Ping(); err != nil {
-        server.logger.Err("Failed to keep DB connection alive")
-        return err
-    }
-
-    dbCmd := "CREATE TABLE IF NOT EXISTS ARPCache " +
-            "(ipAddr string PRIMARY KEY ," +
-            "portNum int)"
-
-    _, err = dbutils.ExecuteSQLStmt(dbCmd, server.dbHdl)
-    if err != nil {
-        server.logger.Err("Failed to create ARPCache Table in DB")
-        return err
-    }
-
-    return err
+type arpDbEntry struct {
+	IpAddr  string
+	L3IfIdx int
 }
 
-func (server *ARPServer)updateArpCacheFromDB() {
-        var ip          string
-        var port        int
-        server.logger.Info("Populate ARP Cache from DB entries")
-        rows, err := server.dbHdl.Query("SELECT * FROM ARPCache")
-        if err != nil {
-            server.logger.Err(fmt.Sprintf("Unable to Query DB:", err))
-            return
-        }
-        for rows.Next() {
-            err = rows.Scan(&ip, &port)
-            if err != nil {
-                server.logger.Err(fmt.Sprintf("Unable to Scan entry from DB:", err))
-                return
-            }
-            server.logger.Info(fmt.Sprintln("Data Retrived From DB IP:", ip, "port:", port))
+func (server *ARPServer) initiateDB() error {
+	var err error
+	server.dbHdl = dbutils.NewDBUtil(server.logger)
+	err = server.dbHdl.Connect()
+	if err != nil {
+		server.logger.Err("Failed to create the DB handle")
+		return err
+	}
+	return nil
+}
 
-            server.logger.Info(fmt.Sprintln("Adding arp cache entry for ", ip))
-            ent := server.arpCache[ip]
-                ent.MacAddr = "incomplete"
-            ent.Counter = (server.minCnt + server.retryCnt + 1)
-            //ent.Valid = false
-                ent.PortNum = port
-            server.arpCache[ip] = ent
-        }
-        server.logger.Info(fmt.Sprintln("Arp Cache after restoring: ", server.arpCache))
+func (server *ARPServer) getArpGlobalConfig() {
+	var dbObj models.ArpGlobal
 
+	objList, err := dbObj.GetAllObjFromDb(server.dbHdl)
+	if err != nil {
+		server.logger.Err("DB Query init failed during Arp Initialization")
+		return
+	}
+
+	if objList == nil {
+		server.logger.Debug("No Config object found in DB for Arp")
+		return
+	}
+	obj := arpd.NewArpGlobal()
+	dbObject := objList[0].(models.ArpGlobal)
+	models.ConvertarpdArpGlobalObjToThrift(&dbObject, obj)
+	server.logger.Info(fmt.Sprintln("Timeout : ", int(obj.Timeout)))
+	arpConf := ArpConf{
+		RefTimeout: int(obj.Timeout),
+	}
+	server.processArpConf(arpConf)
+}
+
+func (server *ARPServer) updateArpCacheFromDB() {
+	server.logger.Debug("Populate ARP Cache from DB entries")
+	if server.dbHdl != nil {
+		keyPattern := fmt.Sprintln("ArpCacheEntry#*")
+		keys, err := redis.Strings(redis.Values(server.dbHdl.Do("KEYS", keyPattern)))
+		if err != nil {
+			server.logger.Err(fmt.Sprintln("Failed to get all keys from DB"))
+			return
+		}
+		for idx := 0; idx < len(keys); idx++ {
+			var obj arpDbEntry
+			val, err := redis.Values(server.dbHdl.Do("HGETALL", keys[idx]))
+			if err != nil {
+				server.logger.Err(fmt.Sprintln("Failed to get ARP entry for key:", keys[idx]))
+				continue
+			}
+			err = redis.ScanStruct(val, &obj)
+			if err != nil {
+				server.logger.Err(fmt.Sprintln("Failed to get values corresponding to ARP entry key:", keys[idx]))
+				continue
+			}
+			server.logger.Debug(fmt.Sprintln("Data Retrived From DB IP:", obj.IpAddr, "L3IfIdx:", obj.L3IfIdx))
+			server.logger.Debug(fmt.Sprintln("Adding arp cache entry for ", obj.IpAddr))
+			ent := server.arpCache[obj.IpAddr]
+			ent.MacAddr = "incomplete"
+			ent.Counter = (server.minCnt + server.retryCnt + 1)
+			//ent.Valid = false
+			ent.L3IfIdx = obj.L3IfIdx
+			server.arpCache[obj.IpAddr] = ent
+		}
+	} else {
+		server.logger.Err("DB handler is nil")
+	}
+	server.logger.Debug(fmt.Sprintln("Arp Cache after restoring: ", server.arpCache))
 }
 
 func (server *ARPServer) refreshArpDB() {
-        var dbCmd string
-        dbCmd = "DELETE FROM ARPCache ;"
-        //server.logger.Info(dbCmd)
-        if server.dbHdl != nil {
-            //server.logger.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
-            _, err := dbutils.ExecuteSQLStmt(dbCmd, server.dbHdl)
-            if err != nil {
-                server.logger.Err(fmt.Sprintln("Failed to Delete all ARP entries from DB"))
-                return
-            }
-        } else {
-            server.logger.Err("DB handler is nil");
-        }
+	if server.dbHdl != nil {
+		keyPattern := fmt.Sprintln("ArpCacheEntry#*")
+		keys, err := redis.Strings(redis.Values(server.dbHdl.Do("KEYS", keyPattern)))
+		if err != nil {
+			server.logger.Err(fmt.Sprintln("Failed to get all keys from DB"))
+		}
+		for idx := 0; idx < len(keys); idx++ {
+			_, err := server.dbHdl.Do("DEL", keys[idx])
+			if err != nil {
+				server.logger.Err(fmt.Sprintln("Failed to Delete ARP entry for key:", keys[idx]))
+				continue
+			}
+		}
+	} else {
+		server.logger.Err("DB handler is nil")
+	}
 }
 
 func (server *ARPServer) deleteArpEntryInDB(ipAddr string) {
-        dbCmd := fmt.Sprintf(`DELETE FROM ARPCache WHERE ipAddr='%s';`, ipAddr)
-        //server.logger.Info(dbCmd)
-        if server.dbHdl != nil {
-            //server.logger.Info(fmt.Sprintln("Executing DB Command:", dbCmd))
-            _, err := dbutils.ExecuteSQLStmt(dbCmd, server.dbHdl)
-            if err != nil {
-                server.logger.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for:", ipAddr))
-                return
-            }
-        } else {
-            server.logger.Err("DB handler is nil");
-        }
+	if server.dbHdl != nil {
+		key := fmt.Sprintln("ArpCacheEntry#", ipAddr, "*")
+		_, err := server.dbHdl.Do("DEL", key)
+		if err != nil {
+			server.logger.Err(fmt.Sprintln("Failed to Delete ARP entries from DB for:", ipAddr))
+			return
+		}
+	} else {
+		server.logger.Err("DB handler is nil")
+	}
 }
 
-func (server *ARPServer) storeArpEntryInDB(ip string, port int) {
-    dbCmd := fmt.Sprintf(`INSERT INTO ARPCache (portNum, ipAddr) VALUES ('%d', '%s') ;`, port, ip)
-    if server.dbHdl != nil {
-        _, err := dbutils.ExecuteSQLStmt(dbCmd, server.dbHdl)
-        if err != nil {
-            server.logger.Err(fmt.Sprintln("Failed to Insert entry for", ip, "in DB"))
-            return
-        }
-    } else {
-        server.logger.Err("DB handler is nil");
-    }
-    return
+func (server *ARPServer) storeArpEntryInDB(ip string, l3IfIdx int) {
+	if server.dbHdl != nil {
+		key := fmt.Sprintln("ArpCacheEntry#", ip, "#", strconv.Itoa(l3IfIdx))
+		obj := arpDbEntry{
+			IpAddr:  ip,
+			L3IfIdx: l3IfIdx,
+		}
+		_, err := server.dbHdl.Do("HMSET", redis.Args{}.Add(key).AddFlat(&obj)...)
+		if err != nil {
+			server.logger.Err(fmt.Sprintln("Failed to add entry to db : ", ip, l3IfIdx, err))
+			return
+		}
+		return
+	} else {
+		server.logger.Err("DB handler is nil")
+	}
 }

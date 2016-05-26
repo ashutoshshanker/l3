@@ -1,7 +1,30 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package vrrpServer
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"encoding/json"
 	"fmt"
@@ -74,44 +97,44 @@ func (svr *VrrpServer) VrrpGetVlanList() {
 	}
 }
 
-func (svr *VrrpServer) VrrpUpdateVlanGblInfo(vlanNotifyMsg asicdConstDefs.VlanNotifyMsg, msgType uint8) {
+func (svr *VrrpServer) VrrpUpdateVlanGblInfo(vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg, msgType uint8) {
 	svr.logger.Info(fmt.Sprintln("Vlan Update msg for", vlanNotifyMsg))
 	switch msgType {
-	case asicdConstDefs.NOTIFY_VLAN_CREATE:
+	case asicdCommonDefs.NOTIFY_VLAN_CREATE:
 		svr.VrrpCreateVlanEntry(int(vlanNotifyMsg.VlanId), vlanNotifyMsg.VlanName)
-	case asicdConstDefs.NOTIFY_VLAN_DELETE:
+	case asicdCommonDefs.NOTIFY_VLAN_DELETE:
 		delete(svr.vrrpVlanId2Name, int(vlanNotifyMsg.VlanId))
 	}
 }
 
-func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdConstDefs.IPv4IntfNotifyMsg, msgType uint8) {
-	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
+func (svr *VrrpServer) VrrpUpdateIPv4GblInfo(msg asicdCommonDefs.IPv4IntfNotifyMsg, msgType uint8) {
+	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
 	if ifType == commonDefs.IfTypeVirtual || ifType == commonDefs.IfTypeSecondary {
 		svr.logger.Info("Ignoring ipv4 interface notifcation for sub interface")
 		return
 	}
 	switch msgType {
-	case asicdConstDefs.NOTIFY_IPV4INTF_CREATE:
+	case asicdCommonDefs.NOTIFY_IPV4INTF_CREATE:
 		svr.VrrpCreateIfIndexEntry(msg.IfIndex, msg.IpAddr)
 		svr.VrrpMapIfIndexToLinuxIfIndex(msg.IfIndex)
 		// @TODO: add this call only when we support update of ip addr
 		//go svr.VrrpChecknUpdateGblInfo(msg.IfIndex, msg.IpAddr)
-	case asicdConstDefs.NOTIFY_IPV4INTF_DELETE:
+	case asicdCommonDefs.NOTIFY_IPV4INTF_DELETE:
 		delete(svr.vrrpIfIndexIpAddr, msg.IfIndex)
 	}
 }
 
-func (svr *VrrpServer) VrrpUpdateL3IntfStateChange(msg asicdConstDefs.L3IntfStateNotifyMsg) {
-	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
+func (svr *VrrpServer) VrrpUpdateL3IntfStateChange(msg asicdCommonDefs.L3IntfStateNotifyMsg) {
+	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(msg.IfIndex)
 	if ifType == commonDefs.IfTypeVirtual || ifType == commonDefs.IfTypeSecondary {
 		svr.logger.Info("Ignoring ipv4 interface notifcation for sub interface")
 		return
 	}
 	switch msg.IfState {
-	case asicdConstDefs.INTF_STATE_UP:
+	case asicdCommonDefs.INTF_STATE_UP:
 		svr.VrrpHandleIntfUpEvent(msg.IfIndex)
 		svr.logger.Info("Got Interface state up notification")
-	case asicdConstDefs.INTF_STATE_DOWN:
+	case asicdCommonDefs.INTF_STATE_DOWN:
 		svr.VrrpHandleIntfShutdownEvent(msg.IfIndex)
 		svr.logger.Info("Got Interface state down notification")
 	}
@@ -126,17 +149,17 @@ func (svr *VrrpServer) VrrpAsicdSubscriber() {
 				"socket failed with error:", err))
 			continue
 		}
-		var msg asicdConstDefs.AsicdNotification
+		var msg asicdCommonDefs.AsicdNotification
 		err = json.Unmarshal(rxBuf, &msg)
 		if err != nil {
 			svr.logger.Err(fmt.Sprintln("Unable to Unmarshal",
 				"asicd msg:", msg.Msg))
 			continue
 		}
-		if msg.MsgType == asicdConstDefs.NOTIFY_VLAN_CREATE ||
-			msg.MsgType == asicdConstDefs.NOTIFY_VLAN_DELETE {
+		if msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_CREATE ||
+			msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_DELETE {
 			//Vlan Create Msg
-			var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
+			var vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg
 			err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
 			if err != nil {
 				svr.logger.Err(fmt.Sprintln("Unable to",
@@ -144,9 +167,9 @@ func (svr *VrrpServer) VrrpAsicdSubscriber() {
 				return
 			}
 			svr.VrrpUpdateVlanGblInfo(vlanNotifyMsg, msg.MsgType)
-		} else if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE ||
-			msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_DELETE {
-			var ipv4IntfNotifyMsg asicdConstDefs.IPv4IntfNotifyMsg
+		} else if msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_CREATE ||
+			msg.MsgType == asicdCommonDefs.NOTIFY_IPV4INTF_DELETE {
+			var ipv4IntfNotifyMsg asicdCommonDefs.IPv4IntfNotifyMsg
 			err = json.Unmarshal(msg.Msg, &ipv4IntfNotifyMsg)
 			if err != nil {
 				svr.logger.Err(fmt.Sprintln("Unable to Unmarshal",
@@ -154,9 +177,9 @@ func (svr *VrrpServer) VrrpAsicdSubscriber() {
 				continue
 			}
 			svr.VrrpUpdateIPv4GblInfo(ipv4IntfNotifyMsg, msg.MsgType)
-		} else if msg.MsgType == asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE {
+		} else if msg.MsgType == asicdCommonDefs.NOTIFY_L3INTF_STATE_CHANGE {
 			//INTF_STATE_CHANGE
-			var l3IntfStateNotifyMsg asicdConstDefs.L3IntfStateNotifyMsg
+			var l3IntfStateNotifyMsg asicdCommonDefs.L3IntfStateNotifyMsg
 			err = json.Unmarshal(msg.Msg, &l3IntfStateNotifyMsg)
 			if err != nil {
 				svr.logger.Err(fmt.Sprintln("unable to Unmarshal l3 intf",
@@ -201,7 +224,7 @@ func (svr *VrrpServer) VrrpRegisterWithAsicdUpdates(address string) error {
 
 func (svr *VrrpServer) VrrpGetInfoFromAsicd() error {
 	svr.logger.Info("Calling Asicd to initialize port properties")
-	err := svr.VrrpRegisterWithAsicdUpdates(asicdConstDefs.PUB_SOCKET_ADDR)
+	err := svr.VrrpRegisterWithAsicdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
 	if err == nil {
 		// Asicd subscriber thread
 		go svr.VrrpAsicdSubscriber()

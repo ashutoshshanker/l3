@@ -1,7 +1,30 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -38,10 +61,10 @@ func (server *ARPServer) StartArpRxTx(port int) {
 	//filter := fmt.Sprintf("not ether src", portEnt.MacAddr, "and not ether proto 0x8809")
 	filter := fmt.Sprintf(`not ether src %s`, portEnt.MacAddr)
 	filter = filter + " and not ether proto 0x8809"
-	server.logger.Info(fmt.Sprintln("Port: ", port, "Pcap filter:", filter))
+	server.logger.Debug(fmt.Sprintln("Port: ", port, "Pcap filter:", filter))
 	pcapHdl, err := pcap.OpenLive(portEnt.IfName, server.snapshotLen, server.promiscuous, server.pcapTimeout)
 	if pcapHdl == nil {
-		server.logger.Info(fmt.Sprintln("Unable to open pcap handler on:", portEnt.IfName, "error:", err))
+		server.logger.Err(fmt.Sprintln("Unable to open pcap handler on:", portEnt.IfName, "error:", err))
 		return
 	} else {
 		err := pcapHdl.SetBPFFilter(filter)
@@ -53,8 +76,16 @@ func (server *ARPServer) StartArpRxTx(port int) {
 	portEnt.PcapHdl = pcapHdl
 	server.portPropMap[port] = portEnt
 	go server.processRxPkts(port)
-	server.logger.Info(fmt.Sprintln("Send Arp Probe on port:", port))
+	server.logger.Debug(fmt.Sprintln("Send Arp Probe on port:", port))
 	go server.SendArpProbe(port)
+}
+
+func (server *ARPServer) deinitProcessRxPkt(port int) {
+	portEnt, _ := server.portPropMap[port]
+	portEnt.PcapHdl.Close()
+	portEnt.PcapHdl = nil
+	server.portPropMap[port] = portEnt
+	portEnt.CtrlCh <- true
 }
 
 func (server *ARPServer) processRxPkts(port int) {
@@ -73,14 +104,10 @@ func (server *ARPServer) processRxPkts(port int) {
 				}
 			}
 		case <-portEnt.CtrlCh:
-			break
+			server.deinitProcessRxPkt(port)
+			return
 		}
 	}
-	portEnt, _ = server.portPropMap[port]
-	portEnt.PcapHdl.Close()
-	portEnt.PcapHdl = nil
-	server.portPropMap[port] = portEnt
-	portEnt.CtrlCh <- true
 	return
 }
 
@@ -156,22 +183,22 @@ func (server *ARPServer) processArpRequest(arp *layers.ARP, port int) {
 				destExist = true
 			}
 		} else {
-			server.logger.Info(fmt.Sprintln("Port:", port, "belong to L3 Interface which doesnot exist"))
+			server.logger.Err(fmt.Sprintln("Port:", port, "belong to L3 Interface which doesnot exist"))
 			return
 		}
 	} else {
-		server.logger.Info(fmt.Sprintln("Port:", port, "doesnot belong to L3 Interface"))
+		server.logger.Err(fmt.Sprintln("Port:", port, "doesnot belong to L3 Interface"))
 		return
 	}
 	if srcExist == true &&
 		destExist == true {
-		server.logger.Info(fmt.Sprintln("Received our own gratituous ARP with our own SrcIP:", srcIp, "and destIp:", destIp))
+		server.logger.Err(fmt.Sprintln("Received our own gratituous ARP with our own SrcIP:", srcIp, "and destIp:", destIp))
 		return
 	} else if srcExist != true &&
 		destExist != true {
 		if srcIp == destIp &&
 			srcIp != "0.0.0.0" {
-			server.logger.Info(fmt.Sprintln("Received Gratuitous Arp with IP:", srcIp))
+			server.logger.Debug(fmt.Sprintln("Received Gratuitous Arp with IP:", srcIp))
 			//server.logger.Info(fmt.Sprintln("1 Installing Arp entry IP:", srcIp, "MAC:", srcMac))
 			server.arpEntryUpdateCh <- UpdateArpEntryMsg{
 				PortNum: port,
@@ -181,7 +208,7 @@ func (server *ARPServer) processArpRequest(arp *layers.ARP, port int) {
 			}
 		} else {
 			if srcIp == "0.0.0.0" {
-				server.logger.Info(fmt.Sprintln("Received Arp Probe for IP:", destIp))
+				server.logger.Debug(fmt.Sprintln("Received Arp Probe for IP:", destIp))
 				//server.logger.Info(fmt.Sprintln("2 Installing Arp entry IP:", destIp, "MAC: incomplete"))
 				server.arpEntryUpdateCh <- UpdateArpEntryMsg{
 					PortNum: port,
@@ -213,7 +240,7 @@ func (server *ARPServer) processArpRequest(arp *layers.ARP, port int) {
 	} else if srcExist == true {
 		//server.logger.Info(fmt.Sprintln("Received our own ARP Request with SrcIP:", srcIp, "DestIP:", destIp))
 	} else if destExist == true {
-		server.logger.Info(fmt.Sprintln("Received ARP Request for our IP with SrcIP:", srcIp, "DestIP:", destIp, "linux should respond to this request"))
+		server.logger.Debug(fmt.Sprintln("Received ARP Request for our IP with SrcIP:", srcIp, "DestIP:", destIp, "linux should respond to this request"))
 		if srcIp != "0.0.0.0" {
 			//server.logger.Info(fmt.Sprintln("5 Installing Arp entry IP:", srcIp, "MAC:", srcMac))
 			server.arpEntryUpdateCh <- UpdateArpEntryMsg{
@@ -223,7 +250,7 @@ func (server *ARPServer) processArpRequest(arp *layers.ARP, port int) {
 				Type:    false,
 			}
 		} else {
-			server.logger.Info(fmt.Sprintln("Received Arp Probe for IP:", destIp, "linux should respond to this"))
+			server.logger.Debug(fmt.Sprintln("Received Arp Probe for IP:", destIp, "linux should respond to this"))
 		}
 	}
 }
@@ -253,7 +280,7 @@ func (server *ARPServer) processArpReply(arp *layers.ARP, port int) {
 	destNet := destIpAddr.Mask(mask)
 	if myNet.Equal(srcNet) != true ||
 		myNet.Equal(destNet) != true {
-		server.logger.Info(fmt.Sprintln("Received Arp Reply but srcIp:", srcIp, " and destIp:", destIp, "are not in same network. Hence, not processing it"))
+		server.logger.Err(fmt.Sprintln("Received Arp Reply but srcIp:", srcIp, " and destIp:", destIp, "are not in same network. Hence, not processing it"))
 		//server.logger.Info(fmt.Sprintln("Netmask on the recvd interface is", mask))
 		return
 	}
@@ -289,12 +316,12 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
 			arpEnt, exist := server.arpCache[srcIp]
 			//server.logger.Info(fmt.Sprintln("====Hello2===", arpEnt, exist))
 			if exist {
-				ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(l3IntfIdx))
+				ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(int32(l3IntfIdx))
 				flag := false
-				if ifType == commonDefs.L2RefTypeVlan {
+				if ifType == commonDefs.IfTypeVlan {
 					vlanEnt, exist := server.vlanPropMap[l3IntfIdx]
 					if exist {
-						vlanId := int(asicdConstDefs.GetIntfIdFromIfIndex(int32(l3IntfIdx)))
+						vlanId := int(asicdCommonDefs.GetIntfIdFromIfIndex(int32(l3IntfIdx)))
 						for p, _ := range vlanEnt.UntagPortMap {
 							if p == port &&
 								arpEnt.VlanId == vlanId {
@@ -304,17 +331,17 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
 					} else {
 						flag = false
 					}
-				} else if ifType == commonDefs.L2RefTypePort {
+				} else if ifType == commonDefs.IfTypePort {
 					if l3IntfIdx == port &&
-						arpEnt.VlanId == asicdConstDefs.SYS_RSVD_VLAN {
+						arpEnt.VlanId == asicdCommonDefs.SYS_RSVD_VLAN {
 						flag = true
 					}
-				} else if ifType == commonDefs.L2RefTypeLag {
+				} else if ifType == commonDefs.IfTypeLag {
 					lagEnt, exist := server.lagPropMap[l3IntfIdx]
 					if exist {
 						for p, _ := range lagEnt.PortMap {
 							if p == port &&
-								arpEnt.VlanId == asicdConstDefs.SYS_RSVD_VLAN {
+								arpEnt.VlanId == asicdCommonDefs.SYS_RSVD_VLAN {
 								flag = true
 							}
 						}
@@ -342,18 +369,18 @@ func (server *ARPServer) processIpPkt(packet gopacket.Packet, port int) {
 
 func (server *ARPServer) sendArpReqL3Intf(ip string, l3IfIdx int) {
 
-	ifType := asicdConstDefs.GetIntfTypeFromIfIndex(int32(l3IfIdx))
-	if ifType == commonDefs.L2RefTypeVlan {
+	ifType := asicdCommonDefs.GetIntfTypeFromIfIndex(int32(l3IfIdx))
+	if ifType == commonDefs.IfTypeVlan {
 		vlanEnt, _ := server.vlanPropMap[l3IfIdx]
 		for port, _ := range vlanEnt.UntagPortMap {
 			server.sendArpReq(ip, port)
 		}
-	} else if ifType == commonDefs.L2RefTypeLag {
+	} else if ifType == commonDefs.IfTypeLag {
 		lagEnt, _ := server.lagPropMap[l3IfIdx]
 		for port, _ := range lagEnt.PortMap {
 			server.sendArpReq(ip, port)
 		}
-	} else if ifType == commonDefs.L2RefTypePort {
+	} else if ifType == commonDefs.IfTypePort {
 		server.sendArpReq(ip, l3IfIdx)
 	}
 }

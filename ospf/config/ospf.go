@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
+
 package config
 
 import ()
@@ -15,8 +38,12 @@ type IpAddress string
 type InterfaceIndexOrZero int
 
 const (
-  MaxAge uint16 = 3600
+	MaxAge        uint16 = 3600
+	AllSPFRouters string = "224.0.0.5"
+	AllDRouters   string = "224.0.0.6"
+	McastMAC      string = "01:00:5e:00:00:05"
 )
+
 type Status int
 
 const (
@@ -90,8 +117,9 @@ type IfType int
 const (
 	Broadcast         IfType = 1
 	Nbma              IfType = 2
-	PointToPoint      IfType = 3
-	PointToMultipoint IfType = 4
+	NumberedP2P       IfType = 3
+	UnnumberedP2P     IfType = 4
+	PointToMultipoint IfType = 5
 )
 
 type MulticastForwarding int
@@ -193,20 +221,12 @@ const (
 )
 
 type GlobalConf struct {
-	RouterId                 RouterId
-	AdminStat                Status
-	ASBdrRtrStatus           bool
-	TOSSupport               bool
-	ExtLsdbLimit             int32
-	MulticastExtensions      int32
-	ExitOverflowInterval     PositiveInteger
-	DemandExtensions         bool
-	RFC1583Compatibility     bool
-	ReferenceBandwidth       int32
-	RestartSupport           RestartSupport
-	RestartInterval          int32
-	RestartStrictLsaChecking bool
-	StubRouterAdvertisement  AdvertiseAction
+	RouterId        RouterId
+	AdminStat       Status
+	ASBdrRtrStatus  bool
+	TOSSupport      bool
+	RestartSupport  RestartSupport
+	RestartInterval int32
 }
 
 type GlobalState struct {
@@ -309,21 +329,19 @@ type HostState struct {
 // Indexed By IfIpAddress, AddressLessIf
 
 type InterfaceConf struct {
-	IfIpAddress           IpAddress
-	AddressLessIf         InterfaceIndexOrZero
-	IfAreaId              AreaId
-	IfType                IfType
-	IfAdminStat           Status
-	IfRtrPriority         DesignatedRouterPriority
-	IfTransitDelay        UpToMaxAge
-	IfRetransInterval     UpToMaxAge
-	IfHelloInterval       HelloRange
-	IfRtrDeadInterval     PositiveInteger
-	IfPollInterval        PositiveInteger
-	IfAuthKey             string
-	IfMulticastForwarding MulticastForwarding
-	IfDemand              bool
-	IfAuthType            AuthType
+	IfIpAddress       IpAddress
+	AddressLessIf     InterfaceIndexOrZero
+	IfAreaId          AreaId
+	IfType            IfType
+	IfAdminStat       Status
+	IfRtrPriority     DesignatedRouterPriority
+	IfTransitDelay    UpToMaxAge
+	IfRetransInterval UpToMaxAge
+	IfHelloInterval   HelloRange
+	IfRtrDeadInterval PositiveInteger
+	IfPollInterval    PositiveInteger
+	IfAuthKey         string
+	IfAuthType        AuthType
 }
 
 type InterfaceState struct {
@@ -503,4 +521,18 @@ type OspfAreaLsaCountState struct {
 	AreaLsaCountAreaId  AreaId
 	AreaLsaCountLsaType LsaType
 	AreaLsaCountNumber  int
+}
+
+type OspfIPv4Route struct {
+	DestId          string
+	AddrMask        string
+	DestType        string
+	OptCapabilities int32
+	AreaId          string
+	PathType        string
+	Cost            int32
+	Type2Cost       int32
+	NumOfPaths      int32
+	NextHops        string
+	LSOrigin        string
 }

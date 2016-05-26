@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
@@ -9,6 +32,9 @@ import (
 
 var ALLSPFROUTER string = "224.0.0.5"
 var ALLDROUTER string = "224.0.0.6"
+var ALLSPFROUTERMAC string = "01:00:5e:00:00:05"
+var ALLDROUTERMAC string = "01:00:5e:00:00:06"
+var MASKMAC string = "ff:ff:ff:ff:ff:ff"
 
 var LSInfinity uint32 = 0x00ffffff
 
@@ -92,7 +118,7 @@ type IntfToNeighMsg struct {
 }
 
 type NbrStateChangeMsg struct {
-	RouterId uint32
+	nbrKey NeighborConfKey
 }
 
 const (
@@ -125,6 +151,7 @@ type AdjOKEvtMsg struct {
 type NbrFullStateMsg struct {
 	FullState bool
 	NbrRtrId  uint32
+	nbrKey NeighborConfKey
 }
 
 const (

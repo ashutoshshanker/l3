@@ -1,7 +1,30 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package vrrpServer
 
 import (
-	"asicd/asicdConstDefs"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"encoding/json"
 	"errors"
@@ -270,7 +293,7 @@ func (svr *VrrpServer) VrrpMapIfIndexToLinuxIfIndex(IfIndex int32) {
 	if found {
 		return
 	}
-	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
+	vlanId := asicdCommonDefs.GetIntfIdFromIfIndex(IfIndex)
 	vlanName, ok := svr.vrrpVlanId2Name[vlanId]
 	if ok == false {
 		svr.logger.Err(fmt.Sprintln("no mapping for vlan", vlanId))
@@ -297,8 +320,6 @@ func (svr *VrrpServer) VrrpConnectToAsicd(client VrrpClientJson) error {
 	if svr.asicdClient.Transport == nil ||
 		svr.asicdClient.PtrProtocolFactory == nil ||
 		err != nil {
-		svr.logger.Err(fmt.Sprintln("VRRP: Connecting to",
-			client.Name, "failed ", err))
 		return err
 	}
 	svr.asicdClient.ClientHdl =
@@ -363,27 +384,38 @@ func (svr *VrrpServer) VrrpConnectAndInitPortVlan() error {
 		svr.logger.Err("VRRP: Error in Unmarshalling Json")
 		return err
 	}
-
+	re_connect := 25
+	count := 0
 	// connect to client
 	for {
 		time.Sleep(time.Millisecond * 500)
 		for i := 0; i < len(unConnectedClients); i++ {
-			err := svr.VrrpConnectToUnConnectedClient(unConnectedClients[i])
+			err := svr.VrrpConnectToUnConnectedClient(
+				unConnectedClients[i])
 			if err == nil {
 				svr.logger.Info("VRRP: Connected to " +
 					unConnectedClients[i].Name)
-				unConnectedClients = append(unConnectedClients[:i],
+				unConnectedClients = append(
+					unConnectedClients[:i],
 					unConnectedClients[i+1:]...)
 
-			} else if err.Error() == VRRP_CLIENT_CONNECTION_NOT_REQUIRED {
-				svr.logger.Info("VRRP: connection to " + unConnectedClients[i].Name +
-					" not required")
-				unConnectedClients = append(unConnectedClients[:i],
+			} else if err.Error() ==
+				VRRP_CLIENT_CONNECTION_NOT_REQUIRED {
+				unConnectedClients = append(
+					unConnectedClients[:i],
 					unConnectedClients[i+1:]...)
+			} else {
+				count++
+				if count == re_connect {
+					svr.logger.Err(fmt.Sprintln(
+						"Connecting to",
+						unConnectedClients[i].Name,
+						"failed ", err))
+					count = 0
+				}
 			}
 		}
 		if len(unConnectedClients) == 0 {
-			svr.logger.Info("VRRP: all clients connected successfully")
 			break
 		}
 	}
@@ -485,7 +517,7 @@ func VrrpNewServer(log *logging.Writer) *VrrpServer {
 
 func (svr *VrrpServer) VrrpValidateIntfConfig(IfIndex int32) error {
 	// Check Vlan is created
-	vlanId := asicdConstDefs.GetIntfIdFromIfIndex(IfIndex)
+	vlanId := asicdCommonDefs.GetIntfIdFromIfIndex(IfIndex)
 	_, created := svr.vrrpVlanId2Name[vlanId]
 	if !created {
 		return errors.New(VRRP_VLAN_NOT_CREATED)

@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // bgp.go
 package packet
 
@@ -46,8 +69,11 @@ const (
 )
 
 const (
-	BGPMsgHeaderLen = 19
-	BGPMsgMaxLen    = 4096
+	BGPUpdateMsgWithdrawnRouteLen = 2
+	BGPUpdateMsgTotalPathAttrsLen = 2
+	BGPMsgHeaderLen               = 19
+	BGPUpdateMsgMinLen            = 23
+	BGPMsgMaxLen                  = 4096
 )
 
 const (
@@ -280,7 +306,7 @@ type BGPBody interface {
 type BGPCapability interface {
 	Encode() ([]byte, error)
 	Decode(pkt []byte) error
-	TotalLen() uint8
+	TotalLen() uint16
 	GetCode() BGPCapabilityType
 	New() BGPCapability
 }
@@ -311,8 +337,8 @@ func (msg *BGPCapabilityBase) Decode(pkt []byte) error {
 	return nil
 }
 
-func (msg *BGPCapabilityBase) TotalLen() uint8 {
-	return msg.Len + 2
+func (msg *BGPCapabilityBase) TotalLen() uint16 {
+	return uint16(msg.Len) + 2
 }
 
 func (msg *BGPCapabilityBase) GetCode() BGPCapabilityType {
@@ -470,15 +496,18 @@ func (msg *BGPCapAddPath) Decode(pkt []byte) error {
 		return err
 	}
 
-	offset := uint8(2)
-	for offset < msg.Len {
+	offset := uint16(2)
+	for offset < uint16(msg.Len) {
 		addPathAFISAFI := AddPathAFISAFI{}
 		err := addPathAFISAFI.Decode(pkt[offset:])
 		if err != nil {
 			return err
 		}
 		msg.Value = append(msg.Value, addPathAFISAFI)
-		offset += addPathAFISAFI.Len()
+		offset += uint16(addPathAFISAFI.Len())
+	}
+	if offset > uint16(msg.Len) {
+		return BGPMessageError{BGPOpenMsgError, BGPUnspecific, nil, "Not enough data to decode add path capability"}
 	}
 	return nil
 }
@@ -523,7 +552,7 @@ func (msg *BGPCapUnknown) Decode(pkt []byte) error {
 		return err
 	}
 
-	copy(msg.Value, pkt[2:])
+	copy(msg.Value, pkt[2:msg.TotalLen()])
 	return nil
 }
 
@@ -609,14 +638,11 @@ func (msg *BGPOptParamCapability) Decode(pkt []byte) error {
 		return err
 	}
 
-	paramsLen := msg.Len
+	paramsLen := int(msg.Len)
 	msg.Value = make([]BGPCapability, 0)
-	offset := uint8(2)
+	offset := uint16(2)
 	for paramsLen > 0 {
 		capParam := msg.GetCapParam(pkt[offset:])
-		if err != nil {
-			return err
-		}
 
 		err = capParam.Decode(pkt[offset:])
 		if err != nil {
@@ -624,13 +650,16 @@ func (msg *BGPOptParamCapability) Decode(pkt []byte) error {
 		}
 		msg.Value = append(msg.Value, capParam)
 		offset += capParam.TotalLen()
-		paramsLen -= capParam.TotalLen()
+		paramsLen -= int(capParam.TotalLen())
+	}
+	if paramsLen < 0 {
+		return BGPMessageError{BGPOpenMsgError, BGPUnspecific, nil, "Not enough data to decode capability type and length"}
 	}
 	return nil
 }
 
 func NewBGPOptParamCapability(capabilities []BGPCapability) *BGPOptParamCapability {
-	paramsLen := uint8(0)
+	paramsLen := uint16(0)
 	for _, capability := range capabilities {
 		paramsLen += capability.TotalLen()
 	}
@@ -638,7 +667,7 @@ func NewBGPOptParamCapability(capabilities []BGPCapability) *BGPOptParamCapabili
 	return &BGPOptParamCapability{
 		BGPOptParamBase: BGPOptParamBase{
 			Type: BGPOptParamTypeCapability,
-			Len:  paramsLen,
+			Len:  uint8(paramsLen),
 		},
 		Value: capabilities,
 	}
@@ -728,7 +757,7 @@ func (msg *BGPOpen) Decode(header *BGPHeader, pkt []byte, data interface{}) erro
 	msg.OptParamLen = pkt[9]
 
 	msg.OptParams = make([]BGPOptParam, 0)
-	paramsLen := msg.OptParamLen
+	paramsLen := int(msg.OptParamLen)
 	offset := uint8(10)
 	for paramsLen > 0 {
 		optParam, err := msg.GetOptParam(pkt[offset:])
@@ -741,7 +770,10 @@ func (msg *BGPOpen) Decode(header *BGPHeader, pkt []byte, data interface{}) erro
 		}
 		msg.OptParams = append(msg.OptParams, optParam)
 		offset += optParam.TotalLen()
-		paramsLen -= optParam.TotalLen()
+		paramsLen -= int(optParam.TotalLen())
+	}
+	if paramsLen < 0 {
+		return BGPMessageError{BGPOpenMsgError, BGPUnspecific, nil, "Not enough data to decode optional parameters"}
 	}
 	return nil
 }
@@ -852,10 +884,18 @@ func (ip *IPPrefix) Encode() ([]byte, error) {
 }
 
 func (ip *IPPrefix) Decode(pkt []byte) error {
+	if len(pkt) < 1 {
+		return BGPMessageError{BGPUpdateMsgError, BGPInvalidNetworkField, nil, "NLRI does not contain prefix lenght"}
+	}
+
 	ip.Length = pkt[0]
+	if ip.Length > 32 {
+		return BGPMessageError{BGPUpdateMsgError, BGPInvalidNetworkField, nil, fmt.Sprintf("Prefix length is greater than 32, lenght:%d", ip.Length)}
+	}
+
 	bytes := (ip.Length + 7) / 8
-	if len(pkt) < int(bytes) {
-		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Prefix length invalid"}
+	if len(pkt) < (int(bytes) + 1) {
+		return BGPMessageError{BGPUpdateMsgError, BGPInvalidNetworkField, nil, "Prefix length invalid"}
 	}
 	ip.Prefix = make(net.IP, 4)
 	copy(ip.Prefix, pkt[1:bytes+1])
@@ -909,7 +949,11 @@ func (n *ExtNLRI) Encode() ([]byte, error) {
 }
 
 func (n *ExtNLRI) Decode(pkt []byte) error {
+	if len(pkt) < 5 {
+		return BGPMessageError{BGPUpdateMsgError, BGPInvalidNetworkField, nil, "NLRI does not contain path id or prefix lenght"}
+	}
 	n.PathId = binary.BigEndian.Uint32(pkt[:4])
+
 	n.IPPrefix = IPPrefix{}
 	err := n.IPPrefix.Decode(pkt[4:])
 	return err
@@ -966,11 +1010,22 @@ func (pa *BGPPathAttrBase) Encode() ([]byte, error) {
 }
 
 func (pa *BGPPathAttrBase) checkFlags(pkt []byte) error {
-	if pa.Flags&BGPPathAttrFlagOptional != 0 &&
-		pa.Flags&BGPPathAttrFlagTransitive == 0 &&
-		pa.Flags&BGPPathAttrFlagPartial == 0 {
+	if pa.Flags&BGPPathAttrFlagOptional == 0 && pa.Flags&BGPPathAttrFlagTransitive == 0 {
 		return BGPMessageError{BGPUpdateMsgError, BGPAttrFlagsError, pkt[:pa.TotalLen()],
-			"Partial bit in a optional transitive attr is not set"}
+			"Transitibe bit is not set in a well-known mandatory attribute"}
+	}
+
+	if pa.Flags&BGPPathAttrFlagPartial != 0 {
+		if pa.Flags&BGPPathAttrFlagOptional == 0 {
+			return BGPMessageError{BGPUpdateMsgError, BGPAttrFlagsError, pkt[:pa.TotalLen()],
+				"Partial bit is set in a well-known mandatory attribute"}
+		}
+
+		if pa.Flags&BGPPathAttrFlagOptional != 0 &&
+			pa.Flags&BGPPathAttrFlagTransitive == 0 {
+			return BGPMessageError{BGPUpdateMsgError, BGPAttrFlagsError, pkt[:pa.TotalLen()],
+				"Partial bit is set in a optional non-transitive attr"}
+		}
 	}
 
 	return nil
@@ -1017,7 +1072,7 @@ func (pa *BGPPathAttrBase) Decode(pkt []byte, data interface{}) error {
 		}
 	}
 
-	if (pa.Flags&BGPPathAttrFlagOptional) > 0 && pa.Code >= BGPPathAttrTypeUnknown {
+	if (pa.Flags&BGPPathAttrFlagOptional) == 0 && pa.Code >= BGPPathAttrTypeUnknown {
 		return BGPMessageError{BGPUpdateMsgError, BGPUnrecognizedWellKnownAttr, pkt[:pa.TotalLen()], "Unrecognized Well known attr"}
 	}
 
@@ -2271,7 +2326,7 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 	msg.WithdrawnRoutesLen = binary.BigEndian.Uint16(pkt[0:2])
 
 	ptr := uint32(2)
-	length := uint32(msg.WithdrawnRoutesLen)
+	length := int(msg.WithdrawnRoutesLen)
 	ipLen := uint32(0)
 	var err error
 
@@ -2280,35 +2335,41 @@ func (msg *BGPUpdate) Decode(header *BGPHeader, pkt []byte, data interface{}) er
 	}
 
 	msg.WithdrawnRoutes = make([]NLRI, 0)
-	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.WithdrawnRoutes, length, data)
+	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.WithdrawnRoutes, uint32(length), data)
 	if err != nil {
-		return nil
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
 	ptr += ipLen
 
 	msg.TotalPathAttrLen = binary.BigEndian.Uint16(pkt[ptr : ptr+2])
 	ptr += 2
 
-	length = uint32(msg.TotalPathAttrLen)
+	length = int(msg.TotalPathAttrLen)
 
-	if length+uint32(msg.WithdrawnRoutesLen)+23 > header.Len() {
+	if length+int(msg.WithdrawnRoutesLen)+23 > int(header.Len()) {
 		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
 
 	msg.PathAttributes = make([]BGPPathAttr, 0)
 	for length > 0 {
 		pa := BGPGetPathAttr(pkt[ptr:])
-		pa.Decode(pkt[ptr:], data)
+		err = pa.Decode(pkt[ptr:], data)
+		if err != nil {
+			return err
+		}
 		msg.PathAttributes = append(msg.PathAttributes, pa)
 		ptr += pa.TotalLen()
-		length -= pa.TotalLen()
+		length -= int(pa.TotalLen())
+	}
+	if length < 0 {
+		return BGPMessageError{BGPUpdateMsgError, BGPMalformedAttrList, nil, "Malformed Attributes"}
 	}
 
 	msg.NLRI = make([]NLRI, 0)
-	length = header.Len() - 23 - uint32(msg.WithdrawnRoutesLen) - uint32(msg.TotalPathAttrLen)
-	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.NLRI, length, data)
+	length = int(header.Len()) - 23 - int(msg.WithdrawnRoutesLen) - int(msg.TotalPathAttrLen)
+	ipLen, err = msg.decodeIPPrefix(pkt[ptr:], &msg.NLRI, uint32(length), data)
 	if err != nil {
-		return nil
+		return err
 	}
 	return nil
 }

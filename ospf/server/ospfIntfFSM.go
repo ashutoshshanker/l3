@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
@@ -9,15 +32,15 @@ import (
 
 func (server *OSPFServer) StartOspfIntfFSM(key IntfConfKey) {
 	ent, _ := server.IntfConfMap[key]
-	 areaId := convertIPv4ToUint32(ent.IfAreaId)
-        msg := LSAChangeMsg{
-                areaId: areaId,
-        }
+	areaId := convertIPv4ToUint32(ent.IfAreaId)
+	msg := LSAChangeMsg{
+		areaId: areaId,
+	}
 
-        server.logger.Info("Sending msg for router LSA generation")
-        server.IntfStateChangeCh <- msg
+	server.logger.Info("Sending msg for router LSA generation")
+	server.IntfStateChangeCh <- msg
 
-	if ent.IfType == config.PointToPoint {
+	if ent.IfType == config.NumberedP2P || ent.IfType == config.UnnumberedP2P {
 		server.StartOspfP2PIntfFSM(key)
 	} else if ent.IfType == config.Broadcast {
 		server.StartOspfBroadcastIntfFSM(key)
@@ -37,18 +60,21 @@ func (server *OSPFServer) StartOspfP2PIntfFSM(key IntfConfKey) {
 				server.logger.Err("DR or BDR is non zero")
 				continue
 			}
-			neighborKey := NeighborKey{
-				RouterId: createMsg.RouterId,
+			ipad := convertUint32ToIPv4(createMsg.NbrIP)
+			ospfNbrConfKey := NeighborConfKey{
+				IPAddr:  config.IpAddress(ipad),
+				IntfIdx: key.IntfIdx,
 			}
-			neighborEntry, exist := ent.NeighborMap[neighborKey]
+
+			neighborEntry, exist := ent.NeighborMap[ospfNbrConfKey]
 			if !exist {
 				neighborEntry.NbrIP = createMsg.NbrIP
 				neighborEntry.TwoWayStatus = createMsg.TwoWayStatus
 				neighborEntry.RtrPrio = createMsg.RtrPrio
 				neighborEntry.FullState = false
-				ent.NeighborMap[neighborKey] = neighborEntry
+				ent.NeighborMap[ospfNbrConfKey] = neighborEntry
 				server.IntfConfMap[key] = ent
-				server.logger.Info(fmt.Sprintln("1 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap, "neighborKey:", neighborKey))
+				server.logger.Info(fmt.Sprintln("1 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap, "neighborKey:", ospfNbrConfKey))
 			}
 		case changeMsg := <-ent.NeighChangeCh:
 			if bytesEqual(changeMsg.DRtr, []byte{0, 0, 0, 0}) == false ||
@@ -56,22 +82,24 @@ func (server *OSPFServer) StartOspfP2PIntfFSM(key IntfConfKey) {
 				server.logger.Err("DR or BDR is non zero")
 				continue
 			}
-			neighborKey := NeighborKey{
-				RouterId: changeMsg.RouterId,
+			ipad := convertUint32ToIPv4(changeMsg.NbrIP)
+			ospfNbrConfKey := NeighborConfKey{
+				IPAddr:  config.IpAddress(ipad),
+				IntfIdx: key.IntfIdx,
 			}
-			neighborEntry, exist := ent.NeighborMap[neighborKey]
+			neighborEntry, exist := ent.NeighborMap[ospfNbrConfKey]
 			if exist {
-				server.logger.Info(fmt.Sprintln("Change msg: ", changeMsg, "neighbor entry:", neighborEntry, "neighbor key:", neighborKey))
+				server.logger.Info(fmt.Sprintln("Change msg: ", changeMsg, "neighbor entry:", neighborEntry, "neighbor key:", ospfNbrConfKey))
 				neighborEntry.NbrIP = changeMsg.NbrIP
 				neighborEntry.TwoWayStatus = changeMsg.TwoWayStatus
 				neighborEntry.RtrPrio = changeMsg.RtrPrio
 				neighborEntry.DRtr = changeMsg.DRtr
 				neighborEntry.BDRtr = changeMsg.BDRtr
-				ent.NeighborMap[neighborKey] = neighborEntry
+				ent.NeighborMap[ospfNbrConfKey] = neighborEntry
 				server.IntfConfMap[key] = ent
 				server.logger.Info(fmt.Sprintln("2 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap))
 			} else {
-				server.logger.Err(fmt.Sprintln("Neighbor entry does not exists", neighborKey.RouterId))
+				server.logger.Err(fmt.Sprintln("Neighbor entry does not exists", ospfNbrConfKey.IPAddr))
 			}
 		case nbrStateChangeMsg := <-ent.NbrStateChangeCh:
 			// Only when Neighbor Went Down from TwoWayStatus
@@ -104,11 +132,14 @@ func (server *OSPFServer) StartOspfBroadcastIntfFSM(key IntfConfKey) {
 			server.logger.Info(fmt.Sprintf("Transit to action state because of backup seen", msg))
 			server.ElectBDRAndDR(key)
 		case createMsg := <-ent.NeighCreateCh:
-			neighborKey := NeighborKey{
-				RouterId: createMsg.RouterId,
-				//NbrIP:          createMsg.NbrIP,
+
+			ipad := convertUint32ToIPv4(createMsg.NbrIP)
+			ospfNbrConfKey := NeighborConfKey{
+				IPAddr:  config.IpAddress(ipad),
+				IntfIdx: key.IntfIdx,
 			}
-			neighborEntry, exist := ent.NeighborMap[neighborKey]
+
+			neighborEntry, exist := ent.NeighborMap[ospfNbrConfKey]
 			if !exist {
 				neighborEntry.NbrIP = createMsg.NbrIP
 				neighborEntry.TwoWayStatus = createMsg.TwoWayStatus
@@ -116,22 +147,23 @@ func (server *OSPFServer) StartOspfBroadcastIntfFSM(key IntfConfKey) {
 				neighborEntry.DRtr = createMsg.DRtr
 				neighborEntry.BDRtr = createMsg.BDRtr
 				neighborEntry.FullState = false
-				ent.NeighborMap[neighborKey] = neighborEntry
+				ent.NeighborMap[ospfNbrConfKey] = neighborEntry
 				server.IntfConfMap[key] = ent
-				server.logger.Info(fmt.Sprintln("1 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap, "neighborKey:", neighborKey))
+				server.logger.Info(fmt.Sprintln("1 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap, "neighborKey:", ospfNbrConfKey))
 				if createMsg.TwoWayStatus == true &&
 					ent.IfFSMState > config.Waiting {
 					server.ElectBDRAndDR(key)
 				}
 			}
 		case changeMsg := <-ent.NeighChangeCh:
-			neighborKey := NeighborKey{
-				RouterId: changeMsg.RouterId,
-				//NbrIP:          changeMsg.NbrIP,
+			ipad := convertUint32ToIPv4(changeMsg.NbrIP)
+			ospfNbrConfKey := NeighborConfKey{
+				IPAddr:  config.IpAddress(ipad),
+				IntfIdx: key.IntfIdx,
 			}
-			neighborEntry, exist := ent.NeighborMap[neighborKey]
+			neighborEntry, exist := ent.NeighborMap[ospfNbrConfKey]
 			if exist {
-				server.logger.Info(fmt.Sprintln("Change msg: ", changeMsg, "neighbor entry:", neighborEntry, "neighbor key:", neighborKey))
+				server.logger.Info(fmt.Sprintln("Change msg: ", changeMsg, "neighbor entry:", neighborEntry, "neighbor key:", ospfNbrConfKey))
 				//rtrId := changeMsg.RouterId
 				NbrIP := changeMsg.NbrIP
 				oldRtrPrio := neighborEntry.RtrPrio
@@ -145,7 +177,7 @@ func (server *OSPFServer) StartOspfBroadcastIntfFSM(key IntfConfKey) {
 				neighborEntry.RtrPrio = changeMsg.RtrPrio
 				neighborEntry.DRtr = changeMsg.DRtr
 				neighborEntry.BDRtr = changeMsg.BDRtr
-				ent.NeighborMap[neighborKey] = neighborEntry
+				ent.NeighborMap[ospfNbrConfKey] = neighborEntry
 				server.IntfConfMap[key] = ent
 				server.logger.Info(fmt.Sprintln("2 IntfConf neighbor entry", server.IntfConfMap[key].NeighborMap))
 				if ent.IfFSMState > config.Waiting {
@@ -184,21 +216,22 @@ func (server *OSPFServer) StartOspfBroadcastIntfFSM(key IntfConfKey) {
 func (server *OSPFServer) processNbrDownEvent(msg NbrStateChangeMsg,
 	key IntfConfKey, p2p bool) {
 	ent, _ := server.IntfConfMap[key]
-	nbrKey := NeighborKey{
-		RouterId: msg.RouterId,
-	}
-	neighborEntry, exist := ent.NeighborMap[nbrKey]
+	/*
+		nbrKey := NeighborKey{
+			RouterId: msg.RouterId,
+		} */
+	neighborEntry, exist := ent.NeighborMap[msg.nbrKey]
 	if exist {
 		oldTwoWayStatus := neighborEntry.TwoWayStatus
-		delete(ent.NeighborMap, nbrKey)
-		server.logger.Info(fmt.Sprintln("Deleting", nbrKey))
+		delete(ent.NeighborMap, msg.nbrKey)
+		server.logger.Info(fmt.Sprintln("Deleting", msg.nbrKey))
 		server.IntfConfMap[key] = ent
 		if p2p == false {
 			if ent.IfFSMState > config.Waiting {
 				// RFC2328 Section 9.2 (Neighbor Change Event)
-				/* Investigate - if neighbor goes to dead from full 
+				/* Investigate - if neighbor goes to dead from full
 				   to dead status oldTwoWayStatus is not true */
-				oldTwoWayStatus = true // temp fix 
+				oldTwoWayStatus = true // temp fix
 				if oldTwoWayStatus == true {
 					server.logger.Info(fmt.Sprintln("deleting nbr, call dr/bdr election."))
 					server.ElectBDRAndDR(key)
@@ -221,29 +254,27 @@ func (server *OSPFServer) processNbrFullStateMsg(msg NbrFullStateMsg,
 	} else {
 		server.logger.Info("Neighbor State changed from full state")
 	}
-	nbrKey := NeighborKey{
-		RouterId: msg.NbrRtrId,
-	}
-	nbrEntry, exist := ent.NeighborMap[nbrKey]
+
+	nbrEntry, exist := ent.NeighborMap[msg.nbrKey]
 	if exist {
 		if msg.FullState != nbrEntry.FullState &&
 			ent.IfFSMState == config.DesignatedRouter {
 			nbrEntry.FullState = msg.FullState
-			ent.NeighborMap[nbrKey] = nbrEntry
+			ent.NeighborMap[msg.nbrKey] = nbrEntry
 			server.IntfConfMap[key] = ent
 			/*lsaMsg := NetworkLSAChangeMsg{
 				areaId:  areaId,
 				intfKey: key,
 			}*/
-		//	server.CreateNetworkLSACh <- lsaMsg
+			//	server.CreateNetworkLSACh <- lsaMsg
 		}
-  		if msg.FullState {
-		/*
-		msg := nbrStateChangeMsg{
-			key: nbrKey.RouterId,
-			areaId: areaId,
-		} */
-  	//	server.neighborStateChangeCh <- msg
+		if msg.FullState {
+			/*
+				msg := nbrStateChangeMsg{
+					key: nbrKey.RouterId,
+					areaId: areaId,
+				} */
+			//	server.neighborStateChangeCh <- msg
 		}
 	}
 }
@@ -258,6 +289,7 @@ func (server *OSPFServer) ElectBDR(key IntfConfKey) ([]byte, uint32) {
 	var NbrIPWithMaxPrio uint32
 
 	for nbrkey, nbrEntry := range ent.NeighborMap {
+		nbrConf := server.NeighborConfigMap[nbrkey]
 		if nbrEntry.TwoWayStatus == true &&
 			nbrEntry.RtrPrio > 0 &&
 			nbrEntry.NbrIP != 0 {
@@ -269,24 +301,24 @@ func (server *OSPFServer) ElectBDR(key IntfConfKey) ([]byte, uint32) {
 			if tempBDR == nbrEntry.NbrIP {
 				if nbrEntry.RtrPrio > electedRtrPrio {
 					electedRtrPrio = nbrEntry.RtrPrio
-					electedRtrId = nbrkey.RouterId
+					electedRtrId = nbrConf.OspfNbrRtrId
 					electedBDR = nbrEntry.BDRtr
 				} else if nbrEntry.RtrPrio == electedRtrPrio {
-					if electedRtrId < nbrkey.RouterId {
+					if electedRtrId < nbrConf.OspfNbrRtrId {
 						electedRtrPrio = nbrEntry.RtrPrio
-						electedRtrId = nbrkey.RouterId
+						electedRtrId = nbrConf.OspfNbrRtrId
 						electedBDR = nbrEntry.BDRtr
 					}
 				}
 			}
 			if MaxRtrPrio < nbrEntry.RtrPrio {
 				MaxRtrPrio = nbrEntry.RtrPrio
-				RtrIdWithMaxPrio = nbrkey.RouterId
+				RtrIdWithMaxPrio = nbrConf.OspfNbrRtrId
 				NbrIPWithMaxPrio = nbrEntry.NbrIP
 			} else if MaxRtrPrio == nbrEntry.RtrPrio {
-				if RtrIdWithMaxPrio < nbrkey.RouterId {
+				if RtrIdWithMaxPrio < nbrConf.OspfNbrRtrId {
 					MaxRtrPrio = nbrEntry.RtrPrio
-					RtrIdWithMaxPrio = nbrkey.RouterId
+					RtrIdWithMaxPrio = nbrConf.OspfNbrRtrId
 					NbrIPWithMaxPrio = nbrEntry.NbrIP
 				}
 			}
@@ -341,6 +373,7 @@ func (server *OSPFServer) ElectDR(key IntfConfKey, electedBDR []byte, electedBDR
 	var electedDRtrId uint32
 
 	for key, nbrEntry := range ent.NeighborMap {
+		nbrConf := server.NeighborConfigMap[key]
 		if nbrEntry.TwoWayStatus == true &&
 			nbrEntry.RtrPrio > 0 &&
 			nbrEntry.NbrIP != 0 {
@@ -348,12 +381,12 @@ func (server *OSPFServer) ElectDR(key IntfConfKey, electedBDR []byte, electedBDR
 			if tempDR == nbrEntry.NbrIP {
 				if nbrEntry.RtrPrio > electedRtrPrio {
 					electedRtrPrio = nbrEntry.RtrPrio
-					electedDRtrId = key.RouterId
+					electedDRtrId = nbrConf.OspfNbrRtrId
 					electedDR = nbrEntry.DRtr
 				} else if nbrEntry.RtrPrio == electedRtrPrio {
-					if electedDRtrId < key.RouterId {
+					if electedDRtrId < nbrConf.OspfNbrRtrId {
 						electedRtrPrio = nbrEntry.RtrPrio
-						electedDRtrId = key.RouterId
+						electedDRtrId = nbrConf.OspfNbrRtrId
 						electedDR = nbrEntry.DRtr
 					}
 				}
@@ -450,35 +483,35 @@ func (server *OSPFServer) createAndSendEventsIntfFSM(key IntfConfKey,
 
 	areaId := convertIPv4ToUint32(ent.IfAreaId)
 	/*
-	msg := LSAChangeMsg{
-		areaId: areaId,
-	} */
+		msg := LSAChangeMsg{
+			areaId: areaId,
+		} */
 
 	msg1 := DrChangeMsg{
-		areaId:  areaId,
-		intfKey: key,
+		areaId:   areaId,
+		intfKey:  key,
 		oldstate: oldState,
 		newstate: newState,
 	}
 
 	/*
-	server.logger.Info("1. Sending msg for router LSA generation")
-	server.IntfStateChangeCh <- msg
+		server.logger.Info("1. Sending msg for router LSA generation")
+		server.IntfStateChangeCh <- msg
 	*/
 	/*
-	if oldState != newState {
-		if newState == config.DesignatedRouter {
-			// Construct Network LSA
-			server.logger.Info("1. Sending msg for Network LSA generation")
-		} else if oldState == config.DesignatedRouter {
-			// Flush Network LSA
-			server.logger.Info("2. Sending msg for Network LSA generation")
-		}
-		server.NetworkDRChangeCh<-msg1
-		server.logger.Info(fmt.Sprintln("oldState", oldState, " != newState", newState))
-	} */
+		if oldState != newState {
+			if newState == config.DesignatedRouter {
+				// Construct Network LSA
+				server.logger.Info("1. Sending msg for Network LSA generation")
+			} else if oldState == config.DesignatedRouter {
+				// Flush Network LSA
+				server.logger.Info("2. Sending msg for Network LSA generation")
+			}
+			server.NetworkDRChangeCh<-msg1
+			server.logger.Info(fmt.Sprintln("oldState", oldState, " != newState", newState))
+		} */
 	server.logger.Info("DRBDR changed. Sending message for router/network LSA generation")
-	server.NetworkDRChangeCh<-msg1
+	server.NetworkDRChangeCh <- msg1
 	server.logger.Info(fmt.Sprintln("oldState", oldState, " newState", newState))
 
 	/*

@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // policyApis.go
 package main
 
@@ -29,12 +52,11 @@ func (m RIBDServicesHandler) CreatePolicyStmt(cfg *ribd.PolicyStmt) (val bool, e
 func (m RIBDServicesHandler) ProcessPolicyStmtConfigCreate(cfg *ribd.PolicyStmt) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyStatementCreate:CreatePolicyStatement"))
 	newPolicyStmt := policy.PolicyStmtConfig{Name: cfg.Name, MatchConditions: cfg.MatchConditions}
+	newPolicyStmt.Actions = make([]string, 0)
+	newPolicyStmt.Actions = append(newPolicyStmt.Actions,cfg.Action)
 	newPolicyStmt.Conditions = make([]string, 0)
 	for i := 0; i < len(cfg.Conditions); i++ {
 		newPolicyStmt.Conditions = append(newPolicyStmt.Conditions, cfg.Conditions[i])
-	}
-	for i := 0; i < len(cfg.Actions); i++ {
-		newPolicyStmt.Actions = append(newPolicyStmt.Actions, cfg.Actions[i])
 	}
 	err = PolicyEngineDB.CreatePolicyStatement(newPolicyStmt)
 	return err
@@ -97,7 +119,7 @@ func (m RIBDServicesHandler) GetBulkPolicyStmtState(fromIndex ribd.Int, rcount r
 			nextNode = &tempNode[validCount]
 			nextNode.Name = prefixNode.Name
 			nextNode.Conditions = prefixNode.Conditions
-			nextNode.Actions = prefixNode.Actions
+			nextNode.Action = prefixNode.Actions[0]
 			if prefixNode.PolicyList != nil {
 				nextNode.PolicyList = make([]string, 0)
 			}
@@ -128,11 +150,11 @@ func (m RIBDServicesHandler) CreatePolicyDefinition(cfg *ribd.PolicyDefinition) 
 }
 func (m RIBDServicesHandler) ProcessPolicyDefinitionConfigCreate(cfg *ribd.PolicyDefinition) (err error) {
 	logger.Info(fmt.Sprintln("ProcessPolicyDefinitionCreate:CreatePolicyDefinition"))
-	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Precedence), MatchType: cfg.MatchType}
+	newPolicy := policy.PolicyDefinitionConfig{Name: cfg.Name, Precedence: int(cfg.Priority), MatchType: cfg.MatchType}
 	newPolicy.PolicyDefinitionStatements = make([]policy.PolicyDefinitionStmtPrecedence, 0)
 	var policyDefinitionStatement policy.PolicyDefinitionStmtPrecedence
 	for i := 0; i < len(cfg.StatementList); i++ {
-		policyDefinitionStatement.Precedence = int(cfg.StatementList[i].Precedence)
+		policyDefinitionStatement.Precedence = int(cfg.StatementList[i].Priority)
 		policyDefinitionStatement.Statement = cfg.StatementList[i].Statement
 		newPolicy.PolicyDefinitionStatements = append(newPolicy.PolicyDefinitionStatements, policyDefinitionStatement)
 	}
@@ -198,7 +220,6 @@ func (m RIBDServicesHandler) GetBulkPolicyDefinitionState(fromIndex ribd.Int, rc
 			nextNode = &tempNode[validCount]
 			nextNode.Name = prefixNode.Name
 			extensions := prefixNode.Extensions.(PolicyExtensions)
-			nextNode.HitCounter = int32(extensions.hitCounter)
 			nextNode.IpPrefixList = make([]string, 0)
 			for k := 0; k < len(extensions.routeList); k++ {
 				nextNode.IpPrefixList = append(nextNode.IpPrefixList, extensions.routeList[k])

@@ -1,16 +1,38 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package vrrpServer
 
 import (
 	"asicdServices"
-	"database/sql"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/google/gopacket"
-	_ "github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
 	"net"
 	"sync"
 	"time"
+	"utils/dbutils"
 	"utils/logging"
 	"vrrpd"
 )
@@ -136,7 +158,7 @@ type VrrpTxChannelInfo struct {
 
 type VrrpServer struct {
 	logger                        *logging.Writer
-	vrrpDbHdl                     *sql.DB
+	vrrpDbHdl                     *dbutils.DBUtil
 	paramsDir                     string
 	asicdClient                   VrrpAsicdClient
 	asicdSubSocket                *nanomsg.SubSocket
@@ -159,9 +181,10 @@ type VrrpServer struct {
 }
 
 const (
+	VRRP_REDDIS_DB_PORT = ":6379"
+	VRRP_INTF_DB        = "VrrpIntf"
+
 	// Error Message
-	VRRP_USR_CONF_DB                    = "/UsrConfDb.db"
-	VRRP_INTF_DB                        = "VrrpIntf"
 	VRRP_INVALID_VRID                   = "VRID is invalid"
 	VRRP_CLIENT_CONNECTION_NOT_REQUIRED = "Connection to Client is not required"
 	VRRP_INCORRECT_VERSION              = "Version is not correct for received VRRP Packet"

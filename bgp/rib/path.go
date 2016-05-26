@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // path.go
 package server
 
@@ -45,13 +68,13 @@ func getRouteSource(routeType uint8) uint8 {
 }
 
 type Path struct {
-	rib          *AdjRib
-	logger       *logging.Writer
-	NeighborConf *base.NeighborConf
-	PathAttrs    []packet.BGPPathAttr
-	withdrawn    bool
-	updated      bool
-	Pref         uint32
+	rib              *AdjRib
+	logger           *logging.Writer
+	NeighborConf     *base.NeighborConf
+	PathAttrs        []packet.BGPPathAttr
+	withdrawn        bool
+	updated          bool
+	Pref             uint32
 	reachabilityInfo *ReachabilityInfo
 	routeType        uint8
 	MED              uint32
@@ -78,13 +101,13 @@ func NewPath(adjRib *AdjRib, peer *base.NeighborConf, pa []packet.BGPPathAttr, w
 
 func (p *Path) Clone() *Path {
 	path := &Path{
-		rib:          p.rib,
-		logger:       p.rib.logger,
-		NeighborConf: p.NeighborConf,
-		PathAttrs:    p.PathAttrs,
-		withdrawn:    p.withdrawn,
-		updated:      p.updated,
-		Pref:         p.Pref,
+		rib:              p.rib,
+		logger:           p.rib.logger,
+		NeighborConf:     p.NeighborConf,
+		PathAttrs:        p.PathAttrs,
+		withdrawn:        p.withdrawn,
+		updated:          p.updated,
+		Pref:             p.Pref,
 		reachabilityInfo: p.reachabilityInfo,
 		routeType:        p.routeType,
 		MED:              p.MED,
@@ -156,6 +179,10 @@ func (p *Path) SetUpdate(status bool) {
 
 func (p *Path) IsUpdated() bool {
 	return p.updated
+}
+
+func (p *Path) GetNeighborConf() *base.NeighborConf {
+	return p.NeighborConf
 }
 
 func (p *Path) GetPeerIP() string {

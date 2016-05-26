@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // bgp.go
 package packet
 
@@ -733,4 +756,64 @@ func NormalizeASPath(updateMsg *BGPMessage, data interface{}) {
 			removePathAttr(updateMsg, BGPPathAttrTypeAS4Path)
 		}
 	}
+}
+
+func ConstructMaxSizedUpdatePackets(bgpMsg *BGPMessage) []*BGPMessage {
+	var withdrawnRoutes []NLRI
+	newUpdateMsgs := make([]*BGPMessage, 0)
+	pktLen := uint32(BGPUpdateMsgMinLen)
+	startIdx := 0
+	lastIdx := 0
+	updateMsg := bgpMsg.Body.(*BGPUpdate)
+
+	if updateMsg.WithdrawnRoutes != nil {
+		for lastIdx = 0; lastIdx < len(updateMsg.WithdrawnRoutes); lastIdx++ {
+			nlriLen := updateMsg.WithdrawnRoutes[lastIdx].Len()
+			if nlriLen+pktLen > BGPMsgMaxLen {
+				newMsg := NewBGPUpdateMessage(updateMsg.WithdrawnRoutes[startIdx:lastIdx], nil, nil)
+				newUpdateMsgs = append(newUpdateMsgs, newMsg)
+				startIdx = lastIdx
+				pktLen = uint32(BGPUpdateMsgMinLen)
+			}
+			pktLen += nlriLen
+		}
+	}
+
+	if lastIdx > startIdx {
+		withdrawnRoutes = updateMsg.WithdrawnRoutes[startIdx:lastIdx]
+	}
+
+	paLen := uint32(0)
+	for i := 0; i < len(updateMsg.PathAttributes); i++ {
+		paLen += updateMsg.PathAttributes[i].TotalLen()
+	}
+	if pktLen+paLen > BGPMsgMaxLen {
+		newMsg := NewBGPUpdateMessage(withdrawnRoutes, nil, nil)
+		withdrawnRoutes = nil
+		newUpdateMsgs = append(newUpdateMsgs, newMsg)
+		pktLen = BGPUpdateMsgMinLen
+	}
+
+	startIdx = 0
+	lastIdx = 0
+	for lastIdx = 0; lastIdx < len(updateMsg.NLRI); lastIdx++ {
+		nlriLen := updateMsg.NLRI[lastIdx].Len()
+		if nlriLen+pktLen+paLen > BGPMsgMaxLen {
+			newMsg := NewBGPUpdateMessage(withdrawnRoutes, updateMsg.PathAttributes, updateMsg.NLRI[startIdx:lastIdx])
+			newUpdateMsgs = append(newUpdateMsgs, newMsg)
+			if withdrawnRoutes != nil {
+				withdrawnRoutes = nil
+			}
+			startIdx = lastIdx
+			pktLen = uint32(BGPUpdateMsgMinLen)
+		}
+		pktLen += nlriLen
+	}
+
+	if (withdrawnRoutes != nil && len(withdrawnRoutes) > 0) || (lastIdx > startIdx) {
+		newMsg := NewBGPUpdateMessage(withdrawnRoutes, updateMsg.PathAttributes, updateMsg.NLRI[startIdx:lastIdx])
+		newUpdateMsgs = append(newUpdateMsgs, newMsg)
+	}
+
+	return newUpdateMsgs
 }

@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 // peer.go
 package fsm
 
@@ -31,6 +54,16 @@ type PeerAttrs struct {
 	AddPathFamily map[packet.AFI]map[packet.SAFI]uint8
 }
 
+const (
+	BGPCmdReasonNone int = iota
+	BGPCmdReasonMaxPrefixExceeded
+)
+
+type PeerFSMCommand struct {
+	Command int
+	Reason  int
+}
+
 type FSMManager struct {
 	logger         *logging.Writer
 	neighborConf   *base.NeighborConf
@@ -47,7 +80,7 @@ type FSMManager struct {
 	CloseCh        chan bool
 	StopFSMCh      chan string
 	acceptConn     bool
-	CommandCh      chan int
+	CommandCh      chan PeerFSMCommand
 	activeFSM      uint8
 	newConnCh      chan PeerFSMConnState
 	fsmMutex       sync.RWMutex
@@ -70,7 +103,7 @@ func NewFSMManager(logger *logging.Writer, neighborConf *base.NeighborConf, bgpP
 	mgr.acceptConn = false
 	mgr.CloseCh = make(chan bool)
 	mgr.StopFSMCh = make(chan string)
-	mgr.CommandCh = make(chan int)
+	mgr.CommandCh = make(chan PeerFSMCommand, 5)
 	mgr.activeFSM = uint8(config.ConnDirInvalid)
 	mgr.newConnCh = make(chan PeerFSMConnState)
 	mgr.fsmMutex = sync.RWMutex{}
@@ -80,7 +113,8 @@ func NewFSMManager(logger *logging.Writer, neighborConf *base.NeighborConf, bgpP
 func (mgr *FSMManager) Init() {
 	fsmId := uint8(config.ConnDirOut)
 	fsm := NewFSM(mgr, fsmId, mgr.neighborConf)
-	go fsm.StartFSM(NewIdleState(fsm))
+	fsm.Init(NewIdleState(fsm))
+	go fsm.StartFSM()
 	mgr.fsms[fsmId] = fsm
 	fsm.passiveTcpEstCh <- true
 
@@ -130,13 +164,17 @@ func (mgr *FSMManager) Init() {
 			mgr.Cleanup()
 			return
 
-		case command := <-mgr.CommandCh:
-			event := BGPFSMEvent(command)
-			if (event == BGPEventManualStart) || (event == BGPEventManualStop) ||
+		case fsmCommand := <-mgr.CommandCh:
+			event := BGPFSMEvent(fsmCommand.Command)
+			mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s: Received FSM command %d",
+				mgr.pConf.NeighborAddress, event))
+			if (event == BGPEventManualStart) || (event == BGPEventManualStop) || (event == BGPEventAutoStop) ||
 				(event == BGPEventManualStartPassTcpEst) {
-				for _, fsm := range mgr.fsms {
+				for id, fsm := range mgr.fsms {
 					if fsm != nil {
-						fsm.eventRxCh <- event
+						mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s: FSM %d Send command %d",
+							mgr.pConf.NeighborAddress, id, event))
+						fsm.eventRxCh <- PeerFSMEvent{event, fsmCommand.Reason}
 					}
 				}
 			}
@@ -178,8 +216,12 @@ func (mgr *FSMManager) fsmClose(id uint8) {
 
 func (mgr *FSMManager) fsmEstablished(id uint8, conn *net.Conn) {
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d connection established", mgr.pConf.NeighborAddress.String(), id))
-	mgr.activeFSM = id
-	mgr.fsmConnCh <- PeerFSMConn{mgr.neighborConf.Neighbor.NeighborAddress.String(), true, conn}
+	if _, ok := mgr.fsms[id]; ok {
+		mgr.activeFSM = id
+		mgr.fsmConnCh <- PeerFSMConn{mgr.neighborConf.Neighbor.NeighborAddress.String(), true, conn}
+	} else {
+		mgr.logger.Info(fmt.Sprintf("FSMManager: Peer %s FSM %d not found in fsms dict %v", mgr.pConf.NeighborAddress.String(), id, mgr.fsms))
+	}
 	//mgr.Peer.PeerConnEstablished(conn)
 }
 
@@ -233,7 +275,7 @@ func (mgr *FSMManager) StopFSM(stopMsg string) {
 	for id, fsm := range mgr.fsms {
 		if fsm != nil {
 			mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s FSM %d - Stop FSM", mgr.pConf.NeighborAddress, id))
-			fsm.eventRxCh <- BGPEventTcpConnFails
+			fsm.eventRxCh <- PeerFSMEvent{BGPEventTcpConnFails, BGPCmdReasonNone}
 			mgr.fsmBroken(id, false)
 		}
 	}
@@ -243,8 +285,7 @@ func (mgr *FSMManager) getNewId(id uint8) uint8 {
 	return uint8((id + 1) % 2)
 }
 
-func (mgr *FSMManager) createFSMForNewConnection(id uint8, connDir config.ConnDir) (*FSM, BaseStateIface,
-	chan net.Conn) {
+func (mgr *FSMManager) createFSMForNewConnection(id uint8, connDir config.ConnDir) (*FSM, chan net.Conn) {
 	defer mgr.fsmMutex.Unlock()
 	mgr.fsmMutex.Lock()
 
@@ -252,7 +293,7 @@ func (mgr *FSMManager) createFSMForNewConnection(id uint8, connDir config.ConnDi
 
 	if mgr.fsms[id] != nil {
 		mgr.logger.Err(fmt.Sprintf("FSMManager: Neighbor %s - FSM with id %d already exists", mgr.pConf.NeighborAddress, id))
-		return nil, state, nil
+		return nil, nil
 	}
 
 	mgr.logger.Info(fmt.Sprintf("FSMManager: Neighbor %s Creating new FSM with id %d", mgr.pConf.NeighborAddress, id))
@@ -264,14 +305,15 @@ func (mgr *FSMManager) createFSMForNewConnection(id uint8, connDir config.ConnDi
 		state = NewConnectState(fsm)
 		connCh = fsm.outConnCh
 	}
+	fsm.Init(state)
 	mgr.fsms[id] = fsm
-	return fsm, state, connCh
+	return fsm, connCh
 }
 
 func (mgr *FSMManager) handleAnotherConnection(id uint8, connDir config.ConnDir, conn *net.Conn) {
-	fsm, state, connCh := mgr.createFSMForNewConnection(id, connDir)
+	fsm, connCh := mgr.createFSMForNewConnection(id, connDir)
 	if fsm != nil {
-		go fsm.StartFSM(state)
+		go fsm.StartFSM()
 		fsm.passiveTcpEstCh <- true
 		connCh <- *conn
 	}

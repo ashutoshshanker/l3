@@ -1,8 +1,29 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package relayServer
 
 import (
-	"asicdServices"
-	"database/sql"
 	"dhcprelayd"
 	"github.com/google/gopacket/pcap"
 	nanomsg "github.com/op/go-nanomsg"
@@ -10,6 +31,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"utils/dbutils"
 	"utils/logging"
 )
 
@@ -58,6 +80,16 @@ type DhcpRelayPktChannel struct {
 	bytesRead int
 }
 
+type IPv4Intf struct {
+	IpAddr  string
+	IfIndex int32
+}
+
+type DhcpRelayClientJson struct {
+	Name string `json:Name`
+	Port int    `json:Port`
+}
+
 /*
  * Global Variable
  */
@@ -74,7 +106,7 @@ var (
 	dhcprelayClientConn               *ipv4.PacketConn
 	dhcprelayServerConn               *ipv4.PacketConn
 	logger                            *logging.Writer
-	dhcprelayDbHdl                    *sql.DB
+	dhcprelayDbHdl                    *dbutils.DBUtil
 	paramsDir                         string
 	dhcprelayEnabledIntfRefCount      int
 	dhcprelayRefCountMutex            *sync.RWMutex
@@ -105,7 +137,7 @@ var (
 	dhcprelayIntfServerStateSlice []string
 
 	// map key is interface id and value is IPV4Intf
-	dhcprelayIntfIpv4Map map[int32]asicdServices.IPv4Intf
+	dhcprelayIntfIpv4Map map[int32]IPv4Intf
 )
 
 // Dhcp OpCodes Types
@@ -115,14 +147,16 @@ const (
 )
 
 // DHCP Packet global constants
-const DHCP_PACKET_MIN_SIZE = 272
-const DHCP_PACKET_HEADER_SIZE = 16
-const DHCP_PACKET_MIN_BYTES = 240
-const DHCP_SERVER_PORT = 67
-const DHCP_CLIENT_PORT = 68
-const DHCP_BROADCAST_IP = "255.255.255.255"
-const DHCP_NO_IP = "0.0.0.0"
-const USR_CONF_DB = "/UsrConfDb.db"
+const (
+	DHCP_PACKET_MIN_SIZE    = 272
+	DHCP_PACKET_HEADER_SIZE = 16
+	DHCP_PACKET_MIN_BYTES   = 240
+	DHCP_SERVER_PORT        = 67
+	DHCP_CLIENT_PORT        = 68
+	DHCP_BROADCAST_IP       = "255.255.255.255"
+	DHCP_NO_IP              = "0.0.0.0"
+	DHCP_REDDIS_DB_PORT     = ":6379"
+)
 
 // DHCP Client/Server Message Type 53
 const (

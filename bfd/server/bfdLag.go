@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
@@ -15,6 +38,7 @@ func (session *BfdSession) StartPerLinkSessionServer(bfdServer *BFDServer) error
 	var err error
 	var myMacAddr net.HardwareAddr
 	bfdServer.logger.Info(fmt.Sprintln("Starting perlink session ", session.state.SessionId, " on ", ifName))
+	sessionId := session.state.SessionId
 	ifName, err = bfdServer.getLinuxIntfName(session.state.InterfaceId)
 	if err != nil {
 		bfdServer.logger.Info(fmt.Sprintln("Failed to get ifname for ", session.state.InterfaceId))
@@ -39,7 +63,6 @@ func (session *BfdSession) StartPerLinkSessionServer(bfdServer *BFDServer) error
 		}
 	}
 	bfdPacketSrc := gopacket.NewPacketSource(session.recvPcapHandle, layers.LayerTypeEthernet)
-	sessionId := session.state.SessionId
 	defer session.recvPcapHandle.Close()
 	for receivedPacket := range bfdPacketSrc.Packets() {
 		if bfdServer.bfdGlobal.Sessions[sessionId] == nil {
@@ -96,11 +119,13 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 	ifName, err = bfdServer.getLinuxIntfName(session.state.InterfaceId)
 	if err != nil {
 		bfdServer.logger.Info(fmt.Sprintln("Failed to get ifname for ", session.state.InterfaceId))
+		bfdServer.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
 	myMacAddr, err = bfdServer.getMacAddrFromIntfName(ifName)
 	if err != nil {
 		bfdServer.logger.Info(fmt.Sprintln("Unable to get the MAC addr of ", ifName, err))
+		bfdServer.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
 	bfdServer.logger.Info(fmt.Sprintln("MAC is  ", myMacAddr, " on ", ifName))
@@ -108,8 +133,11 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 	session.sendPcapHandle, err = pcap.OpenLive(ifName, bfdSnapshotLen, bfdPromiscuous, bfdPcapTimeout)
 	if session.sendPcapHandle == nil {
 		bfdServer.logger.Info(fmt.Sprintln("Failed to open sendPcapHandle for ", ifName, err))
+		bfdServer.FailedSessionClientCh <- session.state.SessionId
 		return err
 	}
+	session.TxTimeoutCh = make(chan int32)
+	session.SessionTimeoutCh = make(chan int32)
 	sessionTimeoutMS := time.Duration(session.state.RequiredMinRxInterval * session.state.DetectionMultiplier / 1000)
 	txTimerMS := time.Duration(session.state.DesiredMinTxInterval / 1000)
 	session.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { session.SessionTimeoutCh <- session.state.SessionId })
@@ -131,7 +159,6 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 				EthernetType: layers.EthernetTypeIPv4,
 			}
 			ipLayer := &layers.IPv4{
-				SrcIP:    net.ParseIP(bfdSession.state.LocalIpAddr),
 				DstIP:    net.ParseIP(bfdSession.state.IpAddr),
 				Protocol: layers.IPProtocolUDP,
 			}
@@ -159,17 +186,15 @@ func (session *BfdSession) StartPerLinkSessionClient(bfdServer *BFDServer) error
 					bfdSession.useDedicatedMac = false
 				}
 				bfdSession.state.NumTxPackets++
-				bfdSession.txTimer.Stop()
 				txTimerMS = time.Duration(bfdSession.state.DesiredMinTxInterval / 1000)
-				bfdSession.txTimer = time.AfterFunc(time.Millisecond*txTimerMS, func() { bfdSession.TxTimeoutCh <- bfdSession.state.SessionId })
+				bfdSession.txTimer.Reset(time.Millisecond * txTimerMS)
 			}
 		case sessionId := <-session.SessionTimeoutCh:
 			bfdSession := bfdServer.bfdGlobal.Sessions[sessionId]
 			bfdSession.state.LocalDiagType = DIAG_TIME_EXPIRED
 			bfdSession.EventHandler(TIMEOUT)
-			bfdSession.sessionTimer.Stop()
 			sessionTimeoutMS = time.Duration(bfdSession.state.RequiredMinRxInterval * bfdSession.state.DetectionMultiplier / 1000)
-			bfdSession.sessionTimer = time.AfterFunc(time.Millisecond*sessionTimeoutMS, func() { bfdSession.SessionTimeoutCh <- bfdSession.state.SessionId })
+			bfdSession.sessionTimer.Reset(time.Millisecond * sessionTimeoutMS)
 		case <-session.SessionStopClientCh:
 			return nil
 		}

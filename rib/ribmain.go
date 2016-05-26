@@ -1,25 +1,40 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package main
 
 import (
 	"flag"
 	"fmt"
-	"git.apache.org/thrift.git/lib/go/thrift"
-	"ribd"
+	"l3/rib/rpc"
+	"l3/rib/server"
+	"utils/dbutils"
+	"utils/keepalive"
 	"utils/logging"
-	"utils/policy"
-	"database/sql"
 )
 
-var logger *logging.Writer
-var routeServiceHandler *RIBDServicesHandler
-var PARAMSDIR string
-var PolicyEngineDB *policy.PolicyEngineDB
-
 func main() {
-	var transport thrift.TServerTransport
 	var err error
-	var addr = "localhost:5000"
-	fmt.Println("Starting rib daemon")
 	paramsDir := flag.String("params", "./params", "Params directory")
 	flag.Parse()
 	fileName := *paramsDir
@@ -28,50 +43,40 @@ func main() {
 	}
 
 	fmt.Println("Start logger")
-	logger, err = logging.NewLogger(fileName, "ribd", "RIB")
+	logger, err := logging.NewLogger("ribd", "RIB", true)
 	if err != nil {
-		fmt.Println("Failed to start the logger. Exiting!!")
-		return
+		fmt.Println("Failed to start the logger. Nothing will be logged...")
 	}
-	go logger.ListenForSysdNotifications()
 	logger.Info("Started the logger successfully.")
 
-	dbName := fileName + "UsrConfDb.db"
-	fmt.Println("RIBd opening Config DB: ", dbName)
-	dbHdl, err := sql.Open("sqlite3", dbName)
+	dbHdl := dbutils.NewDBUtil(logger)
+	err = dbHdl.Connect()
 	if err != nil {
-		fmt.Println("Failed to open connection to DB. ", err, " Exiting!!")
+		logger.Err("Failed to dial out to Redis server")
 		return
 	}
-	if err = dbHdl.Ping(); err != nil {
-		fmt.Println(fmt.Sprintln("Failed to keep DB connection alive"))
-		return 
-	}
-	transport, err = thrift.NewTServerSocket(addr)
-	if err != nil {
-		logger.Info(fmt.Sprintln("Failed to create Socket with:", addr))
-	}
-	handler := NewRIBDServicesHandler(dbHdl)
-	if handler == nil {
-		logger.Println("handler nill")
+	routeServer := server.NewRIBDServicesHandler(dbHdl, logger)
+	if routeServer == nil {
+		logger.Println("routeServer nil")
 		return
 	}
-	routeServiceHandler = handler
-	go routeServiceHandler.StartServer(*paramsDir)
-	go routeServiceHandler.StartNetlinkServer()
-	go routeServiceHandler.StartAsicdServer()
-	go routeServiceHandler.StartArpdServer()
-	up := <-routeServiceHandler.ServerUpCh
-	dbHdl.Close()
+	go routeServer.StartDBServer()
+	go routeServer.StartPolicyServer()
+	go routeServer.NotificationServer()
+	go routeServer.StartAsicdServer()
+	go routeServer.StartArpdServer()
+	go routeServer.StartServer(*paramsDir)
+	up := <-routeServer.ServerUpCh
+	//dbHdl.Close()
 	logger.Info(fmt.Sprintln("RIBD server is up: ", up))
 	if !up {
 		logger.Err(fmt.Sprintln("Exiting!!"))
 		return
 	}
-	processor := ribd.NewRIBDServicesProcessor((routeServiceHandler))
-	transportFactory := thrift.NewTBufferedTransportFactory(8192)
-	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
-	server := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)
-	logger.Println("Starting RIB daemon")
-	server.Serve()
+
+	// Start keepalive routine
+	go keepalive.InitKeepAlive("ribd", fileName)
+
+	ribdServicesHandler := rpc.NewRIBdHandler(logger, routeServer)
+	rpc.NewRIBdRPCServer(logger, ribdServicesHandler, fileName)
 }

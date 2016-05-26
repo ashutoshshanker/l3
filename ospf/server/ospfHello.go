@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
@@ -79,7 +102,8 @@ func (server *OSPFServer) BuildHelloPkt(ent IntfConf) []byte {
 	var nbrlen = 0
 	nbr := make([]byte, 4)
 	for key, _ := range ent.NeighborMap {
-		binary.BigEndian.PutUint32(nbr, key.RouterId)
+		nbrConf := server.NeighborConfigMap[key]
+		binary.BigEndian.PutUint32(nbr, nbrConf.OspfNbrRtrId)
 		nbrlen = nbrlen + 4
 		neighbor = append(neighbor, nbr...)
 	}
@@ -143,8 +167,9 @@ func (server *OSPFServer) processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetad
 	decodeOspfHelloData(data, ospfHelloData)
 
 	//  Todo: Sec 10.5 RFC2328 Need to add check for Virtual links
-	if ent.IfType != config.PointToPoint {
+	if ent.IfType != config.NumberedP2P || ent.IfType != config.UnnumberedP2P {
 		if bytesEqual(ent.IfNetmask, ospfHelloData.netmask) == false {
+			server.logger.Info(fmt.Sprintln("HELLO: Netmask mismatch. Int mask", ent.IfNetmask, " Hello mask ", ospfHelloData.netmask, " ip ", ipHdrMd.srcIP))
 			err := errors.New("Netmask mismatch")
 			return err
 		}
@@ -193,6 +218,7 @@ func (server *OSPFServer) processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetad
 		i := OSPF_HELLO_MIN_SIZE + 4
 		k := 0
 		for ; k < int(nbrlen); i, j, k = i+4, j+4, k+4 {
+			server.logger.Info(fmt.Sprintln("HELLO: nbr ", data[j:i], " global_router", server.ospfGlobalConf.RouterId))
 			if bytesEqual(data[j:i], server.ospfGlobalConf.RouterId) == true {
 				TwoWayStatus = true
 				break
@@ -200,8 +226,14 @@ func (server *OSPFServer) processRxHelloPkt(data []byte, ospfHdrMd *OspfHdrMetad
 		}
 	}
 
-	routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
-	ospfNeighborIPToMAC[routerId] = ethHdrMd.srcMAC
+	//routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
+	srcIp := net.IPv4(ipHdrMd.srcIP[0], ipHdrMd.srcIP[1], ipHdrMd.srcIP[2], ipHdrMd.srcIP[3])
+
+	nbrKey := NeighborConfKey{
+		IPAddr:  config.IpAddress(srcIp.String()),
+		IntfIdx: key.IntfIdx,
+	}
+	ospfNeighborIPToMAC[nbrKey] = ethHdrMd.srcMAC
 
 	server.processOspfHelloNeighbor(TwoWayStatus, ospfHelloData, ipHdrMd, ospfHdrMd, key)
 
@@ -215,24 +247,15 @@ func (server *OSPFServer) processOspfHelloNeighbor(TwoWayStatus bool, ospfHelloD
 	//server.logger.Info(fmt.Sprintln("ospfHdrMd", ospfHdrMd))
 	routerId := convertIPv4ToUint32(ospfHdrMd.routerId)
 	NbrIP := convertIPv4ToUint32(ipHdrMd.srcIP)
-	neighborKey := NeighborKey{
-		RouterId: routerId,
-		//NbrIP:          NbrIP,
+
+	//ipaddr := convertIPInByteToString(ipHdrMd.srcIP)
+	ipaddr := net.IPv4(ipHdrMd.srcIP[0], ipHdrMd.srcIP[1], ipHdrMd.srcIP[2], ipHdrMd.srcIP[3])
+	neighborKey := NeighborConfKey{
+		IPAddr:  config.IpAddress(ipaddr.String()),
+		IntfIdx: key.IntfIdx,
 	}
 
 	//Todo: Find whether one way or two way
-	/*
-	   TwoWayStatus := false
-
-	   j := uint16(OSPF_HELLO_MIN_SIZE)
-	   i := OSPF_HELLO_MIN_SIZE + 4
-	   for ; j < ospfHdrMd.pktlen; i, j = i+4, j+4 {
-	       if bytesEqual(data[i:j], server.ospfGlobalConf.RouterId) == true {
-	           TwoWayStatus = true
-	           break
-	       }
-	   }
-	*/
 	ent, _ := server.IntfConfMap[key]
 
 	neighborEntry, exist := ent.NeighborMap[neighborKey]
@@ -305,10 +328,11 @@ func (server *OSPFServer) CreateAndSendHelloRecvdMsg(routerId uint32,
 
 	if ifType == config.Broadcast ||
 		ifType == config.Nbma ||
-		ifType == config.PointToMultipoint {
+		ifType == config.PointToMultipoint || 
+		ifType == config.NumberedP2P{
 		msg.NeighborIP = net.IPv4(ipHdrMd.srcIP[0], ipHdrMd.srcIP[1], ipHdrMd.srcIP[2], ipHdrMd.srcIP[3])
 		//copy(msg.NeighborIP, ipHdrMd.srcIP)
-	} else { //Check for Virtual Links and p2p
+	} else { //Check for Virtual Links and unnumbered p2p
 		msg.NeighborIP = net.IPv4(ospfHdrMd.routerId[0], ospfHdrMd.routerId[1], ospfHdrMd.routerId[2], ospfHdrMd.routerId[3])
 		//copy(msg.NeighborIP, ospfHdrMd.routerId)
 	}

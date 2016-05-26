@@ -1,32 +1,54 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
-	"asicd/asicdConstDefs"
-	"asicd/pluginManager/pluginCommon"
+	"asicd/asicdCommonDefs"
 	"asicdServices"
 	"encoding/json"
 	"fmt"
 	nanomsg "github.com/op/go-nanomsg"
-	"utils/commonDefs"
+	"utils/ipcutils"
 )
 
 type AsicdClient struct {
-	BfdClientBase
+	ipcutils.IPCClientBase
 	ClientHdl *asicdServices.ASICDServicesClient
 }
 
 func (server *BFDServer) CreateASICdSubscriber() {
 	server.logger.Info("Listen for ASICd updates")
-	server.listenForASICdUpdates(pluginCommon.PUB_SOCKET_ADDR)
+	server.listenForASICdUpdates(asicdCommonDefs.PUB_SOCKET_ADDR)
 	for {
-		server.logger.Info("Read on ASICd subscriber socket...")
+		server.logger.Debug("Read on ASICd subscriber socket...")
 		asicdrxBuf, err := server.asicdSubSocket.Recv(0)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Recv on ASICd subscriber socket failed with error:", err))
 			server.asicdSubSocketErrCh <- err
 			continue
 		}
-		server.logger.Info(fmt.Sprintln("ASIC subscriber recv returned:", asicdrxBuf))
+		server.logger.Debug(fmt.Sprintln("ASIC subscriber recv returned:", asicdrxBuf))
 		server.asicdSubSocketCh <- asicdrxBuf
 	}
 }
@@ -57,47 +79,16 @@ func (server *BFDServer) listenForASICdUpdates(address string) error {
 }
 
 func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
-	var msg asicdConstDefs.AsicdNotification
+	var msg asicdCommonDefs.AsicdNotification
 	err := json.Unmarshal(asicdrxBuf, &msg)
 	if err != nil {
 		server.logger.Err(fmt.Sprintln("Unable to unmarshal asicdrxBuf:", asicdrxBuf))
 		return
 	}
-	if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE ||
-		msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_DELETE {
-		// IPV4INTF Create, Delete
-		var NewIpv4IntfMsg asicdConstDefs.IPv4IntfNotifyMsg
-		var ipv4IntfMsg IPv4IntfNotifyMsg
-		err = json.Unmarshal(msg.Msg, &NewIpv4IntfMsg)
-		if err != nil {
-			server.logger.Err(fmt.Sprintln("Unable to unmarshal msg:", msg.Msg))
-			return
-		}
-		ipv4IntfMsg.IpAddr = NewIpv4IntfMsg.IpAddr
-		ipv4IntfMsg.IfId = NewIpv4IntfMsg.IfIndex
-		if msg.MsgType == asicdConstDefs.NOTIFY_IPV4INTF_CREATE {
-			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_CREATE", ipv4IntfMsg))
-			server.createIPIntfConfMap(ipv4IntfMsg)
-			if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypePort { // PHY
-				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
-			} else if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypeVlan { // Vlan
-				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
-			}
-		} else {
-			server.logger.Info(fmt.Sprintln("Receive IPV4INTF_DELETE", ipv4IntfMsg))
-			server.deleteIPIntfConfMap(ipv4IntfMsg)
-			if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypePort { // PHY
-				server.updateIpInPortPropertyMap(ipv4IntfMsg, msg.MsgType)
-			} else if asicdConstDefs.GetIntfTypeFromIfIndex(ipv4IntfMsg.IfId) == commonDefs.L2RefTypeVlan { // Vlan
-				server.updateIpInVlanPropertyMap(ipv4IntfMsg, msg.MsgType)
-			}
-		}
-	} else if msg.MsgType == asicdConstDefs.NOTIFY_L3INTF_STATE_CHANGE {
-		// L3INTF state change
-	} else if msg.MsgType == asicdConstDefs.NOTIFY_VLAN_CREATE ||
-		msg.MsgType == asicdConstDefs.NOTIFY_VLAN_DELETE {
+	if msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_CREATE ||
+		msg.MsgType == asicdCommonDefs.NOTIFY_VLAN_DELETE {
 		// VLAN Create, Delete
-		var vlanNotifyMsg asicdConstDefs.VlanNotifyMsg
+		var vlanNotifyMsg asicdCommonDefs.VlanNotifyMsg
 		err = json.Unmarshal(msg.Msg, &vlanNotifyMsg)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Unable to unmashal vlanNotifyMsg:", msg.Msg))
@@ -105,11 +96,11 @@ func (server *BFDServer) processAsicdNotification(asicdrxBuf []byte) {
 		}
 		server.updatePortPropertyMap(vlanNotifyMsg, msg.MsgType)
 		server.updateVlanPropertyMap(vlanNotifyMsg, msg.MsgType)
-	} else if msg.MsgType == asicdConstDefs.NOTIFY_LAG_CREATE ||
-		msg.MsgType == asicdConstDefs.NOTIFY_LAG_DELETE {
+	} else if msg.MsgType == asicdCommonDefs.NOTIFY_LAG_CREATE ||
+		msg.MsgType == asicdCommonDefs.NOTIFY_LAG_DELETE {
 		// LAG Create, Delete
 		server.logger.Info("Recvd NOTIFY_LAG notification")
-		var lagNotifyMsg asicdConstDefs.LagNotifyMsg
+		var lagNotifyMsg asicdCommonDefs.LagNotifyMsg
 		err = json.Unmarshal(msg.Msg, &lagNotifyMsg)
 		if err != nil {
 			server.logger.Err(fmt.Sprintln("Unable to unmashal lagNotifyMsg:", msg.Msg))

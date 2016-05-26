@@ -1,3 +1,26 @@
+//
+//Copyright [2016] [SnapRoute Inc]
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//	 Unless required by applicable law or agreed to in writing, software
+//	 distributed under the License is distributed on an "AS IS" BASIS,
+//	 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	 See the License for the specific language governing permissions and
+//	 limitations under the License.
+//
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
+//                                                                                                           
+
 package server
 
 import (
@@ -80,7 +103,7 @@ func (server *OSPFServer) processOspfHeader(ospfPkt []byte, key IntfConfKey, md 
 		return err
 	}
 
-	if ent.IfType != config.PointToPoint {
+	if ent.IfType != config.NumberedP2P || ent.IfType != config.UnnumberedP2P {
 		if bytesEqual(ent.IfAreaId, ospfHdr.areaId) == false &&
 			isInSubnet(net.IP(ent.IfAreaId), net.IP(ospfHdr.areaId), net.IPMask(ent.IfNetmask)) == false {
 			err := errors.New("Dropped because of Src IP is not in subnet or Area ID not matching")
@@ -180,14 +203,23 @@ func (server *OSPFServer) ProcessOspfRecvPkt(key IntfConfKey, pkt gopacket.Packe
 
 func (server *OSPFServer) processOspfData(data []byte, ethHdrMd *EthHdrMetadata, ipHdrMd *IpHdrMetadata, ospfHdrMd *OspfHdrMetadata, key IntfConfKey) error {
 	var err error = nil
-	routerid := binary.BigEndian.Uint32(ospfHdrMd.routerId)
-	exist := server.neighborExist(routerid)
+	//routerid := binary.BigEndian.Uint32(ospfHdrMd.routerId)
+	NeighborIP := net.IPv4(ipHdrMd.srcIP[0], ipHdrMd.srcIP[1], ipHdrMd.srcIP[2], ipHdrMd.srcIP[3])
+	//ipaddr := convertByteToOctetString(ipHdrMd.srcIP)
+	ospfNbrConfKey := NeighborConfKey{
+		IPAddr:  config.IpAddress(NeighborIP.String()),
+		IntfIdx: key.IntfIdx,
+	}
+	exist := server.neighborExist(ospfNbrConfKey)
+	if !exist {
+		server.logger.Info(fmt.Sprintln("PACKET: neighbor doesnt exist..", NeighborIP, key.IntfIdx))
+	}
 	switch ospfHdrMd.pktType {
-	case HelloType:	
+	case HelloType:
 		err = server.processRxHelloPkt(data, ospfHdrMd, ipHdrMd, ethHdrMd, key)
 	case DBDescriptionType:
 		if exist {
-			err = server.processRxDbdPkt(data, ospfHdrMd, ipHdrMd, key, ethHdrMd.srcMAC)
+			err = server.ProcessRxDbdPkt(data, ospfHdrMd, ipHdrMd, key, ethHdrMd.srcMAC)
 		}
 	case LSRequestType:
 		if exist {
