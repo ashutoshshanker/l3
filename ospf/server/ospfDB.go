@@ -191,16 +191,26 @@ func (server *OSPFServer) AddIPv4RoutesState(entry RoutingTblEntryKey) error {
 	obj.Type2Cost = int32(rEntry.RoutingTblEnt.Type2Cost)
 	obj.NumOfPaths = int32(rEntry.RoutingTblEnt.NumOfPaths)
 	nh_local := rEntry.RoutingTblEnt.NextHops
-	for nh_val, valid := range nh_local {
-		if valid {
-			var nh *ospfd.OspfNextHop
-			nh.IfIPAddr = convertUint32ToIPv4(nh_val.IfIPAddr)
-			nh.IfIdx = int32(nh_val.IfIdx)
-			nh.NextHopIP = convertUint32ToIPv4(nh_val.NextHopIP)
-			nh.AdvRtr = convertUint32ToIPv4(nh_val.AdvRtr)
-			obj.NextHops = append(obj.NextHops, nh)
-		}
+	obj.NextHops = make([]*ospfd.OspfNextHop, 0)
+	nh_list := make([]ospfd.OspfNextHop, len(nh_local))
+	index := 0
+	/*
+	    type OspfNextHop struct {
+		IfIPAddr  string `DESCRIPTION: O/P interface IP address`
+		IfIdx     uint32 `DESCRIPTION: Interface index `
+		NextHopIP string `DESCRIPTION: Nexthop ip address`
+		AdvRtr    string `DESCRIPTION: Advertising router id`
 	}
+	*/
+	for nh_val, _ := range nh_local {
+		nh_list[index].IfIPAddr = convertUint32ToIPv4(nh_val.IfIPAddr)
+		nh_list[index].IfIdx = int32(nh_val.IfIdx)
+		nh_list[index].NextHopIP = convertUint32ToIPv4(nh_val.NextHopIP)
+		nh_list[index].AdvRtr = convertUint32ToIPv4(nh_val.AdvRtr)
+		obj.NextHops = append(obj.NextHops, &nh_list[index])
+		index++
+	}
+	obj.LSOrigin = &ospfd.OspfLsaKey{}
 	obj.LSOrigin.LSType = int8(rEntry.RoutingTblEnt.LSOrigin.LSType)
 	obj.LSOrigin.LSId = int32(rEntry.RoutingTblEnt.LSOrigin.LSId)
 	obj.LSOrigin.AdvRouter = int32(rEntry.RoutingTblEnt.LSOrigin.AdvRouter)
@@ -221,9 +231,11 @@ func (server *OSPFServer) DelIPv4RoutesState(entry RoutingTblEntryKey) error {
 	var dbObj models.OspfIPv4Routes
 	obj := ospfd.NewOspfIPv4Routes()
 
+	obj.LSOrigin = &ospfd.OspfLsaKey{}
 	obj.DestId = convertUint32ToIPv4(entry.DestId)
 	obj.AddrMask = convertUint32ToIPv4(entry.AddrMask)
 	obj.DestType = string(entry.DestType)
+
 	models.ConvertThriftToospfdOspfIPv4RoutesObj(obj, &dbObj)
 	err := dbObj.DeleteObjectFromDb(server.dbHdl)
 	if err != nil {

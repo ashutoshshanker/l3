@@ -507,9 +507,11 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 	for key, ent := range server.IntfConfMap {
 		AreaId := convertIPv4ToUint32(ent.IfAreaId)
 		if areaId != AreaId {
+			server.logger.Info(fmt.Sprintln("LSDB: Area id not matching. i/p ", areaId, "if areaid ", AreaId, ent.IfIpAddr))
 			continue
 		}
 		if ent.IfFSMState <= config.Waiting {
+			server.logger.Info(fmt.Sprintln("LSDB: If is in waiting. Skip.", ent.IfIpAddr))
 			continue
 		}
 		var linkDetail LinkDetail
@@ -869,11 +871,19 @@ func (server *OSPFServer) processRecvdNetworkLsa(data []byte, areaId uint32) boo
 
 func (server *OSPFServer) processDeleteSummaryLsa(data []byte, areaId uint32, lsaType uint8) bool {
 	lsakey := NewLsaKey()
+        var val LsdbSliceEnt
 	summaryLsa := NewSummaryLsa()
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
 	}
+        val.AreaId = lsdbKey.AreaId
+        
 	decodeSummaryLsa(data, summaryLsa, lsakey)
+
+        val.LSType = lsakey.LSType
+        val.LSId = lsakey.LSId
+        val.AdvRtr = lsakey.AdvRouter
+
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
 	if lsaType == Summary3LSA {
 		delete(lsDbEnt.Summary3LsaMap, *lsakey)
@@ -882,6 +892,7 @@ func (server *OSPFServer) processDeleteSummaryLsa(data []byte, areaId uint32, ls
 	}
 	server.AreaLsdb[lsdbKey] = lsDbEnt
 	server.printRouterLsa()
+        server.DelLsdbEntry(val)
 	return true
 }
 
@@ -948,6 +959,7 @@ func (server *OSPFServer) processRecvdSummaryLsa(data []byte, areaId uint32, lsa
 
 func (server *OSPFServer) processDeleteASExternalLsa(data []byte, areaId uint32) bool {
 	lsakey := NewLsaKey()
+        var val LsdbSliceEnt
 	asExtLsa := NewASExternalLsa()
 	lsdbKey := LsdbKey{
 		AreaId: areaId,
@@ -956,7 +968,15 @@ func (server *OSPFServer) processDeleteASExternalLsa(data []byte, areaId uint32)
 	lsDbEnt, _ := server.AreaLsdb[lsdbKey]
 	delete(lsDbEnt.ASExternalLsaMap, *lsakey)
 	server.AreaLsdb[lsdbKey] = lsDbEnt
-
+        
+        val.AreaId = lsdbKey.AreaId 
+ val.LSType = lsakey.LSType
+val.LSId = lsakey.LSId
+ val.AdvRtr = lsakey.AdvRouter
+err := server.DelLsdbEntry(val)
+if err != nil {
+	server.logger.Info(fmt.Sprintln("DB: Failed to delete entry from db ", lsakey))
+}
 	return true
 }
 
@@ -1162,7 +1182,7 @@ func (server *OSPFServer) processNeighborFullEvent(msg ospfNbrMdata) {
 	intConf := server.IntfConfMap[msg.intf]
 	server.logger.Info(fmt.Sprintln("LSDB: Nbr full. Generate router and network LSA  area id  ",
 		msg.areaId, " intf ", intConf.IfIpAddr))
-	if intConf.IfDRtrId == rtr_id {
+	if intConf.IfDRtrId == rtr_id  && intConf.IfType == config.Broadcast {
 		server.logger.Info(fmt.Sprintln("Generate network LSA ", msg.intf))
 		server.generateNetworkLSA(msg.areaId, msg.intf, true)
 	}
