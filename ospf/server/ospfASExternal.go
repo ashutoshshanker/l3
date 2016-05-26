@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -310,8 +310,9 @@ func (server *OSPFServer) CalcASBorderRoutes(areaId uint32) {
 	}
 }
 
-func (server *OSPFServer) GenerateType4SummaryLSA(rKey RoutingTblEntryKey, rEnt GlobalRoutingTblEntry) (LsaKey, SummaryLsa) {
+func (server *OSPFServer) GenerateType4SummaryLSA(rKey RoutingTblEntryKey, rEnt GlobalRoutingTblEntry, lsDbKey LsdbKey) (LsaKey, SummaryLsa) {
 	var summaryLsa SummaryLsa
+	seq_num := InitialSequenceNumber
 
 	AdvRouter := convertIPv4ToUint32(server.ospfGlobalConf.RouterId)
 	lsaKey := LsaKey{
@@ -319,9 +320,16 @@ func (server *OSPFServer) GenerateType4SummaryLSA(rKey RoutingTblEntryKey, rEnt 
 		LSId:      rKey.DestId,
 		AdvRouter: AdvRouter,
 	}
+	//check if summaryLSA exist
+	if lsdbEnt, ok := server.SummaryLsDb[lsDbKey]; ok {
+		if summaryLsa, ok = lsdbEnt[lsaKey]; ok {
+			seq_num = summaryLsa.LsaMd.LSSequenceNum + 1
+			server.logger.Info(fmt.Sprintln("SUMMARY: Refreshed summary LSA ", lsaKey))
+		}
+	}
 	summaryLsa.LsaMd.Options = uint8(2) // Need to be re-visited
 	summaryLsa.LsaMd.LSAge = 0
-	summaryLsa.LsaMd.LSSequenceNum = InitialSequenceNumber
+	summaryLsa.LsaMd.LSSequenceNum = seq_num
 	summaryLsa.LsaMd.LSLen = uint16(OSPF_LSA_HEADER_SIZE + 8)
 	summaryLsa.Netmask = rKey.AddrMask
 	summaryLsa.Metric = uint32(rEnt.RoutingTblEnt.Cost)
