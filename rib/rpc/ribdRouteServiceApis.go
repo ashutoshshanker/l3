@@ -118,7 +118,7 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
 	/*
 	    validate route config parameters for update operation
 	*/
-	if op == nil {
+	if op == nil || len(op) == 0 {
 	    err = m.server.RouteConfigValidationCheckForUpdate(origconfig, newconfig, attrset)
 	    if err != nil {
 		    logger.Err(fmt.Sprintln("validation check failed with error ", err))
