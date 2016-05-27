@@ -37,8 +37,10 @@ type TosType int                  // 0x0 to 30
 type IpAddress string
 type InterfaceIndexOrZero int
 
+/*Architectural constants */
 const (
-	MaxAge        uint16 = 3600
+	MaxAge        uint16 = 3600 //60 min
+	LSRefreshTime uint32 = 1800 // 30min
 	AllSPFRouters string = "224.0.0.5"
 	AllDRouters   string = "224.0.0.6"
 	McastMAC      string = "01:00:5e:00:00:05"
