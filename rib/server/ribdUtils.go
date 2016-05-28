@@ -283,7 +283,7 @@ func (m RIBDServer) RouteConfigValidationCheckForUpdate(oldcfg *ribd.IPv4Route, 
 }
 
 func (m RIBDServer) RouteConfigValidationCheckForPatchUpdate(oldcfg *ribd.IPv4Route, cfg *ribd.IPv4Route, op []*ribd.PatchOpInfo) (err error) {
-	logger.Info(fmt.Sprintln("RouteConfigValidationCheckForUpdate"))
+	logger.Info(fmt.Sprintln("RouteConfigValidationCheckForPatchUpdate"))
 	isCidr := strings.Contains(cfg.DestinationNw, "/")
 	if isCidr { 
 	    /*
@@ -321,12 +321,20 @@ func (m RIBDServer) RouteConfigValidationCheckForPatchUpdate(oldcfg *ribd.IPv4Ro
 					logger.Err("Must specify next hop")
 					return errors.New("Next hop ip not specified")
 				}
-				for j :=0 ;j<len(op[idx].Value);j++ {
+				logger.Debug(fmt.Sprintln("value = ", op[idx].Value))
+				valueObjArr := []ribd.NextHopInfo{}
+	             err = json.Unmarshal([]byte (op[idx].Value),&valueObjArr)
+	             if err != nil {
+		             logger.Debug(fmt.Sprintln("error unmarshaling value:",err))
+		             return errors.New(fmt.Sprintln("error unmarshaling value:",err))
+	             }
+				logger.Debug(fmt.Sprintln("Number of nextHops:", len(valueObjArr)))
+				for _,val := range valueObjArr {
 					/*
 					    Check if the next hop ip valid
 					*/
-				    logger.Debug(fmt.Sprintln("nexthop ip: ", op[idx].Value[j]["NextHopIp"], "intf:", op[idx].Value[j]["NextHopIntRef"]))
-				     _, err = getIP(op[idx].Value[j]["NextHopIp"])
+					logger.Debug(fmt.Sprintln("nextHop info: ip - ", val.NextHopIp, " intf: ", val.NextHopIntRef, " wt:", val.Weight))
+				     _, err = getIP(val.NextHopIp)
 					if err != nil {
 						logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
 						return errors.New("Invalid next hop ip address")
@@ -337,20 +345,23 @@ func (m RIBDServer) RouteConfigValidationCheckForPatchUpdate(oldcfg *ribd.IPv4Ro
 						    /*
 						        Check if the next hop ref is valid L3 interface for add operation
 						    */
-					        logger.Debug(fmt.Sprintln("IntRef before : ", op[idx].Value[j]["NextHopIntRef"]))
-					        op[idx].Value[j]["NextHopIntRef"], err = m.ConvertIntfStrToIfIndexStr(op[idx].Value[j]["NextHopIntRef"])
+					        logger.Debug(fmt.Sprintln("IntRef before : ",val.NextHopIntRef))
+					        val.NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(val.NextHopIntRef)
 					        if err != nil {
-						        logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", op[idx].Value[j]["NextHopIntRef"]))
+						        logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", val.NextHopIntRef))
 						        return errors.New("Invalid NextHop Intref")
 					        }
-					        logger.Debug(fmt.Sprintln("IntRef after : ", op[idx].Value[j]["NextHopIntRef"]))
+					        logger.Debug(fmt.Sprintln("IntRef after : ", val.NextHopIntRef))
+							logger.Debug(fmt.Sprintln("cfg.NextHop before: ", cfg.NextHop))
+							cfg.NextHop = append(cfg.NextHop, &val)
+							logger.Debug(fmt.Sprintln("cfg.NextHop after: ", cfg.NextHop))
 						case "remove":
 						    logger.Debug(fmt.Sprintln("remove op"))
 						default:
 						    logger.Err(fmt.Sprintln("operation ", op[idx].Op, " not supported"))
 							return errors.New(fmt.Sprintln("operation ", op[idx].Op, " not supported"))
 					}
-				}
+		        }
 			default:
 			    logger.Err(fmt.Sprintln("Patch update for attribute:", op[idx].Path, " not supported"))
 				return errors.New("Invalid attribute for patch update")

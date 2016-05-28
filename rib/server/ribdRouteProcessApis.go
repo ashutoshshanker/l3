@@ -38,6 +38,7 @@ import (
 	"errors"
 	"utils/commonDefs"
 	//	"github.com/op/go-nanomsg"
+	"encoding/json"
 	"net"
 	"reflect"
 	"strconv"
@@ -225,8 +226,19 @@ func getConnectedRoutes() {
 
 func (m RIBDServer) GetRouteDistanceState(protocol string) (*ribd.RouteDistanceState, error) {
 	logger.Debug("Get state for RouteDistanceState")
-	route := ribd.NewRouteDistanceState()
-	return route, nil
+	state := ribd.NewRouteDistanceState()
+	if ProtocolAdminDistanceMapDB == nil {
+		logger.Debug("ProtocolAdminDistanceMapDB not initialized")
+		return state, errors.New("ProtocolAdminDistanceMapDB not initialized")
+	}
+	val,ok := ProtocolAdminDistanceMapDB[protocol]
+	if !ok {
+		logger.Err(fmt.Sprintln("Admin Distance for protocol ", protocol, " not set"))
+		return state, errors.New(fmt.Sprintln("Admin Distance for protocol ", protocol, " not set"))
+	}
+	state.Protocol = protocol
+	state.Distance = int32(val.configuredDistance)
+	return state, nil
 }
 
 //thrift API definitions
@@ -1551,7 +1563,7 @@ func (m RIBDServer) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val bool, err
 }
 
 func (m RIBDServer) ProcessRoutePatchUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, op []*ribd.PatchOpInfo) (val bool, err error) {
-	logger.Debug(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with number of patch ops: ", len(op)))
+	logger.Debug(fmt.Sprintln("ProcessRoutePatchUpdateConfig:Received update route request with number of patch ops: ", len(op)))
 	if !RouteServiceHandler.AcceptConfig {
 		logger.Debug("Not ready to accept config")
 		//return err
@@ -1567,19 +1579,26 @@ func (m RIBDServer) ProcessRoutePatchUpdateConfig(origconfig *ribd.IPv4Route, ne
 		return val, err
 	}
     for idx := 0;idx < len(op);idx++ {
-		logger.Debug(fmt.Sprintln("Add operation in update"))
 		switch op[idx].Path {
 			case "NextHop":
 			    logger.Debug("Patch update for next hop")
-				if newconfig.NextHop == nil {
-					newconfig.NextHop = make([]*ribd.NextHopInfo,0)
-				}
-				for j := 0;j<len(op[idx].Value);j++ {
-					wt,_ := strconv.Atoi((op[idx].Value[j]["Weight"]))
+				/*newconfig should only have the next hops that have to be added or deleted*/
+				newconfig.NextHop = make([]*ribd.NextHopInfo,0)
+				logger.Debug(fmt.Sprintln("value = ", op[idx].Value))
+				valueObjArr := []ribd.NextHopInfo{}
+	             err = json.Unmarshal([]byte (op[idx].Value),&valueObjArr)
+	             if err != nil {
+		             logger.Debug(fmt.Sprintln("error unmarshaling value:",err))
+		             return val,errors.New(fmt.Sprintln("error unmarshaling value:",err))
+	             }
+				logger.Debug(fmt.Sprintln("Number of nextHops:", len(valueObjArr)))
+				for _,val := range valueObjArr {
+					logger.Debug(fmt.Sprintln("nextHop info: ip - ", val.NextHopIp, " intf: ", val.NextHopIntRef, " wt:", val.Weight))
+					//wt,_ := strconv.Atoi((op[idx].Value[j]["Weight"]))
 					nh := ribd.NextHopInfo {
-					    NextHopIp : op[idx].Value[j]["NextHopIp"],
-					    NextHopIntRef : op[idx].Value[j]["NextHopIntRef"],
-					    Weight      : int32(wt),
+					    NextHopIp : val.NextHopIp,
+					    NextHopIntRef : val.NextHopIntRef,
+					    Weight      : val.Weight,
 					}
 					newconfig.NextHop = append(newconfig.NextHop,&nh)
 				}

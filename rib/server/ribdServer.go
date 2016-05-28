@@ -544,7 +544,7 @@ func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 			} else if routeConf.Op == "del" {
 				ribdServiceHandler.ProcessRouteDeleteConfig(routeConf.OrigConfigObject.(*ribd.IPv4Route))
 			} else if routeConf.Op == "update" {
-				if routeConf.PatchOp == nil {
+				if routeConf.PatchOp == nil || len(routeConf.PatchOp) == 0 {
                       ribdServiceHandler.ProcessRouteUpdateConfig(routeConf.OrigConfigObject.(*ribd.IPv4Route), routeConf.NewConfigObject.(*ribd.IPv4Route), routeConf.AttrSet)
 				} else {
                      ribdServiceHandler.ProcessRoutePatchUpdateConfig(routeConf.OrigConfigObject.(*ribd.IPv4Route), routeConf.NewConfigObject.(*ribd.IPv4Route), routeConf.PatchOp)

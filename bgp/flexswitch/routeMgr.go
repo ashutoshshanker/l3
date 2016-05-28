@@ -226,16 +226,16 @@ func (mgr *FSRouteMgr) UpdateRoute(cfg *config.RouteConfig, op string) {
 	}
     rCfg.NextHop = make([]*ribd.NextHopInfo,0)
     rCfg.NextHop = append(rCfg.NextHop,&nextHop)
-    valueMap := make(map[string]string)
-    value := make([]map[string]string,0)
+    value,err := json.Marshal(rCfg.NextHop)
+	if err != nil {
+		mgr.logger.Err(fmt.Sprintln("Err:", err, " while marshalling nexthop : ", rCfg.NextHop))
+		return
+	}
     patchOp := make([]*ribd.PatchOpInfo,0)
-    valueMap["NextHopIp"] = cfg.NextHopIp
-    valueMap["NextHopIntRef"] = cfg.OutgoingInterface
-    value = append(value,valueMap)
     patchOp = append(patchOp,&ribd.PatchOpInfo {
 			        Op: op,
                      Path:"NextHop",
-                     Value : value,
+                     Value : string(value),
                      })
 	mgr.ribdClient.UpdateIPv4Route(&rCfg, &rCfg, nil,patchOp)
 }

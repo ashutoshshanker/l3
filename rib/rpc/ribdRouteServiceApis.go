@@ -125,7 +125,9 @@ func (m RIBDServicesHandler) UpdateIPv4Route(origconfig *ribd.IPv4Route, newconf
 		    return false, err
 	    }
 	} else {
+	    logger.Debug(fmt.Sprintln("cfg.NextHop before: ", newconfig.NextHop, " newConfig:", newconfig))
         err = m.server.RouteConfigValidationCheckForPatchUpdate(origconfig, newconfig,op)
+	    logger.Debug(fmt.Sprintln("cfg.NextHop after ", newconfig.NextHop))
         if err != nil {
             logger.Err(fmt.Sprintln("validation check failed with error ", err))
             return false, err
@@ -193,8 +195,9 @@ func (m RIBDServicesHandler) GetBulkRouteDistanceState(fromIndex ribd.Int, rcoun
 }
 func (m RIBDServicesHandler) GetRouteDistanceState(protocol string) (*ribd.RouteDistanceState, error) {
 	logger.Info("Get state for RouteDistanceState")
-	route := ribd.NewRouteDistanceState()
-	return route, nil
+	state := ribd.NewRouteDistanceState()
+	state,err := m.server.GetRouteDistanceState(protocol)
+	return state,err
 }
 func (m RIBDServicesHandler) GetNextHopIfTypeStr(nextHopIfType ribdInt.Int) (nextHopIfTypeStr string, err error) {
 	nhStr, err := m.server.GetNextHopIfTypeStr(nextHopIfType)
