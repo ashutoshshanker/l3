@@ -38,7 +38,7 @@ type GlobalConf struct {
 	ExitOverflowInterval     config.PositiveInteger
 	DemandExtensions         bool
 	RFC1583Compatibility     bool
-	ReferenceBandwidth       int32
+	ReferenceBandwidth       uint32
 	RestartSupport           config.RestartSupport
 	RestartInterval          int32
 	RestartStrictLsaChecking bool
@@ -73,6 +73,7 @@ func (server *OSPFServer) updateGlobalConf(gConf config.GlobalConf) {
 	server.ospfGlobalConf.TOSSupport = gConf.TOSSupport
 	server.ospfGlobalConf.RestartSupport = gConf.RestartSupport
 	server.ospfGlobalConf.RestartInterval = gConf.RestartInterval
+	server.ospfGlobalConf.ReferenceBandwidth = uint32(gConf.ReferenceBandwidth)
 	server.logger.Err("Global configuration updated")
 }
 
@@ -90,7 +91,7 @@ func (server *OSPFServer) initOspfGlobalConfDefault() {
 	server.ospfGlobalConf.MulticastExtensions = 0
 	server.ospfGlobalConf.ExitOverflowInterval = 0
 	server.ospfGlobalConf.RFC1583Compatibility = false
-	server.ospfGlobalConf.ReferenceBandwidth = 100000 // Default value 100 MBPS
+	server.ospfGlobalConf.ReferenceBandwidth = 100000 // Default value 100 Gbps
 	server.ospfGlobalConf.RestartSupport = config.None
 	server.ospfGlobalConf.RestartInterval = 0
 	server.ospfGlobalConf.RestartStrictLsaChecking = false

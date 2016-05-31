@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -80,6 +80,7 @@ type OSPFServer struct {
 	GlobalConfigCh     chan config.GlobalConf
 	AreaConfigCh       chan config.AreaConf
 	IntfConfigCh       chan config.InterfaceConf
+	IfMetricConfCh     chan config.IfMetricConf
 	GlobalConfigRetCh  chan error
 	AreaConfigRetCh    chan error
 	IntfConfigRetCh    chan error
@@ -168,6 +169,7 @@ func NewOSPFServer(logger *logging.Writer) *OSPFServer {
 	ospfServer.GlobalConfigCh = make(chan config.GlobalConf)
 	ospfServer.AreaConfigCh = make(chan config.AreaConf)
 	ospfServer.IntfConfigCh = make(chan config.InterfaceConf)
+	ospfServer.IfMetricConfCh = make(chan config.IfMetricConf)
 	ospfServer.GlobalConfigRetCh = make(chan error)
 	ospfServer.AreaConfigRetCh = make(chan error)
 	ospfServer.IntfConfigRetCh = make(chan error)
@@ -364,6 +366,12 @@ func (server *OSPFServer) StartServer(paramFile string) {
 				//Handle Intf Configuration
 			}
 		//	server.IntfConfigRetCh <- err
+		case ifMetricConf := <-server.IfMetricConfCh:
+			server.logger.Info(fmt.Sprintln("Received call for preforming Intf Metric Configuration", ifMetricConf))
+			err := server.processIfMetricConfig(ifMetricConf)
+			if err == nil {
+
+			}
 		case asicdrxBuf := <-server.asicdSubSocketCh:
 			server.processAsicdNotification(asicdrxBuf)
 		case <-server.asicdSubSocketErrCh:

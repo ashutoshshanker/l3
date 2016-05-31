@@ -223,12 +223,13 @@ const (
 )
 
 type GlobalConf struct {
-	RouterId        RouterId
-	AdminStat       Status
-	ASBdrRtrStatus  bool
-	TOSSupport      bool
-	RestartSupport  RestartSupport
-	RestartInterval int32
+	RouterId           RouterId
+	AdminStat          Status
+	ASBdrRtrStatus     bool
+	TOSSupport         bool
+	RestartSupport     RestartSupport
+	RestartInterval    int32
+	ReferenceBandwidth uint32
 }
 
 type GlobalState struct {

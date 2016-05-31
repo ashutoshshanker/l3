@@ -35,12 +35,13 @@ import (
 
 func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) error {
 	gConf := config.GlobalConf{
-		RouterId:        config.RouterId(ospfGlobalConf.RouterId),
-		AdminStat:       config.Status(ospfGlobalConf.AdminStat),
-		ASBdrRtrStatus:  ospfGlobalConf.ASBdrRtrStatus,
-		TOSSupport:      ospfGlobalConf.TOSSupport,
-		RestartSupport:  config.RestartSupport(ospfGlobalConf.RestartSupport),
-		RestartInterval: ospfGlobalConf.RestartInterval,
+		RouterId:           config.RouterId(ospfGlobalConf.RouterId),
+		AdminStat:          config.Status(ospfGlobalConf.AdminStat),
+		ASBdrRtrStatus:     ospfGlobalConf.ASBdrRtrStatus,
+		TOSSupport:         ospfGlobalConf.TOSSupport,
+		RestartSupport:     config.RestartSupport(ospfGlobalConf.RestartSupport),
+		RestartInterval:    ospfGlobalConf.RestartInterval,
+		ReferenceBandwidth: uint32(ospfGlobalConf.ReferenceBandwidth),
 	}
 	h.server.GlobalConfigCh <- gConf
 	//	retMsg := <-h.server.GlobalConfigRetCh
@@ -89,6 +90,18 @@ func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntry) error 
 
 }
 
+func (h *OSPFHandler) SendOspfIfMetricConf(ospfIfMetricConf *ospfd.OspfIfMetricEntry) error {
+	ifMetricConf := config.IfMetricConf{
+		IfMetricIpAddress:     config.IpAddress(ospfIfMetricConf.IfMetricIpAddress),
+		IfMetricAddressLessIf: config.InterfaceIndexOrZero(ospfIfMetricConf.IfMetricAddressLessIf),
+		IfMetricTOS:           config.TosType(ospfIfMetricConf.IfMetricTOS),
+		IfMetricValue:         config.Metric(ospfIfMetricConf.IfMetricValue),
+	}
+
+	h.server.IfMetricConfCh <- ifMetricConf
+	return nil
+}
+
 func (h *OSPFHandler) CreateOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) (bool, error) {
 	if ospfGlobalConf == nil {
 		err := errors.New("Invalid Global Configuration")
@@ -134,7 +147,15 @@ func (h *OSPFHandler) CreateOspfIfEntry(ospfIfConf *ospfd.OspfIfEntry) (bool, er
 }
 
 func (h *OSPFHandler) CreateOspfIfMetricEntry(ospfIfMetricConf *ospfd.OspfIfMetricEntry) (bool, error) {
+	if ospfIfMetricConf == nil {
+		err := errors.New("Invalid Interface Metric Configuration")
+		return false, err
+	}
 	h.logger.Info(fmt.Sprintln("Create interface metric config attrs:", ospfIfMetricConf))
+	err := h.SendOspfIfMetricConf(ospfIfMetricConf)
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

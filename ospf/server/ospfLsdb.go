@@ -446,7 +446,7 @@ func (server *OSPFServer) constructStubLinkP2P(ent IntfConf, likType config.IfTy
 	linkDetail.LinkData = netmask
 	linkDetail.LinkType = StubLink
 	linkDetail.NumOfTOS = 0
-	linkDetail.LinkMetric = 10
+	linkDetail.LinkMetric = uint16(ent.IfCost)
 
 	return linkDetail
 }
@@ -477,7 +477,7 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 				linkDetail.LinkType = StubLink
 				/* Todo: Need to handle IfMetricConf */
 				linkDetail.NumOfTOS = 0
-				linkDetail.LinkMetric = 10
+				linkDetail.LinkMetric = uint16(ent.IfCost)
 			} else { // Transit Network
 				server.logger.Info("Transit Network")
 				linkDetail.LinkId = convertIPv4ToUint32(ent.IfDRIp)
@@ -488,7 +488,7 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 				linkDetail.LinkType = TransitLink
 				/* Todo: Need to handle IfMetricConf */
 				linkDetail.NumOfTOS = 0
-				linkDetail.LinkMetric = 10
+				linkDetail.LinkMetric = uint16(ent.IfCost)
 				server.logger.Info(fmt.Sprintln("LinkDetail: linkid ", ent.IfDRIp,
 					" linkdata ", ent.IfIpAddr))
 			}
@@ -526,7 +526,7 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 			linkDetail.LinkData = convertAreaOrRouterIdUint32(ent.IfIpAddr.String())
 			linkDetail.LinkType = P2PLink
 			linkDetail.NumOfTOS = 0
-			linkDetail.LinkMetric = 10
+			linkDetail.LinkMetric = uint16(ent.IfCost)
 
 		case config.UnnumberedP2P:
 			stub_link := server.constructStubLinkP2P(ent, config.UnnumberedP2P)
@@ -546,7 +546,7 @@ func (server *OSPFServer) generateRouterLSA(areaId uint32) {
 			linkDetail.LinkData = uint32(key.IntfIdx)
 			linkDetail.LinkType = P2PLink
 			linkDetail.NumOfTOS = 0
-			linkDetail.LinkMetric = 10
+			linkDetail.LinkMetric = uint16(ent.IfCost)
 		}
 		linkDetails = append(linkDetails, linkDetail)
 	}
