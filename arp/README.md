@@ -20,21 +20,21 @@ ARP module listens to ASICD notification for L3 interface creation/deletion. It 
 - When RIB module receives a route, RIB daemon sends ARP daemon a message to resolve IP Address to Mac Address mapping for the nexthop IP Address.
 
 ### Interfaces
-Configutation Object Name: **ArpConfig**
+Configutation Object Name: **ArpGlobal**
 
-> - Create ARP Config:
+> - Create ARP Global Config:
 
-		bool CreateArpConfig(1: ArpConfig config);
+		bool CreateArpGlobal(1: ArpGlobal config);
 
 
->  - Update ARP Config:
+>  - Update ARP Gloabl Config:
 	
-		bool UpdateArpConfig(1: ArpConfig origconfig, 2: ArpConfig newconfig, 3: list<bool> attrset);
+		bool UpdateArpGlobal(1: ArpGlobal origconfig, 2: ArpGlobal newconfig, 3: list<bool> attrset);
 
 
->  - Delete ARP Config: 
+>  - Delete ARP Global Config: 
 
-		bool DeleteArpConfig(1: ArpConfig config);
+		bool DeleteArpGlobal(1: ArpGlobal config);
 
 State Object Name: **ArpEntryState**, **ArpLinuxEntryState** 
 

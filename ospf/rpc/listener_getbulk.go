@@ -40,9 +40,6 @@ func (h *OSPFHandler) convertAreaEntryStateToThrift(ent config.AreaState) *ospfd
 	areaEntry.AreaBdrRtrCount = ent.AreaBdrRtrCount
 	areaEntry.AsBdrRtrCount = ent.AsBdrRtrCount
 	areaEntry.AreaLsaCount = ent.AreaLsaCount
-	areaEntry.AreaLsaCksumSum = ent.AreaLsaCksumSum
-	areaEntry.AreaNssaTranslatorState = int32(ent.AreaNssaTranslatorState)
-	areaEntry.AreaNssaTranslatorEvents = ent.AreaNssaTranslatorEvents
 
 	return areaEntry
 }
@@ -71,7 +68,6 @@ func (h *OSPFHandler) convertIfEntryStateToThrift(ent config.InterfaceState) *os
 	ifEntry.IfBackupDesignatedRouter = string(ent.IfBackupDesignatedRouter)
 	ifEntry.IfEvents = int32(ent.IfEvents)
 	ifEntry.IfLsaCount = int32(ent.IfLsaCount)
-	ifEntry.IfLsaCksumSum = int32(ent.IfLsaCksumSum)
 	ifEntry.IfDesignatedRouterId = string(ent.IfDesignatedRouterId)
 	ifEntry.IfBackupDesignatedRouterId = string(ent.IfBackupDesignatedRouter)
 
@@ -84,17 +80,7 @@ func (h *OSPFHandler) convertGlobalStateToThrift(ent config.GlobalState) *ospfd.
 	gState.VersionNumber = ent.VersionNumber
 	gState.AreaBdrRtrStatus = ent.AreaBdrRtrStatus
 	gState.ExternLsaCount = ent.ExternLsaCount
-	gState.ExternLsaCksumSum = ent.ExternLsaChecksum
-	gState.OriginateNewLsas = ent.OriginateNewLsas
-	gState.RxNewLsas = ent.RxNewLsas
 	gState.OpaqueLsaSupport = ent.OpaqueLsaSupport
-	gState.RestartStatus = int32(ent.RestartStatus)
-	gState.RestartAge = ent.RestartAge
-	gState.RestartExitReason = int32(ent.RestartExitReason)
-	gState.AsLsaCount = ent.AsLsaCount
-	gState.AsLsaCksumSum = ent.AsLsaCksumSum
-	gState.StubRouterSupport = ent.StubRouterSupport
-	gState.DiscontinuityTime = ent.DiscontinuityTime
 
 	return gState
 }
@@ -107,12 +93,7 @@ func (h *OSPFHandler) convertNbrEntryStateToThrift(nbr config.NeighborState) *os
 	nbrEntry.NbrOptions = int32(nbr.NbrOptions)
 	nbrEntry.NbrState = int32(nbr.NbrState)
 	nbrEntry.NbrEvents = int32(nbr.NbrEvents)
-	nbrEntry.NbrLsRetransQLen = int32(nbr.NbrLsRetransQLen)
-	nbrEntry.NbmaNbrPermanence = int32(nbr.NbmaNbrPermanence)
 	nbrEntry.NbrHelloSuppressed = bool(nbr.NbrHelloSuppressed)
-	nbrEntry.NbrRestartHelperStatus = int32(nbr.NbrRestartHelperStatus)
-	nbrEntry.NbrRestartHelperAge = int32(nbr.NbrRestartHelperAge)
-	nbrEntry.NbrRestartHelperExitReason = int32(nbr.NbrRestartHelperExitReason)
 
 	return nbrEntry
 
@@ -209,12 +190,6 @@ func (h *OSPFHandler) GetBulkOspfVirtNbrEntryState(fromIdx ospfd.Int, count ospf
 }
 
 
-func (h *OSPFHandler) GetBulkOspfVirtLocalLsdbEntryState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfVirtLocalLsdbEntryStateGetInfo, error) {
-	h.logger.Info(fmt.Sprintln("Get Local Link State for virtual links attrs"))
-	ospfVirtLocalLsdbResponse := ospfd.NewOspfVirtLocalLsdbEntryStateGetInfo()
-	return ospfVirtLocalLsdbResponse, nil
-}
-
 func (h *OSPFHandler) GetBulkOspfGlobalState(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfGlobalStateGetInfo, error) {
 	h.logger.Info(fmt.Sprintln("Get OSPF global state"))
 
@@ -232,4 +207,9 @@ func (h *OSPFHandler) GetBulkOspfGlobalState(fromIdx ospfd.Int, count ospfd.Int)
 	ospfGlobalStateGetInfo.More = false
 	ospfGlobalStateGetInfo.OspfGlobalStateList = ospfGlobalStateResponse
 	return ospfGlobalStateGetInfo, nil
+}
+
+func (h *OSPFHandler) GetBulkOspfIPv4Routes(fromIdx ospfd.Int, count ospfd.Int) (*ospfd.OspfIPv4RoutesGetInfo, error) {
+	/* This is template API . All OSPF routes are currently installed in the redis db */
+	return  nil, nil
 }

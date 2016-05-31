@@ -249,6 +249,9 @@ func (server *OSPFServer) processFloodMsg(lsa_data ospfFloodMsg) {
 	}
 }
 
+/*@fn constructAndSendLsaAgeFlood 
+Flood LSAs which reached max age.
+*/
 func (server *OSPFServer) constructAndSendLsaAgeFlood() {
 	dstMac := net.HardwareAddr{0x01, 0x00, 0x5e, 0x00, 0x00, 0x05}
 	dstIp := net.IP{224, 0, 0, 5}
@@ -276,7 +279,6 @@ func (server *OSPFServer) constructAndSendLsaAgeFlood() {
 			msg_type: delMaxAgeLsa,
 		}
 		server.maxAgeLsaCh <- msg
-		//delete(maxAgeLsaMap, lsaKey)
 	}
 	lsa_pkt_len := total_len + OSPF_NO_OF_LSA_FIELD
 	if lsa_pkt_len == OSPF_NO_OF_LSA_FIELD {

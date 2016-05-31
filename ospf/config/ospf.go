@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package config
 
@@ -37,9 +37,15 @@ type TosType int                  // 0x0 to 30
 type IpAddress string
 type InterfaceIndexOrZero int
 
+/*Architectural constants */
 const (
-  MaxAge uint16 = 3600
+	MaxAge        uint16 = 3600 //60 min
+	LSRefreshTime uint32 = 1800 // 30min
+	AllSPFRouters string = "224.0.0.5"
+	AllDRouters   string = "224.0.0.6"
+	McastMAC      string = "01:00:5e:00:00:05"
 )
+
 type Status int
 
 const (
@@ -217,20 +223,13 @@ const (
 )
 
 type GlobalConf struct {
-	RouterId                 RouterId
-	AdminStat                Status
-	ASBdrRtrStatus           bool
-	TOSSupport               bool
-	ExtLsdbLimit             int32
-	MulticastExtensions      int32
-	ExitOverflowInterval     PositiveInteger
-	DemandExtensions         bool
-	RFC1583Compatibility     bool
-	ReferenceBandwidth       int32
-	RestartSupport           RestartSupport
-	RestartInterval          int32
-	RestartStrictLsaChecking bool
-	StubRouterAdvertisement  AdvertiseAction
+	RouterId           RouterId
+	AdminStat          Status
+	ASBdrRtrStatus     bool
+	TOSSupport         bool
+	RestartSupport     RestartSupport
+	RestartInterval    int32
+	ReferenceBandwidth uint32
 }
 
 type GlobalState struct {
@@ -333,21 +332,19 @@ type HostState struct {
 // Indexed By IfIpAddress, AddressLessIf
 
 type InterfaceConf struct {
-	IfIpAddress           IpAddress
-	AddressLessIf         InterfaceIndexOrZero
-	IfAreaId              AreaId
-	IfType                IfType
-	IfAdminStat           Status
-	IfRtrPriority         DesignatedRouterPriority
-	IfTransitDelay        UpToMaxAge
-	IfRetransInterval     UpToMaxAge
-	IfHelloInterval       HelloRange
-	IfRtrDeadInterval     PositiveInteger
-	IfPollInterval        PositiveInteger
-	IfAuthKey             string
-	IfMulticastForwarding MulticastForwarding
-	IfDemand              bool
-	IfAuthType            AuthType
+	IfIpAddress       IpAddress
+	AddressLessIf     InterfaceIndexOrZero
+	IfAreaId          AreaId
+	IfType            IfType
+	IfAdminStat       Status
+	IfRtrPriority     DesignatedRouterPriority
+	IfTransitDelay    UpToMaxAge
+	IfRetransInterval UpToMaxAge
+	IfHelloInterval   HelloRange
+	IfRtrDeadInterval PositiveInteger
+	IfPollInterval    PositiveInteger
+	IfAuthKey         string
+	IfAuthType        AuthType
 }
 
 type InterfaceState struct {
@@ -527,4 +524,18 @@ type OspfAreaLsaCountState struct {
 	AreaLsaCountAreaId  AreaId
 	AreaLsaCountLsaType LsaType
 	AreaLsaCountNumber  int
+}
+
+type OspfIPv4Route struct {
+	DestId          string
+	AddrMask        string
+	DestType        string
+	OptCapabilities int32
+	AreaId          string
+	PathType        string
+	Cost            int32
+	Type2Cost       int32
+	NumOfPaths      int32
+	NextHops        string
+	LSOrigin        string
 }

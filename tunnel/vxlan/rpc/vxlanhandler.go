@@ -13,23 +13,23 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 // lahandler
 package rpc
 
 import (
-	"database/sql"
+	//"database/sql"
 	"errors"
 	"fmt"
 	"git.apache.org/thrift.git/lib/go/thrift"
-	_ "github.com/mattn/go-sqlite3"
+	//_ "github.com/mattn/go-sqlite3"
 	vxlan "l3/tunnel/vxlan/protocol"
 	"utils/logging"
 	"vxland"
@@ -52,7 +52,7 @@ func NewVXLANDServiceHandler(server *vxlan.VXLANServer, logger *logging.Writer) 
 	}
 
 	// lets read the current config and re-play the config
-	handler.ReadConfigFromDB()
+	//handler.ReadConfigFromDB()
 
 	return handler
 }
@@ -156,6 +156,7 @@ func (v *VXLANDServiceHandler) UpdateVxlanVtepInstances(origconfig *vxland.Vxlan
 	return false, err
 }
 
+/*
 func (v *VXLANDServiceHandler) HandleDbReadVxlanInstance(dbHdl *sql.DB) error {
 	dbCmd := "select * from VxlanInstance"
 	rows, err := dbHdl.Query(dbCmd)
@@ -230,3 +231,4 @@ func (v *VXLANDServiceHandler) ReadConfigFromDB() error {
 
 	return nil
 }
+*/

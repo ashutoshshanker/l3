@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package rpc
 
@@ -35,62 +35,71 @@ import (
 
 func (h *OSPFHandler) SendOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) error {
 	gConf := config.GlobalConf{
-		RouterId:                 config.RouterId(ospfGlobalConf.RouterId),
-		AdminStat:                config.Status(ospfGlobalConf.AdminStat),
-		ASBdrRtrStatus:           ospfGlobalConf.ASBdrRtrStatus,
-		TOSSupport:               ospfGlobalConf.TOSSupport,
-		ExtLsdbLimit:             ospfGlobalConf.ExtLsdbLimit,
-		MulticastExtensions:      ospfGlobalConf.MulticastExtensions,
-		ExitOverflowInterval:     config.PositiveInteger(ospfGlobalConf.ExitOverflowInterval),
-		RFC1583Compatibility:     ospfGlobalConf.RFC1583Compatibility,
-		ReferenceBandwidth:       ospfGlobalConf.ReferenceBandwidth,
-		RestartSupport:           config.RestartSupport(ospfGlobalConf.RestartSupport),
-		RestartInterval:          ospfGlobalConf.RestartInterval,
-		RestartStrictLsaChecking: ospfGlobalConf.RestartStrictLsaChecking,
-		StubRouterAdvertisement:  config.AdvertiseAction(ospfGlobalConf.StubRouterAdvertisement),
+		RouterId:           config.RouterId(ospfGlobalConf.RouterId),
+		AdminStat:          config.Status(ospfGlobalConf.AdminStat),
+		ASBdrRtrStatus:     ospfGlobalConf.ASBdrRtrStatus,
+		TOSSupport:         ospfGlobalConf.TOSSupport,
+		RestartSupport:     config.RestartSupport(ospfGlobalConf.RestartSupport),
+		RestartInterval:    ospfGlobalConf.RestartInterval,
+		ReferenceBandwidth: uint32(ospfGlobalConf.ReferenceBandwidth),
 	}
 	h.server.GlobalConfigCh <- gConf
-	retMsg := <-h.server.GlobalConfigRetCh
-	return retMsg
+	//	retMsg := <-h.server.GlobalConfigRetCh
+	//	return retMsg
+	return nil
 }
 
 func (h *OSPFHandler) SendOspfIfConf(ospfIfConf *ospfd.OspfIfEntry) error {
 	ifConf := config.InterfaceConf{
-		IfIpAddress:           config.IpAddress(ospfIfConf.IfIpAddress),
-		AddressLessIf:         config.InterfaceIndexOrZero(ospfIfConf.AddressLessIf),
-		IfAreaId:              config.AreaId(ospfIfConf.IfAreaId),
-		IfType:                config.IfType(ospfIfConf.IfType),
-		IfAdminStat:           config.Status(ospfIfConf.IfAdminStat),
-		IfRtrPriority:         config.DesignatedRouterPriority(ospfIfConf.IfRtrPriority),
-		IfTransitDelay:        config.UpToMaxAge(ospfIfConf.IfTransitDelay),
-		IfRetransInterval:     config.UpToMaxAge(ospfIfConf.IfRetransInterval),
-		IfHelloInterval:       config.HelloRange(ospfIfConf.IfHelloInterval),
-		IfRtrDeadInterval:     config.PositiveInteger(ospfIfConf.IfRtrDeadInterval),
-		IfPollInterval:        config.PositiveInteger(ospfIfConf.IfPollInterval),
-		IfAuthKey:             ospfIfConf.IfAuthKey,
-		IfMulticastForwarding: config.MulticastForwarding(ospfIfConf.IfMulticastForwarding),
-		IfDemand:              ospfIfConf.IfDemand,
-		IfAuthType:            config.AuthType(ospfIfConf.IfAuthType),
+		IfIpAddress:       config.IpAddress(ospfIfConf.IfIpAddress),
+		AddressLessIf:     config.InterfaceIndexOrZero(ospfIfConf.AddressLessIf),
+		IfAreaId:          config.AreaId(ospfIfConf.IfAreaId),
+		IfType:            config.IfType(ospfIfConf.IfType),
+		IfAdminStat:       config.Status(ospfIfConf.IfAdminStat),
+		IfRtrPriority:     config.DesignatedRouterPriority(ospfIfConf.IfRtrPriority),
+		IfTransitDelay:    config.UpToMaxAge(ospfIfConf.IfTransitDelay),
+		IfRetransInterval: config.UpToMaxAge(ospfIfConf.IfRetransInterval),
+		IfHelloInterval:   config.HelloRange(ospfIfConf.IfHelloInterval),
+		IfRtrDeadInterval: config.PositiveInteger(ospfIfConf.IfRtrDeadInterval),
+		IfPollInterval:    config.PositiveInteger(ospfIfConf.IfPollInterval),
+		IfAuthKey:         ospfIfConf.IfAuthKey,
+		IfAuthType:        config.AuthType(ospfIfConf.IfAuthType),
 	}
 
 	h.server.IntfConfigCh <- ifConf
-	retMsg := <-h.server.IntfConfigRetCh
-	return retMsg
+
+	//retMsg := <-h.server.IntfConfigRetCh
+	//return retMsg
+	h.logger.Info(fmt.Sprintln("After receiving the create interface reply ..."))
+	return nil
 }
 
 func (h *OSPFHandler) SendOspfAreaConf(ospfAreaConf *ospfd.OspfAreaEntry) error {
 	areaConf := config.AreaConf{
-		AreaId:                              config.AreaId(ospfAreaConf.AreaId),
-		AuthType:                            config.AuthType(ospfAreaConf.AuthType),
-		ImportAsExtern:                      config.ImportAsExtern(ospfAreaConf.ImportAsExtern),
-		AreaSummary:                         config.AreaSummary(ospfAreaConf.AreaSummary),
-		AreaNssaTranslatorRole:              config.NssaTranslatorRole(ospfAreaConf.AreaNssaTranslatorRole),
-		AreaNssaTranslatorStabilityInterval: config.PositiveInteger(ospfAreaConf.AreaNssaTranslatorStabilityInterval),
+		AreaId:                 config.AreaId(ospfAreaConf.AreaId),
+		AuthType:               config.AuthType(ospfAreaConf.AuthType),
+		ImportAsExtern:         config.ImportAsExtern(ospfAreaConf.ImportAsExtern),
+		AreaSummary:            config.AreaSummary(ospfAreaConf.AreaSummary),
+		AreaNssaTranslatorRole: config.NssaTranslatorRole(ospfAreaConf.AreaNssaTranslatorRole),
 	}
 
 	h.server.AreaConfigCh <- areaConf
-	retMsg := <-h.server.AreaConfigRetCh
-	return retMsg
+	//	retMsg := <-h.server.AreaConfigRetCh
+	//	return retMsg
+	return nil
+
+}
+
+func (h *OSPFHandler) SendOspfIfMetricConf(ospfIfMetricConf *ospfd.OspfIfMetricEntry) error {
+	ifMetricConf := config.IfMetricConf{
+		IfMetricIpAddress:     config.IpAddress(ospfIfMetricConf.IfMetricIpAddress),
+		IfMetricAddressLessIf: config.InterfaceIndexOrZero(ospfIfMetricConf.IfMetricAddressLessIf),
+		IfMetricTOS:           config.TosType(ospfIfMetricConf.IfMetricTOS),
+		IfMetricValue:         config.Metric(ospfIfMetricConf.IfMetricValue),
+	}
+
+	h.server.IfMetricConfCh <- ifMetricConf
+	return nil
 }
 
 func (h *OSPFHandler) CreateOspfGlobal(ospfGlobalConf *ospfd.OspfGlobal) (bool, error) {
@@ -138,7 +147,15 @@ func (h *OSPFHandler) CreateOspfIfEntry(ospfIfConf *ospfd.OspfIfEntry) (bool, er
 }
 
 func (h *OSPFHandler) CreateOspfIfMetricEntry(ospfIfMetricConf *ospfd.OspfIfMetricEntry) (bool, error) {
+	if ospfIfMetricConf == nil {
+		err := errors.New("Invalid Interface Metric Configuration")
+		return false, err
+	}
 	h.logger.Info(fmt.Sprintln("Create interface metric config attrs:", ospfIfMetricConf))
+	err := h.SendOspfIfMetricConf(ospfIfMetricConf)
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -146,4 +163,3 @@ func (h *OSPFHandler) CreateOspfVirtIfEntry(ospfVirtIfConf *ospfd.OspfVirtIfEntr
 	h.logger.Info(fmt.Sprintln("Create virtual interface config attrs:", ospfVirtIfConf))
 	return true, nil
 }
-

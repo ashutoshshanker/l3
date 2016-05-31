@@ -686,7 +686,6 @@ func (server *OSPFServer) processMaxAgeLSA(lsdbKey LsdbKey, lsdbEnt LSDatabase) 
 			flood_lsa = true
 		} else {
 			lsa.LsaMd.LSAge++
-			lsa.LsaMd.LSSequenceNum++
 			lsdbEnt.RouterLsaMap[lsakey] = lsa
 		}
 	}
@@ -706,7 +705,6 @@ func (server *OSPFServer) processMaxAgeLSA(lsdbKey LsdbKey, lsdbEnt LSDatabase) 
 
 		} else {
 			lsa_net.LsaMd.LSAge++
-			lsa_net.LsaMd.LSSequenceNum++
 			lsdbEnt.NetworkLsaMap[lsakey] = lsa_net
 		}
 	}
@@ -726,7 +724,6 @@ func (server *OSPFServer) processMaxAgeLSA(lsdbKey LsdbKey, lsdbEnt LSDatabase) 
 
 		} else {
 			lsa_ex.LsaMd.LSAge++
-			lsa_ex.LsaMd.LSSequenceNum++
 			lsdbEnt.ASExternalLsaMap[lsakey] = lsa_ex
 		}
 	}
@@ -745,7 +742,6 @@ func (server *OSPFServer) processMaxAgeLSA(lsdbKey LsdbKey, lsdbEnt LSDatabase) 
 
 		} else {
 			lsa_sum.LsaMd.LSAge++
-			lsa_sum.LsaMd.LSSequenceNum++
 			lsdbEnt.Summary3LsaMap[lsakey] = lsa_sum
 		}
 	}

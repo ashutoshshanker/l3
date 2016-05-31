@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -35,6 +35,10 @@ var ALLDROUTER string = "224.0.0.6"
 var ALLSPFROUTERMAC string = "01:00:5e:00:00:05"
 var ALLDROUTERMAC string = "01:00:5e:00:00:06"
 var MASKMAC string = "ff:ff:ff:ff:ff:ff"
+
+const (
+	DEFAULT_VLAN_COST uint32 = 10
+)
 
 var LSInfinity uint32 = 0x00ffffff
 
@@ -151,7 +155,7 @@ type AdjOKEvtMsg struct {
 type NbrFullStateMsg struct {
 	FullState bool
 	NbrRtrId  uint32
-	nbrKey NeighborConfKey
+	nbrKey    NeighborConfKey
 }
 
 const (

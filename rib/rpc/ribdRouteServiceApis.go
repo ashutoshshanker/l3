@@ -28,6 +28,8 @@ import (
 	"fmt"
 	"l3/rib/server"
 	"ribd"
+	"models"
+	"errors"
 	"ribdInt"
 )
 
@@ -174,8 +176,40 @@ func (m RIBDServicesHandler) GetIPv4RouteState(destNw string) (*ribd.IPv4RouteSt
 }
 
 func (m RIBDServicesHandler) GetBulkIPv4RouteState(fromIndex ribd.Int, rcount ribd.Int) (routes *ribd.IPv4RouteStateGetInfo, err error) {
-	ret, err := m.server.GetBulkIPv4RouteState(fromIndex, rcount)
-	return ret, err
+	logger.Debug("GetBulkIPv4RouteState")
+    returnRoutes := make([]*ribd.IPv4RouteState,0)
+	var returnRouteGetInfo ribd.IPv4RouteStateGetInfo
+	routes = &returnRouteGetInfo
+	if m.server.DbHdl == nil {
+		logger.Err("DbHdl not initialized")
+		return routes,errors.New("DBHdl not initialized")
+	}
+    var routeObj models.IPv4RouteState
+    var routeObjtemp models.IPv4RouteState
+    err, objCount, nextMarker, more, objs :=  m.server.DbHdl.GetBulkObjFromDb(routeObj, int64(fromIndex), int64(rcount))
+	logger.Debug(fmt.Sprintln("objCount = ", objCount, " len(obj) ", len(objs), " more ", more, " nextMarker: ", nextMarker))
+    var tempRoute []ribd.IPv4RouteState = make([]ribd.IPv4RouteState,len(objs))
+    if err == nil {
+		for i := 0;i<len(objs);i++ {
+			routeObjtemp = objs[i].(models.IPv4RouteState)
+			logger.Debug(fmt.Sprintln("obj ", i, routeObjtemp.DestinationNw , " ", routeObjtemp.NextHopList))
+			models.ConvertribdIPv4RouteStateObjToThrift(&routeObjtemp,&tempRoute[i])
+			returnRoutes = append(returnRoutes,&tempRoute[i])
+		}
+	    routes.IPv4RouteStateList = returnRoutes
+	    routes.StartIdx = fromIndex
+	    routes.EndIdx = ribd.Int(nextMarker)
+	    routes.More = more
+	    routes.Count = ribd.Int(objCount)
+/*		if routes.Count > 0 {
+			fmt.Println(" DestinationNw  NextHop")
+		}
+		for _,rt := range routes.IPv4RouteStateList {
+			fmt.Println(rt.DestinationNw , " ", rt.NextHopList)
+		}*/
+        return routes,err
+    }
+	return routes, err
 }
 
 func (m RIBDServicesHandler) GetIPv4EventState(index int32) (*ribd.IPv4EventState, error) {

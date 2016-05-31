@@ -13,13 +13,13 @@
 //       See the License for the specific language governing permissions and
 //       limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -96,8 +96,8 @@ type ARPServer struct {
 	snapshotLen             int32
 	pcapTimeout             time.Duration
 	promiscuous             bool
-	confRefreshTimeout      int
-	minRefreshTimeout       int
+	ConfRefreshTimeout      int
+	MinRefreshTimeout       int
 	timerGranularity        int
 	timeout                 time.Duration
 	timeoutCounter          int
@@ -173,8 +173,8 @@ func (server *ARPServer) initArpParams() {
 	server.retryCnt = 10
 	server.pcapTimeout = time.Duration(1) * time.Second
 	server.timerGranularity = 1
-	server.confRefreshTimeout = 600 / server.timerGranularity
-	server.minRefreshTimeout = 300 / server.timerGranularity
+	server.ConfRefreshTimeout = 600 / server.timerGranularity
+	server.MinRefreshTimeout = 300 / server.timerGranularity
 	server.timeout = time.Duration(server.timerGranularity) * time.Second
 	server.timeoutCounter = 600
 	server.retryCnt = 5

@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -112,11 +112,13 @@ type IntfConf struct {
 	IfDRtrId      uint32
 	IfBDRtrId     uint32
 	/* IntefaceState: End */
-	IfName    string
-	IfIpAddr  net.IP
-	IfMacAddr net.HardwareAddr
-	IfNetmask []byte
-	IfMtu     int32
+	IfName         string
+	IfIpAddr       net.IP
+	IfMacAddr      net.HardwareAddr
+	IfNetmask      []byte
+	IfMtu          int32
+	IfCost         uint32
+	IfMetricTOSMap map[uint8]uint32 // Key: TOS Value, Value: TOS Metric
 }
 
 func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntfProperty, ifType int) {
@@ -192,6 +194,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		}
 		ent.IfName = ipIntfProp.IfName
 		ent.IfMtu = ipIntfProp.Mtu
+		ent.IfCost = ipIntfProp.Cost
 		ent.IfMacAddr = ipIntfProp.MacAddr
 		ent.IfDRIp = []byte{0, 0, 0, 0}
 		ent.IfBDRIp = []byte{0, 0, 0, 0}
@@ -200,6 +203,7 @@ func (server *OSPFServer) initDefaultIntfConf(key IntfConfKey, ipIntfProp IPIntf
 		ent.IfEvents = 0
 		ent.IfLsaCount = 0
 		ent.IfLsaCksumSum = 0
+		ent.IfMetricTOSMap = make(map[uint8]uint32)
 		txEntry, exist := server.IntfTxMap[key]
 		if !exist {
 			sendHdl, err := pcap.OpenLive(ent.IfName, snapshot_len, promiscuous, timeout_pcap)
@@ -257,6 +261,12 @@ func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg, mtu int32, 
 		server.logger.Err("No Such Interface exists")
 		return
 	}
+
+	ifCost, err := server.getIntfCost(msg.IfId, msg.IfType)
+	if err != nil {
+		server.logger.Err("Unable to get the cost")
+		return
+	}
 	server.logger.Info(fmt.Sprintln("create IPIntfConfMap for ", msg, "ifIdx:", ifIdx))
 
 	// Set ifIdx = 0 for time being --- Need to be revisited
@@ -275,6 +285,7 @@ func (server *OSPFServer) createIPIntfConfMap(msg IPv4IntfNotifyMsg, mtu int32, 
 		MacAddr: macAddr,
 		NetMask: ipNet.Mask,
 		Mtu:     mtu,
+		Cost:    ifCost,
 	}
 
 	server.initDefaultIntfConf(intfConfKey, ipIntfProp, ifType)
@@ -376,14 +387,12 @@ func (server *OSPFServer) updateIPIntfConfMap(ifConf config.InterfaceConf) {
 		ent.IfHelloInterval = uint16(ifConf.IfHelloInterval)
 		ent.IfRtrDeadInterval = uint32(ifConf.IfRtrDeadInterval)
 		ent.IfPollInterval = ifConf.IfPollInterval
-		authKey := convertAuthKey(string(ifConf.IfAuthKey))
-		if authKey == nil {
-			server.logger.Err("Invalid authKey")
-			return
-		}
-		ent.IfAuthKey = authKey
-		ent.IfMulticastForwarding = ifConf.IfMulticastForwarding
-		ent.IfDemand = ifConf.IfDemand
+		//authKey := convertAuthKey(string(ifConf.IfAuthKey))
+		//if authKey == nil {
+		//	server.logger.Err("Invalid authKey")
+		//	return
+		//}
+		//ent.IfAuthKey = authKey
 		ent.IfAuthType = uint16(ifConf.IfAuthType)
 		/* Re initiate the Interface State */
 		ent.IfDRIp = []byte{0, 0, 0, 0}
@@ -405,7 +414,7 @@ func (server *OSPFServer) processIntfConfig(ifConf config.InterfaceConf) error {
 	}
 	ent, exist := server.IntfConfMap[intfConfKey]
 	if !exist {
-		server.logger.Err("No such L3 interface exists")
+		server.logger.Err(fmt.Sprintln("No such L3 interface exists ", intfConfKey.IPAddr, intfConfKey.IntfIdx))
 		err := errors.New("No such L3 interface exists")
 		return err
 	}

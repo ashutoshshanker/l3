@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -38,7 +38,7 @@ type GlobalConf struct {
 	ExitOverflowInterval     config.PositiveInteger
 	DemandExtensions         bool
 	RFC1583Compatibility     bool
-	ReferenceBandwidth       int32
+	ReferenceBandwidth       uint32
 	RestartSupport           config.RestartSupport
 	RestartInterval          int32
 	RestartStrictLsaChecking bool
@@ -71,15 +71,9 @@ func (server *OSPFServer) updateGlobalConf(gConf config.GlobalConf) {
 	server.ospfGlobalConf.AdminStat = gConf.AdminStat
 	server.ospfGlobalConf.ASBdrRtrStatus = gConf.ASBdrRtrStatus
 	server.ospfGlobalConf.TOSSupport = gConf.TOSSupport
-	server.ospfGlobalConf.ExtLsdbLimit = gConf.ExtLsdbLimit
-	server.ospfGlobalConf.MulticastExtensions = gConf.MulticastExtensions
-	server.ospfGlobalConf.ExitOverflowInterval = gConf.ExitOverflowInterval
-	server.ospfGlobalConf.RFC1583Compatibility = gConf.RFC1583Compatibility
-	server.ospfGlobalConf.ReferenceBandwidth = gConf.ReferenceBandwidth
 	server.ospfGlobalConf.RestartSupport = gConf.RestartSupport
 	server.ospfGlobalConf.RestartInterval = gConf.RestartInterval
-	server.ospfGlobalConf.RestartStrictLsaChecking = gConf.RestartStrictLsaChecking
-	server.ospfGlobalConf.StubRouterAdvertisement = gConf.StubRouterAdvertisement
+	server.ospfGlobalConf.ReferenceBandwidth = uint32(gConf.ReferenceBandwidth)
 	server.logger.Err("Global configuration updated")
 }
 
@@ -97,7 +91,7 @@ func (server *OSPFServer) initOspfGlobalConfDefault() {
 	server.ospfGlobalConf.MulticastExtensions = 0
 	server.ospfGlobalConf.ExitOverflowInterval = 0
 	server.ospfGlobalConf.RFC1583Compatibility = false
-	server.ospfGlobalConf.ReferenceBandwidth = 100000 // Default value 100 MBPS
+	server.ospfGlobalConf.ReferenceBandwidth = 100000 // Default value 100 Gbps
 	server.ospfGlobalConf.RestartSupport = config.None
 	server.ospfGlobalConf.RestartInterval = 0
 	server.ospfGlobalConf.RestartStrictLsaChecking = false
@@ -151,6 +145,7 @@ func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) error {
 
 	if server.ospfGlobalConf.AdminStat == config.Enabled {
 		//server.NeighborListMap = make(map[IntfConfKey]list.List)
+		server.logger.Info(fmt.Sprintln("Spawn Neighbor state machine"))
 		server.InitNeighborStateMachine()
 		go server.UpdateNeighborConf()
 		go server.ProcessNbrStateMachine()
@@ -163,6 +158,7 @@ func (server *OSPFServer) processGlobalConfig(gConf config.GlobalConf) error {
 	for key, ent := range localIntfStateMap {
 		if ent == config.Enabled &&
 			server.ospfGlobalConf.AdminStat == config.Enabled {
+			server.logger.Info(fmt.Sprintln("Start rx/tx thread."))
 			server.StartSendRecvPkts(key)
 		}
 	}

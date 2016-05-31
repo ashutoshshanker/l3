@@ -13,13 +13,13 @@
 //	 See the License for the specific language governing permissions and
 //	 limitations under the License.
 //
-// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __  
-// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  | 
-// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  | 
-// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   | 
-// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  | 
-// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__| 
-//                                                                                                           
+// _______  __       __________   ___      _______.____    __    ____  __  .___________.  ______  __    __
+// |   ____||  |     |   ____\  \ /  /     /       |\   \  /  \  /   / |  | |           | /      ||  |  |  |
+// |  |__   |  |     |  |__   \  V  /     |   (----` \   \/    \/   /  |  | `---|  |----`|  ,----'|  |__|  |
+// |   __|  |  |     |   __|   >   <       \   \      \            /   |  |     |  |     |  |     |   __   |
+// |  |     |  `----.|  |____ /  .  \  .----)   |      \    /\    /    |  |     |  |     |  `----.|  |  |  |
+// |__|     |_______||_______/__/ \__\ |_______/        \__/  \__/     |__|     |__|      \______||__|  |__|
+//
 
 package server
 
@@ -290,7 +290,20 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 	binary.BigEndian.PutUint16(ospf[12:14], csum)
 	copy(ospf[16:24], ent.IfAuthKey)
 
+	var DstIP net.IP
+	var DstMAC net.HardwareAddr
+
 	ipPktlen := IP_HEADER_MIN_LEN + ospfHdr.pktlen
+	SrcIP := ent.IfIpAddr
+
+	if ent.IfType == config.NumberedP2P {
+		DstIP = net.ParseIP(config.AllSPFRouters)
+		DstMAC, _ = net.ParseMAC(config.McastMAC)
+	} else {
+		DstIP = nbrConf.OspfNbrIPAddr
+		DstMAC = dstMAC
+	}
+
 	ipLayer := layers.IPv4{
 		Version:  uint8(4),
 		IHL:      uint8(IP_HEADER_MIN_LEN),
@@ -298,13 +311,13 @@ func (server *OSPFServer) BuildDBDPkt(intfKey IntfConfKey, ent IntfConf,
 		Length:   uint16(ipPktlen),
 		TTL:      uint8(1),
 		Protocol: layers.IPProtocol(OSPF_PROTO_ID),
-		SrcIP:    ent.IfIpAddr,
-		DstIP:    nbrConf.OspfNbrIPAddr,
+		SrcIP:    SrcIP,
+		DstIP:    DstIP,
 	}
 
 	ethLayer := layers.Ethernet{
 		SrcMAC:       ent.IfMacAddr,
-		DstMAC:       dstMAC,
+		DstMAC:       DstMAC,
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 
