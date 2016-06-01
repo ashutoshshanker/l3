@@ -687,6 +687,35 @@ func (server *OSPFServer) generateASExternalLsa(route RouteMdata) LsaKey {
 	return lsaKey
 }
 
+func (server *OSPFServer) updateAsExternalLSA(lsdbKey LsdbKey, lsaKey LsaKey) error {
+        lsDbEnt, exist := server.AreaLsdb[lsdbKey]
+        if exist {
+                ent, valid := lsDbEnt.ASExternalLsaMap[lsaKey]
+                if !valid {
+                        server.logger.Warning(fmt.Sprintln("LSDB: AS external LSA doesnt exist lsdb ", lsdbKey, lsaKey))
+                        return nil
+                }
+                LsaEnc := encodeASExternalLsa(ent, lsaKey)
+                checksumOffset := uint16(14)
+                ent.LsaMd.LSChecksum = computeFletcherChecksum(LsaEnc[2:], checksumOffset)
+                LSAge := 0
+                ent.LsaMd.LSAge = uint16(LSAge)
+                lsDbEnt.ASExternalLsaMap[lsaKey] = ent
+                server.AreaLsdb[lsdbKey] = lsDbEnt
+
+                //update db entry
+                var val LsdbSliceEnt
+                val.AreaId = lsdbKey.AreaId
+                val.LSType = lsaKey.LSType
+                val.LSId = lsaKey.LSId
+                val.AdvRtr = lsaKey.AdvRouter
+                server.LsdbSlice = append(server.LsdbSlice, val)
+                server.AddLsdbEntry(val)
+        }
+        return nil
+}
+
+
 func (server *OSPFServer) processDeleteRouterLsa(data []byte, areaId uint32) bool {
 	lsakey := NewLsaKey()
 	routerLsa := NewRouterLsa()
