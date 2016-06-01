@@ -24,9 +24,9 @@
 package server
 
 import (
+	"encoding/binary"
 	"fmt"
-"encoding/binary"
-        "l3/ospf/config"
+	"l3/ospf/config"
 
 	"time"
 )
@@ -92,21 +92,42 @@ func (server *OSPFServer) lsdbStateRefresh() {
 @fn lsdbSelfLsaRefresh
  This API will refresh self generated LSAs after every
 LSARefreshTime .
+From RFC 2328
+      Whenever a new instance of an LSA is originated, its LS sequence
+        number is incremented, its LS age is set to 0, its LS checksum
+        is calculated, and the LSA is added to the link state database
+        and flooded out the appropriate interfaces.  See Section 13.2
+        for details concerning the installation of the LSA into the link
+        state database.
 */
 func (server *OSPFServer) lsdbSelfLsaRefresh() {
+	server.logger.Info(fmt.Sprintln("REFRESH: LSDB refresh started..."))
+	floodAsExt := 0
+	ifkey := IntfConfKey{}
+	nbr := NeighborConfKey{}
 	//get areaId for self originated LSAs
 	for lsdbKey, selfOrigLsaEnt := range server.AreaSelfOrigLsa {
 		for lsaKey, valid := range selfOrigLsaEnt {
 			if valid {
 				err := server.regenerateLsa(lsdbKey, lsaKey)
+				if floodAsExt == 0 && lsaKey.LSType == ASExternalLSA {
+					server.sendLsdbToNeighborEvent(ifkey, nbr, 0, 0, 0, lsaKey, LSAEXTFLOOD)
+				}
 				if err != nil {
 					server.logger.Warning(fmt.Sprintln("LSDB: Failed to regenerate LSA ", lsaKey, " Area ", lsdbKey))
 				}
 			}
 		}
+		floodAsExt += 1
 	}
 	// generate Summary LSAs
 	server.GenerateSummaryLsa()
+	lsaKey := LsaKey{}
+
+	for entKey, ent := range server.IntfConfMap {
+		areaid := convertIPv4ToUint32(ent.IfAreaId)
+		server.sendLsdbToNeighborEvent(entKey, nbr, areaid, 0, 0, lsaKey, LSAFLOOD)
+	}
 }
 
 func (server *OSPFServer) regenerateLsa(lsdbKey LsdbKey, lsaKey LsaKey) error {
@@ -124,19 +145,18 @@ func (server *OSPFServer) regenerateLsa(lsdbKey LsdbKey, lsaKey LsaKey) error {
 			IPAddr:  ipAddr,
 			IntfIdx: config.InterfaceIndexOrZero(ifIdx),
 		}
-                intConf, exist := server.IntfConfMap[intfKey]
-                if !exist {
-		    return nil
+		intConf, exist := server.IntfConfMap[intfKey]
+		if !exist {
+			return nil
 		}
 		if intConf.IfDRtrId == rtr_id {
-                        isDR = true
-                }
+			isDR = true
+		}
 
 		server.generateNetworkLSA(lsdbKey.AreaId, intfKey, isDR)
 
 	case ASExternalLSA:
-
-		// TODO ADD this
+		server.updateAsExternalLSA(lsdbKey, lsaKey)
 
 	}
 	return nil

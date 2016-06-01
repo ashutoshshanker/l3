@@ -439,6 +439,13 @@ func (m RIBDServer) RouteConfigValidationCheck(cfg *ribd.IPv4Route, op string) (
 			return err
 		}
 		logger.Debug(fmt.Sprintln("Number of nexthops = ", len(cfg.NextHop)))
+		if len(cfg.NextHop) == 0 {
+			/*
+				Expects non-zero nexthop info
+			*/
+			logger.Err("Must specify next hop")
+			return errors.New("Next hop ip not specified")
+		}
 		for i := 0; i < len(cfg.NextHop); i++ {
 			/*
 			    Check if the NextHop IP valid
