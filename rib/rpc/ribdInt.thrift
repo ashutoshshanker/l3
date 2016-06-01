@@ -104,6 +104,11 @@ struct ConditionInfo {
 	3 : string IpPrefix
 	4 : string MasklengthRange 
 }
+struct PatchOpInfo {
+    1 : string Op
+    2 : string Path
+    3 : list<map<string,string>> Value
+}
 
 service RIBDINTServices 
 {
@@ -117,7 +122,7 @@ service RIBDINTServices
 	Routes getRoute(1: string destNetIp, 2:string networkMask);
 	oneway void OnewayCreateBulkIPv4Route(1: list<IPv4Route> config);
 	bool CreatePolicyAction(1: PolicyAction config);
-	bool UpdatePolicyAction(1: PolicyAction origconfig, 2: PolicyAction newconfig, 3: list<bool> attrset, 4: string op);
+	bool UpdatePolicyAction(1: PolicyAction origconfig, 2: PolicyAction newconfig, 3: list<bool> attrset, 4: list<PatchOpInfo> op);
 	bool DeletePolicyAction(1: PolicyAction config);
 	void ApplyPolicy(1: string source, 2: string policy, 3: string action, 4: list<ConditionInfo>conditions)
 	void UpdateApplyPolicy(1: string source, 2: string policy, 3: string action, 4: list<ConditionInfo>conditions)

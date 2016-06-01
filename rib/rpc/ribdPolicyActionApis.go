@@ -48,7 +48,7 @@ func (m RIBDServicesHandler) DeletePolicyAction(cfg *ribdInt.PolicyAction) (val 
 	return true, err
 }
 
-func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribdInt.PolicyAction, newconfig *ribdInt.PolicyAction, attrset []bool, op string) (val bool, err error) {
+func (m RIBDServicesHandler) UpdatePolicyAction(origconfig *ribdInt.PolicyAction, newconfig *ribdInt.PolicyAction, attrset []bool, op []*ribdInt.PatchOpInfo) (val bool, err error) {
 	logger.Info(fmt.Sprintln("UpdatePolicyAction"))
 	return true, err
 }

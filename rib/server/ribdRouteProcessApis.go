@@ -38,6 +38,7 @@ import (
 	"errors"
 	"utils/commonDefs"
 	//	"github.com/op/go-nanomsg"
+	"encoding/json"
 	"net"
 	"reflect"
 	"strconv"
@@ -205,11 +206,6 @@ func getConnectedRoutes() {
 			}
 			cfg.NextHop = make([]*ribd.NextHopInfo, 0)
 			cfg.NextHop = append(cfg.NextHop, &nextHop)
-			err = RouteServiceHandler.RouteConfigValidationCheck(&cfg, "add")
-			if err != nil {
-				logger.Err("Route validation failed when reading from db")
-				continue
-			}
 			_, err = RouteServiceHandler.ProcessRouteCreateConfig(&cfg) //ipAddrStr, ipMaskStr, 0, "0.0.0.0", ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfList[i].IfIndex)), "CONNECTED") // FIBAndRIB, ribd.Int(len(destNetSlice)))
 			if err != nil {
 				logger.Debug(fmt.Sprintf("Failed to create connected route for ip Addr %s/%s intfType %d intfId %d\n", ipAddrStr, ipMaskStr, ribd.Int(asicdCommonDefs.GetIntfTypeFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex)), ribd.Int(asicdCommonDefs.GetIntfIdFromIfIndex(IPIntfBulk.IPv4IntfStateList[i].IfIndex))))
@@ -225,8 +221,19 @@ func getConnectedRoutes() {
 
 func (m RIBDServer) GetRouteDistanceState(protocol string) (*ribd.RouteDistanceState, error) {
 	logger.Debug("Get state for RouteDistanceState")
-	route := ribd.NewRouteDistanceState()
-	return route, nil
+	state := ribd.NewRouteDistanceState()
+	if ProtocolAdminDistanceMapDB == nil {
+		logger.Debug("ProtocolAdminDistanceMapDB not initialized")
+		return state, errors.New("ProtocolAdminDistanceMapDB not initialized")
+	}
+	val,ok := ProtocolAdminDistanceMapDB[protocol]
+	if !ok {
+		logger.Err(fmt.Sprintln("Admin Distance for protocol ", protocol, " not set"))
+		return state, errors.New(fmt.Sprintln("Admin Distance for protocol ", protocol, " not set"))
+	}
+	state.Protocol = protocol
+	state.Distance = int32(val.configuredDistance)
+	return state, nil
 }
 
 //thrift API definitions
@@ -565,6 +572,7 @@ func (m RIBDServer) GetRouteReachabilityInfo(destNet string) (nextHopIntf *ribdI
 	if found == false {
 		logger.Debug(fmt.Sprintln("dest IP", destNetIp, " not reachable "))
 		err = errors.New("dest ip address not reachable")
+		return nextHopIntf,err
 	}
 	duration := time.Since(t1)
 	logger.Debug(fmt.Sprintln("time to get longestPrefixLen = ", duration.Nanoseconds(), " ipAddr of the route: ", nextHopIntf.Ipaddr, " next hop ip of the route = ", nextHopIntf.NextHopIp, " ifIndex: ", nextHopIntf.NextHopIfIndex))
@@ -1549,84 +1557,9 @@ func (m RIBDServer) ProcessRouteDeleteConfig(cfg *ribd.IPv4Route) (val bool, err
 	}
 	return true, err
 }
-/*
-func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
-	logger.Debug(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with op: "))
-	if !RouteServiceHandler.AcceptConfig {
-		logger.Debug("Not ready to accept config")
-		//return err
-	}
-	destNet, err := getNetowrkPrefixFromStrings(origconfig.DestinationNw, origconfig.NetworkMask)
-	if err != nil {
-		logger.Debug(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
-		return val, err
-	}
-	ok := RouteInfoMap.Match(destNet)
-	if !ok {
-		err = errors.New("No route found")
-		return val, err
-	}
-	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
-	if routeInfoRecordListItem == nil {
-		logger.Debug("No route for destination network")
-		return val, err
-	}
-	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
-	callUpdate := true
-	if attrset != nil {
-		found, routeInfoRecord, index := findRouteWithNextHop(routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol], origconfig.NextHop[0].NextHopIp)
-		if !found || index == -1 {
-			logger.Debug("Invalid nextHopIP")
-			return val, err
-		}
-		objTyp := reflect.TypeOf(*origconfig)
-		for i := 0; i < objTyp.NumField(); i++ {
-			objName := objTyp.Field(i).Name
-			if attrset[i] {
-				logger.Debug(fmt.Sprintf("ProcessRouteUpdateConfig (server): changed ", objName))
-				if objName == "NextHop" {
-					if len(newconfig.NextHop) == 0 {
-						logger.Err("Must specify next hop")
-						return val, err
-					} else {
-						nextHopIpAddr, err := getIP(newconfig.NextHop[0].NextHopIp)
-						if err != nil {
-							logger.Debug("nextHopIpAddr invalid")
-							return val, errors.New("Invalid next hop")
-						}
-						logger.Debug(fmt.Sprintln("Update the next hop info old ip: ", origconfig.NextHop[0].NextHopIp, " new value: ", newconfig.NextHop[0].NextHopIp, " weight : ", newconfig.NextHop[0].Weight))
-						routeInfoRecord.nextHopIp = nextHopIpAddr
-						routeInfoRecord.weight = ribd.Int(newconfig.NextHop[0].Weight)
-						if newconfig.NextHop[0].NextHopIntRef != "" {
-							nextHopIntRef, _ := strconv.Atoi(newconfig.NextHop[0].NextHopIntRef)
-							routeInfoRecord.nextHopIfIndex = ribd.Int(nextHopIntRef)
-						}
-					}
-				}
-				if objName == "Cost" {
-					routeInfoRecord.metric = ribd.Int(newconfig.Cost)
-				}*/
-				/*				if objName == "OutgoingInterface" {
-								nextHopIfIndex, _ := strconv.Atoi(newconfig.OutgoingInterface)
-								routeInfoRecord.nextHopIfIndex = ribd.Int(nextHopIfIndex)
-								callUpdate = false
-							}*/
-			/*}
-		}
-		routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol][index] = routeInfoRecord
-		RouteInfoMap.Set(destNet, routeInfoRecordList)
-		//RouteServiceHandler.DBRouteAddCh <- RouteDBInfo{routeInfoRecord, routeInfoRecordList}//.WriteIPv4RouteStateEntryToDB(routeInfoRecord, routeInfoRecordList)
-		RouteServiceHandler.WriteIPv4RouteStateEntryToDB(RouteDBInfo{routeInfoRecord, routeInfoRecordList})
-		if callUpdate == false {
-			return val, err
-		}
-	}
-	updateBestRoute(destNet, routeInfoRecordList)
-	return val, err
-}
 
 func (m RIBDServer) ProcessRoutePatchUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, op []*ribd.PatchOpInfo) (val bool, err error) {
-	logger.Debug(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with number of patch ops: ", len(op)))
+	logger.Debug(fmt.Sprintln("ProcessRoutePatchUpdateConfig:Received update route request with number of patch ops: ", len(op)))
 	if !RouteServiceHandler.AcceptConfig {
 		logger.Debug("Not ready to accept config")
 		//return err
@@ -1642,19 +1575,26 @@ func (m RIBDServer) ProcessRoutePatchUpdateConfig(origconfig *ribd.IPv4Route, ne
 		return val, err
 	}
     for idx := 0;idx < len(op);idx++ {
-		logger.Debug(fmt.Sprintln("Add operation in update"))
 		switch op[idx].Path {
 			case "NextHop":
 			    logger.Debug("Patch update for next hop")
-				if newconfig.NextHop == nil {
-					newconfig.NextHop = make([]*ribd.NextHopInfo,0)
-				}
-				for j := 0;j<len(op[idx].Value);j++ {
-					wt,_ := strconv.Atoi((op[idx].Value[j]["Weight"]))
+				/*newconfig should only have the next hops that have to be added or deleted*/
+				newconfig.NextHop = make([]*ribd.NextHopInfo,0)
+				logger.Debug(fmt.Sprintln("value = ", op[idx].Value))
+				valueObjArr := []ribd.NextHopInfo{}
+	             err = json.Unmarshal([]byte (op[idx].Value),&valueObjArr)
+	             if err != nil {
+		             logger.Debug(fmt.Sprintln("error unmarshaling value:",err))
+		             return val,errors.New(fmt.Sprintln("error unmarshaling value:",err))
+	             }
+				logger.Debug(fmt.Sprintln("Number of nextHops:", len(valueObjArr)))
+				for _,val := range valueObjArr {
+					logger.Debug(fmt.Sprintln("nextHop info: ip - ", val.NextHopIp, " intf: ", val.NextHopIntRef, " wt:", val.Weight))
+					//wt,_ := strconv.Atoi((op[idx].Value[j]["Weight"]))
 					nh := ribd.NextHopInfo {
-					    NextHopIp : op[idx].Value[j]["NextHopIp"],
-					    NextHopIntRef : op[idx].Value[j]["NextHopIntRef"],
-					    Weight      : int32(wt),
+					    NextHopIp : val.NextHopIp,
+					    NextHopIntRef : val.NextHopIntRef,
+					    Weight      : val.Weight,
 					}
 					newconfig.NextHop = append(newconfig.NextHop,&nh)
 				}
@@ -1672,9 +1612,9 @@ func (m RIBDServer) ProcessRoutePatchUpdateConfig(origconfig *ribd.IPv4Route, ne
 	}
 	return val, err
 }
-*/
-func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool, op string) (val bool, err error) {
-	logger.Debug(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request with op: ", op))
+
+func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconfig *ribd.IPv4Route, attrset []bool) (val bool, err error) {
+	logger.Debug(fmt.Sprintln("ProcessRouteUpdateConfig:Received update route request "))
 	if !RouteServiceHandler.AcceptConfig {
 		logger.Debug("Not ready to accept config")
 		//return err
@@ -1685,26 +1625,8 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 		return val, err
 	}
 	ok := RouteInfoMap.Match(destNet)
-	if !ok && op != "add"{
+	if !ok {
 		err = errors.New(fmt.Sprintln("No route found for ip ", destNet))
-		return val, err
-	}
-	if op == "add" {
-		logger.Debug(fmt.Sprintln("Add operation in update"))
-		if attrset != nil {
-			logger.Debug("attr set not nil, set individual attributes")
-			objTyp := reflect.TypeOf(*origconfig)
-			for i := 0; i < objTyp.NumField(); i++ {
-				objName := objTyp.Field(i).Name
-				if attrset[i] {
-					if objName != "NextHop" {
-						logger.Err(fmt.Sprintln("Cannot add any other object ", objName, " other than next hop"))
-						return false, errors.New("Cannot add any other object other than next hop")
-					}
-					m.ProcessRouteCreateConfig(newconfig)
-				}
-			}
-		}
 		return val, err
 	}
 	routeInfoRecordListItem := RouteInfoMap.Get(destNet)
@@ -1713,27 +1635,6 @@ func (m RIBDServer) ProcessRouteUpdateConfig(origconfig *ribd.IPv4Route, newconf
 		return val, err
 	}
 	routeInfoRecordList := routeInfoRecordListItem.(RouteInfoRecordList)
-	if op == "remove" {
-		logger.Debug(fmt.Sprintln("Remove operation in update"))
-		if attrset != nil {
-			logger.Debug("attr set not nil, set individual attributes")
-			objTyp := reflect.TypeOf(*origconfig)
-			for i := 0; i < objTyp.NumField(); i++ {
-				objName := objTyp.Field(i).Name
-				if attrset[i] {
-					if objName != "NextHop" {
-						logger.Err(fmt.Sprintln("Cannot remove any other object ", objName, " other than next hop"))
-						return false, errors.New("Cannot remove any other object other than next hop")
-					}
-					m.ProcessRouteDeleteConfig(newconfig)
-				}
-			}
-		}
-		return val, err
-	}
-	/*
-		Now starts the case when update operation is called with replace
-	*/
 	callUpdate := true
 	if attrset != nil {
 		found, routeInfoRecord, index := findRouteWithNextHop(routeInfoRecordList.routeInfoProtocolMap[origconfig.Protocol], origconfig.NextHop[0].NextHopIp)

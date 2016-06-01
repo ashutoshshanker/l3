@@ -53,7 +53,7 @@ func (h *ARPHandler) SendUpdateArpGlobalConfig(timeout int) error {
 	return err
 }
 
-func (h *ARPHandler) UpdateArpGlobal(origConf *arpd.ArpGlobal, newConf *arpd.ArpGlobal, attrset []bool, op string) (bool, error) {
+func (h *ARPHandler) UpdateArpGlobal(origConf *arpd.ArpGlobal, newConf *arpd.ArpGlobal, attrset []bool, op []*arpd.PatchOpInfo) (bool, error) {
 	h.logger.Info(fmt.Sprintln("Original Arp config attrs:", origConf))
 	h.logger.Info(fmt.Sprintln("New Arp config attrs:", newConf))
 	err := h.SendUpdateArpGlobalConfig(int(newConf.Timeout))

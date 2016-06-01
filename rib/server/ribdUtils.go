@@ -185,9 +185,8 @@ func (m RIBDServer) ConvertIntfStrToIfIndexStr(intfString string) (ifIndex strin
     This function performs config parameters validation for Route update operation.
 	Key validations performed by this fucntion include:
 	   - Validate destinationNw. If provided in CIDR notation, convert to ip addr and mask values
-	   - Check if the route is present in the DB
 */
-func (m RIBDServer) RouteConfigValidationCheckForUpdate(oldcfg *ribd.IPv4Route, cfg *ribd.IPv4Route, attrset []bool, op string) (err error) {
+func (m RIBDServer) RouteConfigValidationCheckForUpdate(oldcfg *ribd.IPv4Route, cfg *ribd.IPv4Route, attrset []bool) (err error) {
 	logger.Info(fmt.Sprintln("RouteConfigValidationCheckForUpdate"))
 	isCidr := strings.Contains(cfg.DestinationNw, "/")
 	if isCidr { 
@@ -214,102 +213,6 @@ func (m RIBDServer) RouteConfigValidationCheckForUpdate(oldcfg *ribd.IPv4Route, 
 		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
 		return errors.New("Invalid destination ip address")
 	}
-	if op == "add" {
-		/*
-		   This is a update add operation. 
-		   "add" option is set for an update call when the user wants to add a new value
-		   instead of modifying existing ones. 
-		*/
-		logger.Debug(fmt.Sprintln("Add operation in update"))
-		if attrset != nil {
-			logger.Debug("attr set not nil, set individual attributes")
-			objTyp := reflect.TypeOf(*cfg)
-			for i := 0; i < objTyp.NumField(); i++ {
-				objName := objTyp.Field(i).Name
-				if attrset[i] {
-					/*
-					    Currently, we can only add next hop info via route update
-					*/
-					if objName != "NextHop" {
-						logger.Err(fmt.Sprintln("Cannot add any other object ", objName, " other than next hop"))
-						return errors.New("Cannot add any other object other than next hop")
-					}
-					if len(cfg.NextHop) == 0 {
-						/*
-						   If route update is trying to add next hop, non zero nextHop info is expected
-						*/
-						logger.Err("Must specify next hop")
-						return errors.New("Next hop ip not specified")
-					}
-					for i :=0 ;i<len(cfg.NextHop);i++ {
-					    /*
-					        Check if the next hop ip valid
-					    */
-					    _, err = getIP(cfg.NextHop[i].NextHopIp)
-					    if err != nil {
-						    logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
-						    return errors.New("Invalid next hop ip address")
-					    }
-						/*
-						    Check if the next hop ref is valid L3 interface
-						*/
-					    logger.Debug(fmt.Sprintln("IntRef before : ", cfg.NextHop[i].NextHopIntRef))
-					    cfg.NextHop[i].NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(cfg.NextHop[i].NextHopIntRef)
-					    if err != nil {
-						    logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", cfg.NextHop[i].NextHopIntRef))
-						    return errors.New("Invalid NextHop Intref")
-					    }
-					    logger.Debug(fmt.Sprintln("IntRef after : ", cfg.NextHop[i].NextHopIntRef))
-					}
-				}
-			}
-		}
-		return err 
-	} //end of update add operation
-	
-	if op == "remove" {
-		/*
-		   This is a update remove operation. 
-		   "remove" option is set for an update call when the user wants to remove a new value
-		   instead of modifying existing ones. 
-		*/
-		logger.Debug(fmt.Sprintln("remove operation in update"))
-		if attrset != nil {
-			logger.Debug("attr set not nil, set individual attributes")
-			objTyp := reflect.TypeOf(*cfg)
-			for i := 0; i < objTyp.NumField(); i++ {
-				objName := objTyp.Field(i).Name
-				if attrset[i] {
-					/*
-					    Currently, we can only add next hop info via route update
-					*/
-					if objName != "NextHop" {
-						logger.Err(fmt.Sprintln("Cannot remove any other object ", objName, " other than next hop"))
-						return errors.New("Cannot remove any other object other than next hop")
-					}
-					if len(cfg.NextHop) == 0 {
-						/*
-						   If route update is trying to remove next hop, non zero nextHop info is expected
-						*/
-						logger.Err("Must specify next hop")
-						return errors.New("Next hop ip not specified")
-					}
-					for i :=0 ;i<len(cfg.NextHop);i++ {
-					    /*
-					        Check if the next hop ip valid
-					    */
-					    _, err = getIP(cfg.NextHop[i].NextHopIp)
-					    if err != nil {
-						    logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
-						    return errors.New("Invalid next hop ip address")
-					    }
-					}
-				}
-			}
-		}
-		return err 
-	} //end of update remove operation
-	
 	/*
 	    Default operation for update function is to update route Info. The following 
 		logic deals with updating route attributes
@@ -376,6 +279,95 @@ func (m RIBDServer) RouteConfigValidationCheckForUpdate(oldcfg *ribd.IPv4Route, 
 			}
 		}
 	}
+	return nil
+}
+
+func (m RIBDServer) RouteConfigValidationCheckForPatchUpdate(oldcfg *ribd.IPv4Route, cfg *ribd.IPv4Route, op []*ribd.PatchOpInfo) (err error) {
+	logger.Info(fmt.Sprintln("RouteConfigValidationCheckForPatchUpdate"))
+	isCidr := strings.Contains(cfg.DestinationNw, "/")
+	if isCidr { 
+	    /*
+		    the given address is in CIDR format
+		*/
+		ip, ipNet, err := net.ParseCIDR(cfg.DestinationNw)
+		if err != nil {
+			logger.Err(fmt.Sprintln("Invalid Destination IP address"))
+			return errors.New("Invalid Desitnation IP address")
+		}
+		_, err = getNetworkPrefixFromCIDR(cfg.DestinationNw)
+		if err != nil {
+			return errors.New("Invalid destination ip/network Mask")
+		}
+		cfg.DestinationNw = ip.String()
+		ipMask := make(net.IP, 4)
+		copy(ipMask, ipNet.Mask)
+		ipMaskStr := net.IP(ipMask).String()
+		cfg.NetworkMask = ipMaskStr
+	}
+	_, err = validateNetworkPrefix(cfg.DestinationNw, cfg.NetworkMask)
+	if err != nil {
+		logger.Info(fmt.Sprintln(" getNetowrkPrefixFromStrings returned err ", err))
+		return errors.New("Invalid destination ip address")
+	}
+    for idx := 0;idx < len(op);idx++ {
+		logger.Debug(fmt.Sprintln("Add operation in update"))
+		switch op[idx].Path {
+			case "NextHop":
+			    logger.Debug("Patch update for next hop")
+				if len(op[idx].Value) == 0 {
+					/*
+						If route update is trying to add next hop, non zero nextHop info is expected
+					*/
+					logger.Err("Must specify next hop")
+					return errors.New("Next hop ip not specified")
+				}
+				logger.Debug(fmt.Sprintln("value = ", op[idx].Value))
+				valueObjArr := []ribd.NextHopInfo{}
+	             err = json.Unmarshal([]byte (op[idx].Value),&valueObjArr)
+	             if err != nil {
+		             logger.Debug(fmt.Sprintln("error unmarshaling value:",err))
+		             return errors.New(fmt.Sprintln("error unmarshaling value:",err))
+	             }
+				logger.Debug(fmt.Sprintln("Number of nextHops:", len(valueObjArr)))
+				for _,val := range valueObjArr {
+					/*
+					    Check if the next hop ip valid
+					*/
+					logger.Debug(fmt.Sprintln("nextHop info: ip - ", val.NextHopIp, " intf: ", val.NextHopIntRef, " wt:", val.Weight))
+				     _, err = getIP(val.NextHopIp)
+					if err != nil {
+						logger.Err(fmt.Sprintln("nextHopIpAddr invalid"))
+						return errors.New("Invalid next hop ip address")
+					}
+						
+					switch op[idx].Op {
+						case "add" :
+						    /*
+						        Check if the next hop ref is valid L3 interface for add operation
+						    */
+					        logger.Debug(fmt.Sprintln("IntRef before : ",val.NextHopIntRef))
+					        val.NextHopIntRef, err = m.ConvertIntfStrToIfIndexStr(val.NextHopIntRef)
+					        if err != nil {
+						        logger.Err(fmt.Sprintln("Invalid NextHop IntRef ", val.NextHopIntRef))
+						        return errors.New("Invalid NextHop Intref")
+					        }
+					        logger.Debug(fmt.Sprintln("IntRef after : ", val.NextHopIntRef))
+							logger.Debug(fmt.Sprintln("cfg.NextHop before: ", cfg.NextHop))
+							cfg.NextHop = append(cfg.NextHop, &val)
+							logger.Debug(fmt.Sprintln("cfg.NextHop after: ", cfg.NextHop))
+						case "remove":
+						    logger.Debug(fmt.Sprintln("remove op"))
+						default:
+						    logger.Err(fmt.Sprintln("operation ", op[idx].Op, " not supported"))
+							return errors.New(fmt.Sprintln("operation ", op[idx].Op, " not supported"))
+					}
+		        }
+			default:
+			    logger.Err(fmt.Sprintln("Patch update for attribute:", op[idx].Path, " not supported"))
+				return errors.New("Invalid attribute for patch update")
+		}
+	}
+	
 	return nil
 }
 

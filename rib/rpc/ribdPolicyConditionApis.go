@@ -60,7 +60,7 @@ func (m RIBDServicesHandler) DeletePolicyCondition(cfg *ribd.PolicyCondition) (v
 	                              }
 	return true, err
 }
-func (m RIBDServicesHandler) UpdatePolicyCondition(origconfig *ribd.PolicyCondition, newconfig *ribd.PolicyCondition, attrset []bool, op string) (val bool, err error) {
+func (m RIBDServicesHandler) UpdatePolicyCondition(origconfig *ribd.PolicyCondition, newconfig *ribd.PolicyCondition, attrset []bool, op []*ribd.PatchOpInfo) (val bool, err error) {
 	logger.Debug(fmt.Sprintln("UpdatePolicyConditionConfig:UpdatePolicyCondition: ", newconfig.Name))
 	return true, err
 }

@@ -58,7 +58,7 @@ type RIBdServerConfig struct {
 	NewConfigObject  interface{}
 	AttrSet          []bool
 	Op               string   //"add"/"del"/"update"
-	PatchOp          string
+	PatchOp          []*ribd.PatchOpInfo
 }
 /*type PatchUpdateRouteInfo struct {
 	OrigRoute *ribd.IPv4Route
@@ -544,7 +544,11 @@ func (ribdServiceHandler *RIBDServer) StartServer(paramsDir string) {
 			} else if routeConf.Op == "del" {
 				ribdServiceHandler.ProcessRouteDeleteConfig(routeConf.OrigConfigObject.(*ribd.IPv4Route))
 			} else if routeConf.Op == "update" {
-                 ribdServiceHandler.ProcessRouteUpdateConfig(routeConf.OrigConfigObject.(*ribd.IPv4Route), routeConf.NewConfigObject.(*ribd.IPv4Route), routeConf.AttrSet, routeConf.PatchOp)
+				if routeConf.PatchOp == nil || len(routeConf.PatchOp) == 0 {
+                      ribdServiceHandler.ProcessRouteUpdateConfig(routeConf.OrigConfigObject.(*ribd.IPv4Route), routeConf.NewConfigObject.(*ribd.IPv4Route), routeConf.AttrSet)
+				} else {
+                     ribdServiceHandler.ProcessRoutePatchUpdateConfig(routeConf.OrigConfigObject.(*ribd.IPv4Route), routeConf.NewConfigObject.(*ribd.IPv4Route), routeConf.PatchOp)
+				}
 			}
 		case info := <-ribdServiceHandler.PolicyApplyCh:
 			logger.Debug("received message on PolicyApplyCh channel")

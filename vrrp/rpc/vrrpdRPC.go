@@ -138,7 +138,7 @@ func (h *VrrpHandler) CreateVrrpIntf(config *vrrpd.VrrpIntf) (r bool, err error)
 	return true, err
 }
 func (h *VrrpHandler) UpdateVrrpIntf(origconfig *vrrpd.VrrpIntf,
-	newconfig *vrrpd.VrrpIntf, attrset []bool, op string) (r bool, err error) {
+	newconfig *vrrpd.VrrpIntf, attrset []bool, op []*vrrpd.PatchOpInfo) (r bool, err error) {
 	// Verify orig config
 	if (origconfig.IfIndex != newconfig.IfIndex) ||
 		(origconfig.VRID != newconfig.VRID) {
